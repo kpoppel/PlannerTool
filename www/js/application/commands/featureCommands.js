@@ -4,16 +4,11 @@ import {
   buildFeatureMap,
 } from '../shared/featureProjection.js';
 import {
+  getActiveScenario,
   getActiveScenarioId,
   getScenarioItems,
   withActiveScenario,
 } from '../shared/scenarioMutations.js';
-
-function findActiveScenario(state) {
-  const activeId = getActiveScenarioId(state);
-  if (!activeId) return null;
-  return getScenarioItems(state).find((scenario) => scenario.id === activeId) || null;
-}
 
 function getBaselineFeatureMap(state) {
   return buildFeatureMap(state.baseline.features);
@@ -27,11 +22,11 @@ function shiftIsoByMs(isoDate, deltaMs) {
 
 function withFeatureOverride(scenario, featureId, updater) {
   const key = String(featureId);
-  const overrides = { ...(scenario.overrides || {}) };
-  const current = overrides[key] || {};
+  const overrides = { ...scenario.overrides };
+  const current = overrides[key] === undefined ? {} : overrides[key];
   const next = updater(current);
 
-  if (!next || Object.keys(next).length === 0) {
+  if (Object.keys(next).length === 0) {
     if (!overrides[key]) return scenario;
     delete overrides[key];
   } else {
@@ -46,8 +41,8 @@ function withFeatureOverride(scenario, featureId, updater) {
 
 function addActiveScenarioToChangedIds(state) {
   const activeId = getActiveScenarioId(state);
-  if (!activeId || activeId === 'baseline') return Array.isArray(state?.scenarios?.changedIds) ? state.scenarios.changedIds : [];
-  return Array.from(new Set([...(Array.isArray(state?.scenarios?.changedIds) ? state.scenarios.changedIds : []), String(activeId)]));
+  if (activeId === 'baseline') return state.scenarios.changedIds;
+  return Array.from(new Set([...state.scenarios.changedIds, String(activeId)]));
 }
 
 export function createFeatureCommands(store, bus, recomputeCapacity = null) {
@@ -63,13 +58,13 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
   }
 
   function emitFeatureMutation(eventPayload) {
-    bus?.emit?.(FeatureEvents.UPDATED, eventPayload || {});
-    bus?.emit?.(ScenarioEvents.UPDATED);
+    bus.emit(FeatureEvents.UPDATED, eventPayload);
+    bus.emit(ScenarioEvents.UPDATED);
   }
 
   return {
     updateFeatureDates(updates) {
-      const safeUpdates = Array.isArray(updates) ? updates : [];
+      const safeUpdates = updates;
       if (!safeUpdates.length) return [];
 
       const snapshot = store.getState();
@@ -77,20 +72,20 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       const childrenByParent = buildChildrenByParentMap(snapshot.baseline.features);
       const changedIds = new Set();
 
-      const activeScenario = findActiveScenario(snapshot);
+      const activeScenario = getActiveScenario(snapshot);
       const mergedOverrides = {
-        ...(activeScenario?.overrides || {}),
+        ...activeScenario.overrides,
       };
 
       for (const entry of safeUpdates) {
-        if (!entry?.id) continue;
+        if (!entry.id) continue;
         const id = String(entry.id);
         const base = baselineById.get(id);
         if (!base) continue;
 
-        const existing = mergedOverrides[id] || {};
-        const existingStart = existing.start ?? base.start ?? null;
-        const existingEnd = existing.end ?? base.end ?? null;
+        const existing = mergedOverrides[id] === undefined ? {} : mergedOverrides[id];
+        const existingStart = existing.start !== undefined ? existing.start : (base.start !== undefined ? base.start : null);
+        const existingEnd = existing.end !== undefined ? existing.end : (base.end !== undefined ? base.end : null);
         mergedOverrides[id] = {
           ...existing,
           start: entry.start !== undefined ? entry.start : existingStart,
@@ -101,27 +96,29 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       const mutation = withActiveScenario(snapshot, (scenario) => {
         let nextScenario = scenario;
         for (const entry of safeUpdates) {
-          if (!entry?.id) continue;
+          if (!entry.id) continue;
           const id = String(entry.id);
           const base = baselineById.get(id);
           if (!base) continue;
 
-          const existingOverride = nextScenario.overrides?.[id] || {};
-          const currentStart = existingOverride.start ?? base.start ?? null;
-          const currentEnd = existingOverride.end ?? base.end ?? null;
+          const existingOverride = nextScenario.overrides[id] === undefined ? {} : nextScenario.overrides[id];
+          const currentStart = existingOverride.start !== undefined ? existingOverride.start : (base.start !== undefined ? base.start : null);
+          const currentEnd = existingOverride.end !== undefined ? existingOverride.end : (base.end !== undefined ? base.end : null);
           const requestedStart = entry.start !== undefined ? entry.start : currentStart;
           let requestedEnd = entry.end !== undefined ? entry.end : currentEnd;
 
-          const childIds = childrenByParent.get(id) || [];
-          if (childIds.length > 0) {
+          const childIds = childrenByParent.get(id);
+          if (childIds !== undefined && childIds.length > 0) {
             let maxChildEnd = null;
             for (const childId of childIds) {
               const childBase = baselineById.get(String(childId));
               if (!childBase) continue;
-              const childOverride = mergedOverrides[String(childId)] || {};
-              const effectiveChildEnd = childOverride.end ?? childBase.end ?? null;
+              const childOverride = mergedOverrides[String(childId)] === undefined ? {} : mergedOverrides[String(childId)];
+              const effectiveChildEnd = childOverride.end !== undefined ? childOverride.end : (childBase.end !== undefined ? childBase.end : null);
               if (!effectiveChildEnd) continue;
-              if (maxChildEnd === null || effectiveChildEnd > maxChildEnd) {
+              if (maxChildEnd === null) {
+                maxChildEnd = effectiveChildEnd;
+              } else if (effectiveChildEnd > maxChildEnd) {
                 maxChildEnd = effectiveChildEnd;
               }
             }
@@ -141,12 +138,12 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
           }));
           changedIds.add(id);
           mergedOverrides[id] = {
-            ...(mergedOverrides[id] || {}),
+            ...(mergedOverrides[id] === undefined ? {} : mergedOverrides[id]),
             start: requestedStart,
             end: requestedEnd,
           };
 
-          if (childIds.length > 0) {
+          if (childIds !== undefined && childIds.length > 0) {
             const priorStart = currentStart;
             const newStart = requestedStart;
             const deltaMs = Date.parse(newStart) - Date.parse(priorStart);
@@ -155,8 +152,8 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
                 const childKey = String(childId);
                 const childBase = baselineById.get(childKey);
                 if (!childBase) continue;
-                const childCurrent = nextScenario.overrides?.[childKey] || {};
-                const hasExplicitOverride = Boolean(nextScenario.overrides?.[childKey]);
+                const childCurrent = nextScenario.overrides[childKey] === undefined ? {} : nextScenario.overrides[childKey];
+                const hasExplicitOverride = Object.prototype.hasOwnProperty.call(nextScenario.overrides, childKey);
                 if (hasExplicitOverride) {
                   changedIds.add(childKey);
                   continue;
@@ -169,7 +166,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
                   end: shiftedEnd,
                 }));
                 mergedOverrides[childKey] = {
-                  ...(mergedOverrides[childKey] || {}),
+                  ...(mergedOverrides[childKey] === undefined ? {} : mergedOverrides[childKey]),
                   start: shiftedStart,
                   end: shiftedEnd,
                 };
@@ -184,9 +181,9 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
             const parentKey = String(base.parentId);
             const parentBase = baselineById.get(parentKey);
             if (parentBase) {
-              const parentCurrent = mergedOverrides[parentKey] || {};
-              const parentStart = parentCurrent.start ?? parentBase.start ?? null;
-              const parentEnd = parentCurrent.end ?? parentBase.end ?? null;
+              const parentCurrent = mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey];
+              const parentStart = parentCurrent.start !== undefined ? parentCurrent.start : (parentBase.start !== undefined ? parentBase.start : null);
+              const parentEnd = parentCurrent.end !== undefined ? parentCurrent.end : (parentBase.end !== undefined ? parentBase.end : null);
               const nextParentStart =
                 requestedStart && parentStart && requestedStart < parentStart ?
                   requestedStart
@@ -194,14 +191,26 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
               const nextParentEnd =
                 requestedEnd && parentEnd && requestedEnd > parentEnd ? requestedEnd : parentEnd;
 
-              if (nextParentStart !== parentStart || nextParentEnd !== parentEnd) {
+              if (nextParentStart !== parentStart) {
                 nextScenario = withFeatureOverride(nextScenario, parentKey, (current) => ({
                   ...current,
                   start: nextParentStart,
                   end: nextParentEnd,
                 }));
                 mergedOverrides[parentKey] = {
-                  ...(mergedOverrides[parentKey] || {}),
+                  ...(mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey]),
+                  start: nextParentStart,
+                  end: nextParentEnd,
+                };
+                changedIds.add(parentKey);
+              } else if (nextParentEnd !== parentEnd) {
+                nextScenario = withFeatureOverride(nextScenario, parentKey, (current) => ({
+                  ...current,
+                  start: nextParentStart,
+                  end: nextParentEnd,
+                }));
+                mergedOverrides[parentKey] = {
+                  ...(mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey]),
                   start: nextParentStart,
                   end: nextParentEnd,
                 };
@@ -214,7 +223,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       });
 
       if (!mutation) {
-        const ids = safeUpdates.map((entry) => String(entry?.id || '')).filter(Boolean);
+        const ids = safeUpdates.map((entry) => String(entry.id)).filter((id) => id !== '');
         recomputeAndEmitCapacity(ids.length ? ids : null);
         emitFeatureMutation({ ids });
         return safeUpdates;
@@ -281,8 +290,8 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       const mutation = withActiveScenario(snapshot, (scenario) =>
         withFeatureOverride(scenario, featureId, (current) => ({
           ...current,
-          start: start !== undefined ? start : (current.start ?? null),
-          end: end !== undefined ? end : (current.end ?? null),
+          start: start !== undefined ? start : (current.start !== undefined ? current.start : null),
+          end: end !== undefined ? end : (current.end !== undefined ? current.end : null),
         }))
       );
 
@@ -324,7 +333,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       const snapshot = store.getState();
       const mutation = withActiveScenario(snapshot, (scenario) => {
         const key = String(id);
-        const overrides = { ...(scenario.overrides || {}) };
+        const overrides = { ...scenario.overrides };
         if (!Object.prototype.hasOwnProperty.call(overrides, key)) {
           return scenario;
         }
@@ -358,7 +367,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
     },
 
     setSelectedFeature(feature) {
-      const id = feature?.id != null ? String(feature.id) : null;
+      const id = feature && feature.id != null ? String(feature.id) : null;
       store.setState(
         (state) => ({
           ...state,
@@ -367,7 +376,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
         false,
         'feature.setSelectedFeature'
       );
-      bus?.emit?.(FeatureEvents.SELECTED);
+      bus.emit(FeatureEvents.SELECTED);
     },
   };
 }

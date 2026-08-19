@@ -6,6 +6,13 @@ export function getActiveScenarioId(state) {
   return state.scenarios.activeId;
 }
 
+export function getActiveScenario(state) {
+  const activeId = getActiveScenarioId(state);
+  const activeScenario = getScenarioItems(state).find((scenario) => scenario.id === activeId);
+  if (activeScenario === undefined) return null;
+  return activeScenario;
+}
+
 export function isMutableScenario(scenario) {
   return scenario.readonly !== true;
 }

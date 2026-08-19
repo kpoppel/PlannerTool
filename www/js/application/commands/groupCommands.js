@@ -1,5 +1,6 @@
 import { GroupEvents, ScenarioEvents } from '../../core/EventRegistry.js';
 import {
+  getActiveScenario,
   getActiveScenarioId,
   getScenarioItems,
   isMutableScenario,
@@ -8,9 +9,10 @@ import {
 
 function applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op) {
   const key = String(groupId);
-  const nextOverrides = { ...(scenario.groupOverrides || {}) };
-  const current = nextOverrides[key] || {};
-  const nextDeltas = (current.memberDeltas || []).filter(
+  const nextOverrides = { ...scenario.groupOverrides };
+  const current = nextOverrides[key] === undefined ? {} : nextOverrides[key];
+  const existingMemberDeltas = current.memberDeltas === undefined ? [] : current.memberDeltas;
+  const nextDeltas = existingMemberDeltas.filter(
     (entry) => String(entry.taskId) !== String(taskId)
   );
   nextDeltas.push({ taskId: String(taskId), op });
@@ -29,8 +31,8 @@ function applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op) {
 function emitGroupMutation(bus, store, payload) {
   void store;
   void payload;
-  bus?.emit?.(GroupEvents.CHANGED);
-  bus?.emit?.(ScenarioEvents.UPDATED);
+  bus.emit(GroupEvents.CHANGED);
+  bus.emit(ScenarioEvents.UPDATED);
 }
 
 function buildTempGroupId() {
@@ -40,7 +42,7 @@ function buildTempGroupId() {
 export function createGroupCommands(store, bus) {
   return {
     createGroupInScenario(planId, name, color = null, parentId = null) {
-      const safeName = String(name || '').trim();
+      const safeName = String(name).trim();
       if (!planId || !safeName) return null;
 
       const tempGroup = {
@@ -49,14 +51,14 @@ export function createGroupCommands(store, bus) {
         name: safeName,
         rank: Date.now(),
         members: [],
-        color: color || null,
-        parent_id: parentId || null,
+        color,
+        parent_id: parentId,
       };
 
       const snapshot = store.getState();
       const mutation = withActiveScenario(snapshot, (scenario) => ({
         ...scenario,
-        scenarioGroups: [...(scenario.scenarioGroups || []), tempGroup],
+        scenarioGroups: [...scenario.scenarioGroups, tempGroup],
       }), { allowBaseline: false });
 
       if (!mutation) return null;
@@ -82,7 +84,7 @@ export function createGroupCommands(store, bus) {
 
       const snapshot = store.getState();
       const mutation = withActiveScenario(snapshot, (scenario) => {
-        const scenarioGroups = Array.isArray(scenario.scenarioGroups) ? scenario.scenarioGroups : [];
+        const scenarioGroups = scenario.scenarioGroups;
         const localIndex = scenarioGroups.findIndex((group) => String(group.id) === String(groupId));
         if (localIndex !== -1) {
           const nextScenarioGroups = [...scenarioGroups];
@@ -96,9 +98,9 @@ export function createGroupCommands(store, bus) {
           };
         }
 
-        const nextOverrides = { ...(scenario.groupOverrides || {}) };
+        const nextOverrides = { ...scenario.groupOverrides };
         nextOverrides[String(groupId)] = {
-          ...(nextOverrides[String(groupId)] || {}),
+          ...(nextOverrides[String(groupId)] === undefined ? {} : nextOverrides[String(groupId)]),
           ...fields,
         };
 
@@ -131,7 +133,7 @@ export function createGroupCommands(store, bus) {
 
       const snapshot = store.getState();
       const mutation = withActiveScenario(snapshot, (scenario) => {
-        const scenarioGroups = Array.isArray(scenario.scenarioGroups) ? scenario.scenarioGroups : [];
+        const scenarioGroups = scenario.scenarioGroups;
         const localIds = new Set(scenarioGroups.map((group) => String(group.id)));
 
         if (localIds.has(String(groupId))) {
@@ -157,9 +159,9 @@ export function createGroupCommands(store, bus) {
           };
         }
 
-        const nextOverrides = { ...(scenario.groupOverrides || {}) };
+        const nextOverrides = { ...scenario.groupOverrides };
         nextOverrides[String(groupId)] = {
-          ...(nextOverrides[String(groupId)] || {}),
+          ...(nextOverrides[String(groupId)] === undefined ? {} : nextOverrides[String(groupId)]),
           _deleted: true,
         };
 
@@ -221,25 +223,26 @@ export function createGroupCommands(store, bus) {
     },
 
     addMemberToGroup(groupId, taskId) {
-      if (!groupId || !taskId) return false;
+      if (!groupId) return false;
+      if (!taskId) return false;
 
       const snapshot = store.getState();
-      const scenario = getScenarioItems(snapshot).find((item) => item.id === getActiveScenarioId(snapshot));
+      const scenario = getActiveScenario(snapshot);
       if (!isMutableScenario(scenario)) return false;
 
-      const localGroup = (scenario.scenarioGroups || []).find(
+      const localGroup = scenario.scenarioGroups.find(
         (group) => String(group.id) === String(groupId)
       );
 
       if (localGroup) {
-        const hasMember = (localGroup.members || []).some(
+        const hasMember = localGroup.members.some(
           (memberId) => String(memberId) === String(taskId)
         );
         if (hasMember) return true;
 
         return Boolean(
           this.updateGroupInScenario(groupId, {
-            members: [...(localGroup.members || []), String(taskId)],
+            members: [...localGroup.members, String(taskId)],
           })
         );
       }
@@ -248,18 +251,19 @@ export function createGroupCommands(store, bus) {
     },
 
     removeMemberFromGroup(groupId, taskId) {
-      if (!groupId || !taskId) return false;
+      if (!groupId) return false;
+      if (!taskId) return false;
 
       const snapshot = store.getState();
-      const scenario = getScenarioItems(snapshot).find((item) => item.id === getActiveScenarioId(snapshot));
+      const scenario = getActiveScenario(snapshot);
       if (!isMutableScenario(scenario)) return false;
 
-      const localGroup = (scenario.scenarioGroups || []).find(
+      const localGroup = scenario.scenarioGroups.find(
         (group) => String(group.id) === String(groupId)
       );
 
       if (localGroup) {
-        const nextMembers = (localGroup.members || []).filter(
+        const nextMembers = localGroup.members.filter(
           (memberId) => String(memberId) !== String(taskId)
         );
         return Boolean(this.updateGroupInScenario(groupId, { members: nextMembers }));
@@ -300,7 +304,7 @@ export function createGroupCommands(store, bus) {
       const snapshot = store.getState();
       const mutation = withActiveScenario(snapshot, (scenario) => ({
         ...scenario,
-        scenarioGroups: (scenario.scenarioGroups || []).map((group) =>
+        scenarioGroups: scenario.scenarioGroups.map((group) =>
           String(group.id) === String(tempId) ? { ...group, id: String(realId) } : group
         ),
       }), { allowBaseline: false });

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${ALLOW_STRICT_CONTRACT_PATTERNS:-0}" == "1" ]]; then
+  echo "pre-commit: skipping strict-contract pattern check (ALLOW_STRICT_CONTRACT_PATTERNS=1)."
+  exit 0
+fi
+
+MATCHES="$(git diff --cached -U0 -- '*.js' '*.test.js' | rg -n "^\+[^+].*(\?\.|\?\?|Array\.isArray\()" || true)"
+OR_FALLBACK_MATCHES="$(git diff --cached -U0 -- '*.js' '*.test.js' | rg -n "^\+[^+].*(=|:|return)\s*[^;]*\|\|\s*(''|\"\"|\[\]|\{\}|0|null|undefined|false|true|NaN)\b" || true)"
+
+if [[ -n "$MATCHES" || -n "$OR_FALLBACK_MATCHES" ]]; then
+  cat <<'EOF'
+ERROR: blocked staged additions introducing banned constructions:
+  - optional chaining: ?.
+  - nullish coalescing: ??
+  - array shape guard: Array.isArray(
+  - fallback-style OR defaults (examples): value || '', value || [], value || null
+
+Policy:
+  - Do not introduce these unless explicitly asked by the user, or truly necessary.
+  - If truly necessary, confirm reasons with the user first.
+
+If user confirmation has already been obtained for this commit, bypass once with:
+  ALLOW_STRICT_CONTRACT_PATTERNS=1 git commit ...
+EOF
+  echo
+  if [[ -n "$MATCHES" ]]; then
+    echo "Pattern matches:"
+    echo "$MATCHES"
+    echo
+  fi
+  if [[ -n "$OR_FALLBACK_MATCHES" ]]; then
+    echo "Fallback-style || matches:"
+    echo "$OR_FALLBACK_MATCHES"
+  fi
+  exit 1
+fi
+
+exit 0

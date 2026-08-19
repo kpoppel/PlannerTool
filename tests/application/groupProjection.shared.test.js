@@ -37,7 +37,7 @@ describe('application/shared/groupProjection', () => {
     const scenario = {
       scenarioGroups: [{ id: 'tmp_1', plan_id: 'p1' }],
       groupOverrides: {
-        g1: { name: 'Renamed' },
+        g1: { name: 'Renamed', memberDeltas: [] },
         g2: { _deleted: true },
       },
     };

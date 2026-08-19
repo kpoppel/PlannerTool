@@ -9,6 +9,10 @@ import {
   ViewManagementEvents,
 } from '../../core/EventRegistry.js';
 import { getAllTaskFiltersEnabled } from '../shared/taskFilters.js';
+import {
+  deriveAvailableFeatureStates,
+  deriveAvailableTaskTypes,
+} from '../shared/stateDerivations.js';
 
 function cloneValue(value) {
   return value == null ? null : structuredClone(value);
@@ -30,8 +34,8 @@ function createSyntheticDefaultView() {
 }
 
 function withSyntheticDefaultView(views) {
-  const nextViews = Array.isArray(views) ? [...views] : [];
-  const defaultIndex = nextViews.findIndex((view) => String(view?.id) === DEFAULT_VIEW_ID);
+  const nextViews = [...views];
+  const defaultIndex = nextViews.findIndex((view) => String(view.id) === DEFAULT_VIEW_ID);
   const syntheticDefaultView = createSyntheticDefaultView();
 
   if (defaultIndex === -1) {
@@ -66,43 +70,15 @@ function getDefaultViewOptions() {
   };
 }
 
-function deriveAvailableFeatureStates(snapshot) {
-  const fromFilterState = Array.isArray(snapshot?.filter?.availableFeatureStates) ?
-    snapshot.filter.availableFeatureStates
-  : [];
-  if (fromFilterState.length > 0) {
-    return Array.from(new Set(fromFilterState.map((stateName) => String(stateName))));
-  }
-
-  const fromFeatures = [];
-  const seen = new Set();
-  for (const feature of snapshot?.baseline?.features || []) {
-    const stateName = feature?.state;
-    if (!stateName) continue;
-    const key = String(stateName);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    fromFeatures.push(key);
-  }
-  return fromFeatures;
+function deriveDefaultFeatureStates(snapshot) {
+  return deriveAvailableFeatureStates(snapshot.baseline.features);
 }
 
-function deriveAvailableTaskTypes(snapshot) {
-  const fromFeatures = [];
-  const seen = new Set();
-  for (const feature of snapshot?.baseline?.features || []) {
-    const typeName = feature?.type ?? feature?.workItemType ?? feature?.work_item_type;
-    if (!typeName) continue;
-    const key = String(typeName);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    fromFeatures.push(key);
-  }
-  return fromFeatures;
+function deriveDefaultTaskTypes(snapshot) {
+  return deriveAvailableTaskTypes(snapshot.baseline.features);
 }
 
 function toSelectedIds(selectionMap) {
-  if (!selectionMap || typeof selectionMap !== 'object') return [];
   return Object.entries(selectionMap)
     .filter(([, selected]) => selected === true)
     .map(([id]) => String(id));
@@ -113,20 +89,20 @@ function toViewExpansion(existingExpansion, options = {}) {
     parentChild:
       options.expandParentChild !== undefined ?
         Boolean(options.expandParentChild)
-      : Boolean(existingExpansion?.parentChild),
+      : Boolean(existingExpansion.parentChild),
     relations:
       options.expandRelations !== undefined ?
         Boolean(options.expandRelations)
-      : Boolean(existingExpansion?.relations),
+      : Boolean(existingExpansion.relations),
     teamAllocated:
       options.expandTeamAllocated !== undefined ?
         Boolean(options.expandTeamAllocated)
-      : Boolean(existingExpansion?.teamAllocated),
+      : Boolean(existingExpansion.teamAllocated),
   };
 }
 
 function toSelectedMap(ids) {
-  return Object.fromEntries((ids || []).map((id) => [String(id), true]));
+  return Object.fromEntries(ids.map((id) => [String(id), true]));
 }
 
 function buildViewSnapshotOptions(snapshot, pluginState = {}) {
@@ -169,6 +145,11 @@ function writeLastViewId(viewId) {
 }
 
 export function createViewRestoreCommands(store, dataService, pluginStateCommands = null) {
+  const pluginStateApi = pluginStateCommands === null ? {
+    captureForView: () => ({}),
+    restoreFromView: async () => {},
+  } : pluginStateCommands;
+
   function setViews(views, activeId = null) {
     const nextViews = withSyntheticDefaultView(views);
     const nextActiveId = activeId !== null ? activeId : store.getState().view.activeId;
@@ -191,7 +172,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
   }
 
   async function restorePluginState(pluginState) {
-    await pluginStateCommands.restoreFromView(pluginState);
+    await pluginStateApi.restoreFromView(pluginState);
   }
 
   function applyViewToStore(viewId, viewData) {
@@ -211,27 +192,27 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
     const selectedProjects =
       isDefault ?
         toSelectedIds(defaultProjectSelections)
-      : toSelectedIds(viewData?.selectedProjects || {});
+      : toSelectedIds(viewData.selectedProjects);
     const selectedTeams =
       isDefault ?
         toSelectedIds(defaultTeamSelections)
-      : toSelectedIds(viewData?.selectedTeams || {});
+      : toSelectedIds(viewData.selectedTeams);
 
     const selectedStates =
-      Array.isArray(viewOptions.selectedFeatureStates) ?
+      viewOptions.selectedFeatureStates instanceof Array ?
         Array.from(viewOptions.selectedFeatureStates)
       :
         (isDefault ?
-          deriveAvailableFeatureStates(snapshot)
-        : (snapshot.selection?.featureStateNames || []));
+          deriveDefaultFeatureStates(snapshot)
+        : snapshot.selection.featureStateNames);
 
     const selectedTaskTypes =
-      Array.isArray(viewOptions.selectedTaskTypes) ?
+      viewOptions.selectedTaskTypes instanceof Array ?
         Array.from(viewOptions.selectedTaskTypes)
       :
         (isDefault ?
-          deriveAvailableTaskTypes(snapshot)
-        : (snapshot.selection?.taskTypeNames || []));
+          deriveDefaultTaskTypes(snapshot)
+        : snapshot.selection.taskTypeNames);
 
     const nextViewOptions = isDefault ?
       getDefaultViewOptions()
@@ -265,7 +246,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
         },
         scenarios: {
           ...state.scenarios,
-          activeId: isDefault ? 'baseline' : state.scenarios?.activeId,
+          activeId: isDefault ? 'baseline' : state.scenarios.activeId,
         },
         view: {
           ...state.view,
@@ -286,11 +267,11 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
     const teamIds = Array.from(snapshot.selection.teamIds);
 
     const activeViewData = {
-      ...(viewData || {}),
+      ...viewData,
       id,
       selectedProjects: toSelectedMap(projectIds),
       selectedTeams: toSelectedMap(teamIds),
-      viewOptions: toActiveViewOptions(snapshot, viewData.viewOptions || {}),
+      viewOptions: toActiveViewOptions(snapshot, viewData.viewOptions),
     };
 
     // Keep the sidebar and board UI in sync with the newly-applied saved view.
@@ -314,14 +295,14 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
 
   return {
     async loadViews() {
-      const views = withSyntheticDefaultView((await dataService.listViews()) || []);
+      const views = withSyntheticDefaultView(await dataService.listViews());
       setViews(views);
       return views;
     },
 
     async saveCurrentView(name, viewId = null) {
       const snapshot = store.getState();
-      const pluginState = pluginStateCommands.captureForView();
+      const pluginState = pluginStateApi.captureForView();
       const viewOptions = buildViewSnapshotOptions(snapshot, pluginState);
       const payload = {
         id: viewId,
@@ -335,13 +316,14 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
         viewOptions,
       };
       const response = await dataService.saveView(payload);
-      const nextViews = withSyntheticDefaultView((await dataService.listViews()) || []);
-      setViews(nextViews, response?.id || null);
+      const nextViews = withSyntheticDefaultView(await dataService.listViews());
+      const responseId = response.id === undefined ? null : response.id;
+      setViews(nextViews, responseId);
       const savedViewData =
-        nextViews.find((v) => String(v?.id) === String(response?.id)) || response;
+        nextViews.find((v) => String(v.id) === String(response.id));
       bus.emit(ViewManagementEvents.ACTIVATED, {
-        id: response?.id,
-        viewId: response?.id,
+        id: response.id,
+        viewId: response.id,
         data: savedViewData,
         activeViewData: savedViewData,
       });
@@ -350,43 +332,35 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
 
     async renameView(viewId, newName) {
       await dataService.renameView(viewId, newName);
-      const nextViews = withSyntheticDefaultView((await dataService.listViews()) || []);
+      const nextViews = withSyntheticDefaultView(await dataService.listViews());
       setViews(nextViews);
     },
 
     async deleteView(viewId) {
       await dataService.deleteView(viewId);
-      const nextViews = withSyntheticDefaultView((await dataService.listViews()) || []);
-      const activeId = store.getState().view?.activeId;
+      const nextViews = withSyntheticDefaultView(await dataService.listViews());
+      const activeId = store.getState().view.activeId;
       setViews(nextViews, activeId === viewId ? null : activeId);
     },
 
     async loadAndApplyView(viewId) {
-      const id = String(viewId || 'default');
+      const id = String(viewId);
       const savedViews = store.getState().view.saved;
 
       let viewData;
       if (id === 'default') {
         viewData =
-          savedViews.find((view) => String(view?.id) === 'default') ||
-          {
-            id: 'default',
-            name: 'Default View',
-            selectedProjects: {},
-            selectedTeams: {},
-            viewOptions: {},
-            readonly: true,
-          };
+          savedViews.find((view) => String(view.id) === 'default');
       } else {
         viewData = await dataService.getView(id);
-        if (!viewData) {
+        if (viewData === null) {
           throw new Error(`View not found: ${id}`);
         }
       }
 
       applyViewToStore(id, viewData);
       emitViewApplied(id, viewData);
-      await restorePluginState(viewData?.viewOptions?.pluginState || {});
+      await restorePluginState(viewData.viewOptions.pluginState);
       writeLastViewId(id);
       return id;
     },
@@ -398,13 +372,14 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
       }
 
       const availableViews = store.getState().view.saved;
-      const preferredId =
-        readLastViewId() ||
-        store.getState().view.activeId ||
-        'default';
-      const hasPreferred =
-        preferredId === 'default' ||
-        availableViews.some((view) => String(view?.id) === String(preferredId));
+      const savedLastViewId = readLastViewId();
+      const preferredId = savedLastViewId === null ? store.getState().view.activeId : savedLastViewId;
+      let hasPreferred = false;
+      if (preferredId === 'default') {
+        hasPreferred = true;
+      } else if (availableViews.some((view) => String(view.id) === String(preferredId))) {
+        hasPreferred = true;
+      }
 
       const targetId = hasPreferred ? String(preferredId) : 'default';
       await this.loadAndApplyView(targetId);

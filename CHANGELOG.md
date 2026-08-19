@@ -55,8 +55,12 @@ Template - do not change :
 ### Changed
 - Tightened application team-allocation helpers to the canonical feature capacity contract by using only `capacity[].teamId` and removing legacy nullable/fallback field normalization.
 - Tightened shared task-filter, scenario-mutation, group-projection, and feature-projection helpers to the canonical store contract by removing optional/nullish/fallback shape guards from those internal paths.
+- Tightened the current application changeset to strict canonical contracts across state derivations, group/feature/filter/view/data command-selector paths, and their targeted tests by removing optional/nullish/fallback guard patterns from those internal flows.
+- Added an automated pre-commit guard for staged JS/test additions that blocks `?.`, `??`, `Array.isArray(`, and fallback-style `||` defaults by default, plus AGENTS policy requiring explicit user-confirmed necessity before any bypass.
+- Documented git-hook setup and strict-pattern pre-commit enforcement in `README.md` for contributor onboarding.
 - Phase 6 consolidation slice: centralized task-filter normalization, active-scenario mutation wrappers, and effective-feature/hierarchy derivations into shared application helpers, then wired filter/feature/group/data/view-restore modules to the single-owner implementations with focused shared-helper tests.
 - Phase 6 consolidation continued: unified team-allocation id matching and effective-group projection into shared helpers, and removed duplicated selector/service derivations by wiring selection/view/feature/group selectors plus GroupService to the same owners.
+- Phase 6 consolidation follow-up: introduced shared state-derivation owners for available task types and configured feature-state ordering, removed duplicate active-scenario lookup wrappers in feature/group seams, and aligned view-restore/group-projection defaults with those shared contracts.
 - Updated `backup/architecture_v5/ARCHITECTURE_v2.md` to match the live runtime topology (imports.js wiring, command/store/event flow, plugin lifecycle, and admin bootstrap/service paths).
 - Removed the legacy `bootstrapFromLegacyState` compatibility path and its direct test coverage; store-mode startup now relies on the active hydration commands instead of legacy state bridge logic.
 - Removed dead `BoardEvents.READY` and `BoardEvents.SCROLL` contracts (no emit/listen clients); kept `BoardEvents.OVERLAY_OFFSET_CHANGED` as the active board overlay signal with payload.

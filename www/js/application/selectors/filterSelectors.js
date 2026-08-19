@@ -1,31 +1,22 @@
 import { DEFAULT_STATE_COLOR_MAP, PALETTE } from '../../services/ColorService.js';
 import { normalizeTaskFilters } from '../shared/taskFilters.js';
+import {
+  deriveConfiguredStateSequence,
+  deriveOrderedFeatureStateNames,
+} from '../shared/stateDerivations.js';
 
 function toStateSet(input) {
   if (input instanceof Set) return new Set(Array.from(input));
-  if (Array.isArray(input)) return new Set(input);
-  return new Set([input]);
-}
-
-function deriveAvailableStatesFromFeatures(features) {
-  const out = [];
-  const seen = new Set();
-  for (const feature of features) {
-    const stateName = feature.state;
-    if (!stateName) continue;
-    const key = String(stateName);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(key);
-  }
-  return out;
+  return new Set(input);
 }
 
 function deriveStateColor(stateName) {
   if (!stateName) return PALETTE[0];
 
   const lowerStateName = String(stateName).toLowerCase();
-  const mapped = DEFAULT_STATE_COLOR_MAP[String(stateName)] || DEFAULT_STATE_COLOR_MAP[Object.keys(DEFAULT_STATE_COLOR_MAP).find((key) => key.toLowerCase() === lowerStateName)];
+  const direct = DEFAULT_STATE_COLOR_MAP[String(stateName)];
+  const lowerKey = Object.keys(DEFAULT_STATE_COLOR_MAP).find((key) => key.toLowerCase() === lowerStateName);
+  const mapped = direct !== undefined ? direct : DEFAULT_STATE_COLOR_MAP[lowerKey];
   if (mapped) return mapped;
 
   let hash = 0;
@@ -62,7 +53,6 @@ function deriveStateColorMap(states) {
 }
 
 function hasAnyTrueOption(filterOptions) {
-  if (!filterOptions || typeof filterOptions !== 'object') return true;
   const values = Object.values(filterOptions);
   if (!values.length) return true;
   return values.some((value) => value === true);
@@ -77,9 +67,9 @@ function createFallbackTaskFilterFn(store) {
     const relations = filters.relations;
 
     const hasDates = !!(feature.start && feature.end);
-    const hasCapacity = Array.isArray(feature.capacity) && feature.capacity.length > 0;
+    const hasCapacity = feature.capacity.length > 0;
     const hasParent = !!feature.parentId;
-    const hasLinks = Array.isArray(feature.relations) && feature.relations.length > 0;
+    const hasLinks = feature.relations.length > 0;
 
     if (hasAnyTrueOption(schedule)) {
       if (schedule.planned === true && !hasDates && schedule.unplanned !== true) return false;
@@ -110,61 +100,18 @@ function createFallbackTaskFilterFn(store) {
 }
 
 function compareStrings(a, b) {
-  return String(a || '').localeCompare(String(b || ''));
+  return String(a).localeCompare(String(b));
 }
 
 function deriveStateCategoryMap(projects) {
   const categories = {};
   for (const project of projects) {
-    const projectCategories = project.state_categories || project.stateCategories || {};
+    const projectCategories = project.state_categories;
     for (const [stateName, category] of Object.entries(projectCategories)) {
-      if (stateName == null || category == null) continue;
       categories[String(stateName)] = String(category);
     }
   }
   return categories;
-}
-
-function deriveConfiguredStateSequence(projects) {
-  const sequence = [];
-  const seen = new Set();
-
-  for (const project of projects) {
-    const raw = project.state_display_sequence || project.stateDisplaySequence || [];
-    if (!Array.isArray(raw)) continue;
-    for (const item of raw) {
-      if (!item || typeof item !== 'object' || !Array.isArray(item.types)) continue;
-      for (const stateName of item.types) {
-        const value = String(stateName || '').trim();
-        if (!value || seen.has(value)) continue;
-        seen.add(value);
-        sequence.push(value);
-      }
-    }
-  }
-
-  return sequence;
-}
-
-function applyConfiguredStateSequence(states, projects) {
-  const ordered = [];
-  const seen = new Set();
-  const configured = deriveConfiguredStateSequence(projects);
-
-  for (const configuredState of configured) {
-    const matchingState = states.find((stateName) => String(stateName) === String(configuredState));
-    if (!matchingState || seen.has(matchingState)) continue;
-    ordered.push(matchingState);
-    seen.add(matchingState);
-  }
-
-  for (const stateName of states) {
-    if (seen.has(stateName)) continue;
-    ordered.push(stateName);
-    seen.add(stateName);
-  }
-
-  return ordered;
 }
 
 export function createFilterSelectors(store) {
@@ -193,14 +140,7 @@ export function createFilterSelectors(store) {
 
     getAvailableFeatureStates() {
       const state = store.getState();
-      const baselineStates = deriveAvailableStatesFromFeatures(state.baseline.features);
-      const configuredSequence = deriveConfiguredStateSequence(state.baseline.projects);
-
-      if (configuredSequence.length > 0) {
-        return applyConfiguredStateSequence(baselineStates, state.baseline.projects);
-      }
-
-      return baselineStates;
+      return deriveOrderedFeatureStateNames(state.baseline.projects, state.baseline.features);
     },
 
     getFeatureStateColors() {
@@ -212,18 +152,22 @@ export function createFilterSelectors(store) {
     },
 
     getFeatureStateCategory(stateName) {
-      const key = String(stateName ?? '');
-      return getStateCategories()[key] || '';
+      const key = String(stateName);
+      const category = getStateCategories()[key];
+      return category === undefined ? '' : category;
     },
 
     compareFeatureStates(a, b) {
       const configured = getConfiguredSequence();
       if (configured.length > 0) {
-        const aIndex = configured.indexOf(String(a ?? ''));
-        const bIndex = configured.indexOf(String(b ?? ''));
-        if (aIndex !== -1 || bIndex !== -1) {
-          if (aIndex === -1) return 1;
+        const aIndex = configured.indexOf(String(a));
+        const bIndex = configured.indexOf(String(b));
+        if (aIndex !== -1) {
           if (bIndex === -1) return -1;
+          return aIndex - bIndex;
+        }
+        if (bIndex !== -1) {
+          if (aIndex === -1) return 1;
           return aIndex - bIndex;
         }
       }

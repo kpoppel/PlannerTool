@@ -1,19 +1,6 @@
 import { FeatureEvents, FilterEvents, StateFilterEvents } from '../../core/EventRegistry.js';
 import { normalizeTaskFilters } from '../shared/taskFilters.js';
-
-function deriveAvailableStatesFromFeatures(features) {
-  const out = [];
-  const seen = new Set();
-  for (const feature of Array.isArray(features) ? features : []) {
-    const stateName = feature?.state;
-    if (!stateName) continue;
-    const key = String(stateName);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(key);
-  }
-  return out;
-}
+import { deriveAvailableFeatureStates } from '../shared/stateDerivations.js';
 
 export function createFilterCommands(store, bus, recomputeCapacity = null) {
   const recompute = recomputeCapacity;
@@ -32,9 +19,9 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.setSelectedTaskTypes'
       );
-      if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED);
-        bus?.emit?.(FeatureEvents.UPDATED);
+      if (!options.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -76,11 +63,8 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         );
       } else {
         const currentState = store.getState();
-        const available = currentState?.filter?.availableFeatureStates;
-        const fallback =
-          Array.isArray(available) && available.length > 0 ?
-            available
-          : deriveAvailableStatesFromFeatures(currentState?.baseline?.features);
+        const available = currentState.filter.availableFeatureStates;
+        const fallback = available.length > 0 ? available : deriveAvailableFeatureStates(currentState.baseline.features);
         nextSelection = Array.from(fallback);
         store.setState(
           (state) => ({
@@ -108,7 +92,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
       let nextSelection = [];
       store.setState(
         (state) => {
-          const current = new Set(state.selection?.featureStateNames || []);
+          const current = new Set(state.selection.featureStateNames);
           if (current.has(key)) current.delete(key);
           else current.add(key);
           nextSelection = Array.from(current);
@@ -157,14 +141,14 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
           ...state,
           selection: {
             ...state.selection,
-            sidebarDisabled: map || {},
+            sidebarDisabled: map,
           },
         }),
         false,
         'filter.setSidebarDisabledElements'
       );
       if (!options.suppressEvents) {
-        bus.emit('filter:sidebar-disabled-set', { map: map || {} });
+        bus.emit('filter:sidebar-disabled-set', { map });
       }
     },
 
@@ -192,7 +176,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         (state) => {
           const currentFilters = normalizeTaskFilters(state.selection.taskFilters);
           const currentDimension = {
-            ...(currentFilters[dimension] || {}),
+            ...currentFilters[dimension],
           };
           nextTaskFilters = {
             ...currentFilters,
@@ -219,7 +203,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
     },
 
     toggleTaskFilter(dimension, option, options = {}) {
-      const current = store.getState()?.selection?.taskFilters?.[dimension]?.[option];
+      const current = store.getState().selection.taskFilters[dimension][option];
       const nextSelected = !current;
       this.setTaskFilter(dimension, option, nextSelected, options);
     },

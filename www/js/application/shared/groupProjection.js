@@ -66,7 +66,7 @@ export function derivePendingGroupChanges(scenario) {
     const { _deleted, memberDeltas, ...fields } = override;
     void _deleted;
     const hasFields = Object.keys(fields).length > 0;
-    const hasDeltas = memberDeltas && memberDeltas.length > 0;
+    const hasDeltas = memberDeltas.length > 0;
     if (!hasFields && !hasDeltas) continue;
 
     pending.push({

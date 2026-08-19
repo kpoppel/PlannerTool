@@ -31,7 +31,10 @@ describe('application/commands/dataCommands', () => {
 
   it('hydrateBaseline sets baseline slice and emits loaded events', async () => {
     const dataService = makeDataServiceMock({
-      getProjects: { ok: true, data: [{ id: 'p1' }, { id: 'p2' }] },
+      getProjects: {
+        ok: true,
+        data: [{ id: 'p1', state_display_sequence: [] }, { id: 'p2', state_display_sequence: [] }],
+      },
       getTeams: { ok: true, data: [{ id: 't1' }, { id: 't2' }] },
       getFeatures: {
         ok: true,
@@ -42,7 +45,7 @@ describe('application/commands/dataCommands', () => {
             state: 'In Progress',
             start: '2025-01-01',
             end: '2025-01-05',
-            capacity: [{ team: 't1', capacity: 4 }],
+            capacity: [{ teamId: 't1', capacity: 4 }],
           },
           {
             id: 'f2',
@@ -50,7 +53,7 @@ describe('application/commands/dataCommands', () => {
             state: 'Done',
             start: '2025-01-03',
             end: '2025-01-08',
-            capacity: [{ team: 't2', capacity: 3 }],
+            capacity: [{ teamId: 't2', capacity: 3 }],
           },
         ],
       },
@@ -66,8 +69,8 @@ describe('application/commands/dataCommands', () => {
 
     expect(result.ok).toBe(true);
     expect(store.getState().baseline.projects).toEqual([
-      { id: 'p1', color: '#3498db' },
-      { id: 'p2', color: '#2980b9' },
+      { id: 'p1', color: '#3498db', state_display_sequence: [] },
+      { id: 'p2', color: '#2980b9', state_display_sequence: [] },
     ]);
     expect(store.getState().baseline.teams).toEqual([
       { id: 't1', color: '#3498db' },
@@ -80,7 +83,7 @@ describe('application/commands/dataCommands', () => {
         state: 'In Progress',
         start: '2025-01-01',
         end: '2025-01-05',
-        capacity: [{ team: 't1', capacity: 4 }],
+        capacity: [{ teamId: 't1', capacity: 4 }],
         originalRank: 0,
       },
       {
@@ -89,14 +92,14 @@ describe('application/commands/dataCommands', () => {
         state: 'Done',
         start: '2025-01-03',
         end: '2025-01-08',
-        capacity: [{ team: 't2', capacity: 3 }],
+        capacity: [{ teamId: 't2', capacity: 3 }],
         originalRank: 1,
       },
     ]);
     expect(store.getState().baseline.iterationsByProject).toEqual({
       p1: [{ id: 'iter-1' }],
     });
-    expect(Array.isArray(store.getState().capacity.projectDaily)).toBe(true);
+    expect(store.getState().capacity.projectDaily instanceof Array).toBe(true);
     expect(store.getState().selection.projectIds).toEqual([]);
     expect(store.getState().selection.teamIds).toEqual([]);
     expect(store.getState().groups.byPlanId).toEqual({
@@ -190,7 +193,10 @@ describe('application/commands/dataCommands', () => {
     const dataService = makeDataServiceMock({
       loadAllScenarios: {
         ok: true,
-        data: [{ id: 's1', name: 'S1' }, { id: 's2', name: 'S2' }],
+        data: [
+          { id: 's1', name: 'S1', overrides: {}, filters: {}, view: {}, groupOverrides: {}, scenarioGroups: [] },
+          { id: 's2', name: 'S2', overrides: {}, filters: {}, view: {}, groupOverrides: {}, scenarioGroups: [] },
+        ],
       },
     });
     const bus = { emit: vi.fn() };
@@ -237,7 +243,7 @@ describe('application/commands/dataCommands', () => {
     const dataService = makeDataServiceMock({
       loadAllScenarios: {
         ok: true,
-        data: [{ id: 's1', name: 'S1' }],
+        data: [{ id: 's1', name: 'S1', overrides: {}, filters: {}, view: {}, groupOverrides: {}, scenarioGroups: [] }],
       },
     });
     const bus = { emit: vi.fn() };
@@ -258,11 +264,11 @@ describe('application/commands/dataCommands', () => {
     expect(store.getState().scenarios.changedIds).toEqual([]);
   });
 
-  it('hydrateScenarioData normalizes null server metadata to the canonical shape', async () => {
+  it('hydrateScenarioData accepts canonical scenario metadata from server', async () => {
     const dataService = makeDataServiceMock({
       loadAllScenarios: {
         ok: true,
-        data: [{ id: 's1', name: 'S1', groupOverrides: null, scenarioGroups: null }],
+        data: [{ id: 's1', name: 'S1', overrides: {}, filters: {}, view: {}, groupOverrides: {}, scenarioGroups: [] }],
       },
     });
     const bus = { emit: vi.fn() };
@@ -309,7 +315,7 @@ describe('application/commands/dataCommands', () => {
 
     const result = await commands.hydrateBaseline({
       preloaded: {
-        projects: [{ id: 'p10' }],
+        projects: [{ id: 'p10', state_display_sequence: [] }],
         teams: [{ id: 't10' }],
         features: [{ id: 'f10' }],
         iterationsByProject: { p10: [{ id: 'iter-10' }] },
@@ -318,7 +324,9 @@ describe('application/commands/dataCommands', () => {
 
     expect(result.ok).toBe(true);
     expect(dataService.callRestResult).not.toHaveBeenCalled();
-    expect(store.getState().baseline.projects).toEqual([{ id: 'p10', color: expect.any(String) }]);
+    expect(store.getState().baseline.projects).toEqual([
+      { id: 'p10', color: expect.any(String), state_display_sequence: [] },
+    ]);
     expect(store.getState().baseline.features).toEqual([{ id: 'f10', originalRank: 0 }]);
   });
 
@@ -328,7 +336,7 @@ describe('application/commands/dataCommands', () => {
     const commands = createDataCommands(store, bus, dataService);
 
     const result = await commands.hydrateScenarioData({
-      preloadedItems: [{ id: 's10', name: 'S10' }],
+      preloadedItems: [{ id: 's10', name: 'S10', overrides: {}, filters: {}, view: {}, groupOverrides: {}, scenarioGroups: [] }],
       activeId: 's10',
     });
 
@@ -391,7 +399,7 @@ describe('application/commands/dataCommands', () => {
     const beforeLifecycle = structuredClone(store.getState().lifecycle);
     const result = await commands.hydrateBaseline({
       preloaded: {
-        projects: [{ id: 'p10' }],
+        projects: [{ id: 'p10', state_display_sequence: [] }],
         teams: [{ id: 't10' }],
         features: [{ id: 'f10' }],
         iterationSetsById: null,
@@ -419,7 +427,7 @@ describe('application/commands/dataCommands', () => {
     const commands = createDataCommands(store, bus, dataService);
 
     const result = await commands.hydrateScenarioData({
-      preloadedItems: [{ id: 's10' }],
+      preloadedItems: [{ id: 's10', name: undefined, overrides: {}, filters: {}, view: {}, groupOverrides: {}, scenarioGroups: [] }],
       activeId: 's10',
     });
 

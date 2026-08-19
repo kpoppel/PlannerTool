@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getActiveScenario,
   getActiveScenarioId,
   getScenarioItems,
   withActiveScenario,
@@ -25,8 +26,8 @@ describe('application/shared/scenarioMutations', () => {
 
     expect(mutation).toBeTruthy();
     expect(mutation.activeId).toBe('s2');
-    expect(mutation.items.find((item) => item.id === 's2')?.name).toBe('Updated');
-    expect(mutation.items.find((item) => item.id === 's1')?.name).toBe('S1');
+    expect(mutation.items.find((item) => item.id === 's2').name).toBe('Updated');
+    expect(mutation.items.find((item) => item.id === 's1').name).toBe('S1');
   });
 
   it('returns null when baseline mutations are disallowed', () => {
@@ -46,5 +47,23 @@ describe('application/shared/scenarioMutations', () => {
     expect(mutation).toBeNull();
     expect(getActiveScenarioId(state)).toBe('baseline');
     expect(getScenarioItems(state)).toHaveLength(1);
+  });
+
+  it('returns active scenario and null when active id is missing', () => {
+    const withActive = {
+      scenarios: {
+        activeId: 's1',
+        items: [{ id: 'baseline', readonly: true }, { id: 's1', readonly: false }],
+      },
+    };
+    const withMissingActiveId = {
+      scenarios: {
+        activeId: null,
+        items: [{ id: 'baseline', readonly: true }, { id: 's1', readonly: false }],
+      },
+    };
+
+    expect(getActiveScenario(withActive)).toEqual(expect.objectContaining({ id: 's1' }));
+    expect(getActiveScenario(withMissingActiveId)).toBeNull();
   });
 });

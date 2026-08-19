@@ -22,7 +22,7 @@ function seedStore() {
           scenarioGroups: [{ id: 'tmp_1', plan_id: 'p1', name: 'Draft', members: ['f3'] }],
           groupOverrides: {
             g1: { memberDeltas: [{ taskId: 'f2', op: 'add' }] },
-            g2: { _deleted: true },
+            g2: { _deleted: true, memberDeltas: [] },
           },
         },
       ],
@@ -40,7 +40,7 @@ describe('application/selectors/groupSelectors', () => {
     const groups = selectors.getEffectiveGroups('p1');
 
     expect(groups.map((group) => group.id)).toEqual(['g1', 'tmp_1']);
-    expect(groups.find((group) => group.id === 'g1')?.members).toEqual(['f1', 'f2']);
+    expect(groups.find((group) => group.id === 'g1').members).toEqual(['f1', 'f2']);
   });
 
   it('store selector derives pending group changes from active scenario', () => {
@@ -94,21 +94,26 @@ describe('application/selectors/groupSelectors', () => {
     expect(selectors.getGroupById('g1')).toEqual(expect.objectContaining({ id: 'g1' }));
   });
 
-  it('store selectors return an empty group list for a plan that has not been hydrated yet', () => {
+  it('store selectors require hydrated plan groups for lookups', () => {
     const selectors = createGroupSelectors(store);
 
-    expect(selectors.getEffectiveGroups('missing-plan')).toEqual([]);
+    expect(() => selectors.getEffectiveGroups('missing-plan')).toThrow();
     expect(selectors.getGroupById('missing-group')).toBeNull();
     expect(selectors.hasPlanLoaded('missing-plan')).toBe(false);
   });
 
-  it('store selectors treat missing group metadata as empty defaults', () => {
+  it('store selectors require explicit scenario group metadata', () => {
     store.setState(
       {
         ...seedStore(),
         scenarios: {
           activeId: 's1',
-          items: [{ id: 's1', name: 'Broken', scenarioGroups: [{ id: 'tmp_1', plan_id: 'p1', name: 'Draft' }] }],
+          items: [{
+            id: 's1',
+            name: 'Strict',
+            scenarioGroups: [{ id: 'tmp_1', plan_id: 'p1', name: 'Draft', members: [] }],
+            groupOverrides: {},
+          }],
         },
       },
       true,

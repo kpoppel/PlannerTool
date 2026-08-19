@@ -37,7 +37,18 @@ General
 - Use English for identifiers, comments and commit messages. Keep comments factual and short.
 - Do not ever create fallback paths. Every change is in control and backwards compatibility must be handled by upgrading by running the `scripts/migrate-py` migration.
 - Only create try/catch paths if and only if there is a real failure path warranting this.
+- Do not introduce these constructions in JS/test code unless explicitly asked by the user or truly necessary for correctness: `?.`, `??`, `Array.isArray(...)`.
+- Boolean `||` expressions are allowed when they are true boolean evaluations (for example conditions and boolean flags).
+- Fallback-style `||` defaults are restricted (for example `value || ''`, `value || []`, `value || null`) unless explicitly asked by the user or truly necessary.
+- If one of the restricted constructions above is truly necessary, confirm the reason with the user first, then proceed only after explicit confirmation.
 - Update the `CHANGELOG.md` file with a single line high level description of the change.  Do not change the template section. If there is a section `[vX.Y.Z] - unreleased` update this section. If no such section. _copy_ the template first to create a new varsioned but unlreleased section.
+
+Git hook enforcement (required)
+
+- This repository enforces the rule above with a pre-commit hook at `.githooks/pre-commit`.
+- One-time setup after clone: `bash scripts/setup-git-hooks.sh`
+- The hook blocks staged added lines that introduce `?.`, `??`, `Array.isArray(`, or fallback-style `||` defaults in `*.js` and `*.test.js` files.
+- Emergency bypass is allowed only after user confirmation of necessity: run commit with `ALLOW_STRICT_CONTRACT_PATTERNS=1`.
 
 JavaScript / frontend
 

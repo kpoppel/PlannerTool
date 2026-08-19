@@ -27,6 +27,18 @@
 Follow the instructions in `docs/DEPLOYMENT.md` for running the application.
 The standard development workflow is `./scripts/run_dev.sh` (Vite dev server + uvicorn backend).
 
+# Git hooks
+
+Install repository git hooks once after cloning:
+
+`bash scripts/setup-git-hooks.sh`
+
+The pre-commit hook blocks new staged JS/test additions that introduce `?.`, `??`, `Array.isArray(`, or fallback-style `||` defaults (for example `value || ''`, `value || []`, `value || null`).
+
+Only bypass after explicit user confirmation that the construction is truly necessary for correctness:
+
+`ALLOW_STRICT_CONTRACT_PATTERNS=1 git commit ...`
+
 # First time use
 
 The application will load into first-time user setup if it is a fresh installation.

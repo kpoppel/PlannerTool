@@ -10,6 +10,7 @@ import {
   buildChildrenByParentMap,
   deriveEffectiveFeatures,
 } from '../shared/featureProjection.js';
+import { deriveOrderedFeatureStateNames } from '../shared/stateDerivations.js';
 
 // Passed as bus to the store-owned CapacityCalculator so it never double-emits.
 const NO_OP_BUS = { emit: () => {}, on: () => {}, off: () => {} };
@@ -21,17 +22,17 @@ export const DataCommandEvents = {
 };
 
 function toError(result, methodName) {
-  const message = result?.error?.message || `Hydration failed at ${methodName}`;
+  const message = result.error.message === undefined ? `Hydration failed at ${methodName}` : result.error.message;
   return {
     message,
     methodName,
-    code: result?.error?.code || null,
-    status: result?.error?.status || null,
+    code: result.error.code === undefined ? null : result.error.code,
+    status: result.error.status === undefined ? null : result.error.status,
   };
 }
 
 function shapeError({ phase, methodName, field, expected, value }) {
-  const actual = Array.isArray(value) ? 'array' : (value === null ? 'null' : typeof value);
+  const actual = value instanceof Array ? 'array' : (value === null ? 'null' : typeof value);
   return {
     message: `Invalid hydration payload for ${field}: expected ${expected}, got ${actual}`,
     methodName,
@@ -47,7 +48,7 @@ function shapeError({ phase, methodName, field, expected, value }) {
 }
 
 function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !(value instanceof Array);
 }
 
 function asFailure(bus, phase, error) {
@@ -61,50 +62,18 @@ function asFailure(bus, phase, error) {
 
 async function callStrict(dataService, methodName, ...args) {
   const result = await dataService.callRestResult(methodName, ...args);
-  if (!result?.ok) {
+  if (!result.ok) {
     return { ok: false, error: toError(result, methodName) };
   }
   return { ok: true, data: result.data };
 }
 
 function derivePaletteColor(item, mappedColor, fallbackIndex) {
-  if (item?.color) return item.color;
+  if (item.color) return item.color;
   if (mappedColor) return mappedColor;
-  return PALETTE[fallbackIndex % PALETTE.length] || '#3498db';
-}
-
-function deriveOrderedFeatureStateNames(projects, features) {
-  const featureStates = new Set();
-  for (const feature of features || []) {
-    const stateName = feature?.state;
-    if (!stateName) continue;
-    featureStates.add(String(stateName));
-  }
-
-  const ordered = [];
-  const seen = new Set();
-
-  for (const project of projects || []) {
-    const raw = project?.state_display_sequence || project?.stateDisplaySequence || [];
-    if (!Array.isArray(raw)) continue;
-
-    for (const item of raw) {
-      if (!item || typeof item !== 'object' || !Array.isArray(item.types)) continue;
-      for (const stateName of item.types) {
-        const value = String(stateName || '').trim();
-        if (!value || !featureStates.has(value) || seen.has(value)) continue;
-        seen.add(value);
-        ordered.push(value);
-      }
-    }
-  }
-
-  for (const stateName of featureStates) {
-    if (seen.has(stateName)) continue;
-    ordered.push(stateName);
-  }
-
-  return ordered;
+  const color = PALETTE[fallbackIndex % PALETTE.length];
+  if (color === undefined) return '#3498db';
+  return color;
 }
 
 export function createDataCommands(store, bus, dataService) {
@@ -114,11 +83,11 @@ export function createDataCommands(store, bus, dataService) {
     recomputeCapacity(changedFeatureIds = null) {
       const state = store.getState();
       const features = deriveEffectiveFeatures(state, { includeDirtyMetadata: false });
-      const teams = Array.isArray(state?.baseline?.teams) ? state.baseline.teams : [];
-      const projects = Array.isArray(state?.baseline?.projects) ? state.baseline.projects : [];
-      const selectedProjectIds = (state?.selection?.projectIds || []).map((id) => String(id));
-      const selectedTeamIds = (state?.selection?.teamIds || []).map((id) => String(id));
-      const selectedStateIds = (state?.selection?.featureStateNames || []).map((s) => String(s));
+      const teams = state.baseline.teams;
+      const projects = state.baseline.projects;
+      const selectedProjectIds = state.selection.projectIds.map((id) => String(id));
+      const selectedTeamIds = state.selection.teamIds.map((id) => String(id));
+      const selectedStateIds = state.selection.featureStateNames.map((s) => String(s));
       // When GRAPH_ONLY_SELECTED_PLANS is off (default), graph always shows all plans.
       const projectsForFilter =
         featureFlags.GRAPH_ONLY_SELECTED_PLANS ?
@@ -155,8 +124,8 @@ export function createDataCommands(store, bus, dataService) {
     },
 
     async hydrateBaseline(options = {}) {
-      const preloaded = options?.preloaded || null;
-      const hasPreloaded = preloaded && typeof preloaded === 'object';
+      const preloaded = options.preloaded;
+      const hasPreloaded = preloaded !== undefined && preloaded !== null;
 
       const projectsResult = hasPreloaded ?
         { ok: true, data: preloaded.projects }
@@ -186,7 +155,7 @@ export function createDataCommands(store, bus, dataService) {
       : await callStrict(dataService, 'getIterationsConfig');
       if (!iterationsResult.ok) return asFailure(bus, 'baseline', iterationsResult.error);
 
-      if (!Array.isArray(projectsResult.data)) {
+      if (!(projectsResult.data instanceof Array)) {
         return asFailure(
           bus,
           'baseline',
@@ -199,7 +168,7 @@ export function createDataCommands(store, bus, dataService) {
           })
         );
       }
-      if (!Array.isArray(teamsResult.data)) {
+      if (!(teamsResult.data instanceof Array)) {
         return asFailure(
           bus,
           'baseline',
@@ -212,7 +181,7 @@ export function createDataCommands(store, bus, dataService) {
           })
         );
       }
-      if (!Array.isArray(featuresResult.data)) {
+      if (!(featuresResult.data instanceof Array)) {
         return asFailure(
           bus,
           'baseline',
@@ -226,7 +195,7 @@ export function createDataCommands(store, bus, dataService) {
         );
       }
 
-      const iterationSetsById = iterationsResult.data?.iterationSetsById;
+      const iterationSetsById = iterationsResult.data.iterationSetsById;
       if (!isPlainObject(iterationSetsById)) {
         return asFailure(
           bus,
@@ -241,23 +210,23 @@ export function createDataCommands(store, bus, dataService) {
         );
       }
 
-      const projects = Array.isArray(projectsResult.data) ? projectsResult.data : [];
-      const teams = Array.isArray(teamsResult.data) ? teamsResult.data : [];
-      const features = Array.isArray(featuresResult.data) ? featuresResult.data : [];
+      const projects = projectsResult.data;
+      const teams = teamsResult.data;
+      const features = featuresResult.data;
 
-      const colorMappings = typeof dataService?.getColorMappings === 'function'
+      const colorMappings = typeof dataService.getColorMappings === 'function'
         ? await dataService.getColorMappings()
         : { projectColors: {}, teamColors: {} };
-      const projectColorMap = colorMappings?.projectColors || {};
-      const teamColorMap = colorMappings?.teamColors || {};
+      const projectColorMap = colorMappings.projectColors;
+      const teamColorMap = colorMappings.teamColors;
 
       const hydratedProjects = projects.map((project, index) => ({
         ...project,
-        color: derivePaletteColor(project, projectColorMap[String(project?.id)], index),
+        color: derivePaletteColor(project, projectColorMap[String(project.id)], index),
       }));
       const hydratedTeams = teams.map((team, index) => ({
         ...team,
-        color: derivePaletteColor(team, teamColorMap[String(team?.id)], index),
+        color: derivePaletteColor(team, teamColorMap[String(team.id)], index),
       }));
 
       const featuresWithRank = features.map((feature, index) => ({
@@ -304,7 +273,7 @@ export function createDataCommands(store, bus, dataService) {
               ...state.selection,
               projectIds: state.selection.projectIds,
               teamIds: state.selection.teamIds,
-              featureStateNames: Array.isArray(state.selection.featureStateNames) &&
+              featureStateNames: state.selection.featureStateNames instanceof Array &&
                 state.selection.featureStateNames.length > 0
                 ? state.selection.featureStateNames
                 : defaultFeatureStateNames,
@@ -334,14 +303,14 @@ export function createDataCommands(store, bus, dataService) {
     },
 
     async hydrateScenarioData(options = {}) {
-      const hasPreloadedItems = Object.prototype.hasOwnProperty.call(options || {}, 'preloadedItems');
+      const hasPreloadedItems = Object.prototype.hasOwnProperty.call(options, 'preloadedItems');
       const scenariosResult = hasPreloadedItems ?
         { ok: true, data: options.preloadedItems }
       : await callStrict(dataService, 'loadAllScenarios');
       if (!scenariosResult.ok) {
         return asFailure(bus, 'scenarios', scenariosResult.error);
       }
-      if (!Array.isArray(scenariosResult.data)) {
+      if (!(scenariosResult.data instanceof Array)) {
         return asFailure(
           bus,
           'scenarios',
@@ -356,17 +325,17 @@ export function createDataCommands(store, bus, dataService) {
       }
 
       const scenarioItems = scenariosResult.data;
-      const hasActiveId = Object.prototype.hasOwnProperty.call(options || {}, 'activeId');
+      const hasActiveId = Object.prototype.hasOwnProperty.call(options, 'activeId');
 
       const normalisedScenarioItems = scenarioItems
         .filter((scenario) => scenario && typeof scenario === 'object' && scenario.id != null)
         .map((scenario) => ({
           ...scenario,
-          overrides: scenario.overrides ?? {},
-          filters: scenario.filters ?? {},
-          view: scenario.view ?? {},
-          groupOverrides: scenario.groupOverrides ?? {},
-          scenarioGroups: Array.isArray(scenario.scenarioGroups) ? scenario.scenarioGroups : [],
+          overrides: scenario.overrides === undefined ? {} : scenario.overrides,
+          filters: scenario.filters === undefined ? {} : scenario.filters,
+          view: scenario.view === undefined ? {} : scenario.view,
+          groupOverrides: scenario.groupOverrides === undefined ? {} : scenario.groupOverrides,
+          scenarioGroups: scenario.scenarioGroups instanceof Array ? scenario.scenarioGroups : [],
         }));
 
       const baseline = {

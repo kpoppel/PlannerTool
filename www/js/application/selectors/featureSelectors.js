@@ -3,24 +3,16 @@ import {
   buildFeatureMap,
   deriveEffectiveFeatures,
 } from '../shared/featureProjection.js';
+import { deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
 import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
 
 function buildBaselineFeatureMap(state) {
   return buildFeatureMap(state.baseline.features);
 }
 
-function deriveAvailableTaskTypes(features) {
-  const types = new Set();
-  for (const feature of features) {
-    const type = feature.type ?? feature.workItemType ?? feature.work_item_type;
-    if (type) types.add(String(type));
-  }
-  return Array.from(types).sort();
-}
-
 function deriveTaskTypeHierarchy(projects) {
   for (const project of projects) {
-    if (Array.isArray(project.task_type_hierarchy) && project.task_type_hierarchy.length > 0) {
+    if (project.task_type_hierarchy.length > 0) {
       return project.task_type_hierarchy;
     }
   }
@@ -28,39 +20,41 @@ function deriveTaskTypeHierarchy(projects) {
 }
 
 function getTypeLevelFromHierarchy(type, hierarchy) {
-  const key = String(type || '').toLowerCase();
+  const key = String(type).toLowerCase();
   for (let index = 0; index < hierarchy.length; index += 1) {
-    const types = (hierarchy[index].types || []).map((item) => String(item).toLowerCase());
+    const types = hierarchy[index].types.map((item) => String(item).toLowerCase());
     if (types.includes(key)) return index;
   }
   return 9999;
 }
 
 function getTypeDisplayNameFromHierarchy(type, hierarchy) {
-  const key = String(type || '').toLowerCase();
+  const key = String(type).toLowerCase();
   for (const level of hierarchy) {
-    const canonical = (level.types || []).find((item) => String(item).toLowerCase() === key);
+    const canonical = level.types.find((item) => String(item).toLowerCase() === key);
     if (canonical !== undefined) return canonical;
   }
   return type;
 }
 
 function getIterationsForProjectFromStore(state, projectId) {
-  const idKey = projectId == null ? '' : String(projectId).trim();
-  if (!idKey) return [];
+  const idKey = String(projectId).trim();
+  if (idKey === '') return [];
 
-  const project = state.baseline.projects.find((item) => String(item.id || '').trim() === idKey);
-  const iterationSetId = String(project?.iteration_uuid || '').trim();
-  if (!iterationSetId) return [];
+  const project = state.baseline.projects.find((item) => String(item.id).trim() === idKey);
+  if (project === undefined) return [];
+  const iterationSetId = String(project.iteration_uuid).trim();
+  if (iterationSetId === '') return [];
 
   const linkedSet = state.baseline.iterationsByProject[iterationSetId];
-  if (Array.isArray(linkedSet?.iterations)) return linkedSet.iterations;
-  return [];
+  if (linkedSet === undefined) return [];
+  if (linkedSet.iterations === undefined) return [];
+  return linkedSet.iterations;
 }
 
 function normalizeIdSet(values) {
   const out = new Set();
-  for (const value of values || []) {
+  for (const value of values) {
     out.add(String(value));
   }
   return out;
@@ -69,7 +63,7 @@ function normalizeIdSet(values) {
 function buildParentByChildMap(features) {
   const map = new Map();
   for (const feature of features) {
-    if (!feature.id || !feature.parentId) continue;
+    if (!feature.parentId) continue;
     map.set(String(feature.id), String(feature.parentId));
   }
   return map;
@@ -85,7 +79,7 @@ function buildTaskTypeOrderMap(taskTypes, hierarchy) {
 }
 
 function getFeatureTypeName(feature) {
-  return String(feature.type ?? feature.workItemType ?? feature.work_item_type ?? '').trim();
+  return String(feature.type).trim();
 }
 
 function makeCountsMap(features, predicate) {
@@ -94,7 +88,12 @@ function makeCountsMap(features, predicate) {
     if (!predicate(feature)) continue;
     const typeName = getFeatureTypeName(feature).toLowerCase();
     if (!typeName) continue;
-    counts.set(typeName, (counts.get(typeName) || 0) + 1);
+    const current = counts.get(typeName);
+    if (current === undefined) {
+      counts.set(typeName, 1);
+    } else {
+      counts.set(typeName, current + 1);
+    }
   }
   return counts;
 }
@@ -103,7 +102,7 @@ function computeExpandedFeatureSetFallback(features, selectedFeatureIds, options
   const expandedIds = normalizeIdSet(selectedFeatureIds);
   const childrenByParent = buildChildrenByParentMap(features);
   const parentByChild = buildParentByChildMap(features);
-  const selectedTeamIds = normalizeIdSet(options.selectedTeamIds || []);
+  const selectedTeamIds = normalizeIdSet(options.selectedTeamIds);
 
   let parentChildCount = 0;
   let teamAllocatedCount = 0;
@@ -112,12 +111,14 @@ function computeExpandedFeatureSetFallback(features, selectedFeatureIds, options
     const stack = Array.from(expandedIds);
     while (stack.length > 0) {
       const currentId = stack.pop();
-      const children = childrenByParent.get(String(currentId)) || [];
-      for (const childId of children) {
-        if (!expandedIds.has(String(childId))) {
-          expandedIds.add(String(childId));
-          parentChildCount += 1;
-          stack.push(String(childId));
+      const children = childrenByParent.get(String(currentId));
+      if (children !== undefined) {
+        for (const childId of children) {
+          if (!expandedIds.has(String(childId))) {
+            expandedIds.add(String(childId));
+            parentChildCount += 1;
+            stack.push(String(childId));
+          }
         }
       }
       const parentId = parentByChild.get(String(currentId));
@@ -163,7 +164,9 @@ export function createFeatureSelectors(store) {
     getEffectiveFeatureById(id) {
       const key = String(id);
       const features = deriveEffectiveFeatures(store.getState());
-      return features.find((feature) => String(feature.id) === key) || null;
+      const feature = features.find((feature) => String(feature.id) === key);
+      if (feature === undefined) return null;
+      return feature;
     },
 
     getChildrenByParentMap() {
@@ -176,7 +179,7 @@ export function createFeatureSelectors(store) {
 
     getAvailableTaskTypes() {
       const state = store.getState();
-      return deriveAvailableTaskTypes(state.baseline.features);
+      return deriveAvailableTaskTypes(state.baseline.features).sort();
     },
 
     getTaskTypeHierarchy() {
@@ -192,11 +195,14 @@ export function createFeatureSelectors(store) {
     },
 
     getBaselineFeatureById(id) {
-      return buildBaselineFeatureMap(store.getState()).get(String(id)) || null;
+      const feature = buildBaselineFeatureMap(store.getState()).get(String(id));
+      if (feature === undefined) return null;
+      return feature;
     },
 
     getChildrenByParentId(parentId) {
-      const ids = this.getChildrenByParentMap().get(String(parentId)) || [];
+      const ids = this.getChildrenByParentMap().get(String(parentId));
+      if (ids === undefined) return [];
       return Array.from(ids).map((id) => String(id));
     },
 
@@ -213,8 +219,10 @@ export function createFeatureSelectors(store) {
       const hierarchy = this.getTaskTypeHierarchy();
       const orderMap = buildTaskTypeOrderMap(taskTypes, hierarchy);
       return [...taskTypes].sort((a, b) => {
-        const levelA = orderMap.get(String(a).toLowerCase()) ?? 9999;
-        const levelB = orderMap.get(String(b).toLowerCase()) ?? 9999;
+        const rawLevelA = orderMap.get(String(a).toLowerCase());
+        const rawLevelB = orderMap.get(String(b).toLowerCase());
+        const levelA = rawLevelA === undefined ? 9999 : rawLevelA;
+        const levelB = rawLevelB === undefined ? 9999 : rawLevelB;
         if (levelA !== levelB) return levelA - levelB;
         return String(a).localeCompare(String(b));
       });
@@ -232,7 +240,9 @@ export function createFeatureSelectors(store) {
     },
 
     getSelectedFeatureId() {
-      return store.getState().featureDisplay.selectedId ?? null;
+      const selectedId = store.getState().featureDisplay.selectedId;
+      if (selectedId === undefined) return null;
+      return selectedId;
     },
 
     getSelectedFeature() {

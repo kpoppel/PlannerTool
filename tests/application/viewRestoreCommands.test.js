@@ -157,7 +157,7 @@ describe('application/commands/viewRestoreCommands', () => {
         id: 'v1',
         selectedProjects: { p1: true },
         selectedTeams: { t1: true },
-        viewOptions: { timelineScale: 'weeks' },
+        viewOptions: { timelineScale: 'weeks', pluginState: {} },
       })),
       saveView: vi.fn(async () => ({ id: 'v-new' })),
       renameView: vi.fn(async () => {}),
@@ -185,13 +185,15 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(mod.createLegacyViewRestoreCommands).toBeUndefined();
   });
 
-  it('loadAndApplyView treats omitted selection maps as empty selections without crashing', async () => {
+  it('loadAndApplyView applies explicit empty selection maps from payload', async () => {
     const dataService = {
       listViews: vi.fn(async () => [{ id: 'v1', name: 'One' }]),
       getView: vi.fn(async () => ({
         id: 'v1',
         name: 'One',
-        viewOptions: { timelineScale: 'weeks' },
+        selectedProjects: {},
+        selectedTeams: {},
+        viewOptions: { timelineScale: 'weeks', pluginState: {} },
       })),
       saveView: vi.fn(async () => ({ id: 'v1' })),
       renameView: vi.fn(async () => {}),
@@ -231,7 +233,7 @@ describe('application/commands/viewRestoreCommands', () => {
         id,
         selectedProjects: { p7: true },
         selectedTeams: { t7: true },
-        viewOptions: { timelineScale: 'quarters' },
+        viewOptions: { timelineScale: 'quarters', pluginState: {} },
       })),
       saveView: vi.fn(async () => ({})),
       renameView: vi.fn(async () => {}),
@@ -362,6 +364,7 @@ describe('application/commands/viewRestoreCommands', () => {
       restoreFromView: vi.fn(async () => {}),
     });
 
+    await cmd.loadViews();
     await cmd.loadAndApplyView('default');
 
     const snapshot = store.getState();
@@ -422,6 +425,7 @@ describe('application/commands/viewRestoreCommands', () => {
             hierarchy: { hasParent: true, noParent: true },
             relations: { hasLinks: true, noLinks: true },
           },
+          pluginState: {},
         },
       })),
     };
