@@ -10,15 +10,15 @@ function mergedExpansion(current, incoming = {}) {
     parentChild:
       incoming.expandParentChild !== undefined ?
         Boolean(incoming.expandParentChild)
-      : Boolean(current?.parentChild),
+      : Boolean(current.parentChild),
     relations:
       incoming.expandRelations !== undefined ?
         Boolean(incoming.expandRelations)
-      : Boolean(current?.relations),
+      : Boolean(current.relations),
     teamAllocated:
       incoming.expandTeamAllocated !== undefined ?
         Boolean(incoming.expandTeamAllocated)
-      : Boolean(current?.teamAllocated),
+      : Boolean(current.teamAllocated),
   };
 }
 
@@ -42,7 +42,7 @@ export function createViewCommands(store, bus) {
         ...state,
         view: {
           ...state.view,
-          options: updater(state.view?.options || {}),
+          options: updater(state.view.options),
         },
       }),
       false,
@@ -57,13 +57,13 @@ export function createViewCommands(store, bus) {
           ...state,
           view: {
             ...state.view,
-            expansion: mergedExpansion(state.view?.expansion, options),
+            expansion: mergedExpansion(state.view.expansion, options),
           },
         }),
         false,
         'view.setExpansionState'
       );
-      if (!runtimeOptions?.suppressEvents) {
+      if (!runtimeOptions.suppressEvents) {
         bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);
       }
@@ -77,7 +77,7 @@ export function createViewCommands(store, bus) {
         }),
         'view.setTimelineScale'
       );
-      if (!runtimeOptions?.suppressEvents) {
+      if (!runtimeOptions.suppressEvents) {
         bus.emit(TimelineEvents.SCALE_CHANGED);
       }
     },
@@ -108,7 +108,7 @@ export function createViewCommands(store, bus) {
         }),
         'view.setFeatureSortMode'
       );
-      if (!runtimeOptions?.suppressEvents) {
+      if (!runtimeOptions.suppressEvents) {
         bus.emit(ViewEvents.SORT_MODE);
         bus.emit(FeatureEvents.UPDATED);
       }
@@ -122,7 +122,7 @@ export function createViewCommands(store, bus) {
         }),
         'view.setCapacityViewMode'
       );
-      if (!runtimeOptions?.suppressEvents) {
+      if (!runtimeOptions.suppressEvents) {
         bus.emit(ViewEvents.CAPACITY_MODE);
         bus.emit(FeatureEvents.UPDATED);
       }
@@ -156,7 +156,7 @@ export function createViewCommands(store, bus) {
         }),
         'view.setShowDependencies'
       );
-      if (!runtimeOptions?.suppressEvents) {
+      if (!runtimeOptions.suppressEvents) {
         bus.emit(ViewEvents.DEPENDENCIES);
         bus.emit(FeatureEvents.UPDATED);
       }
@@ -192,7 +192,7 @@ export function createViewCommands(store, bus) {
         (options) => ({ ...options, highlightFeatureRelationMode: value }),
         'view.setHighlightFeatureRelationMode'
       );
-      if (!runtimeOptions?.suppressEvents) {
+      if (!runtimeOptions.suppressEvents) {
         bus.emit(ViewEvents.HIGHLIGHT_RELATIONS);
       }
     },

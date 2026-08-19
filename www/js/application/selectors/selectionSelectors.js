@@ -1,7 +1,7 @@
 function hasTeamAllocation(feature, selectedTeamIds) {
-  const capacities = Array.isArray(feature?.capacity) ? feature.capacity : [];
+  const capacities = feature.capacity;
   for (const entry of capacities) {
-    const teamId = entry?.team ?? entry?.teamId ?? entry?.id;
+    const teamId = entry.team ?? entry.teamId ?? entry.id;
     if (teamId && selectedTeamIds.has(String(teamId))) {
       return true;
     }

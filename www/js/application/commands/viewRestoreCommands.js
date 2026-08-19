@@ -152,13 +152,13 @@ function toSelectedMap(ids) {
 function toActiveViewOptions(snapshot, existingViewOptions = {}) {
   return {
     ...existingViewOptions,
-    ...cloneValue(snapshot.view?.options || {}),
-    selectedFeatureStates: Array.from(snapshot.selection?.featureStateNames || []),
-    selectedTaskTypes: Array.from(snapshot.selection?.taskTypeNames || []),
-    taskFilters: cloneValue(snapshot.selection?.taskFilters || {}),
-    expandParentChild: Boolean(snapshot.view?.expansion?.parentChild),
-    expandRelations: Boolean(snapshot.view?.expansion?.relations),
-    expandTeamAllocated: Boolean(snapshot.view?.expansion?.teamAllocated),
+    ...cloneValue(snapshot.view.options),
+    selectedFeatureStates: Array.from(snapshot.selection.featureStateNames),
+    selectedTaskTypes: Array.from(snapshot.selection.taskTypeNames),
+    taskFilters: cloneValue(snapshot.selection.taskFilters),
+    expandParentChild: Boolean(snapshot.view.expansion.parentChild),
+    expandRelations: Boolean(snapshot.view.expansion.relations),
+    expandTeamAllocated: Boolean(snapshot.view.expansion.teamAllocated),
   };
 }
 
@@ -184,7 +184,7 @@ function writeLastViewId(viewId) {
 export function createViewRestoreCommands(store, dataService, pluginStateCommands = null) {
   function setViews(views, activeId = null) {
     const nextViews = withSyntheticDefaultView(views);
-    const nextActiveId = activeId !== null ? activeId : store.getState().view?.activeId;
+    const nextActiveId = activeId !== null ? activeId : store.getState().view.activeId;
     store.setState(
       (state) => ({
         ...state,
@@ -249,21 +249,21 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
     const nextViewOptions = isDefault ?
       getDefaultViewOptions()
     : {
-        ...(snapshot.view?.options || {}),
+        ...snapshot.view.options,
         ...viewOptions,
       };
 
     const nextTaskFilters =
       viewOptions.taskFilters && typeof viewOptions.taskFilters === 'object' ?
         {
-          ...(snapshot.selection?.taskFilters || {}),
+          ...snapshot.selection.taskFilters,
           ...viewOptions.taskFilters,
         }
       :
         (isDefault ?
           getAllTaskFiltersEnabled()
         :
-          (snapshot.selection?.taskFilters || {}));
+          snapshot.selection.taskFilters);
 
     store.setState(
       (state) => ({
@@ -284,7 +284,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
           ...state.view,
           activeId: viewId,
           options: nextViewOptions,
-          expansion: toViewExpansion(state.view?.expansion, nextViewOptions),
+          expansion: toViewExpansion(state.view.expansion, nextViewOptions),
         },
       }),
       false,
@@ -295,15 +295,15 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
   // Bridge: emit compatibility events from store state so board/timeline components re-render.
   function emitViewApplied(id, viewData) {
     const snapshot = store.getState();
-    const projectIds = Array.from(snapshot.selection?.projectIds || []);
-    const teamIds = Array.from(snapshot.selection?.teamIds || []);
+    const projectIds = Array.from(snapshot.selection.projectIds);
+    const teamIds = Array.from(snapshot.selection.teamIds);
 
     const activeViewData = {
       ...(viewData || {}),
       id,
       selectedProjects: toSelectedMap(projectIds),
       selectedTeams: toSelectedMap(teamIds),
-      viewOptions: toActiveViewOptions(snapshot, viewData?.viewOptions || {}),
+      viewOptions: toActiveViewOptions(snapshot, viewData.viewOptions || {}),
     };
 
     // Keep the sidebar and board UI in sync with the newly-applied saved view.
@@ -336,23 +336,23 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
       const snapshot = store.getState();
       const pluginState = pluginStateCommands?.captureForView?.() || {};
       const viewOptions = {
-        ...cloneValue(snapshot.view?.options || {}),
-        selectedFeatureStates: Array.from(snapshot.selection?.featureStateNames || []),
-        selectedTaskTypes: Array.from(snapshot.selection?.taskTypeNames || []),
-        taskFilters: cloneValue(snapshot.selection?.taskFilters || {}),
-        expandParentChild: Boolean(snapshot.view?.expansion?.parentChild),
-        expandRelations: Boolean(snapshot.view?.expansion?.relations),
-        expandTeamAllocated: Boolean(snapshot.view?.expansion?.teamAllocated),
+        ...cloneValue(snapshot.view.options),
+        selectedFeatureStates: Array.from(snapshot.selection.featureStateNames),
+        selectedTaskTypes: Array.from(snapshot.selection.taskTypeNames),
+        taskFilters: cloneValue(snapshot.selection.taskFilters),
+        expandParentChild: Boolean(snapshot.view.expansion.parentChild),
+        expandRelations: Boolean(snapshot.view.expansion.relations),
+        expandTeamAllocated: Boolean(snapshot.view.expansion.teamAllocated),
         ...(Object.keys(pluginState).length > 0 ? { pluginState } : {}),
       };
       const payload = {
         id: viewId,
         name,
         selectedProjects: Object.fromEntries(
-          (snapshot.selection?.projectIds || []).map((id) => [String(id), true])
+          snapshot.selection.projectIds.map((id) => [String(id), true])
         ),
         selectedTeams: Object.fromEntries(
-          (snapshot.selection?.teamIds || []).map((id) => [String(id), true])
+          snapshot.selection.teamIds.map((id) => [String(id), true])
         ),
         viewOptions,
       };
@@ -385,7 +385,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
 
     async loadAndApplyView(viewId) {
       const id = String(viewId || 'default');
-      const savedViews = store.getState().view?.saved || [];
+      const savedViews = store.getState().view.saved;
 
       let viewData;
       if (id === 'default') {
@@ -414,15 +414,15 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
     },
 
     async restoreLastView() {
-      const existingViews = store.getState().view?.saved || [];
+      const existingViews = store.getState().view.saved;
       if (!existingViews.length) {
         await this.loadViews();
       }
 
-      const availableViews = store.getState().view?.saved || [];
+      const availableViews = store.getState().view.saved;
       const preferredId =
         readLastViewId() ||
-        store.getState().view?.activeId ||
+        store.getState().view.activeId ||
         'default';
       const hasPreferred =
         preferredId === 'default' ||

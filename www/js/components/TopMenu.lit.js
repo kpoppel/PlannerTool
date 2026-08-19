@@ -250,24 +250,26 @@ export class TopMenuBarLit extends LitElement {
 
     // Listen to state changes to update menu data
     this._onProjectsChanged = () => {
-      const arr = sel.selection.getProjects() || [];
+      const arr = sel.selection.getProjects();
       this.projects = arr;
       this.selectedProjectsCount = arr.filter((p) => p && p.selected).length;
     };
     this._onTeamsChanged = () => {
-      const arr = sel.selection.getTeams() || [];
+      const arr = sel.selection.getTeams();
       this.teams = arr;
       this.selectedTeamsCount = arr.filter((t) => t && t.selected).length;
     };
     this._onScenariosList = () => {
-      this.scenarios = sel.scenario.getScenarios() || [];
+      const scenarios = sel.scenario.getScenarios();
+      this.scenarios = scenarios;
       this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onScenarioActivated = () => {
       this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onScenariosUpdated = () => {
-      this.scenarios = sel.scenario.getScenarios() || [];
+      const scenarios = sel.scenario.getScenarios();
+      this.scenarios = scenarios;
       this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onViewsList = (payload) => {

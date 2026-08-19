@@ -171,7 +171,7 @@ export class PlanMenuLit extends LitElement {
 
     // Listen to project changes for real-time updates
     this._onProjectsChanged = () => {
-      const projects = sel.selection.getProjects() || [];
+      const projects = sel.selection.getProjects();
       this.projects = [...projects];
       this.requestUpdate();
     };

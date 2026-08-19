@@ -33,6 +33,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Removed remaining sidebar and feature-board fallback reads so store-backed selectors now fail fast on invalid state instead of silently defaulting to stale compatible values.
 - Fixed saved-view activation so Sidebar task filters and the graph-type toggle refresh immediately when a view is applied.
 - Fixed parent/child expansion state changes to emit the board refresh signals required for the featureboard to re-render with the newly computed expanded set.
 - Aligned store-backed filter command callers with the array-based interface so task/state selections are written from canonical arrays instead of relying on coercion at the command boundary.

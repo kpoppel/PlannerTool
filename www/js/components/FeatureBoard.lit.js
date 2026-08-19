@@ -92,8 +92,7 @@ class FeatureBoard extends LitElement {
 
   // Build and maintain connected feature sets (parent/child and relations)
   _computeConnectedSet(startFeature) {
-    let features = sel.feature.getEffectiveFeatures();
-    if (!features) features = [];
+    const features = sel.feature.getEffectiveFeatures();
     const idKey = (v) => String(v);
     const byId = new Map(features.map((f) => [idKey(f.id), f]));
 

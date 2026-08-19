@@ -1173,7 +1173,7 @@ export class SidebarLit extends LitElement {
         // Restore the snapshotted unplanned filter value.
         if (this._packedModeUnplannedSnapshot !== undefined) {
           cmd.filter.setTaskFilter('schedule', 'unplanned', this._packedModeUnplannedSnapshot);
-          this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
+          this.taskFilters = sel.filter.getTaskFilters();
         }
         this._packedModeUnplannedSnapshot = undefined;
         // Re-enable the schedule.unplanned control.
@@ -1208,7 +1208,7 @@ export class SidebarLit extends LitElement {
     bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
     bus.on(ViewEvents.CAPACITY_MODE, () => {
       // Sync local _graphType when capacity mode changes
-      this._graphType = sel.view.getCapacityViewMode() || 'team';
+      this._graphType = sel.view.getCapacityViewMode();
       this.requestUpdate();
       onViewOptionChange();
     });
@@ -1240,7 +1240,7 @@ export class SidebarLit extends LitElement {
       this.availableFeatureStates = sel.filter.getAvailableFeatureStates();
       this._scheduleTaskTypesRecompute();
       // Initialize graph type from current capacityViewMode
-      this._graphType = sel.view.getCapacityViewMode() || 'team';
+      this._graphType = sel.view.getCapacityViewMode();
     } catch (e) {
       // Defensive: ignore if state is not yet ready
       console.warn('[Sidebar] Error initializing from state:', e);
