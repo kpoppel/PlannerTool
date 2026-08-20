@@ -31,6 +31,13 @@ function applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op) {
   };
 }
 
+/** Mark the active (non-baseline) scenario as having unsaved changes. */
+function addActiveScenarioToChangedIds(state) {
+  const activeId = getActiveScenarioId(state);
+  if (activeId === 'baseline') return state.scenarios.changedIds;
+  return Array.from(new Set([...state.scenarios.changedIds, String(activeId)]));
+}
+
 function emitGroupMutation(bus, store, payload) {
   void store;
   void payload;
@@ -76,6 +83,7 @@ export function createGroupCommands(store, bus) {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
             items: mutation.items,
           },
         }),
@@ -125,6 +133,7 @@ export function createGroupCommands(store, bus) {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
             items: mutation.items,
           },
         }),
@@ -186,6 +195,7 @@ export function createGroupCommands(store, bus) {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
             items: mutation.items,
           },
         }),
@@ -214,6 +224,7 @@ export function createGroupCommands(store, bus) {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
             items: mutation.items,
           },
         }),

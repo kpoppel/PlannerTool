@@ -31,18 +31,6 @@ export class ProviderLocalStorage {
     }
     return { id, deleted: false };
   }
-  async renameScenario(id, name) {
-    this.logCall('renameScenario', arguments);
-
-    const scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
-    const idx = scenarios.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      scenarios[idx].name = name;
-      localStorage.setItem('scenarios', JSON.stringify(scenarios));
-      return scenarios[idx];
-    }
-    return null;
-  }
   async listScenarios() {
     this.logCall('listScenarios', arguments);
     // List scenarios from localStorage

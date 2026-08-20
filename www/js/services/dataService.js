@@ -20,7 +20,6 @@
  * @property {(scenario: object) => Promise<object>} saveScenario
  * @property {(id: string, tags: string[]) => Promise<object>} annotateScenario
  * @property {(id: string) => Promise<boolean>} deleteScenario
- * @property {(id: string, name: string) => Promise<object>} renameScenario
  * @property {() => Promise<any[]>} listScenarios
  * @property {() => Promise<{ projectColors: object, teamColors: object }>} getColorMappings
  * @property {(id: string, color: string) => Promise<void>} updateProjectColor
@@ -259,10 +258,6 @@ class DataService {
   async deleteScenario(id) {
     const result = await this.providers['rest'].deleteScenario(id);
     return this._unwrapOrFallback('deleteScenario', result, false);
-  }
-  async renameScenario(id, name) {
-    const result = await this.providers['rest'].renameScenario(id, name);
-    return this._unwrapOrFallback('renameScenario', result, null);
   }
   async saveScenario(scenario) {
     const payload = {

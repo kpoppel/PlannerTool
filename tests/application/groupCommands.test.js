@@ -43,6 +43,7 @@ describe('application/commands/groupCommands', () => {
     expect(created.plan_id).toBe('p1');
     expect(store.getState().scenarios.items[0].scenarioGroups).toHaveLength(1);
     expect(bus.emit).toHaveBeenCalledWith(GroupEvents.CHANGED);
+    expect(store.getState().scenarios.changedIds).toContain('s1');
   });
 
   it('store add/remove member updates baseline group deltas', () => {
@@ -57,6 +58,7 @@ describe('application/commands/groupCommands', () => {
       { taskId: 'f2', op: 'add' },
       { taskId: 'f1', op: 'remove' },
     ]);
+    expect(store.getState().scenarios.changedIds).toContain('s1');
   });
 
   it('does not expose legacy compatibility adapters', async () => {

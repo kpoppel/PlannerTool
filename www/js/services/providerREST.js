@@ -239,23 +239,6 @@ export class ProviderREST extends RestProviderBase {
     return ok(result.data);
   }
 
-  async renameScenario(id, name) {
-    // Persist name by saving the scenario metadata; backend stores raw structure.
-    const result = await this._requestJson('/api/scenario', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ op: 'save', data: { id, name } }),
-    });
-    if (!result.ok) return result;
-
-    const listResult = await this.listScenarios();
-    if (listResult.ok) {
-      bus.emit(DataEvents.SCENARIOS_CHANGED, listResult.data);
-    }
-    console.log('providerREST:renameScenario:', result.data);
-    return ok(result.data);
-  }
-
   async deleteScenario(id) {
     const result = await this._requestJson('/api/scenario', {
       method: 'POST',

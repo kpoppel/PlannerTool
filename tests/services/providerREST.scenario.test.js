@@ -3,7 +3,7 @@ import { server } from '../msw/server.js';
 import { ProviderREST } from '../../www/js/services/providerREST.js';
 
 describe('ProviderREST /api/scenario tests', () => {
-  it('list, loadAll, get, save (twice), rename and delete scenarios', async () => {
+  it('list, loadAll, get, save (twice) and delete scenarios', async () => {
     const pr = new ProviderREST();
 
     // listScenarios - should return metadata list
@@ -51,12 +51,6 @@ describe('ProviderREST /api/scenario tests', () => {
     expect(saved2.ok).to.equal(true);
     expect(saved2.data.id).to.equal(saved1.data.id);
     expect(saved2.data.name).to.equal('New Scenario Updated');
-
-    // renameScenario
-    const renamed = await pr.renameScenario(saved1.data.id, 'Renamed Scenario');
-    expect(renamed.ok).to.equal(true);
-    expect(renamed.data).to.have.property('id');
-    expect(renamed.data.name).to.equal('Renamed Scenario');
 
     // deleteScenario
     const deleted = await pr.deleteScenario(saved1.data.id);

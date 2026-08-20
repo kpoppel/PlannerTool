@@ -16,16 +16,15 @@ describe('ProviderLocalStorage coverage', () => {
     expect(h.ok).to.equal(true);
   });
 
-  it('save/list/rename/delete scenarios', async () => {
+  it('save/list/delete scenarios', async () => {
     const s = { id: 's1', name: 'S1' };
     await prov.saveScenario(s);
     let list = await prov.listScenarios();
     expect(list.length).to.equal(1);
-    await prov.renameScenario('s1', 'New');
-    list = await prov.listScenarios();
-    expect(list[0].name).to.equal('New');
     const del = await prov.deleteScenario('s1');
     expect(del.deleted).to.equal(true);
+    list = await prov.listScenarios();
+    expect(list.length).to.equal(0);
   });
 
   it('batch update and get lists', async () => {

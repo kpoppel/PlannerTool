@@ -39,13 +39,15 @@ export class ScenarioRenameModal extends LitElement {
         this._disableButtons(true);
         try {
           // Update local state first so sidebar and other UI update immediately
+          let renamed = null;
           try {
-            cmd.scenario.renameScenario(this.id, val);
+            renamed = cmd.scenario.renameScenario(this.id, val);
           } catch (e) {
             /* ignore local state update errors */
           }
-          // Persist to backend (best-effort)
-          await dataService.renameScenario(this.id, val).catch(() => {});
+          // Persist the full scenario (not just the name) so overrides, group
+          // assignments and view/filters are not wiped out by a partial save.
+          if (renamed) await dataService.saveScenario(renamed).catch(() => {});
           this.remove();
         } catch (err) {
           if (status) status.textContent = 'Rename failed.';

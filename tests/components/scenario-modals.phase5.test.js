@@ -5,14 +5,14 @@ const {
   mockActivateScenario,
   mockRenameScenario,
   mockDeleteScenario,
-  mockRenameRequest,
+  mockSaveScenarioRequest,
   mockDeleteRequest,
 } = vi.hoisted(() => ({
   mockCloneScenario: vi.fn(),
   mockActivateScenario: vi.fn(),
   mockRenameScenario: vi.fn(),
   mockDeleteScenario: vi.fn(),
-  mockRenameRequest: vi.fn(),
+  mockSaveScenarioRequest: vi.fn(),
   mockDeleteRequest: vi.fn(),
 }));
 
@@ -29,7 +29,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
 
 vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: {
-    renameScenario: mockRenameRequest,
+    saveScenario: mockSaveScenarioRequest,
     deleteScenario: mockDeleteRequest,
   },
 }));
@@ -101,7 +101,7 @@ describe('scenario modal phase 5 command migration', () => {
     expect(modal.remove).toHaveBeenCalledOnce();
   });
 
-  it('ScenarioRenameModal uses cmd.scenario rename and persists via dataService', async () => {
+  it('ScenarioRenameModal uses cmd.scenario rename and persists the full scenario via dataService', async () => {
     const saveBtn = makeElement();
     const cancelBtn = makeElement();
     const input = makeElement('input');
@@ -118,13 +118,17 @@ describe('scenario modal phase 5 command migration', () => {
       '#renameStatus': status,
     });
 
-    mockRenameRequest.mockResolvedValue({ ok: true });
+    const renamedScenario = { id: 'sc-9', name: 'Renamed', groupOverrides: { g1: {} } };
+    mockRenameScenario.mockReturnValue(renamedScenario);
+    mockSaveScenarioRequest.mockResolvedValue({ ok: true });
 
     modal.firstUpdated();
     await saveBtn.click();
 
     expect(mockRenameScenario).toHaveBeenCalledWith('sc-9', 'Renamed');
-    expect(mockRenameRequest).toHaveBeenCalledWith('sc-9', 'Renamed');
+    // Persisting the full scenario (not just id/name) preserves group assignments,
+    // overrides, filters, and view that a partial rename-only save would wipe out.
+    expect(mockSaveScenarioRequest).toHaveBeenCalledWith(renamedScenario);
     expect(modal.remove).toHaveBeenCalledOnce();
   });
 

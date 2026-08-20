@@ -35,19 +35,6 @@ describe('ProviderMock', () => {
     expect(bad).to.equal(false);
   });
 
-  it('renameScenario throws for missing scenario and renames valid', async () => {
-    let threw = false;
-    try {
-      await pm.renameScenario('missing', 'x');
-    } catch (e) {
-      threw = true;
-    }
-    expect(threw).to.equal(true);
-    const s = await pm.saveScenario({ name: 'ForRename' });
-    const r = await pm.renameScenario(s.id, 'Renamed');
-    expect(r.name).to.equal('Renamed');
-  });
-
   it('publishBaseline updates features when overrides exist', async () => {
     // create scenario with overrides
     const s = await pm.saveScenario({

@@ -281,17 +281,6 @@ export class ProviderMock {
     this.scenarios.splice(idx, 1);
     return true;
   }
-  async renameScenario(id, name) {
-    this.logCall('renameScenario', arguments);
-    const scenario = this.scenarios.find((s) => s.id === id && !s.isLive);
-    if (!scenario)
-      throw {
-        code: 'SCENARIO_NOT_FOUND',
-        message: `Scenario ${id} not found or is live`,
-      };
-    scenario.name = name;
-    return { ...scenario };
-  }
   async listScenarios() {
     this.logCall('listScenarios', arguments);
     return this.scenarios.map((s) => ({

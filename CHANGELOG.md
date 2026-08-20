@@ -46,6 +46,9 @@ Template - do not change :
 - Fixed group bands not recalculating when a grouped task is dragged or resized beyond the group's current bounds: `updateCardsById` now falls back to a full `renderFeatures()` for tasks that belong to a group.
 - Fixed `renameScenario` marking a scenario as having unsaved changes even though the rename is persisted immediately.
 - Fixed `setTimelineScale` re-triggering a timeline refresh when the already-active scale button is pressed again.
+- Fixed group create/update/delete/member-change commands not marking the active scenario as having unsaved changes.
+- Fixed scenario rename persisting only `id`/`name` to the backend, which wiped out previously saved group assignments, overrides, filters, and view options; rename now persists the full scenario.
+- Removed the now-dead `dataService.renameScenario` and its `providerREST`/`providerLocalStorage`/`providerMock` implementations, superseded by persisting the full scenario on rename.
 - Fixed group task ordering so tasks within a group respect the active Task Sort toggle instead of preserving insertion order when rendered.
 - Restored the valuable autosave and feature-state regression coverage in the active ConfigService/FeatureStateService layers without reintroducing legacy State.js dependencies.
 - Fixed scenario menu activation regressions where scenario metadata sync events could overwrite full scenario payloads and drop overrides/group overrides, causing scenario clicks to render baseline data instead of scenario-applied values.
