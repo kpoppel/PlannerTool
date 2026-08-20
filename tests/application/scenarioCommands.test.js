@@ -263,7 +263,7 @@ describe('application/commands/scenarioCommands', () => {
     expect(result).toEqual({ ok: true, data: { revision: 2 } });
   });
 
-  it('renameScenario enforces unique names and marks changed', () => {
+  it('renameScenario enforces unique names and does not mark the scenario as changed', () => {
     const bus = { emit: vi.fn() };
     const commands = createScenarioCommands(store, bus, null, {
       hydrateBaseline: vi.fn().mockResolvedValue({ ok: true }),
@@ -274,7 +274,8 @@ describe('application/commands/scenarioCommands', () => {
     const renamed = commands.renameScenario('s2', 'Alpha');
 
     expect(renamed?.name).toBe('Alpha 2');
-    expect(store.getState().scenarios.changedIds).toContain('s2');
+    // Rename is persisted immediately, so it must not trigger the unsaved-changes warning.
+    expect(store.getState().scenarios.changedIds).not.toContain('s2');
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
   });
 

@@ -216,7 +216,8 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
           ...state,
           scenarios: {
             ...state.scenarios,
-            changedIds: withScenarioChangedIds(state, id, true),
+            // Rename is persisted immediately (see ScenarioRenameModal), so it must
+            // not mark the scenario as having unsaved changes.
             items: nextScenarios,
           },
         }),
