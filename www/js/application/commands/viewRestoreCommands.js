@@ -150,13 +150,25 @@ function writeLastViewId(viewId) {
  * @param {StoreApi} store
  * @param {any} dataService
  * @param {any|null} [pluginStateCommands]
+ * @param {(() => void)|null} [recomputeCapacity]
  * @returns {object}
  */
-export function createViewRestoreCommands(store, dataService, pluginStateCommands = null) {
+export function createViewRestoreCommands(
+  store,
+  dataService,
+  pluginStateCommands = null,
+  recomputeCapacity = null
+) {
   const pluginStateApi = pluginStateCommands === null ? {
     captureForView: () => ({}),
     restoreFromView: async () => {},
   } : pluginStateCommands;
+
+  function requireRecomputeCapacity() {
+    if (typeof recomputeCapacity !== 'function') {
+      throw new TypeError('viewRestoreCommands requires recomputeCapacity');
+    }
+  }
 
   /**
    * @param {any[]} views
@@ -371,6 +383,11 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
       }
 
       applyViewToStore(id, viewData);
+      // Team/project selection changed: capacity was computed against the previous
+      // selection, so it must be recalculated before emitViewApplied's CapacityEvents.UPDATED
+      // signal reaches listeners (e.g. MainGraph), otherwise newly-selected teams show no data.
+      requireRecomputeCapacity();
+      recomputeCapacity();
       emitViewApplied(id, viewData);
       await restorePluginState(viewData.viewOptions.pluginState);
       writeLastViewId(id);

@@ -116,7 +116,7 @@ describe('application/commands/viewRestoreCommands', () => {
     };
 
     const emitSpy = vi.spyOn(bus, 'emit');
-    const cmd = createViewRestoreCommands(store, dataService, pluginStateCommands);
+    const cmd = createViewRestoreCommands(store, dataService, pluginStateCommands, vi.fn());
     await cmd.loadAndApplyView('v1');
 
     const snapshot = store.getState();
@@ -145,6 +145,27 @@ describe('application/commands/viewRestoreCommands', () => {
     emitSpy.mockRestore();
   });
 
+  it('loadAndApplyView recomputes capacity so team-selection changes are reflected in the graph', async () => {
+    const dataService = {
+      listViews: vi.fn(async () => []),
+      saveView: vi.fn(async () => ({ id: 'v1' })),
+      renameView: vi.fn(async () => {}),
+      deleteView: vi.fn(async () => {}),
+      getView: vi.fn(async () => ({
+        id: 'v1',
+        selectedProjects: { p1: true },
+        selectedTeams: { t2: true },
+        viewOptions: { pluginState: {} },
+      })),
+    };
+    const recomputeCapacity = vi.fn();
+
+    const cmd = createViewRestoreCommands(store, dataService, null, recomputeCapacity);
+    await cmd.loadAndApplyView('v1');
+
+    expect(recomputeCapacity).toHaveBeenCalledTimes(1);
+  });
+
   it('does not delegate to legacy view services when loading or applying store views', async () => {
     const pluginStateCommands = {
       restoreFromView: vi.fn(async () => {}),
@@ -164,7 +185,7 @@ describe('application/commands/viewRestoreCommands', () => {
       deleteView: vi.fn(async () => {}),
     };
 
-    const cmd = createViewRestoreCommands(store, dataService, pluginStateCommands);
+    const cmd = createViewRestoreCommands(store, dataService, pluginStateCommands, vi.fn());
     await cmd.loadViews();
     await cmd.loadAndApplyView('v1');
 
@@ -200,9 +221,12 @@ describe('application/commands/viewRestoreCommands', () => {
       deleteView: vi.fn(async () => {}),
     };
 
-    const cmd = createViewRestoreCommands(store, dataService, {
-      restoreFromView: vi.fn(async () => {}),
-    });
+    const cmd = createViewRestoreCommands(
+      store,
+      dataService,
+      { restoreFromView: vi.fn(async () => {}) },
+      vi.fn()
+    );
 
     await expect(cmd.loadAndApplyView('v1')).resolves.toBe('v1');
     expect(store.getState().selection.projectIds).toEqual([]);
@@ -240,9 +264,12 @@ describe('application/commands/viewRestoreCommands', () => {
       deleteView: vi.fn(async () => {}),
     };
 
-    const cmd = createViewRestoreCommands(store, dataService, {
-      restoreFromView: vi.fn(async () => {}),
-    });
+    const cmd = createViewRestoreCommands(
+      store,
+      dataService,
+      { restoreFromView: vi.fn(async () => {}) },
+      vi.fn()
+    );
 
     await cmd.restoreLastView();
     expect(store.getState().view.activeId).toBe('default');
@@ -360,9 +387,12 @@ describe('application/commands/viewRestoreCommands', () => {
       deleteView: vi.fn(async () => {}),
     };
 
-    const cmd = createViewRestoreCommands(store, dataService, {
-      restoreFromView: vi.fn(async () => {}),
-    });
+    const cmd = createViewRestoreCommands(
+      store,
+      dataService,
+      { restoreFromView: vi.fn(async () => {}) },
+      vi.fn()
+    );
 
     await cmd.loadViews();
     await cmd.loadAndApplyView('default');
@@ -430,7 +460,7 @@ describe('application/commands/viewRestoreCommands', () => {
       })),
     };
 
-    const cmd = createViewRestoreCommands(store, dataService, pluginStateCommands);
+    const cmd = createViewRestoreCommands(store, dataService, pluginStateCommands, vi.fn());
     await cmd.loadAndApplyView('v1');
 
     expect(store.getState().view.expansion).toEqual({

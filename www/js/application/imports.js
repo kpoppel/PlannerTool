@@ -141,7 +141,12 @@ const stateStoreCommands = {
   filter: null,
   view: createViewCommands(store, bus),
   pluginState: pluginStateCommands,
-  viewRestore: createViewRestoreCommands(store, dataService, pluginStateCommands),
+  viewRestore: createViewRestoreCommands(
+    store,
+    dataService,
+    pluginStateCommands,
+    () => stateStoreCommands.data.recomputeCapacity()
+  ),
   feature: null,
   scenario: null,
   group: createGroupCommands(store, bus),
