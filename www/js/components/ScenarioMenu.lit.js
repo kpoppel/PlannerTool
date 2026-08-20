@@ -516,7 +516,7 @@ export class ScenarioMenuLit extends LitElement {
           ${sorted.map(
             (s) => {
               const hasUnsavedChanges = changedScenarioIds.has(String(s.id));
-              console.log('[ScenarioMenu] Rendering scenarios innder', s.name, hasUnsavedChanges);
+              //console.log('[ScenarioMenu] Rendering scenarios inder', s.name, hasUnsavedChanges);
               return html`
               <li
                 class="sidebar-list-item scenario-item ${s.id === this.activeScenarioId ?
