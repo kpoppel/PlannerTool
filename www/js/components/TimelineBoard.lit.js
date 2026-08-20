@@ -72,9 +72,6 @@ class TimelineBoard extends LitElement {
       this._initGroupContextMenu(GroupContextMenu);
 
       // Position today-line once months are available, and re-position on scale changes
-      this._onMonthsUpdated = () => this._positionTodayLine(mod_t.getTimelineMonths());
-      bus.on(TimelineEvents.MONTHS, this._onMonthsUpdated);
-
       this._enablePanning();
       this._initScrollButtons();
       document.addEventListener('mousemove', this._onProximityMove);
@@ -193,8 +190,14 @@ class TimelineBoard extends LitElement {
 
   _onMouseDown(e) {
     if (!boardCoords.panningAllowed) return;
-    if (e.target.closest('feature-card-lit') || e.target.classList.contains('drag-handle'))
-      return;
+    const path = e.composedPath ? e.composedPath() : [];
+    const startedInsideCardOrGroup = path.some((node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      const tag = node.tagName ? node.tagName.toLowerCase() : '';
+      if (tag === 'feature-card-lit' || tag === 'feature-group') return true;
+      return node.classList.contains('drag-handle');
+    });
+    if (startedInsideCardOrGroup) return;
     const scroll = this.shadowRoot.querySelector('#scroll-container');
     if (!scroll) return;
     this._isPanning = true;

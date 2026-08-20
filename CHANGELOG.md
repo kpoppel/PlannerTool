@@ -10,9 +10,11 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 Template - do not change :
 ## [v] - unreleased
 ### Added
+- Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
+- Removed a duplicate `TimelineEvents.MONTHS` subscription in `TimelineBoard` that could trigger duplicate today-line updates and leave one listener untracked on teardown.
 
 ---
 
@@ -70,6 +72,9 @@ Template - do not change :
 - Fixed store `setAllStatesSelected(true)` to derive available feature states from canonical baseline features, removing the stale dependency on a non-existent `state.filter` slice that broke plugin lifecycle tests.
 
 ### Changed
+- Group context-menu move actions are now task-relative (Move up/down across the mixed task+group stream), while nesting changes are handled in-place through the existing Update Group modal parent selector.
+- Horizontal drag on a group pill now shifts all planned tasks contained by that group (including nested groups and task descendants) by the same day delta; unplanned tasks remain unplanned.
+- Group-pill dragging now gives live visual feedback: the pill itself follows the drag and shows a preview date range with a signed day delta (`+/-Nd`) while dragging.
 - Simplified annotation overlay pointer handling and made annotation dates the sole persisted position source so annotations remain aligned across timeline scaling.
 - Continued plugin checkJs cleanup in `PluginPortfolioComponent.lit.js`, `annotations/AnnotationOverlay.js`, and `export/TimelineExportRenderer.js` by tightening null guards and selector API typing without changing runtime behavior.
 - Vendor bundling now injects `// @ts-nocheck` in generated `www/js/vendor/*` files via Rollup, so `build:vendor` outputs remain excluded from checkJs diagnostics after rebuilds.

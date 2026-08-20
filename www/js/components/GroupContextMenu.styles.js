@@ -38,6 +38,12 @@ export const groupContextMenuStyles = css`
     border-radius: 4px;
   }
   .menu-item:hover { background: #f0f4ff; }
+  .menu-item.disabled {
+    color: #888;
+    pointer-events: none;
+    cursor: default;
+  }
+  .menu-item.disabled:hover { background: transparent; }
   .menu-item.danger { color: #c0392b; }
   .menu-item.danger:hover { background: #fff0f0; }
   .menu-separator {

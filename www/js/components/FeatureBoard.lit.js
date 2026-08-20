@@ -13,12 +13,13 @@ import {
   BoardEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { sel } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
-import { getTimelineMonths } from './Timeline.lit.js';
+import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
 import { featureFlags } from '../config.js';
 import { findInBoard } from './board-utils.js';
+import { addDays, formatDate, parseDate } from './util.js';
 import {
   isSwimlaneMode,
   buildSwimlaneList,
@@ -26,7 +27,13 @@ import {
   SWIMLANE_BAND_GAP_PX,
 } from '../services/SwimlaneService.js';
 import { featureBoardStyles } from './FeatureBoard.styles.js';
-import { buildGroupBandItems, packIntoRows, resolveInsertionSlot } from './groupBandLayout.js';
+import {
+  buildGroupBandItems,
+  packIntoRows,
+  resolveGroupDropSlot,
+  resolveGroupMoveSlot,
+  resolveInsertionSlot,
+} from './groupBandLayout.js';
 import './FeatureGroup.lit.js';
 export { initBoard } from './FeatureBoard.init.js';
 
@@ -235,6 +242,8 @@ class FeatureBoard extends LitElement {
               style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px;"
               @group-toggle=${this._onGroupToggle}
               @group-context-menu=${this._onGroupContextMenuBubble}
+              @group-drag-preview=${this._onGroupDragPreview}
+              @group-drag-end=${this._onGroupDragEnd}
             ></feature-group>`;
           }
           return html`<feature-card-lit
@@ -284,6 +293,22 @@ class FeatureBoard extends LitElement {
     this._insertionCaretTop = null;
   }
 
+  /** Resolve one-step group move placement in the mixed task+group stream. */
+  getGroupMoveSlot(groupId, direction) {
+    return resolveGroupMoveSlot(this._fullRenderList, groupId, direction);
+  }
+
+  /** Resolve a drag-drop slot for moving an existing group. */
+  getGroupDropSlotAt(groupId, clientY) {
+    const boardTop = this.getBoundingClientRect().top;
+    return resolveGroupDropSlot(
+      this._fullRenderList,
+      groupId,
+      clientY - boardTop,
+      this._boardHeight
+    );
+  }
+
   /** Handle expand/collapse from a <feature-group>. */
   _onGroupToggle(e) {    const { groupId, collapsed } = e.detail;
     if (collapsed) {
@@ -299,6 +324,181 @@ class FeatureBoard extends LitElement {
   _onGroupContextMenuBubble(e) {
     // Already composed=true from FeatureGroup, so it will reach TimelineBoard.
     // Nothing extra needed — TimelineBoard listens on boardArea.
+  }
+
+  _onGroupDragPreview(e) {
+    const detail = e.detail;
+    const group = detail && detail.group;
+    const groupId = group && group.id;
+    if (!groupId) return;
+    const dx = Number(e.detail.deltaX);
+    const dy = Number(e.detail.deltaY);
+    const horizontalDominant = Math.abs(dx) > Math.abs(dy);
+    if (horizontalDominant) {
+      this.clearInsertionCaret();
+      return;
+    }
+    const slot = this.getGroupDropSlotAt(groupId, e.detail.clientY);
+    if (!slot) return;
+    this.showInsertionCaret(slot.caretTop);
+  }
+
+  _dateFromLeftPx(leftPx, months) {
+    const monthWidth = TIMELINE_CONFIG.monthWidth;
+    if (months.length === 0) return new Date();
+
+    const relative = leftPx / monthWidth;
+    let monthIndex = Math.floor(relative);
+    let fraction = relative - monthIndex;
+    if (monthIndex < 0) {
+      monthIndex = 0;
+      fraction = 0;
+    }
+    if (monthIndex >= months.length) {
+      monthIndex = months.length - 1;
+      fraction = 0.999;
+    }
+
+    const monthStart = months[monthIndex];
+    const daysInMonth = new Date(
+      monthStart.getFullYear(),
+      monthStart.getMonth() + 1,
+      0
+    ).getDate();
+    let dayOffset = Math.round(fraction * (daysInMonth - 1));
+    if (dayOffset < 0) dayOffset = 0;
+    if (dayOffset > daysInMonth - 1) dayOffset = daysInMonth - 1;
+    return new Date(monthStart.getFullYear(), monthStart.getMonth(), 1 + dayOffset);
+  }
+
+  _collectDescendantFeatureIds(rootId, allFeaturesById, childrenByParent) {
+    const out = [];
+    const queue = [String(rootId)];
+    const seen = new Set([String(rootId)]);
+    while (queue.length > 0) {
+      const parentId = queue.shift();
+      const children = childrenByParent.get(parentId);
+      if (children === undefined) continue;
+      for (const childId of children) {
+        const key = String(childId);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (allFeaturesById.has(key)) out.push(key);
+        queue.push(key);
+      }
+    }
+    return out;
+  }
+
+  _shiftGroupContentsByDeltaX(groupObj, deltaX) {
+    const groupRow = this._fullRenderList.find(
+      (item) => item.isGroup && String(item.id) === String(groupObj.id)
+    );
+    if (!groupRow) return;
+
+    const months = getTimelineMonths();
+    const oldLeft = Number(groupRow.left);
+    const newLeft = Math.max(0, oldLeft + deltaX);
+    const oldDate = this._dateFromLeftPx(oldLeft, months);
+    const newDate = this._dateFromLeftPx(newLeft, months);
+    const deltaDays = Math.round((newDate.getTime() - oldDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (deltaDays === 0) return;
+
+    const planId = String(groupObj.plan_id);
+    const groups = sel.group.getEffectiveGroups(planId);
+    const groupIds = new Set([String(groupObj.id)]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const group of groups) {
+        const parentId = group.parent_id;
+        if (!parentId) continue;
+        if (!groupIds.has(String(parentId))) continue;
+        if (groupIds.has(String(group.id))) continue;
+        groupIds.add(String(group.id));
+        changed = true;
+      }
+    }
+
+    const allFeatures = sel.feature.getEffectiveFeatures();
+    const byId = new Map();
+    for (const feature of allFeatures) byId.set(String(feature.id), feature);
+
+    const childrenByParent = new Map();
+    for (const feature of allFeatures) {
+      let parentId = feature.parentId;
+      if (!parentId && feature.relations) {
+        const rel = feature.relations.find((entry) => entry.type === 'Parent');
+        if (rel && rel.id) parentId = rel.id;
+      }
+      if (!parentId) continue;
+      const key = String(parentId);
+      if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+      childrenByParent.get(key).push(String(feature.id));
+    }
+
+    const featureIdsToShift = new Set();
+    for (const group of groups) {
+      if (!groupIds.has(String(group.id))) continue;
+      const members = group.members === undefined ? [] : group.members;
+      for (const memberId of members) {
+        const key = String(memberId);
+        if (!byId.has(key)) continue;
+        featureIdsToShift.add(key);
+        const descendants = this._collectDescendantFeatureIds(key, byId, childrenByParent);
+        for (const descendantId of descendants) featureIdsToShift.add(descendantId);
+      }
+    }
+
+    const updates = [];
+    for (const featureId of featureIdsToShift) {
+      const feature = byId.get(featureId);
+      if (!feature) continue;
+      if (!feature.start || !feature.end) continue;
+      const shiftedStart = addDays(parseDate(feature.start), deltaDays);
+      const shiftedEnd = addDays(parseDate(feature.end), deltaDays);
+      updates.push({
+        id: featureId,
+        start: formatDate(shiftedStart),
+        end: formatDate(shiftedEnd),
+      });
+    }
+
+    if (updates.length === 0) return;
+    cmd.feature.updateFeatureDates(updates);
+  }
+
+  _onGroupDragEnd(e) {
+    const detail = e.detail;
+    const group = detail && detail.group;
+    const groupId = group && group.id;
+    if (!groupId) {
+      this.clearInsertionCaret();
+      return;
+    }
+
+    const dx = Number(e.detail.deltaX);
+    const dy = Number(e.detail.deltaY);
+    const horizontalDominant = Math.abs(dx) > Math.abs(dy);
+    if (horizontalDominant) {
+      this.clearInsertionCaret();
+      this._shiftGroupContentsByDeltaX(e.detail.group, dx);
+      return;
+    }
+
+    const slot = this.getGroupDropSlotAt(groupId, e.detail.clientY);
+    this.clearInsertionCaret();
+    if (!slot) return;
+
+    try {
+      cmd.group.moveGroupInScenario(groupId, {
+        parentId: slot.parentId,
+        rank: slot.rank,
+        rankUpdates: slot.rankUpdates,
+      });
+    } catch (err) {
+      console.warn('[FeatureBoard] group drag move rejected', err);
+    }
   }
 
   disconnectedCallback() {

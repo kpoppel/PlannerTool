@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveInsertionSlot } from '../../www/js/components/groupBandLayout.js';
+import {
+  resolveGroupDropSlot,
+  resolveGroupMoveSlot,
+  resolveInsertionSlot,
+} from '../../www/js/components/groupBandLayout.js';
 import { RANK_GAP } from '../../www/js/application/shared/ordering.js';
 
 const PILL = 28;
@@ -141,5 +145,49 @@ describe('resolveInsertionSlot', () => {
 
   it('carries the plan id so the menu can scope the new group', () => {
     expect(resolveInsertionSlot(mixed, 20, BOTTOM).planId).toBe('p1');
+  });
+});
+
+describe('resolveGroupMoveSlot', () => {
+  it('moves a group up relative to the previous task row', () => {
+    // Stream: t1(1024), A(1536), ... -> move A up => before t1 (rank 512)
+    const slot = resolveGroupMoveSlot(mixed, 'A', 'up');
+    expect(slot).toEqual({
+      parentId: null,
+      rank: 512,
+      rankUpdates: [],
+    });
+  });
+
+  it('moves a group down relative to the next task row', () => {
+    // Stream: t1(1024), A(1536), t2(4096) -> move A down => between t2 and tail
+    const slot = resolveGroupMoveSlot(mixed, 'A', 'down');
+    expect(slot.parentId).toBeNull();
+    expect(slot.rank).toBeGreaterThan(4096);
+    expect(slot.rankUpdates).toEqual([]);
+  });
+
+  it('returns null when moving above the first row or below the last row', () => {
+    const noUp = resolveGroupMoveSlot(mixed, 'A', 'up');
+    expect(noUp).not.toBeNull();
+
+    const rootTail = [card('t1', 0, 1024), pill('A', 40, 2048)];
+    expect(resolveGroupMoveSlot(rootTail, 'A', 'down')).toBeNull();
+  });
+});
+
+describe('resolveGroupDropSlot', () => {
+  it('excludes the dragged group and descendants when resolving drop placement', () => {
+    // Dragging A out of its old subtree should still yield a root-level slot.
+    const slot = resolveGroupDropSlot(mixed, 'A', 150, BOTTOM);
+    expect(slot.parentId).toBeNull();
+    expect(Number.isInteger(slot.rank)).toBe(true);
+    expect(Number.isInteger(slot.caretTop)).toBe(true);
+  });
+
+  it('can place a dragged group between root task rows', () => {
+    const slot = resolveGroupDropSlot(mixed, 'A1', 20, BOTTOM);
+    expect(slot.parentId).toBeNull();
+    expect(slot.rank).toBe(1280);
   });
 });

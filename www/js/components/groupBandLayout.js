@@ -21,6 +21,7 @@
  *   packIntoRows(bars)
  *   buildGroupBandItems(orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups)
  *   resolveInsertionSlot(items, y, bottomY)
+ *   resolveGroupDropSlot(items, groupId, y, bottomY)
  */
 import { computePosition, laneHeight } from './board-utils.js';
 import { sel } from '../application/imports.js';
@@ -136,6 +137,118 @@ export function resolveInsertionSlot(items, y, bottomY) {
     caretTop,
     rankUpdates,
     container,
+  };
+}
+
+/**
+ * Resolve a one-step move slot for a group in the mixed task+group row stream.
+ *
+ * `direction='up'` moves the group before the previous row in the same parent
+ * stream; `direction='down'` moves after the next row in that stream. Rows can
+ * be either groups or tasks, so movement is relative to tasks too.
+ *
+ * @param {Array} items Render items from buildGroupBandItems (board order)
+ * @param {string|number} groupId Group to move
+ * @param {'up'|'down'} direction
+ * @returns {{ parentId: string|null, rank: number, rankUpdates: { id: string, rank: number }[] }|null}
+ */
+export function resolveGroupMoveSlot(items, groupId, direction) {
+  const rows = items.filter((item) => Number.isInteger(item.slotRank));
+  const current = rows.find((item) => item.isGroup && String(item.id) === String(groupId));
+  if (!current) return null;
+
+  const parentId = current.slotParentId;
+  const stream = rows.filter((item) => parentKey(item.slotParentId) === parentKey(parentId));
+  const currentIndex = stream.findIndex(
+    (item) => item.isGroup && String(item.id) === String(groupId)
+  );
+  if (currentIndex === -1) return null;
+
+  if (direction === 'up' && currentIndex === 0) return null;
+  if (direction === 'down' && currentIndex === stream.length - 1) return null;
+
+  const withoutCurrent = stream.filter(
+    (item) => !(item.isGroup && String(item.id) === String(groupId))
+  );
+  const insertIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+  const prev = insertIndex <= 0 ? null : withoutCurrent[insertIndex - 1];
+  const next = insertIndex >= withoutCurrent.length ? null : withoutCurrent[insertIndex];
+  const prevRank = prev === null ? null : prev.slotRank;
+  const nextRank = next === null ? null : next.slotRank;
+
+  const rank = rankBetween(prevRank, nextRank);
+  if (rank !== null) {
+    const normalizedParentId = parentId === null || parentId === undefined || parentId === ''
+      ? null
+      : parentId;
+    return {
+      parentId: normalizedParentId,
+      rank,
+      rankUpdates: [],
+    };
+  }
+
+  const rankUpdates = withoutCurrent
+    .map((item, index) => ({ item, rank: (index + 1) * RANK_GAP }))
+    .filter((entry) => entry.item.isGroup && entry.item.slotRank !== entry.rank)
+    .map((entry) => ({ id: String(entry.item.id), rank: entry.rank }));
+
+  const normalizedParentId = parentId === null || parentId === undefined || parentId === ''
+    ? null
+    : parentId;
+  return {
+    parentId: normalizedParentId,
+    rank: insertIndex * RANK_GAP + Math.floor(RANK_GAP / 2),
+    rankUpdates,
+  };
+}
+
+function collectGroupDescendants(items, groupId) {
+  const groups = items.filter((item) => item.isGroup);
+  const descendants = new Set([String(groupId)]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const group of groups) {
+      const groupObj = group.groupObj;
+      const parentId = groupObj ? groupObj.parent_id : null;
+      if (!parentId) continue;
+      if (!descendants.has(String(parentId))) continue;
+      if (descendants.has(String(group.id))) continue;
+      descendants.add(String(group.id));
+      changed = true;
+    }
+  }
+  return descendants;
+}
+
+/**
+ * Resolve a drag-drop insertion slot for moving an existing group.
+ *
+ * The dragged group and its descendants are removed from the hit-test stream,
+ * so dropping inside the old subtree does not produce self/descendant parents.
+ *
+ * @param {Array} items Render items from buildGroupBandItems (board order)
+ * @param {string|number} groupId Group being dragged
+ * @param {number} y Cursor position in board coordinates
+ * @param {number} bottomY Board bottom in board coordinates
+ * @returns {{ parentId: string|null, rank: number, rankUpdates: { id: string, rank: number }[], caretTop: number }|null}
+ */
+export function resolveGroupDropSlot(items, groupId, y, bottomY) {
+  const descendants = collectGroupDescendants(items, groupId);
+  const filtered = items.filter((item) => {
+    if (item.isGroup && descendants.has(String(item.id))) return false;
+    if (item.slotParentId && descendants.has(String(item.slotParentId))) return false;
+    return true;
+  });
+
+  const slot = resolveInsertionSlot(filtered, y, bottomY);
+  return {
+    parentId: slot.parentId,
+    rank: slot.rank,
+    rankUpdates: slot.rankUpdates,
+    caretTop: slot.caretTop,
   };
 }
 

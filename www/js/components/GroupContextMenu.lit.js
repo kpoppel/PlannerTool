@@ -65,6 +65,7 @@ class GroupContextMenu extends LitElement {
     this._showCreate = false;
     this._showUpdate = false;
     this._parentId = null;
+    this._createSlot = null;
     this._onOutsideClick = this._onOutsideClick.bind(this);
   }
 
@@ -72,12 +73,10 @@ class GroupContextMenu extends LitElement {
   // Static singleton API
   // ---------------------------------------------------------------------------
 
-  static _instance = null;
-
   /** Mount singleton into document.body. Call once. */
   static init() {
     if (GroupContextMenu._instance) return;
-    const el = document.createElement('group-context-menu');
+    const el = /** @type {any} */ (document.createElement('group-context-menu'));
     document.body.appendChild(el);
     GroupContextMenu._instance = el;
   }
@@ -88,7 +87,9 @@ class GroupContextMenu extends LitElement {
    */
   static show(config) {
     if (!GroupContextMenu._instance) GroupContextMenu.init();
-    GroupContextMenu._instance._show(config);
+    const instance = GroupContextMenu._instance;
+    if (!instance) return;
+    instance._show(config);
   }
 
   // ---------------------------------------------------------------------------
@@ -157,10 +158,15 @@ class GroupContextMenu extends LitElement {
     const name = (this._name || '').trim();
     if (!name) return;
     const cfg = this._config;
+    if (!cfg) return;
     // planId comes from board-background config or from the parent group's plan_id
     const planId = cfg.type === 'board' ? cfg.planId : cfg.group.plan_id;
     if (!planId) return;
     const slot = this._createSlot;
+    if (!slot) return;
+    const parentId = slot.parentId;
+    const rank = slot.rank;
+    const rankUpdates = slot.rankUpdates;
     // Create the group in the active scenario — it lives in scenario.scenarioGroups
     // until the user publishes via the save dialog, at which point it is promoted
     // to the baseline group store.
@@ -168,9 +174,9 @@ class GroupContextMenu extends LitElement {
       planId,
       name,
       this._color,
-      slot.parentId,
-      slot.rank,
-      slot.rankUpdates
+      parentId,
+      rank,
+      rankUpdates
     );
     this._close();
   }
@@ -221,6 +227,44 @@ class GroupContextMenu extends LitElement {
     // Use the new scenario-aware delete — handles both scenario-local and baseline groups.
     // The cascade to sub-groups is handled inside deleteGroupInScenario.
     cmd.group.deleteGroupInScenario(group.id);
+  }
+
+  _getFeatureBoard() {
+    const timelineBoard = document.querySelector('timeline-board');
+    if (!timelineBoard || !timelineBoard.shadowRoot) return null;
+    return timelineBoard.shadowRoot.querySelector('feature-board');
+  }
+
+  _resolveMoveSlot(direction) {
+    const config = this._config;
+    if (!config || !config.group) return null;
+    const group = config.group;
+    if (!group) return null;
+    const board = this._getFeatureBoard();
+    if (!board || typeof board.getGroupMoveSlot !== 'function') return null;
+    return board.getGroupMoveSlot(group.id, direction);
+  }
+
+  _moveGroupByDirection(direction) {
+    const config = this._config;
+    if (!config || !config.group) return;
+    const group = config.group;
+    if (!group) return;
+    const slot = this._resolveMoveSlot(direction);
+    if (!slot) return;
+    cmd.group.moveGroupInScenario(group.id, {
+      parentId: slot.parentId,
+      rank: slot.rank,
+      rankUpdates: slot.rankUpdates,
+    });
+    this._close();
+  }
+
+  _renderMoveMenuItem(label, enabled, direction) {
+    if (!enabled) {
+      return html`<div class="menu-item disabled">${label}</div>`;
+    }
+    return html`<button class="menu-item" @click=${() => this._moveGroupByDirection(direction)}>${label}</button>`;
   }
 
   // ---------------------------------------------------------------------------
@@ -366,6 +410,8 @@ class GroupContextMenu extends LitElement {
   _renderGroupMenu() {
     const group = this._config?.group;
     if (!group) return html``;
+    const canMoveUp = this._resolveMoveSlot('up') !== null;
+    const canMoveDown = this._resolveMoveSlot('down') !== null;
 
     // --- Inline sub-group creation form ---
     if (this._showCreate) {
@@ -466,6 +512,8 @@ class GroupContextMenu extends LitElement {
     // --- Default menu ---
     return html`
       <button class="menu-item" @click=${() => this._startCreateGroup(this._subGroupSlot(group.id))}>➕ Add sub-group</button>
+      ${this._renderMoveMenuItem('⬆️ Move up', canMoveUp, 'up')}
+      ${this._renderMoveMenuItem('⬇️ Move down', canMoveDown, 'down')}
       <button class="menu-item" @click=${this._startUpdateGroup.bind(this)}>✏️ Update group</button>
       <div class="menu-separator"></div>
       <button class="menu-item danger" @click=${this._deleteGroup.bind(this)}>🗑 Delete group</button>
@@ -512,4 +560,5 @@ class GroupContextMenu extends LitElement {
 }
 
 customElements.define('group-context-menu', GroupContextMenu);
+GroupContextMenu._instance = null;
 export { GroupContextMenu };

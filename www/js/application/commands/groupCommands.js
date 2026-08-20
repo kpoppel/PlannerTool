@@ -6,6 +6,8 @@ import {
   isMutableScenario,
   withActiveScenario,
 } from '../shared/scenarioMutations.js';
+import { deriveEffectiveGroupsForPlan } from '../shared/groupProjection.js';
+import { computeInsertRank } from '../shared/ordering.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -78,6 +80,34 @@ function applyGroupFieldsToScenario(scenario, groupId, fields) {
     ...scenario,
     groupOverrides: nextOverrides,
   };
+}
+
+function parentKey(parentId) {
+  if (parentId === null || parentId === undefined || parentId === '') return '';
+  return String(parentId);
+}
+
+function effectiveGroupsForPlan(state, planId) {
+  const byPlanId = state.groups.byPlanId;
+  const baselineGroups = byPlanId[String(planId)] === undefined ? [] : byPlanId[String(planId)];
+  return deriveEffectiveGroupsForPlan(planId, baselineGroups, getActiveScenario(state));
+}
+
+function collectDescendantIds(groups, groupId) {
+  const descendants = new Set([String(groupId)]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const group of groups) {
+      const parentId = group.parent_id;
+      if (!parentId) continue;
+      if (!descendants.has(String(parentId))) continue;
+      if (descendants.has(String(group.id))) continue;
+      descendants.add(String(group.id));
+      changed = true;
+    }
+  }
+  return descendants;
 }
 
 /**
@@ -172,6 +202,130 @@ export function createGroupCommands(store, bus) {
       );
 
       emitGroupMutation(bus, store, { op: 'updated', groupId: String(groupId) });
+      return true;
+    },
+
+    /**
+     * Re-rank and/or re-parent a group in the active scenario.
+     *
+     * @param {string} groupId
+      * @param {{
+      *   parentId: string|null,
+      *   afterGroupId?: string|null,
+      *   rank?: number,
+      *   rankUpdates?: { id: string, rank: number }[]
+      * }} placement
+     */
+    moveGroupInScenario(groupId, placement) {
+      if (!groupId || !placement || typeof placement !== 'object') return false;
+
+      const snapshot = store.getState();
+      const scenario = getActiveScenario(snapshot);
+      if (!isMutableScenario(scenario)) return false;
+
+      const requestedParentId =
+        placement.parentId === null || placement.parentId === undefined || placement.parentId === ''
+          ? null
+          : String(placement.parentId);
+      const requestedAfterId =
+        placement.afterGroupId === null || placement.afterGroupId === undefined
+          ? null
+          : String(placement.afterGroupId);
+      const directRank = placement.rank;
+      const directRankUpdates = placement.rankUpdates === undefined ? [] : placement.rankUpdates;
+
+      const candidatePlanIds = new Set(Object.keys(snapshot.groups.byPlanId));
+      for (const localGroup of scenario.scenarioGroups) {
+        candidatePlanIds.add(String(localGroup.plan_id));
+      }
+
+      let planId = null;
+      let effectiveGroups = [];
+      let targetGroup = null;
+      for (const candidatePlanId of candidatePlanIds) {
+        const groups = effectiveGroupsForPlan(snapshot, candidatePlanId);
+        const found = groups.find((group) => String(group.id) === String(groupId));
+        if (!found) continue;
+        planId = String(candidatePlanId);
+        effectiveGroups = groups;
+        targetGroup = found;
+        break;
+      }
+
+      if (!targetGroup || !planId) return false;
+
+      const descendants = collectDescendantIds(effectiveGroups, groupId);
+      if (requestedParentId !== null && descendants.has(String(requestedParentId))) {
+        throw new Error('moveGroupInScenario: cannot move a group into itself or its descendant');
+      }
+
+      if (requestedParentId !== null) {
+        const parent = effectiveGroups.find((group) => String(group.id) === requestedParentId);
+        if (!parent) {
+          throw new Error(`moveGroupInScenario: parent '${requestedParentId}' was not found`);
+        }
+        if (String(parent.plan_id) !== planId) {
+          throw new Error('moveGroupInScenario: parent must belong to the same plan');
+        }
+      }
+
+      const siblings = effectiveGroups
+        .filter((group) => String(group.id) !== String(groupId))
+        .filter((group) => parentKey(group.parent_id) === parentKey(requestedParentId));
+
+      let rank = directRank;
+      let rebalance = directRankUpdates;
+      if (!Number.isInteger(rank)) {
+        if (
+          requestedAfterId !== null
+          && !siblings.some((sibling) => String(sibling.id) === requestedAfterId)
+        ) {
+          throw new Error(`moveGroupInScenario: afterGroupId '${requestedAfterId}' is not a sibling`);
+        }
+
+        const computed = computeInsertRank(
+          siblings.map((group) => ({ id: group.id, rank: group.rank })),
+          requestedAfterId
+        );
+        rank = computed.rank;
+        rebalance = computed.rebalance;
+      }
+      if (!Number.isInteger(rank)) {
+        throw new Error(`moveGroupInScenario: rank must be an integer for '${String(groupId)}'`);
+      }
+
+      const mutation = withActiveScenario(snapshot, (activeScenario) => {
+        let nextScenario = activeScenario;
+        for (const update of rebalance) {
+          nextScenario = applyGroupFieldsToScenario(nextScenario, update.id, { rank: update.rank });
+        }
+        return applyGroupFieldsToScenario(nextScenario, groupId, {
+          parent_id: requestedParentId,
+          rank,
+        });
+      }, { allowBaseline: false });
+
+      if (!mutation) return false;
+
+      store.setState(
+        (state) => ({
+          ...state,
+          scenarios: {
+            ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
+            items: mutation.items,
+          },
+        }),
+        false,
+        'group.moveGroupInScenario'
+      );
+
+      emitGroupMutation(bus, store, {
+        op: 'moved',
+        groupId: String(groupId),
+        planId,
+        parentId: requestedParentId,
+      });
       return true;
     },
 

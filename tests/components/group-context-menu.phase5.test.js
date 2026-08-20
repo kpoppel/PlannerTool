@@ -4,6 +4,7 @@ const {
   mockCreateGroup,
   mockUpdateGroup,
   mockDeleteGroup,
+  mockMoveGroup,
   mockAddMember,
   mockRemoveMember,
   mockEffectiveGroups,
@@ -11,6 +12,7 @@ const {
   mockCreateGroup: vi.fn(),
   mockUpdateGroup: vi.fn(),
   mockDeleteGroup: vi.fn(),
+  mockMoveGroup: vi.fn(),
   mockAddMember: vi.fn(),
   mockRemoveMember: vi.fn(),
   mockEffectiveGroups: vi.fn(() => []),
@@ -22,6 +24,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
       createGroupInScenario: mockCreateGroup,
       updateGroupInScenario: mockUpdateGroup,
       deleteGroupInScenario: mockDeleteGroup,
+      moveGroupInScenario: mockMoveGroup,
       addMemberToGroup: mockAddMember,
       removeMemberFromGroup: mockRemoveMember,
     },
@@ -82,5 +85,21 @@ describe('GroupContextMenu phase 5 seam migration', () => {
     expect(mockEffectiveGroups).toHaveBeenCalledWith('p1');
     expect(mockRemoveMember).toHaveBeenCalledWith('g1', 'f1');
     expect(mockAddMember).toHaveBeenCalledWith('g2', 'f1');
+  });
+
+  it('moves a group via cmd.group.moveGroupInScenario', () => {
+    const menu = new GroupContextMenu();
+    menu._config = { group: { id: 'g2' } };
+    menu._resolveMoveSlot = vi.fn(() => ({ parentId: null, rank: 1536, rankUpdates: [] }));
+    menu._close = vi.fn();
+
+    menu._moveGroupByDirection('up');
+
+    expect(mockMoveGroup).toHaveBeenCalledWith('g2', {
+      parentId: null,
+      rank: 1536,
+      rankUpdates: [],
+    });
+    expect(menu._close).toHaveBeenCalledOnce();
   });
 });
