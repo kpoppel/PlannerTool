@@ -1013,6 +1013,14 @@ class FeatureBoard extends LitElement {
       const feature = sel.feature.getEffectiveFeatureById(id);
       if (!feature) continue;
 
+      // A grouped task's band may need to grow/shrink when the task is dragged
+      // or resized beyond the group's current date range, so groups must be
+      // recomputed via a full render rather than an in-place card update.
+      if (this._featureIsInAnyGroup(feature)) {
+        this.renderFeatures();
+        return;
+      }
+
       const existing = this._getCardNodeById(id);
       if (!existing && !this._shouldVirtualize()) {
         this.renderFeatures();
@@ -1061,6 +1069,17 @@ class FeatureBoard extends LitElement {
         project,
       });
     }
+  }
+
+  /** True if the feature is a member of any group on its plan. */
+  _featureIsInAnyGroup(feature) {
+    if (!feature || !feature.project) return false;
+    if (!sel.group.hasPlanLoaded(String(feature.project))) return false;
+    const key = String(feature.id);
+    const planGroups = sel.group.getEffectiveGroups(String(feature.project));
+    return planGroups.some((group) =>
+      (group.members || []).some((memberId) => String(memberId) === key)
+    );
   }
 
   _getCardNodeById(featureId) {

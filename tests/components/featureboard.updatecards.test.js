@@ -51,4 +51,35 @@ describe('feature-board updateCardsById', () => {
     await board.updateCardsById(['f2']);
     expect(called).to.be.true;
   });
+
+  it('updateCardsById falls back to full render when the feature belongs to a group', async () => {
+    // A grouped task's band must be recalculated (it may move beyond the
+    // group's current date range), so a plain applyVisuals patch is not enough.
+    const node = document.createElement('div');
+    node.feature = { id: 'f3', project: 'p1', selected: false };
+    node.applyVisuals = function (opts) {
+      this._applied = opts;
+    };
+    node.dataset.id = 'f3';
+    board._cardMap.set('f3', node);
+
+    sinon.stub(sel.feature, 'getEffectiveFeatureById').callsFake(() => ({
+      id: 'f3',
+      project: 'p1',
+      start: '2025-01-01',
+      end: '2025-01-31',
+    }));
+    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', selected: true }]);
+    sinon.stub(sel.group, 'hasPlanLoaded').returns(true);
+    sinon.stub(sel.group, 'getEffectiveGroups').returns([{ id: 'g1', members: ['f3'] }]);
+
+    let called = false;
+    board.renderFeatures = function () {
+      called = true;
+    };
+
+    await board.updateCardsById(['f3']);
+    expect(called).to.be.true;
+    expect(node._applied).to.not.exist;
+  });
 });
