@@ -87,6 +87,19 @@ describe('application/commands/viewCommands', () => {
     expect(bus.emit.mock.calls.some(([event]) => event === FeatureEvents.UPDATED)).toBe(true);
   });
 
+  it('setTimelineScale is a no-op when the requested scale is already active', () => {
+    const bus = { emit: vi.fn() };
+    const commands = createViewCommands(store, bus);
+
+    commands.setTimelineScale('weeks');
+    bus.emit.mockClear();
+
+    commands.setTimelineScale('weeks');
+
+    expect(store.getState().view.options.timelineScale).toBe('weeks');
+    expect(bus.emit).not.toHaveBeenCalled();
+  });
+
   it('store branch maps displayMode to condensedCards and packedMode', () => {
     const bus = { emit: vi.fn() };
     const commands = createViewCommands(store, bus);

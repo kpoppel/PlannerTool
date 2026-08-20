@@ -79,6 +79,8 @@ export function createViewCommands(store, bus) {
     },
 
     setTimelineScale(scale, runtimeOptions = {}) {
+      // Pressing the already-active scale button must not re-trigger a scale change.
+      if (store.getState().view.options.timelineScale === scale) return;
       setViewOptions(
         (options) => ({
           ...options,
