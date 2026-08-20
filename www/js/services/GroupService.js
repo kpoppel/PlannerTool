@@ -131,15 +131,18 @@ export class GroupService {
    * Create a new group on the server and update the local cache.
    * @param {string} planId
    * @param {string} name
-   * @param {{ color?:string, rank?:number }} [opts]
+   * @param {{ color?:string, rank:number }} opts  `rank` is a sibling-scoped ordering key
    * @returns {Promise<object|null>}
    */
-  async createGroup(planId, name, opts = {}) {
+  async createGroup(planId, name, opts) {
+    if (!Number.isInteger(opts.rank)) {
+      throw new Error(`GroupService.createGroup: rank must be an integer for '${name}'`);
+    }
     const payload = {
       plan_id: planId,
       name,
       ...(opts.color ? { color: opts.color } : {}),
-      rank: opts.rank ?? 0,
+      rank: opts.rank,
     };
     try {
       const group = await dataService.createGroup(payload);

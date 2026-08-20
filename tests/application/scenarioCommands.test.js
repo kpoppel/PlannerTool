@@ -20,6 +20,8 @@ function withScenarioState(partial = {}) {
           overrides: { f1: { start: '2026-01-01' } },
           filters: { states: ['Doing'] },
           view: { timelineScale: 'months' },
+          groupOverrides: { g1: { memberDeltas: [{ taskId: 'f2', op: 'add' }] } },
+          scenarioGroups: [{ id: 'tmp_1', plan_id: 'p1', name: 'Draft', members: [] }],
         },
         {
           id: 's2',
@@ -27,6 +29,8 @@ function withScenarioState(partial = {}) {
           overrides: {},
           filters: {},
           view: {},
+          groupOverrides: {},
+          scenarioGroups: [],
         },
       ],
       ...partial,
@@ -63,6 +67,36 @@ describe('application/commands/scenarioCommands', () => {
 
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.LIST);
+  });
+
+  it('cloneScenario carries group branches so group projection stays defined', () => {
+    const commands = createScenarioCommands(store, { emit: vi.fn() }, null, {
+      recomputeCapacity: vi.fn(),
+    });
+
+    const created = commands.cloneScenario('s1', 'Gamma');
+
+    expect(created.groupOverrides).toEqual({ g1: { memberDeltas: [{ taskId: 'f2', op: 'add' }] } });
+    expect(created.scenarioGroups).toEqual([
+      { id: 'tmp_1', plan_id: 'p1', name: 'Draft', members: [] },
+    ]);
+
+    const scenarios = store.getState().scenarios.items;
+    const source = scenarios.find((scenario) => scenario.id === 's1');
+    const clone = scenarios.find((scenario) => scenario.id === created.id);
+    expect(clone.groupOverrides).not.toBe(source.groupOverrides);
+    expect(clone.scenarioGroups).not.toBe(source.scenarioGroups);
+  });
+
+  it('cloneScenario without a source scenario still defines group branches', () => {
+    const commands = createScenarioCommands(store, { emit: vi.fn() }, null, {
+      recomputeCapacity: vi.fn(),
+    });
+
+    const created = commands.cloneScenario('missing', 'Delta', {});
+
+    expect(created.groupOverrides).toEqual({});
+    expect(created.scenarioGroups).toEqual([]);
   });
 
   it('activateScenario updates active id and emits activation events', () => {

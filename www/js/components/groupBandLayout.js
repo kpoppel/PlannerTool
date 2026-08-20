@@ -7,12 +7,27 @@
  * and lifecycle.  No DOM or Lit imports — all functions take explicit inputs
  * and return plain data structures.
  *
+ * Ordering model
+ * --------------
+ * Groups and tasks share one ordering scale.  A task's key is its position in
+ * the globally sorted task list, spaced `RANK_GAP` apart; a group's key is its
+ * stored `rank`.  Every level of the tree — the board root and the inside of
+ * each group — is a single stream of rows sorted by that key, so a group band
+ * can sit anywhere among the tasks rather than always above them.  There is no
+ * separate "Ungrouped" band: tasks that belong to no group are simply rows at
+ * the root level.
+ *
  * Exports:
  *   packIntoRows(bars)
- *   buildGroupBandItems(orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups, planId)
+ *   buildGroupBandItems(orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups)
+ *   resolveInsertionSlot(items, y, bottomY)
  */
 import { computePosition, laneHeight } from './board-utils.js';
 import { sel } from '../application/imports.js';
+import { RANK_GAP, rankBetween } from '../application/shared/ordering.js';
+
+/** Height of a group pill row in px. */
+export const GROUP_PILL_HEIGHT = 28;
 
 /**
  * Greedy interval-packing: place each bar in the first sub-row where it does
@@ -44,12 +59,92 @@ export function packIntoRows(bars) {
   return rows;
 }
 
+/** Normalize a parent reference so null / undefined / '' all mean "root level". */
+function parentKey(parentId) {
+  if (parentId === null || parentId === undefined || parentId === '') return '';
+  return String(parentId);
+}
+
 /**
- * Build render items (group pills + feature cards) for a single plan's groups.
+ * Map a vertical board position onto the group insertion slot it points at.
+ *
+ * Two placements are derived from a single y:
+ *   - the *sibling* slot: the new group goes between the two rows the cursor
+ *     sits between, under the same parent, so the caret lands exactly on the
+ *     row that will be pushed down.  The neighbouring rows may be group pills
+ *     or task cards — both carry a key on the shared ordering scale.
+ *   - the *container*: the deepest band the cursor is inside, offered as
+ *     "new sub-group in X" so nesting is reachable at any depth.
+ *
+ * Depth is taken from the y position alone: the board positions pills by the
+ * date range of their tasks, so horizontal position carries no nesting
+ * information.
+ *
+ * @param {Array}  items    Render items from buildGroupBandItems (board order)
+ * @param {number} y        Cursor position in board coordinates (px from board top)
+ * @param {number} bottomY  Bottom of the rendered board, used when nothing follows
+ * @returns {{ planId: string|null, parentId: string|null, rank: number, caretTop: number,
+ *            rankUpdates: { id: string, rank: number }[],
+ *            container: { id: string, name: string, caretTop: number }|null }}
+ */
+export function resolveInsertionSlot(items, y, bottomY) {
+  const rows = items.filter((item) => Number.isInteger(item.slotRank));
+  const pills = rows.filter((item) => item.isGroup);
+
+  const enclosing = pills.filter((item) => item.top <= y);
+  const anchor = enclosing[enclosing.length - 1];
+  const container = anchor === undefined
+    ? null
+    : {
+      id: String(anchor.id),
+      name: anchor.groupObj.name,
+      caretTop: anchor.top + GROUP_PILL_HEIGHT,
+    };
+
+  const next = rows.find((item) => item.top > y);
+  const parentId = next === undefined ? null : next.slotParentId;
+  const caretTop = next === undefined ? bottomY : next.top;
+  const planId = pills.length === 0 ? null : pills[0].groupObj.plan_id;
+
+  const siblings = rows.filter((item) => parentKey(item.slotParentId) === parentKey(parentId));
+  const before = next === undefined ? null : next;
+  const precedingSiblings = siblings.filter(
+    (item) => before === null || item.top < before.top
+  );
+  const previous = precedingSiblings[precedingSiblings.length - 1];
+
+  const afterRank = previous === undefined ? null : previous.slotRank;
+  const beforeRank = before === null ? null : before.slotRank;
+  const rank = rankBetween(afterRank, beforeRank);
+  if (rank !== null) {
+    return { planId, parentId, rank, caretTop, rankUpdates: [], container };
+  }
+
+  // Neighbouring keys leave no integer between them — happens with groups
+  // persisted before ranks were meaningful, which all share rank 0.  Respace
+  // this level onto the shared scale and re-derive the slot from that.
+  const insertIndex = precedingSiblings.length;
+  const rankUpdates = siblings
+    .map((item, index) => ({ item, rank: (index + 1) * RANK_GAP }))
+    .filter((entry) => entry.item.isGroup && entry.item.slotRank !== entry.rank)
+    .map((entry) => ({ id: String(entry.item.id), rank: entry.rank }));
+
+  return {
+    planId,
+    parentId,
+    rank: insertIndex * RANK_GAP + Math.floor(RANK_GAP / 2),
+    caretTop,
+    rankUpdates,
+    container,
+  };
+}
+
+/**
+ * Build render items (group pills + feature cards) for a single plan.
  *
  * Works for both normal and packed display modes:
  *   - packed=false: each feature occupies one full lane row (laneHeight px)
- *   - packed=true:  features within each group are packed horizontally;
+ *   - packed=true:  consecutive task rows are packed horizontally;
  *                   unplanned features (no start/end) are skipped
  *
  * @param {Array}   orderedFeatures  Visible features already sorted by rank/date
@@ -57,74 +152,68 @@ export function packIntoRows(bars) {
  * @param {number}  topOffset        Starting y-position in px
  * @param {Date[]}  months           Timeline months from getTimelineMonths()
  * @param {boolean} condensed        Use condensed card height (normal mode)
- * @param {boolean} packed           Pack features horizontally within groups
+ * @param {boolean} packed           Pack consecutive task rows horizontally
  * @param {Set<string>} collapsedGroups  Set of collapsed group IDs
- * @param {string}  [planId]         Plan ID — used to scope the Ungrouped pill
- *                                   collapse key so different plans don't share it
  * @returns {{ items: Array, totalHeight: number }}
  */
 export function buildGroupBandItems(
-  orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups, planId
+  orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups
 ) {
-  // Plan-scoped key for the Ungrouped pill so each plan collapses independently.
-  const ungroupedId = `__ungrouped__:${planId ?? planGroups[0]?.plan_id ?? 'unknown'}`;
   const items = [];
-
-  // featuresByGroup: groupId → features in that group
-  // Membership is determined by group.members (list of task IDs on the group)
   const planGroupIds = new Set(planGroups.map((g) => String(g.id)));
-  const featuresByGroup = new Map();
-  const featureSortMode = sel.view.getFeatureSortMode?.() || 'rank';
+  const featureSortMode = sel.view.getFeatureSortMode();
 
-  // Group order is intentionally stable: the board's grouping/rank structure
-  // should not be re-ordered by the task sort toggle. Only the task cards inside
-  // each group respond to the active Task Sort mode.
-  const featureById = new Map(orderedFeatures.map((f) => [String(f.id), f]));
+  // Phase 3 replaces this with a persisted PlannerTool sort key; until then a
+  // task without a fetch-order rank sorts first rather than failing the render.
+  const rankOf = (feature) =>
+    (Number.isInteger(feature.originalRank) ? feature.originalRank : 0);
 
-  const sortFeaturesInGroup = (features) => {
+  const sortFeatures = (features) => {
     const sorted = [...features];
     if (featureSortMode === 'date') {
       sorted.sort((a, b) => {
-        if (!a.start && !b.start) return (a.originalRank ?? 0) - (b.originalRank ?? 0);
+        if (!a.start && !b.start) return rankOf(a) - rankOf(b);
         if (!a.start) return 1;
         if (!b.start) return -1;
         const byDate = String(a.start).localeCompare(String(b.start));
         if (byDate !== 0) return byDate;
-        return (a.originalRank ?? 0) - (b.originalRank ?? 0);
+        return rankOf(a) - rankOf(b);
       });
       return sorted;
     }
-
-    sorted.sort((a, b) => (a.originalRank ?? 0) - (b.originalRank ?? 0));
+    sorted.sort((a, b) => rankOf(a) - rankOf(b));
     return sorted;
   };
 
-  // Populate featuresByGroup from group.members lists
+  // The shared ordering scale: a task's key is its position in the globally
+  // sorted task list, spaced like group ranks so a group can be ranked between
+  // any two tasks.
+  const taskRankById = new Map(
+    sortFeatures(orderedFeatures).map((f, index) => [String(f.id), (index + 1) * RANK_GAP])
+  );
+  const featureById = new Map(orderedFeatures.map((f) => [String(f.id), f]));
+
+  // groupId → its member features that are actually visible
+  const memberIds = (group) => (group.members === undefined ? [] : group.members);
+  const featuresByGroup = new Map();
+  const childGroupsByParent = new Map();
   for (const group of planGroups) {
-    const members = group.members || [];
-    const groupFeatures = sortFeaturesInGroup(
-      members
-        .map((taskId) => featureById.get(String(taskId)))
-        .filter(Boolean)
+    featuresByGroup.set(
+      String(group.id),
+      memberIds(group).map((taskId) => featureById.get(String(taskId))).filter(Boolean)
     );
-    featuresByGroup.set(String(group.id), groupFeatures);
+    childGroupsByParent.set(String(group.id), []);
   }
 
-  // Ungrouped: features not in any group's members list
-  const allGroupedIds = new Set(
-    planGroups.flatMap((g) => (g.members || []).map(String))
-  );
-  const ungroupedFeatures = orderedFeatures.filter(
-    (f) => !allGroupedIds.has(String(f.id))
-  );
+  const allGroupedIds = new Set(planGroups.flatMap((g) => memberIds(g).map(String)));
+  const rootFeatures = orderedFeatures.filter((f) => !allGroupedIds.has(String(f.id)));
 
-  // Parent → direct children map for sub-group tree traversal
-  const childGroupsByParent = new Map();
-  for (const g of planGroups) {
-    if (g.parent_id && planGroupIds.has(String(g.parent_id))) {
-      const key = String(g.parent_id);
-      if (!childGroupsByParent.has(key)) childGroupsByParent.set(key, []);
-      childGroupsByParent.get(key).push(g);
+  const rootGroups = [];
+  for (const group of planGroups) {
+    if (group.parent_id && planGroupIds.has(String(group.parent_id))) {
+      childGroupsByParent.get(String(group.parent_id)).push(group);
+    } else {
+      rootGroups.push(group);
     }
   }
 
@@ -138,34 +227,29 @@ export function buildGroupBandItems(
     return computePosition({ start: fmt(today), end: fmt(next) }, months);
   };
 
-  /**
-   * Sort groups by their configured rank so the Task Sort toggle never reorders
-   * the group pills themselves. A fallback to earliest child start keeps
-   * unranked groups deterministic without coupling group ordering to date sort.
-   */
-  const sortGroupList = (groups) =>
-    [...groups].sort((a, b) => {
-      const aRank = Number.isFinite(a.rank) ? a.rank : Number.MAX_SAFE_INTEGER;
-      const bRank = Number.isFinite(b.rank) ? b.rank : Number.MAX_SAFE_INTEGER;
-      if (aRank !== bRank) return aRank - bRank;
-
-      const aFeats = featuresByGroup.get(String(a.id)) || [];
-      const bFeats = featuresByGroup.get(String(b.id)) || [];
-      const aStart = aFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
-      const bStart = bFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
-      if (aStart && bStart) return aStart.localeCompare(bStart);
-      if (aStart) return -1;
-      if (bStart) return 1;
-      return String(a.name || '').localeCompare(String(b.name || ''));
-    });
+  // Groups persisted before ranks were meaningful sort last; the first edit
+  // under that parent respaces them onto the shared scale.
+  const groupRank = (group) =>
+    Number.isInteger(group.rank) ? group.rank : Number.MAX_SAFE_INTEGER;
 
   let rowTop = topOffset;
-  const teams = sel.selection.getTeams() || [];
-  const projects = sel.selection.getProjects() || [];
-  const projectById = new Map(projects.map((project) => [String(project?.id), project]));
+  const teams = sel.selection.getTeams();
+  const projects = sel.selection.getProjects();
+  const projectById = new Map(projects.map((project) => [String(project.id), project]));
+  const projectFor = (feature) => {
+    const project = projectById.get(String(feature.project));
+    return project === undefined ? null : project;
+  };
 
-  /** Push feature card render items for a list of features (flat or packed). */
-  const addFeatureRows = (features) => {
+  const groupById = new Map(planGroups.map((group) => [String(group.id), group]));
+
+  /** Push feature card render items for a run of consecutive task rows. */
+  const addFeatureRows = (features, slotParentId) => {
+    // Colour of the group that *directly* owns these rows, so a card nested
+    // deeper in the tree still reads as belonging to its immediate parent.
+    const owner = groupById.get(String(slotParentId));
+    const groupColor = owner === undefined ? null : owner.color;
+
     if (packed) {
       const bars = features
         .filter((f) => f.start && f.end)
@@ -187,114 +271,118 @@ export function buildGroupBandItems(
             teams,
             condensed: true,
             hideGhostTitle: true,
-            project: projectById.get(String(bar.feature.project)) || null,
+            project: projectFor(bar.feature),
+            groupColor,
+            slotParentId,
+            slotRank: taskRankById.get(String(bar.feature.id)),
           });
         }
       });
       rowTop += Math.max(rows.length, 0) * laneHeight();
-    } else {
-      for (const feature of features) {
-        const fpos = computePosition(feature, months) || {};
-        items.push({
-          feature,
-          left: fpos.left ?? 0,
-          width: fpos.width ?? 0,
-          top: rowTop,
-          teams,
-          condensed,
-          hideGhostTitle: false,
-          project: projectById.get(String(feature.project)) || null,
-        });
-        rowTop += laneHeight();
-      }
+      return;
+    }
+
+    for (const feature of features) {
+      const fpos = computePosition(feature, months);
+      items.push({
+        feature,
+        left: fpos === null ? 0 : fpos.left,
+        width: fpos === null ? 0 : fpos.width,
+        top: rowTop,
+        teams,
+        condensed,
+        hideGhostTitle: false,
+        project: projectFor(feature),
+        groupColor,
+        slotParentId,
+        slotRank: taskRankById.get(String(feature.id)),
+      });
+      rowTop += laneHeight();
     }
   };
 
-  /** Recursively render groups and their sub-groups (depth-first). */
-  const renderGroupTree = (groupList, depth, parentCollapsed) => {
-    for (const group of sortGroupList(groupList)) {
-      // Aggregate dates from this group and all descendants for the pill span
-      const collectDates = (gid) => {
-        const direct = featuresByGroup.get(String(gid)) || [];
-        const starts = direct.map((f) => f.start).filter(Boolean);
-        const ends = direct.map((f) => f.end).filter(Boolean);
-        for (const child of (childGroupsByParent.get(String(gid)) || [])) {
-          const sub = collectDates(child.id);
-          starts.push(...sub.starts);
-          ends.push(...sub.ends);
-        }
-        return { starts, ends };
-      };
-      const { starts, ends } = collectDates(group.id);
-      starts.sort();
-      ends.sort();
-      const pillStart = starts[0] || null;
-      const pillEnd = ends[ends.length - 1] || null;
-      const pos = pillPosition(pillStart, pillEnd);
-
-      const isCollapsed = collapsedGroups.has(String(group.id));
-      const groupFeatures = featuresByGroup.get(String(group.id)) || [];
-
-      if (!parentCollapsed) {
-        items.push({
-          isGroup: true,
-          id: group.id,
-          groupObj: group,
-          name: group.name,
-          color: group.color || null,
-          left: pos ? pos.left : 0,
-          width: pos ? pos.width : 0,
-          top: rowTop,
-          start: pillStart,
-          end: pillEnd,
-          featureCount: groupFeatures.length,
-          depth,
-        });
-        rowTop += 28;
-      }
-
-      if (!isCollapsed && !parentCollapsed) {
-        addFeatureRows(groupFeatures);
-      }
-
-      const children = childGroupsByParent.get(String(group.id)) || [];
-      if (children.length > 0) {
-        renderGroupTree(children, depth + 1, parentCollapsed || isCollapsed);
-      }
+  /** Aggregate dates from a group and all its descendants for the pill span. */
+  const collectDates = (groupId) => {
+    const direct = featuresByGroup.get(String(groupId));
+    const starts = direct.map((f) => f.start).filter(Boolean);
+    const ends = direct.map((f) => f.end).filter(Boolean);
+    for (const child of childGroupsByParent.get(String(groupId))) {
+      const sub = collectDates(child.id);
+      starts.push(...sub.starts);
+      ends.push(...sub.ends);
     }
+    return { starts, ends };
   };
 
-  const topLevelGroups = planGroups.filter(
-    (g) => !g.parent_id || !planGroupIds.has(String(g.parent_id))
-  );
-  renderGroupTree(topLevelGroups, 0, false);
+  /**
+   * Render one level as a single stream: the level's child groups and its own
+   * tasks, interleaved by their key on the shared ordering scale.
+   */
+  const renderLevel = (groups, features, parentId, depth) => {
+    const nodes = [
+      ...groups.map((group) => ({ rank: groupRank(group), group })),
+      ...features.map((feature) => ({
+        rank: taskRankById.get(String(feature.id)),
+        feature,
+      })),
+    ].sort((a, b) => a.rank - b.rank);
 
-  // Ungrouped section — always shown so users can see unassigned features
-  const isUngroupedCollapsed = collapsedGroups.has(ungroupedId);
-  const uStarts = ungroupedFeatures.map((f) => f.start).filter(Boolean).sort();
-  const uEnds = ungroupedFeatures.map((f) => f.end).filter(Boolean).sort();
-  const uStart = uStarts[0] || null;
-  const uEnd = uEnds[uEnds.length - 1] || null;
-  const uPos = pillPosition(uStart, uEnd);
+    let taskRun = [];
+    const flushTasks = () => {
+      if (taskRun.length === 0) return;
+      addFeatureRows(taskRun, parentId);
+      taskRun = [];
+    };
 
-  items.push({
-    isGroup: true,
-    id: ungroupedId,
-    groupObj: { id: ungroupedId, name: 'Ungrouped', color: null },
-    name: 'Ungrouped',
-    color: null,
-    left: uPos ? uPos.left : 0,
-    width: uPos ? uPos.width : 0,
-    top: rowTop,
-    start: uStart,
-    end: uEnd,
-    featureCount: ungroupedFeatures.length,
-  });
-  rowTop += 28;
+    for (const node of nodes) {
+      if (node.feature) {
+        taskRun.push(node.feature);
+        continue;
+      }
+      flushTasks();
+      renderGroup(node.group, parentId, depth);
+    }
+    flushTasks();
+  };
 
-  if (!isUngroupedCollapsed) {
-    addFeatureRows(ungroupedFeatures);
-  }
+  /** Render one group pill followed by its contents, unless it is collapsed. */
+  const renderGroup = (group, parentId, depth) => {
+    const { starts, ends } = collectDates(group.id);
+    starts.sort();
+    ends.sort();
+    const pillStart = starts.length === 0 ? null : starts[0];
+    const pillEnd = ends.length === 0 ? null : ends[ends.length - 1];
+    const pos = pillPosition(pillStart, pillEnd);
+    const groupFeatures = featuresByGroup.get(String(group.id));
+
+    items.push({
+      isGroup: true,
+      id: group.id,
+      groupObj: group,
+      name: group.name,
+      color: group.color ? group.color : null,
+      left: pos ? pos.left : 0,
+      width: pos ? pos.width : 0,
+      top: rowTop,
+      start: pillStart,
+      end: pillEnd,
+      featureCount: groupFeatures.length,
+      depth,
+      slotParentId: parentId,
+      slotRank: groupRank(group),
+    });
+    rowTop += GROUP_PILL_HEIGHT;
+
+    if (collapsedGroups.has(String(group.id))) return;
+    renderLevel(
+      childGroupsByParent.get(String(group.id)),
+      groupFeatures,
+      String(group.id),
+      depth + 1
+    );
+  };
+
+  renderLevel(rootGroups, rootFeatures, null, 0);
 
   return { items, totalHeight: rowTop - topOffset };
 }

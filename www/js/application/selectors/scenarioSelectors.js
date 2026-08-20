@@ -1,3 +1,5 @@
+import { isMutableScenario } from '../shared/scenarioMutations.js';
+
 function getScenarioItems(state) {
   return state.scenarios.items;
 }
@@ -44,6 +46,15 @@ export function createScenarioSelectors(store) {
     isActiveScenarioUnsaved() {
       const scenario = selectors.getActiveScenario();
       return selectors.isScenarioUnsaved(scenario);
+    },
+
+    /** False for the baseline and any read-only scenario — group edits are blocked there. */
+    isActiveScenarioMutable() {
+      const state = store.getState();
+      if (getScenarioActiveId(state) === 'baseline') return false;
+      const scenario = selectors.getActiveScenario();
+      if (scenario === null) return false;
+      return isMutableScenario(scenario);
     },
   };
 

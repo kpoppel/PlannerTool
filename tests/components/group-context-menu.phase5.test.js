@@ -42,16 +42,29 @@ describe('GroupContextMenu phase 5 seam migration', () => {
 
   it('creates a group via cmd.group.createGroupInScenario', async () => {
     const menu = new GroupContextMenu();
-    menu._config = { planId: 'p1' };
+    menu._config = { type: 'board', planId: 'p1' };
     menu._name = ' Group A ';
     menu._color = '#123';
-    menu._parentId = null;
+    menu._createSlot = { parentId: null, rank: 1536, rankUpdates: [] };
     menu._close = vi.fn();
 
     await menu._saveNewGroup();
 
-    expect(mockCreateGroup).toHaveBeenCalledWith('p1', 'Group A', '#123', null);
+    expect(mockCreateGroup).toHaveBeenCalledWith('p1', 'Group A', '#123', null, 1536, []);
     expect(menu._close).toHaveBeenCalledOnce();
+  });
+
+  it('creates a sub-group as the first child of the right-clicked group', async () => {
+    const menu = new GroupContextMenu();
+    menu._config = { type: 'group', group: { id: 'g1', plan_id: 'p1', name: 'G1' } };
+    menu._name = 'Child';
+    menu._color = '#123';
+    menu._createSlot = menu._subGroupSlot('g1');
+    menu._close = vi.fn();
+
+    await menu._saveNewGroup();
+
+    expect(mockCreateGroup).toHaveBeenCalledWith('p1', 'Child', '#123', 'g1', 1024, []);
   });
 
   it('reassigns feature membership via sel.group + cmd.group calls', () => {

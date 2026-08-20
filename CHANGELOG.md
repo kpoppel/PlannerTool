@@ -18,6 +18,9 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Feature cards now show a top border in the colour of the group that directly owns them, so tasks in a nested group tree are visibly attributed to the right parent group.
+- Groups are now created at the position the board right-click points at: an insertion caret shows the target slot and sibling-scoped sparse ranks (`www/js/application/shared/ordering.js`) keep the order stable instead of always placing new groups at the top.
+- Group bands and tasks share one ordering scale, so a group can be inserted anywhere among the tasks instead of always above them; the separate "Ungrouped" band is gone and ungrouped tasks are ordinary board rows.
 - Tightened store-backed command contracts for filter, view, feature, group, and view-restore flows by removing dead legacy compatibility adapters and keeping the canonical store boundary strict.
 - `FeatureEvents.SELECTED` is now store-backed: `cmd.feature.setSelectedFeature(feature)` writes `featureDisplay.selectedId` to the store and emits a bare signal; subscribers read `sel.feature.getSelectedFeature()` / `sel.feature.getSelectedFeatureId()` instead of consuming the event payload.
 - Added `scripts/clear_scenarios.py` one-time maintenance utility to remove a single corrupted scenario entry (or all scenarios for a user) directly from local scenario storage and register metadata.
@@ -34,6 +37,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Creating a new scenario no longer breaks group projection: cloned scenarios now carry the `groupOverrides` and `scenarioGroups` branches required by the canonical store.
+- Publishing a scenario no longer leaves the published group pending: the save path mutated scenario state in place instead of going through the store, so every later save re-created the same group and duplicates accumulated on the plan across scenarios. Sub-group parents are now published too, with temp ids remapped to the created ids.
 - Removed unused legacy ViewManagementService, ViewService, and ConfigService modules and their orphaned tests now that store-backed view and configuration flows are active.
 - Preserved the exact groups payload in the GroupService cache instead of coercing invalid values to empty arrays during loading.
 - Removed remaining sidebar and feature-board fallback reads so store-backed selectors now fail fast on invalid state instead of silently defaulting to stale compatible values.

@@ -22,6 +22,8 @@ export class FeatureCardLit extends LitElement {
     condensed: { type: Boolean },
     selected: { type: Boolean },
     project: { type: Object },
+    /** Colour of the group that directly owns this card, null when ungrouped. */
+    groupColor: { type: String },
     /** When true, suppresses the ghost (overflow) title label.
      *  Required in packed mode where multiple cards share a lane. */
     hideGhostTitle: { type: Boolean },
@@ -52,6 +54,20 @@ export class FeatureCardLit extends LitElement {
 
     .feature-card:hover {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Group membership marker: a bar drawn on top of the card edge rather than
+       a real border, so grouped and ungrouped cards keep identical geometry. */
+    .feature-card.in-group::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 3px;
+      border-radius: 6px 6px 0 0;
+      background: var(--group-color);
+      pointer-events: none;
     }
 
     .feature-card.selected {
@@ -472,6 +488,7 @@ export class FeatureCardLit extends LitElement {
     this.condensed = false;
     this.selected = false;
     this.project = null;
+    this.groupColor = null;
     this.hideGhostTitle = false;
     this._suppressClickUntil = 0;
     this._rootCard = null;
@@ -913,6 +930,7 @@ export class FeatureCardLit extends LitElement {
       condensed: this.condensed,
       ghosted: isUnplanned,
       completed: isCompleted,
+      'in-group': !!this.groupColor,
     };
 
     return html`
@@ -923,7 +941,7 @@ export class FeatureCardLit extends LitElement {
         data-id=${this.feature.id}
         role="listitem"
         draggable="false"
-        style="--project-color: ${projectColor}"
+        style="--project-color: ${projectColor}; --group-color: ${this.groupColor}"
         @click=${this._handleClick}
         @dblclick=${this._handleDoubleClick}
         @contextmenu=${this._handleContextMenu}

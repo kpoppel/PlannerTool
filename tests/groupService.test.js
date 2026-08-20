@@ -181,27 +181,31 @@ describe('GroupService', () => {
     it('creates a group and updates the cache', async () => {
       const created = mkGroup('g-server', 'p1', 'New Group');
       dataService.createGroup.mockResolvedValue(created);
-      const result = await svc.createGroup('p1', 'New Group', { color: '#4c8ef5' });
+      const result = await svc.createGroup('p1', 'New Group', { color: '#4c8ef5', rank: 1024 });
       expect(result).toEqual(created);
       expect(svc.getGroupsForPlan('p1')).toContain(created);
+    });
+
+    it('throws when no integer rank is supplied', async () => {
+      await expect(svc.createGroup('p1', 'A', {})).rejects.toThrow(/rank/i);
     });
 
     it('emits GroupEvents.CHANGED when creating a group', async () => {
       const created = mkGroup('g1', 'p1', 'A');
       dataService.createGroup.mockResolvedValue(created);
-      await svc.createGroup('p1', 'A');
+      await svc.createGroup('p1', 'A', { rank: 1024 });
       expect(bus.emit).toHaveBeenCalledWith(GroupEvents.CHANGED);
     });
 
     it('returns null when server returns null', async () => {
       dataService.createGroup.mockResolvedValue(null);
-      const result = await svc.createGroup('p1', 'A');
+      const result = await svc.createGroup('p1', 'A', { rank: 1024 });
       expect(result).toBeNull();
     });
 
     it('returns null on error', async () => {
       dataService.createGroup.mockRejectedValue(new Error('fail'));
-      const result = await svc.createGroup('p1', 'A');
+      const result = await svc.createGroup('p1', 'A', { rank: 1024 });
       expect(result).toBeNull();
     });
   });

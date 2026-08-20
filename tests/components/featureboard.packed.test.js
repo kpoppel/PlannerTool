@@ -156,6 +156,42 @@ describe('Group band ordering', () => {
     expect(groupOrder).to.deep.equal(['g1', 'g2']);
     expect(alphaCardIds).to.deep.equal(['t1', 't3', 't2']);
   });
+
+  it('tags each task card with the colour of the group that directly owns it', () => {
+    const monthDates = [
+      new Date('2025-01-01T00:00:00Z'),
+      new Date('2025-02-01T00:00:00Z'),
+      new Date('2025-03-01T00:00:00Z'),
+    ];
+
+    const features = [
+      { id: 't1', title: 'In G1', start: '2025-01-05', end: '2025-01-12', project: 'p1', originalRank: 5 },
+      { id: 't2', title: 'In G2', start: '2025-01-08', end: '2025-01-20', project: 'p1', originalRank: 10 },
+      { id: 't4', title: 'Back in G1', start: '2025-02-01', end: '2025-02-10', project: 'p1', originalRank: 20 },
+      { id: 't5', title: 'Ungrouped', start: '2025-02-12', end: '2025-02-20', project: 'p1', originalRank: 30 },
+    ];
+
+    // G1 : { t1, G2: { t2 }, t4 } — t4 must read as G1, not G2.
+    const groups = [
+      { id: 'g1', plan_id: 'p1', name: 'G1', members: ['t1', 't4'], color: '#ff0000', rank: 10 },
+      { id: 'g2', plan_id: 'p1', name: 'G2', parent_id: 'g1', members: ['t2'], color: '#00ff00', rank: 15 },
+    ];
+
+    const result = buildGroupBandItems(
+      features, groups, 0, monthDates, false, false, new Set(), 'p1'
+    );
+
+    const colourById = new Map(
+      result.items
+        .filter((item) => !item.isGroup)
+        .map((item) => [item.feature.id, item.groupColor])
+    );
+
+    expect(colourById.get('t1')).to.equal('#ff0000');
+    expect(colourById.get('t2')).to.equal('#00ff00');
+    expect(colourById.get('t4')).to.equal('#ff0000');
+    expect(colourById.get('t5')).to.equal(null);
+  });
 });
 
 describe('FeatureBoard renderFeatures — no duplicate cards', () => {

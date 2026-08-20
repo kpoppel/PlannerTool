@@ -35,6 +35,30 @@ export const featureBoardStyles = css`
     border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
 
+  /* Shows where a new group will be inserted while the group context menu is open */
+  .group-insertion-caret {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    margin-top: -1px;
+    background: #4c8ef5;
+    box-shadow: 0 0 6px rgba(76, 142, 245, 0.8);
+    pointer-events: none;
+    z-index: 30;
+  }
+
+  .group-insertion-caret::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4c8ef5;
+  }
+
   /*
    * Sticky label column — stays at the left edge of the viewport while the user
    * scrolls the timeline horizontally, but scrolls vertically with the board.

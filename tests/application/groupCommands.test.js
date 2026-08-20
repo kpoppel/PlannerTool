@@ -37,7 +37,7 @@ describe('application/commands/groupCommands', () => {
     const bus = { emit: vi.fn() };
     const commands = createGroupCommands(store, bus);
 
-    const created = commands.createGroupInScenario('p1', 'New Group', '#123', null);
+    const created = commands.createGroupInScenario('p1', 'New Group', '#123', null, 1024);
 
     expect(created).toBeTruthy();
     expect(created.plan_id).toBe('p1');

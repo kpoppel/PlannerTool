@@ -16,13 +16,17 @@
  *   GroupContextMenu.show(config)  — show menu at cursor position
  *
  * Config shape:
- *   { type: 'board',   planId, clientX, clientY }
+ *   { type: 'board',   planId, insertion, clientX, clientY }
  *   { type: 'group',   group, clientX, clientY }
  *   { type: 'feature', feature, clientX, clientY }
+ *
+ * `insertion` is the slot resolved by <feature-board>:
+ *   { planId, parentId, rank, caretTop, rankUpdates, container }
  */
 
 import { LitElement, html } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
+import { RANK_GAP } from '../application/shared/ordering.js';
 import { groupContextMenuStyles } from './GroupContextMenu.styles.js';
 import './Modal.lit.js';
 
@@ -100,6 +104,7 @@ class GroupContextMenu extends LitElement {
     this._showCreate = false;
     this._showUpdate = false;
     this._parentId = null;
+    this._createSlot = null;
     this._open = true;
     // Close on any outside click
     setTimeout(() => document.addEventListener('click', this._onOutsideClick, { once: true }), 0);
@@ -110,6 +115,8 @@ class GroupContextMenu extends LitElement {
     this._showCreate = false;
     this._showUpdate = false;
     document.removeEventListener('click', this._onOutsideClick);
+    // TimelineBoard listens for this to clear the board insertion caret.
+    document.dispatchEvent(new CustomEvent('group-menu-closed'));
   }
 
   _onOutsideClick() {
@@ -120,25 +127,50 @@ class GroupContextMenu extends LitElement {
   // Board background actions
   // ---------------------------------------------------------------------------
 
-  _startCreateGroup(parentId = null) {
-    this._parentId = parentId;
+  /**
+   * Begin the create form for a resolved insertion slot.
+   * @param {{ parentId: string|null, rank: number, rankUpdates?: Array, caretTop?: number }} slot
+   */
+  _startCreateGroup(slot) {
+    this._createSlot = slot;
+    this._parentId = slot.parentId;
     this._showCreate = true;
+    if (Number.isInteger(slot.caretTop)) this._moveCaret(slot.caretTop);
+  }
+
+  /** Slot for a new first child of `parentGroupId`, ranked ahead of its contents. */
+  _subGroupSlot(parentGroupId, caretTop) {
+    return {
+      parentId: String(parentGroupId),
+      rank: RANK_GAP,
+      rankUpdates: [],
+      caretTop,
+    };
+  }
+
+  /** Ask TimelineBoard to move the board insertion caret. */
+  _moveCaret(caretTop) {
+    document.dispatchEvent(new CustomEvent('group-menu-caret', { detail: { caretTop } }));
   }
 
   async _saveNewGroup() {
     const name = (this._name || '').trim();
     if (!name) return;
+    const cfg = this._config;
     // planId comes from board-background config or from the parent group's plan_id
-    const planId = this._config?.planId ?? this._config?.group?.plan_id;
+    const planId = cfg.type === 'board' ? cfg.planId : cfg.group.plan_id;
     if (!planId) return;
+    const slot = this._createSlot;
     // Create the group in the active scenario — it lives in scenario.scenarioGroups
     // until the user publishes via the save dialog, at which point it is promoted
     // to the baseline group store.
     cmd.group.createGroupInScenario(
       planId,
       name,
-      this._color || null,
-      this._parentId || null
+      this._color,
+      slot.parentId,
+      slot.rank,
+      slot.rankUpdates
     );
     this._close();
   }
@@ -240,6 +272,16 @@ class GroupContextMenu extends LitElement {
     const x = Math.min(this._x, window.innerWidth - menuW - 8);
     const y = this._y;
 
+    if (!sel.scenario.isActiveScenarioMutable()) {
+      return html`
+        <div class="menu" style="left:${x}px; top:${y}px;" @click=${(e) => e.stopPropagation()}>
+          <div class="menu-item" style="pointer-events:none; color:#888; font-size:0.8rem;">
+            Switch to an editable scenario to change groups
+          </div>
+        </div>
+      `;
+    }
+
     return html`
       <div class="menu" style="left:${x}px; top:${y}px;" @click=${(e) => e.stopPropagation()}>
         ${type === 'board' ? this._renderBoardMenu() : ''}
@@ -289,10 +331,35 @@ class GroupContextMenu extends LitElement {
       `;
     }
 
+    const insertion = this._config.insertion;
+    const parentGroup = insertion.parentId === null
+      ? null
+      : sel.group.getGroupById(insertion.parentId);
+    const siblingLabel = parentGroup === null
+      ? `New group here in "${selectedPlans[0].name}"`
+      : `New group here inside "${parentGroup.name}"`;
+    const container = insertion.container;
+    // The container is the band the cursor is inside; nesting into it is a
+    // different placement from the sibling slot, so both are offered.
+    const showNested = container !== null && container.id !== insertion.parentId;
+
     return html`
-      <button class="menu-item" @click=${this._startCreateGroup.bind(this)}>
-        ➕ New group for "${selectedPlans[0].name}"
+      <button
+        class="menu-item"
+        @mouseenter=${() => this._moveCaret(insertion.caretTop)}
+        @click=${() => this._startCreateGroup(insertion)}
+      >
+        ➕ ${siblingLabel}
       </button>
+      ${showNested ? html`
+        <button
+          class="menu-item"
+          @mouseenter=${() => this._moveCaret(container.caretTop)}
+          @click=${() => this._startCreateGroup(this._subGroupSlot(container.id, container.caretTop))}
+        >
+          ➕ New sub-group in "${container.name}"
+        </button>
+      ` : ''}
     `;
   }
 
@@ -398,7 +465,7 @@ class GroupContextMenu extends LitElement {
 
     // --- Default menu ---
     return html`
-      <button class="menu-item" @click=${() => this._startCreateGroup(group.id)}>➕ Add sub-group</button>
+      <button class="menu-item" @click=${() => this._startCreateGroup(this._subGroupSlot(group.id))}>➕ Add sub-group</button>
       <button class="menu-item" @click=${this._startUpdateGroup.bind(this)}>✏️ Update group</button>
       <div class="menu-separator"></div>
       <button class="menu-item danger" @click=${this._deleteGroup.bind(this)}>🗑 Delete group</button>

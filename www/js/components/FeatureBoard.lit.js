@@ -26,7 +26,7 @@ import {
   SWIMLANE_BAND_GAP_PX,
 } from '../services/SwimlaneService.js';
 import { featureBoardStyles } from './FeatureBoard.styles.js';
-import { buildGroupBandItems, packIntoRows } from './groupBandLayout.js';
+import { buildGroupBandItems, packIntoRows, resolveInsertionSlot } from './groupBandLayout.js';
 import './FeatureGroup.lit.js';
 export { initBoard } from './FeatureBoard.init.js';
 
@@ -39,6 +39,7 @@ class FeatureBoard extends LitElement {
 
   static properties = {
     features: { type: Array },
+    _insertionCaretTop: { state: true },
   };
 
   constructor() {
@@ -55,6 +56,8 @@ class FeatureBoard extends LitElement {
     this._overlayOffset = 0;
     this._renderGeneration = 0;
     this._fullRenderList = [];
+    this._boardHeight = 0;
+    this._insertionCaretTop = null;
     this._viewportRenderScheduled = false;
     this._viewportUnsubscribe = null;
   }
@@ -240,17 +243,49 @@ class FeatureBoard extends LitElement {
             .teams=${item.teams}
             .condensed=${item.condensed}
             .project=${item.project}
+            .groupColor=${item.groupColor}
             .hideGhostTitle=${!!item.hideGhostTitle}
             style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px"
           ></feature-card-lit>`;
         }
       )}
+      ${this._insertionCaretTop === null
+        ? ''
+        : html`<div
+            class="group-insertion-caret"
+            part="group-insertion-caret"
+            style="top:${this._insertionCaretTop}px;"
+            aria-hidden="true"
+          ></div>`}
     `;
   }
 
+  // ---------------------------------------------------------------------------
+  // Group insertion slot
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Resolve where a new group would be inserted for a viewport y position.
+   * @param {number} clientY
+   * @returns {{ planId: string|null, parentId: string|null, afterGroupId: string|null, caretTop: number }}
+   */
+  getInsertionSlotAt(clientY) {
+    const boardTop = this.getBoundingClientRect().top;
+    return resolveInsertionSlot(this._fullRenderList, clientY - boardTop, this._boardHeight);
+  }
+
+  /** Draw the insertion caret at a board-relative y position. */
+  showInsertionCaret(caretTop) {
+    this._insertionCaretTop = caretTop;
+  }
+
+  /** Remove the insertion caret. */
+  clearInsertionCaret() {
+    this._insertionCaretTop = null;
+  }
+
   /** Handle expand/collapse from a <feature-group>. */
-  _onGroupToggle(e) {
-    const { groupId, collapsed } = e.detail;
+  _onGroupToggle(e) {    const { groupId, collapsed } = e.detail;
     if (collapsed) {
       this._collapsedGroups.add(String(groupId));
     } else {
@@ -706,7 +741,7 @@ class FeatureBoard extends LitElement {
           );
           const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
-            sel.view.getCondensedCards(), isPacked, this._collapsedGroups, String(swimlane.id)
+            sel.view.getCondensedCards(), isPacked, this._collapsedGroups
           );
           renderList.push(...groupItems);
           swimlaneHeight = Math.max(gHeight, laneHeight());
@@ -793,71 +828,19 @@ class FeatureBoard extends LitElement {
       // no longer selected), which would show empty group pills from other plans.
       const selectedPlanIds = selectedProjects.filter((p) => p.selected).map((p) => p.id);
       const allGroups = selectedPlanIds.flatMap((id) => sel.group.getEffectiveGroups(id));
-      renderList = [];
 
-      if (allGroups.length > 0) {
-        // Group-aware layout — handles both packed and normal modes.
-        // Filter to only visible features first.
-        const visibleFiltered = ordered.filter(
-          (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
-        );
-        const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
-          visibleFiltered, allGroups, 0, months,
-          sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
-          selectedPlanIds.length === 1 ? String(selectedPlanIds[0]) : 'multi'
-        );
-        renderList = groupItems;
-        totalHeight = gHeight;
-      } else if (isPacked) {
-        // --- Packed mode: features with non-overlapping dates share a lane ---
-        const filtered = [];
-        for (const feature of sourceFeatures) {
-          if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-          // Unplanned features (no dates) cannot be positioned in packed mode
-          if (!feature.start || !feature.end) continue;
-          const pos = computePosition(feature, months);
-          if (!pos) continue;
-          filtered.push({ left: pos.left, width: pos.width, feature });
-        }
-        // Sort by start position ascending for greedy packing
-        filtered.sort((a, b) => a.left - b.left);
-        const rows = packIntoRows(filtered);
-        rows.forEach((row, rowIndex) => {
-          const top = this._overlayOffset + rowIndex * laneHeight();
-          for (const bar of row) {
-            renderList.push({
-              feature: bar.feature,
-              left: bar.left,
-              width: bar.width,
-              top,
-              teams: selectedTeams,
-              condensed: true, // packed always uses compact card height
-              hideGhostTitle: true, // ghost titles would overlap packed neighbours
-              project: selectedProjects.find((p) => p.id === bar.feature.project),
-            });
-          }
-        });
-        totalHeight = rows.length * laneHeight() + this._overlayOffset;
-      } else {
-        // --- Normal / Compact mode: one lane per feature, no groups ---
-        let laneIndex = 0;
-        for (const feature of ordered) {
-          if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-          const pos = computePosition(feature, months) || {};
-          renderList.push({
-              feature,
-              left: pos.left ?? 0,
-              width: pos.width ?? 0,
-              top: this._overlayOffset + laneIndex * laneHeight(),
-            teams: selectedTeams,
-            condensed: sel.view.getCondensedCards(),
-            hideGhostTitle: false,
-            project: selectedProjects.find((p) => p.id === feature.project),
-          });
-          laneIndex++;
-        }
-          totalHeight = renderList.length * laneHeight() + this._overlayOffset;
-      }
+      // Always go through the group band layout, even with zero groups: it is
+      // what stamps the shared ordering keys onto every row, which the group
+      // insertion caret needs in order to point between two ungrouped tasks.
+      const visibleFiltered = ordered.filter(
+        (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
+      );
+      const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
+        visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,
+        sel.view.getCondensedCards(), isPacked, this._collapsedGroups
+      );
+      renderList = groupItems;
+      totalHeight = allGroups.length > 0 ? gHeight : gHeight + this._overlayOffset;
     }
 
     this._applyRenderList(renderList);
@@ -870,8 +853,10 @@ class FeatureBoard extends LitElement {
       const sc = findInBoard('#scroll-container');
       const minH = sc && sc.clientHeight ? sc.clientHeight : 0;
       const finalH = Math.max(totalHeight, minH);
+      this._boardHeight = finalH;
       this.style.height = finalH + 'px';
     } catch (e) {
+      this._boardHeight = totalHeight;
       this.style.height = totalHeight + 'px';
     }
     this.requestUpdate();

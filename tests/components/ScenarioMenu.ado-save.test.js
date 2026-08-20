@@ -20,14 +20,18 @@ const { mockRefreshBaseline, mockPublishBaseline, mockOpenAzureDevopsModal } = v
 
 const {
   mockPendingGroupChanges,
-  mockConfirmGroupCreate,
+  mockPromoteGroupToBaseline,
+  mockClearGroupOverride,
+  mockCreateGroup,
   mockScenarioGetScenarios,
   mockScenarioGetActiveScenarioId,
   mockGetChangedScenarioIds,
   mockSaveScenario,
 } = vi.hoisted(() => ({
   mockPendingGroupChanges: vi.fn(() => []),
-  mockConfirmGroupCreate: vi.fn(),
+  mockPromoteGroupToBaseline: vi.fn(),
+  mockClearGroupOverride: vi.fn(),
+  mockCreateGroup: vi.fn().mockResolvedValue(null),
   mockScenarioGetScenarios: vi.fn(() => []),
   mockScenarioGetActiveScenarioId: vi.fn(() => null),
   mockGetChangedScenarioIds: vi.fn(() => []),
@@ -37,7 +41,7 @@ const {
 vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: {
     publishBaseline: mockPublishBaseline,
-    createGroup: vi.fn().mockResolvedValue(null),
+    createGroup: mockCreateGroup,
     updateGroup: vi.fn().mockResolvedValue(null),
     deleteGroup: vi.fn().mockResolvedValue(true),
     listGroups: vi.fn().mockResolvedValue([]),
@@ -79,7 +83,8 @@ vi.mock('../../www/js/application/imports.js', () => ({
       invalidateAndRefreshBaseline: vi.fn(),
     },
     group: {
-      confirmGroupCreate: mockConfirmGroupCreate,
+      promoteGroupToBaseline: mockPromoteGroupToBaseline,
+      clearGroupOverride: mockClearGroupOverride,
     },
   },
   sel: {
@@ -95,10 +100,12 @@ vi.mock('../../www/js/application/imports.js', () => ({
       getScenarios: mockScenarioGetScenarios,
       getActiveScenarioId: mockScenarioGetActiveScenarioId,
       getChangedScenarioIds: mockGetChangedScenarioIds,
+      getActiveScenario: vi.fn(() => ({ id: 'sc-1', scenarioGroups: [], groupOverrides: {} })),
       isScenarioUnsaved: vi.fn((s) => mockGetChangedScenarioIds().includes(String(s?.id))),
     },
     group: {
       getPendingGroupChanges: mockPendingGroupChanges,
+      getGroupById: vi.fn(() => null),
     },
   },
 }));
@@ -208,8 +215,70 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     expect(mockRefreshBaseline).toHaveBeenCalledOnce();
   });
 
-  it('does NOT call state.refreshBaseline() when user cancels the modal', async () => {
-    const scenario = { id: 'sc-2', overrides: { '43': { end: '2026-06-30' } } };
+  it('promotes a published group out of the scenario so it is not created again', async () => {
+    // Regression: the publish path used to mutate the scenario object in place,
+    // so the group stayed pending and was re-created on every later save —
+    // accumulating duplicate groups on the plan across scenarios.
+    const scenario = { id: 'sc-1', name: 'Alpha', overrides: {} };
+    const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
+    const pendingGroup = {
+      id: 'tmp_1',
+      plan_id: 'p1',
+      name: 'New group',
+      rank: 1024,
+      parent_id: null,
+      members: ['t1', 't2'],
+    };
+
+    mockScenarioGetScenarios.mockReturnValue([scenario]);
+    mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
+    mockPendingGroupChanges.mockReturnValue([{ type: 'create', group: pendingGroup }]);
+    mockCreateGroup.mockResolvedValue({ id: 'real-1' });
+    mockOpenAzureDevopsModal.mockResolvedValue({
+      features: [],
+      // The modal committed only t1; t2 was deselected.
+      groupChanges: [{ type: 'create', group: { ...pendingGroup, members: ['t1'] } }],
+    });
+
+    await menu._onSaveToAzure(makeEvent(), scenario);
+
+    expect(mockCreateGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ plan_id: 'p1', name: 'New group', rank: 1024, parent_id: null })
+    );
+    expect(mockPromoteGroupToBaseline).toHaveBeenCalledWith('tmp_1', 'real-1', []);
+  });
+
+  it('remaps a sub-group parent from its temp id to the created id', async () => {
+    const scenario = { id: 'sc-1', name: 'Alpha', overrides: {} };
+    const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
+    const parent = { id: 'tmp_p', plan_id: 'p1', name: 'Parent', rank: 1024, parent_id: null, members: [] };
+    const child = { id: 'tmp_c', plan_id: 'p1', name: 'Child', rank: 1024, parent_id: 'tmp_p', members: [] };
+
+    mockScenarioGetScenarios.mockReturnValue([scenario]);
+    mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
+    mockPendingGroupChanges.mockReturnValue([
+      { type: 'create', group: parent },
+      { type: 'create', group: child },
+    ]);
+    mockCreateGroup
+      .mockResolvedValueOnce({ id: 'real-p' })
+      .mockResolvedValueOnce({ id: 'real-c' });
+    mockOpenAzureDevopsModal.mockResolvedValue({
+      features: [],
+      groupChanges: [
+        { type: 'create', group: parent },
+        { type: 'create', group: child },
+      ],
+    });
+
+    await menu._onSaveToAzure(makeEvent(), scenario);
+
+    expect(mockCreateGroup).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'Child', parent_id: 'real-p' })
+    );
+  });
+
+  it('does NOT call state.refreshBaseline() when user cancels the modal', async () => {    const scenario = { id: 'sc-2', overrides: { '43': { end: '2026-06-30' } } };
     const menu = makeMenu({ scenarios: [scenario] });
 
     // Simulate user dismissing the dialog

@@ -11,6 +11,11 @@ function cloneValue(value) {
   return structuredClone(value);
 }
 
+function cloneList(value) {
+  if (value == null) return [];
+  return structuredClone(value);
+}
+
 function createScenarioId() {
   return `scen_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 }
@@ -144,6 +149,9 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
         filters:
           sourceScenario ? cloneValue(sourceScenario.filters) : cloneValue(runtimeOptions.currentFilters),
         view: sourceScenario ? cloneValue(sourceScenario.view) : cloneValue(runtimeOptions.currentView),
+        // Group branches must always exist: group projection reads them without guards.
+        groupOverrides: sourceScenario ? cloneValue(sourceScenario.groupOverrides) : {},
+        scenarioGroups: sourceScenario ? cloneList(sourceScenario.scenarioGroups) : [],
       };
 
       const nextScenarios = [...existingScenarios, scenario];

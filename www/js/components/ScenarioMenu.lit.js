@@ -363,11 +363,13 @@ export class ScenarioMenuLit extends LitElement {
       const { features = [], groupChanges = [] } = result;
 
       // 1. Persist accepted group changes.
-      //    - create (from scenario.scenarioGroups): POST → get real ID → swap temp → remove from scenarioGroups
+      //    - create (from scenario.scenarioGroups): POST → get real ID → promote out of the scenario
       //    - update (baseline group fields): PUT /api/groups/{id}
       //    - update with members (from groupOverrides): included in PUT payload
-      //    - delete: DELETE /api/groups/{id} → remove from groupOverrides
+      //    - delete: DELETE /api/groups/{id} → drop the override
       const affectedPlanIds = new Set();
+      // Sub-groups created in the same batch reference their parent by temp id.
+      const realIdByTempId = new Map();
       for (const op of groupChanges) {
         if (op.type === 'create' && op.group) {
           // op.group is the original scenarioGroups entry; op.group.members is already
@@ -381,47 +383,36 @@ export class ScenarioMenuLit extends LitElement {
               ?.members || []
           ).map(String);
 
+          const parentId = op.group.parent_id;
           const payload = {
             plan_id: op.group.plan_id,
             name: op.group.name,
             color: op.group.color || null,
-            rank: op.group.rank ?? 0,
+            rank: op.group.rank,
+            parent_id: parentId === null || parentId === undefined
+              ? null
+              : (realIdByTempId.get(String(parentId)) || String(parentId)),
             members: [...committedMembers],
           };
           const created = await dataService.createGroup(payload);
           if (created) {
             const realId = String(created.id);
-            cmd.group.confirmGroupCreate(op.group.id, realId);
-            // Remove this group from scenarioGroups (now baseline).
-            if (activeScen?.scenarioGroups) {
-              activeScen.scenarioGroups = activeScen.scenarioGroups.filter(
-                (g) => String(g.id) !== realId && String(g.id) !== String(op.group.id)
-              );
-            }
+            realIdByTempId.set(String(op.group.id), realId);
             // Members that were in the scenario group but NOT committed stay pending
             // as memberDeltas against the now-real group.
             const uncommittedMembers = originalMembers.filter((tid) => !committedMembers.has(tid));
-            if (uncommittedMembers.length > 0) {
-              if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
-              const ov = activeScen.groupOverrides[realId] || {};
-              const existingDeltas = ov.memberDeltas || [];
-              const existingSet = new Set(existingDeltas.map((d) => d.taskId));
-              for (const tid of uncommittedMembers) {
-                if (!existingSet.has(tid)) existingDeltas.push({ taskId: tid, op: 'add' });
-              }
-              activeScen.groupOverrides[realId] = { ...ov, memberDeltas: existingDeltas };
-            }
+            cmd.group.promoteGroupToBaseline(op.group.id, realId, uncommittedMembers);
             if (op.group.plan_id) affectedPlanIds.add(String(op.group.plan_id));
           }
         } else if (op.type === 'update' && op.groupId) {
-          const activeScen = sel.scenario.getActiveScenario();
           const updatePayload = { ...(op.fields || {}) };
+          const memberDeltas = op.memberDeltas === undefined ? [] : op.memberDeltas;
 
           // Apply any committed member deltas to compute the new full members list.
-          if (op.memberDeltas?.length) {
+          if (memberDeltas.length > 0) {
             const baseGroup = sel.group.getGroupById(op.groupId);
             const baseMembers = new Set((baseGroup?.members || []).map(String));
-            for (const { taskId, op: delta } of op.memberDeltas) {
+            for (const { taskId, op: delta } of memberDeltas) {
               if (delta === 'add') baseMembers.add(String(taskId));
               else baseMembers.delete(String(taskId));
             }
@@ -430,32 +421,16 @@ export class ScenarioMenuLit extends LitElement {
 
           await dataService.updateGroup(op.groupId, updatePayload);
 
-          // Remove only the committed deltas from groupOverrides; leave others.
-          if (activeScen?.groupOverrides?.[op.groupId]) {
-            const ov = activeScen.groupOverrides[op.groupId];
-            if (op.memberDeltas?.length) {
-              const committed = new Set(op.memberDeltas.map((d) => String(d.taskId)));
-              ov.memberDeltas = (ov.memberDeltas || []).filter(
-                (d) => !committed.has(String(d.taskId))
-              );
-            }
-            // Remove the entire override entry if nothing remains.
-            const { _deleted, memberDeltas: rem, ...rest } = ov;
-            if (!_deleted && (!rem || rem.length === 0) && Object.keys(rest).length === 0) {
-              delete activeScen.groupOverrides[op.groupId];
-            }
-          }
+          // Drop only the deltas that were committed; other pending edits stay.
+          cmd.group.clearGroupOverride(op.groupId, memberDeltas.map((d) => String(d.taskId)));
 
           const g = sel.group.getGroupById(op.groupId);
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         } else if (op.type === 'delete' && op.groupId) {
-          await dataService.deleteGroup(op.groupId);
-          const activeScen = sel.scenario.getActiveScenario();
-          if (activeScen?.groupOverrides?.[op.groupId]) {
-            delete activeScen.groupOverrides[op.groupId];
-          }
           const g = sel.group.getGroupById(op.groupId);
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
+          await dataService.deleteGroup(op.groupId);
+          cmd.group.clearGroupOverride(op.groupId, null);
         }
       }
 

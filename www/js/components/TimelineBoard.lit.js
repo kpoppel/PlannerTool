@@ -87,6 +87,8 @@ class TimelineBoard extends LitElement {
     if (scroll && this._onBoardContextMenu) scroll.removeEventListener('contextmenu', this._onBoardContextMenu);
     if (this._boardArea && this._onGroupContextMenu) this._boardArea.removeEventListener('group-context-menu', this._onGroupContextMenu);
     if (this._boardArea && this._onFeatureContextMenu) this._boardArea.removeEventListener('feature-context-menu', this._onFeatureContextMenu);
+    if (this._onGroupMenuClosed) document.removeEventListener('group-menu-closed', this._onGroupMenuClosed);
+    if (this._onGroupMenuCaret) document.removeEventListener('group-menu-caret', this._onGroupMenuCaret);
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mouseup', this._onMouseUp);
     document.removeEventListener('mousemove', this._onProximityMove);
@@ -116,15 +118,36 @@ class TimelineBoard extends LitElement {
       e.preventDefault();
       const selectedPlans = sel.selection.getSelectedProjects();
       const planId = selectedPlans.length === 1 ? selectedPlans[0].id : null;
-      GroupContextMenu.show({ type: 'board', planId, clientX: e.clientX, clientY: e.clientY });
+      const board = this.shadowRoot.querySelector('feature-board');
+      const insertion = board.getInsertionSlotAt(e.clientY);
+      board.showInsertionCaret(insertion.caretTop);
+      GroupContextMenu.show({
+        type: 'board',
+        planId,
+        insertion,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      });
     };
     if (scroll) scroll.addEventListener('contextmenu', this._onBoardContextMenu);
+
+    // Clear the insertion caret once the menu closes (saved, cancelled or dismissed).
+    this._onGroupMenuClosed = () => {
+      const board = this.shadowRoot.querySelector('feature-board');
+      if (board) board.clearInsertionCaret();
+    };
+    document.addEventListener('group-menu-closed', this._onGroupMenuClosed);
+
+    // Menu entries move the caret so the user sees where each placement lands.
+    this._onGroupMenuCaret = (e) => {
+      const board = this.shadowRoot.querySelector('feature-board');
+      if (board) board.showInsertionCaret(e.detail.caretTop);
+    };
+    document.addEventListener('group-menu-caret', this._onGroupMenuCaret);
 
     // group-context-menu bubbles up from FeatureBoard (right-click on group pill)
     this._onGroupContextMenu = (e) => {
       e.stopPropagation();
-      // The synthetic "Ungrouped" band is not a real persisted group — skip menu.
-      if (String(e.detail.group?.id || '').startsWith('__ungrouped__')) return;
       GroupContextMenu.show({
         type: 'group',
         group: e.detail.group,
