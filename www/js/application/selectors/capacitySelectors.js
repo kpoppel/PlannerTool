@@ -2,6 +2,8 @@ function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 export function createLegacyCapacitySelectors(state) {
   return {
     getCapacityDates() {
@@ -30,6 +32,10 @@ export function createLegacyCapacitySelectors(state) {
   };
 }
 
+/**
+ * @param {StoreApi} store
+ * @returns {object}
+ */
 export function createCapacitySelectors(store) {
   return {
     getCapacityDates() {

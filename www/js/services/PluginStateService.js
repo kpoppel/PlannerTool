@@ -3,7 +3,7 @@
  * Simple in-memory session-only store for plugin state.
  * Plugins may set/get JSON-serialisable objects keyed by plugin id.
  * The service exposes `captureForView()` and `restoreFromView()` so
- * `ViewManagementService` can include plugin state when saving/restoring views.
+ * View save/restore commands can include plugin state when saving/restoring views.
  */
 export class PluginStateService {
   constructor(bus, dataService) {

@@ -10,6 +10,9 @@ import {
   withActiveScenario,
 } from '../shared/scenarioMutations.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+/** @typedef {import('../types.js').EventBusLike} EventBusLike */
+
 function getBaselineFeatureMap(state) {
   return buildFeatureMap(state.baseline.features);
 }
@@ -45,6 +48,12 @@ function addActiveScenarioToChangedIds(state) {
   return Array.from(new Set([...state.scenarios.changedIds, String(activeId)]));
 }
 
+/**
+ * @param {StoreApi} store
+ * @param {EventBusLike} bus
+ * @param {((changedFeatureIds?: string[]|null) => void)|null} [recomputeCapacity]
+ * @returns {object}
+ */
 export function createFeatureCommands(store, bus, recomputeCapacity = null) {
   function requireRecomputeCapacity() {
     if (typeof recomputeCapacity !== 'function') {
@@ -52,8 +61,14 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
     }
   }
 
+  /**
+   * @param {string[]|null} [changedFeatureIds]
+   */
   function recomputeAndEmitCapacity(changedFeatureIds = null) {
     requireRecomputeCapacity();
+    if (typeof recomputeCapacity !== 'function') {
+      throw new TypeError('featureCommands requires recomputeCapacity');
+    }
     recomputeCapacity(changedFeatureIds);
   }
 

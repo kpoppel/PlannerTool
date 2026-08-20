@@ -142,9 +142,9 @@ export function buildSwimlaneList(projects, teams, expansionState, visibleFeatur
  * 4. Own project is an *expanded-plan* swimlane → use it.
  * 5. Fallback: first swimlane in the list.
  *
- * @param {{id:string, project:string, parentId:string|null, capacity:Array<{team:string, capacity:number}>}} feature
+ * @param {{id:string, project:string, parentId:string|null, capacity?:Array<{team:string, capacity:number}>}} feature
  * @param {Array<{id:string, type:string}>} swimlanes   Ordered swimlane list from buildSwimlaneList().
- * @param {Map<string, {project:string, parentId:string|null}>} allFeaturesById  Lookup for parent walking.
+ * @param {Map<string, {id:string, project:string, parentId:string|null, capacity?:Array<{team:string, capacity:number}>}>} allFeaturesById  Lookup for parent walking.
  * @param {{expandParentChild:boolean, expandTeamAllocated:boolean}|null} expansionState
  * @param {Set<string>} selectedProjectIds  IDs of currently-selected projects.
  * @param {Set<string>} selectedTeamIds     IDs of currently-selected teams.
@@ -176,8 +176,11 @@ export function assignFeatureToSwimlane(
   //      feature (T1/plan) → epic (P1/expanded) → no plan ancestor → returns P1 ✓
   //      feature (T1/plan) with no parent → no ancestor → falls to Priority 2 → T1 ✓
   if (expansionState && expansionState.expandParentChild) {
+    /** @type {string|null} */
     let firstPlanAncestorProjectId = null;
+    /** @type {string|null} */
     let firstExpandedAncestorProjectId = null;
+    /** @type {{id:string, project:string, parentId:string|null, capacity?:Array<{team:string, capacity:number}>}|null} */
     let current = feature;
     // visited guards against cycles in malformed data
     const visited = new Set([String(feature.id)]);
@@ -191,11 +194,11 @@ export function assignFeatureToSwimlane(
       if (parentSwimlane) {
         if (parentSwimlane.type === 'plan') {
           // Plan-type ancestor is highest priority — no need to walk further.
-          firstPlanAncestorProjectId = parent.project;
+          firstPlanAncestorProjectId = String(parent.project);
           break;
         } else if (parentSwimlane.type === 'expanded-plan' && !firstExpandedAncestorProjectId) {
           // Save as candidate but keep walking — a plan-type ancestor may be higher up.
-          firstExpandedAncestorProjectId = parent.project;
+          firstExpandedAncestorProjectId = String(parent.project);
         }
       }
       current = parent;

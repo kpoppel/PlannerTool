@@ -5,28 +5,28 @@
 // ---------------- Provider Interface & Selection -----------------
 /**
  * BackendProvider typedef (JSDoc)
- * @typedef {Object} BackendProvider
- * @property {function():Promise<void>} [init]
- * @property {function():Promise<Object>} fetchConfig
- * @property {function(string):Promise<{token:string}>} submitPat
- * @property {function():Promise<Object>} loadAll
- * @property {function():Promise<Array>} loadProjects
- * @property {function():Promise<Array>} loadTeams
- * @property {function():Promise<Array>} loadFeatures
- * @property {function(string,string,string):Promise<Object>} updateFeatureDates
- * @property {function(string,string,any):Promise<Object>} updateFeatureField
- * @property {function(Array<{id:string,start:string,end:string}>):Promise<Array<Object>>} batchUpdateFeatureDates
- * @property {function(Array<{id:string,start?:string,end?:string,capacity?:Array}>):Promise<Object>} updateTasksWithCapacity
- * @property {function(Object):Promise<Object>} saveScenario
- * @property {function(string, Array<string>=):Promise<Object>} annotateScenario
- * @property {function(string):Promise<boolean>} deleteScenario
- * @property {function(string,string):Promise<Object>} renameScenario
- * @property {function():Promise<Array>} listScenarios
- * @property {function():Promise<{projectColors:Object, teamColors:Object}>} getColorMappings
- * @property {function(string,string):Promise<void>} updateProjectColor
- * @property {function(string,string):Promise<void>} updateTeamColor
- * @property {function():Promise<Object>} capabilities
- * @property {function():Promise<{ok:boolean}>} health
+ * @typedef {object} BackendProvider
+ * @property {(() => Promise<void>)=} init
+ * @property {() => Promise<object>} fetchConfig
+ * @property {(pat: string) => Promise<{ token: string }>} submitPat
+ * @property {() => Promise<object>} loadAll
+ * @property {() => Promise<any[]>} loadProjects
+ * @property {() => Promise<any[]>} loadTeams
+ * @property {() => Promise<any[]>} loadFeatures
+ * @property {(id: string, start: string, end: string) => Promise<object>} updateFeatureDates
+ * @property {(id: string, field: string, value: any) => Promise<object>} updateFeatureField
+ * @property {(updates: Array<{ id: string, start: string, end: string }>) => Promise<object[]>} batchUpdateFeatureDates
+ * @property {(tasks: Array<{ id: string, start?: string, end?: string, capacity?: any[] }>) => Promise<object>} updateTasksWithCapacity
+ * @property {(scenario: object) => Promise<object>} saveScenario
+ * @property {(id: string, tags: string[]) => Promise<object>} annotateScenario
+ * @property {(id: string) => Promise<boolean>} deleteScenario
+ * @property {(id: string, name: string) => Promise<object>} renameScenario
+ * @property {() => Promise<any[]>} listScenarios
+ * @property {() => Promise<{ projectColors: object, teamColors: object }>} getColorMappings
+ * @property {(id: string, color: string) => Promise<void>} updateProjectColor
+ * @property {(id: string, color: string) => Promise<void>} updateTeamColor
+ * @property {() => Promise<object>} capabilities
+ * @property {() => Promise<{ ok: boolean }>} health
  */
 
 import { ProviderMock } from './providerMock.js';

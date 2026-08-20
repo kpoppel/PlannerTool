@@ -2,6 +2,8 @@ function getScenarioItems(state) {
   return state.scenarios.items;
 }
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 function getScenarioActiveId(state) {
   return state.scenarios.activeId;
 }
@@ -10,8 +12,12 @@ function getChangedScenarioIds(state) {
   return state.scenarios.changedIds.map(String);
 }
 
+/**
+ * @param {StoreApi} store
+ * @returns {object}
+ */
 export function createScenarioSelectors(store) {
-  return {
+  const selectors = {
     getScenarios() {
       return getScenarioItems(store.getState());
     },
@@ -25,19 +31,21 @@ export function createScenarioSelectors(store) {
     },
 
     getActiveScenario() {
-      const scenarios = this.getScenarios();
-      const activeId = this.getActiveScenarioId();
+      const scenarios = selectors.getScenarios();
+      const activeId = selectors.getActiveScenarioId();
       return scenarios.find((scenario) => scenario.id === activeId) || null;
     },
 
     isScenarioUnsaved(scenario) {
-      const changedIds = this.getChangedScenarioIds();
+      const changedIds = selectors.getChangedScenarioIds();
       return changedIds.includes(String(scenario.id));
     },
 
     isActiveScenarioUnsaved() {
-      const scenario = this.getActiveScenario();
-      return this.isScenarioUnsaved(scenario);
+      const scenario = selectors.getActiveScenario();
+      return selectors.isScenarioUnsaved(scenario);
     },
   };
+
+  return selectors;
 }

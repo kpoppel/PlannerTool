@@ -1,5 +1,7 @@
 import { computeExpandedFeatureSet } from '../shared/featureExpansion.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 function toStringArray(values) {
   return Array.from(values).map((v) => String(v));
 }
@@ -74,8 +76,14 @@ function getExpandedFeatureSetFromStore(state) {
   });
 }
 
+/**
+ * @param {StoreApi} store
+ * @returns {object}
+ */
 export function createViewSelectors(store) {
+  /** @type {{expandedIds: Set<string>, counts: {parentChild: number, relations: number, teamAllocated: number}}|null} */
   let cachedExpandedFeatureSet = null;
+  /** @type {{features: any[], projectIds: Array<string|number>, teamIds: Array<string|number>, expansion: any}|null} */
   let cachedState = null;
 
   const getExpandedFeatureSetMemoized = () => {
@@ -113,7 +121,7 @@ export function createViewSelectors(store) {
     return cachedExpandedFeatureSet;
   };
 
-  return {
+  const selectors = {
     getTimelineScale() {
       return getTimelineScaleFromStore(store.getState());
     },
@@ -171,7 +179,7 @@ export function createViewSelectors(store) {
     },
 
     getExpandedFeatureIds() {
-      return this.getExpandedFeatureSet().expandedIds;
+      return selectors.getExpandedFeatureSet().expandedIds;
     },
 
     getHiddenTypes() {
@@ -186,4 +194,6 @@ export function createViewSelectors(store) {
       return store.getState().view.activeId;
     },
   };
+
+  return selectors;
 }

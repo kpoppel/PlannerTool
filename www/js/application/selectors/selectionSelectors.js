@@ -1,5 +1,7 @@
 import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 function deriveEffectiveProjectIdsFromStore(state) {
   const rawSelected = state.selection.projectIds.map((id) => String(id));
 
@@ -50,8 +52,12 @@ function deriveTeamsFromStore(state) {
 }
 
 
+/**
+ * @param {StoreApi} store
+ * @returns {object}
+ */
 export function createSelectionSelectors(store) {
-  return {
+  const selectors = {
     getEffectiveSelectedProjectIds() {
       const state = store.getState();
       return deriveEffectiveProjectIdsFromStore(state);
@@ -76,21 +82,25 @@ export function createSelectionSelectors(store) {
     },
 
     getSelectedProjects() {
-      return this.getProjects().filter((project) => Boolean(project?.selected));
+      return selectors.getProjects().filter((project) => Boolean(project.selected));
     },
 
     getSelectedTeams() {
-      return this.getTeams().filter((team) => Boolean(team?.selected));
+      return selectors.getTeams().filter((team) => Boolean(team.selected));
     },
 
     getProjectById(id) {
       const key = String(id);
-      return this.getProjects().find((project) => String(project?.id) === key) || null;
+      const project = selectors.getProjects().find((item) => item && String(item.id) === key);
+      return project;
     },
 
     getTeamById(id) {
       const key = String(id);
-      return this.getTeams().find((team) => String(team?.id) === key) || null;
+      const team = selectors.getTeams().find((item) => item && String(item.id) === key);
+      return team;
     },
   };
+
+  return selectors;
 }

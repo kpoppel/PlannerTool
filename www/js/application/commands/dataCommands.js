@@ -12,6 +12,10 @@ import {
 } from '../shared/featureProjection.js';
 import { deriveOrderedFeatureStateNames } from '../shared/stateDerivations.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+/** @typedef {import('../types.js').EventBusLike} EventBusLike */
+/** @typedef {import('../types.js').AppState} AppState */
+
 // Passed as bus to the store-owned CapacityCalculator so it never double-emits.
 const NO_OP_BUS = { emit: () => {}, on: () => {}, off: () => {} };
 
@@ -76,10 +80,16 @@ function derivePaletteColor(item, mappedColor, fallbackIndex) {
   return color;
 }
 
+/**
+ * @param {StoreApi} store
+ * @param {EventBusLike} bus
+ * @param {any} dataService
+ * @returns {object}
+ */
 export function createDataCommands(store, bus, dataService) {
   const capacityCalculator = new CapacityCalculator(NO_OP_BUS);
 
-  return {
+  const commands = {
     recomputeCapacity(changedFeatureIds = null) {
       const state = store.getState();
       const features = deriveEffectiveFeatures(state, { includeDirtyMetadata: false });
@@ -284,7 +294,7 @@ export function createDataCommands(store, bus, dataService) {
         'data.hydrateBaseline'
       );
 
-      this.recomputeCapacity();
+      commands.recomputeCapacity();
 
       bus.emit(StateFilterEvents.CHANGED);
       bus.emit(DataEvents.LOADED);
@@ -374,4 +384,6 @@ export function createDataCommands(store, bus, dataService) {
     },
 
   };
+
+  return commands;
 }

@@ -1,302 +1,368 @@
-**PlannerTool Server Architecture**
+# PlannerTool Backend Architecture: C4 Model
 
-Purpose: a concise overview of the backend server architecture and module responsibilities for developers. This document describes high-level layered structure, module organization, and key patterns. It avoids line-level detail in favor of responsibilities and design principles.
+This document applies the [C4 model](https://c4model.com/) to the Python
+backend in `planner_lib`. It describes the server as a software system, its
+runtime containers and data stores, its Python components, and selected code
+relationships. Client-side application code and browser rendering are outside
+this document.
 
-**System Overview**
+C4 uses four hierarchical levels: **System Context**, **Container**,
+**Component**, and **Code**. In this document, **Container** means a runnable
+application or data store. It does not mean the Python `ServiceContainer`,
+which is a dependency-injection component described at Level 3.
 
-- **Tech stack:** Python 3.x, FastAPI for REST API, async/await for request handling, pluggable storage backends (file-based YAML/Pickle, in-memory mock), threading for session management, Azure DevOps SDK integration for work-item data.
-- **Design principles:** layered separation of concerns (API routes, services, storage); pluggable storage and Azure client implementations; dependency injection container for service composition; stateless service design; feature flags for gradual feature rollout.
-- **Runtime:** Uvicorn ASGI server exposing HTTP endpoints at `/api/*`. Serves static SPA from `www/` at root and `/static/`.
+## Level 1: System Context
 
-**Layered Architecture**
+### System
 
-1. **API Routes (routers in `projects/api.py`, `scenarios/api.py`, etc.):** FastAPI router definitions that handle HTTP requests. Responsibilities: parse request parameters, extract session/user context, delegate to services, format responses. All routes require session authentication (enforced by `@require_session` decorator). Routes do not contain business logic — they resolve services from the container and call them. Error handling converts exceptions to appropriate HTTP status codes.
+**PlannerTool Backend** is an authenticated HTTP service for planning data. It
+serves configuration and planning resources, coordinates Azure DevOps reads and
+writes, persists user-owned planning data, and exposes administration and
+health endpoints.
 
-2. **Middleware (`middleware/`):** Cross-cutting concerns applied to all requests. Includes:
-   - `SessionMiddleware`: extracts session ID from cookies, validates session, attaches user context to request.
-   - `BrotliCompression`: optional compression middleware for response payloads (enabled via feature flag).
-   - Error handlers for 401 (access denied) and 404 (not found) responses.
+### People and external systems
 
-3. **Services (`services/`, `projects/`, `scenarios/`, `cost/`, `accounts/`, `admin/`):** Encapsulate domain logic, state management, and orchestration. Services own their concerns:
-   - **State & Config Services** (`State.js`, `ConfigService`): manage baseline data (projects, teams) and application configuration.
-   - **Project/Team/Capacity Services** (`ProjectService`, `TeamService`, `CapacityService`): domain-specific operations for project and team data.
-   - **Task Service** (`TaskService`): integrates with Azure DevOps SDK to fetch work items, markers, dependencies. Orchestrates across ProjectService, TeamService, CapacityService, and AzureService.
-   - **Scenario Service** (`ScenarioManager`, `ScenarioStore`): manages user-created scenarios (variations of the baseline) and stores them in persistence.
-   - **Cost Service** (`CostService`): computes cost metrics based on features and projects.
-   - **Account/Session Services** (`AccountManager`, `SessionManager`): user authentication, email validation, session lifecycle.
-   - **Admin Service** (`AdminService`): admin-only operations (user management, migrations, configuration updates).
+| Element | Type | Description |
+|---|---|---|
+| Planner user | Person | Uses the HTTP API to read planning data and manage user-owned scenarios, views, events, and groups. |
+| Planner administrator | Person | Configures projects, teams, Azure connectivity, feature flags, users, backups, and backend behavior. |
+| Azure DevOps | External software system | Supplies work items, revision history, teams, plans, markers, and iterations; accepts supported work-item and event operations. |
+| Deployed data directory | External data store | Holds the diskcache databases and other configured persistent data used by the backend. |
+| HTTP API client | External software system | Sends authenticated HTTP requests to the backend. It may be a web client, automation, or another service; its implementation is outside this document. |
 
-4. **Azure Integration (`azure/`):** Abstracts Azure DevOps SDK interaction. Responsibilities:
-   - `AzureService` (stateless): factory for per-request concrete clients bound to a Personal Access Token (PAT).
-   - Concrete clients (`AzureNativeClient`, `AzureCachingClient`): manage SDK lifecycle, implement caching strategies. Clients are context-managers; callers use `with service.connect(pat) as client:` to obtain short-lived instances.
-   - Specialized modules (`work_items.py`, `teams_plans.py`, `markers.py`, `caching.py`): logic for fetching work items, team plans, delivery markers, and optional in-memory caching.
+### Context diagram
 
-5. **Storage (`storage/`):** Pluggable persistence layer. Responsibilities:
-   - `StorageBackend` (protocol): abstract interface with methods `save`, `load`, `delete`, `list_keys`, `exists`, `configure`.
-   - Implementations: `FileBackend` (file-based YAML/Pickle), `MemoryBackend` (in-memory for tests), `Accessor` (thin wrapper).
-   - Serializers: `YamlSerializer`, `PickleSerializer` — pluggable format handlers.
-   - Namespacing: storage is organized by namespace (e.g., "config", "scenarios", "accounts") so multiple backends can coexist (one for YAML config, one for Pickle state).
+```mermaid
+flowchart LR
+    user[Person: Planner user]
+    admin[Person: Planner administrator]
+    client[External system: HTTP API client]
+    backend[Software system: PlannerTool Backend]
+    ado[External system: Azure DevOps]
+    data[(External data store: Deployed data directory)]
 
-6. **Dependency Injection & Wiring (`services/container.py`, `planner_lib/main.py`):** Centralizes service composition and dependency graph. Responsibilities:
-   - `ServiceContainer`: simple registry with singleton and factory support.
-   - `main.py::create_app()`: factory function that instantiates all services, registers them, builds FastAPI app, attaches routers. Avoids import-time side-effects so tests can construct isolated apps with custom configurations.
-   - `resolver.py`: request-scoped service resolution via `resolve_service(request, 'service_name')`.
-
-7. **Configuration & Initialization (`logging_config.py`, `setup.py`, `planner_lib/__init__.py`):** Application setup and feature flags.
-   - Logging: structured logging with configurable levels.
-   - Feature flags: stored in server configuration; used to gate capabilities (e.g., Brotli compression, Azure caching).
-
-**Entry Points**
-
-- **`planner.py`** (root): simple factory entry point. Provides `make_app()` which serves the Vite-built `dist/` bundle. Pass `--root-path` to uvicorn for sub-path deployments.
-- **`planner_lib/main.py`** (core): `create_app(config: Config) -> FastAPI` performs all composition. All business logic is driven from here.
-
-**Key Design Patterns**
-
-**Service Composition via Factory Pattern**
-- `create_app(Config)` instantiates all services and registers them in the ServiceContainer.
-- Each service receives its dependencies (storage, other services) via constructor injection.
-- Services are registered as singletons; they are created once at app startup and reused across requests.
-
-**Pluggable Backends**
-- Storage: file-based, memory-based, or custom implementations all conform to `StorageProtocol`.
-- Azure clients: `AzureNativeClient` vs `AzureCachingClient` selected via feature flags; both implement the same context-manager interface.
-- Serializers: YAML vs Pickle selected per backend; implementations are swappable.
-
-**Per-Request Service Resolution**
-- Routes receive the `Request` object and call `resolve_service(request, 'service_key')` to retrieve services from the container.
-- This decouples routes from the global app state and allows tests to inject custom services.
-- SessionMiddleware attaches the container and session info to `request.state` for access by resolvers.
-
-**Stateless Service Design**
-- Services do not hold mutable state across requests. State is stored in persistence (storage backends).
-- Example: `AzureService` holds organization URL and storage but not a PAT or active connection; callers must provide a PAT to obtain a concrete client via `connect(pat)`.
-- Session state is managed by `SessionManager` in-memory storage (thread-safe dict) for the duration of the app; user scenarios and accounts are persisted to storage backends.
-
-**Context-Manager Pattern for Resource Management**
-- Azure clients and storage backends use context-managers to ensure resource cleanup (e.g., closing SDK connections).
-- Example: `with azure_service.connect(pat) as client: client.get_work_items(...)`.
-
-**Feature Flags for Gradual Migration**
-- Configuration includes feature flags (e.g., `enable_cache`, `cache_azure_plans`) that gate optional capabilities.
-- Services check flags at runtime (not import time) so deployments can test new features gradually.
-- Goal: remove flags progressively as features stabilize.
-
-**Error Handling & Validation**
-- Services raise domain-specific exceptions (e.g., `KeyError` for missing data, `ValueError` for invalid input).
-- Routes catch exceptions and convert them to appropriate HTTP responses (4xx for client errors, 5xx for server errors).
-- ValidationErrors from Pydantic models are auto-converted by FastAPI.
-
-**Authentication & Authorization**
-- `SessionMiddleware` validates session cookies and creates sessions on-demand for new users.
-- All routes except `/config` (setup) require valid sessions.
-- Admin routes check user role (stored in session) to restrict access.
-
-**Data Namespacing & Isolation**
-- Storage is organized by namespace (e.g., "config", "scenarios", "accounts") so multiple backends can coexist without collision.
-- User scenarios are stored under a user-id key to ensure isolation.
-- Configuration is shared (all users access the same projects/teams) while user data (scenarios, session state) is isolated.
-
-**Module Responsibilities Summary**
-
-| Module | Responsibility |
-|--------|-----------------|
-| `projects/` | List teams, projects; manage team load calculations via CapacityService |
-| `projects/project_service.py` | Load project configuration; expose project list |
-| `projects/team_service.py` | Load team configuration; expose team list |
-| `projects/capacity_service.py` | Calculate per-team capacity based on work items |
-| `projects/task_service.py` | Integrate with Azure to fetch work items, markers, dependencies; orchestrate across other services |
-| `scenarios/` | Save/load/list user scenarios (baseline variations) |
-| `scenarios/scenario_store.py` | Persistence operations for scenarios (save, load, delete) |
-| `accounts/` | User email validation, account creation, session management |
-| `accounts/config.py` | Email validation logic, account storage abstraction |
-| `accounts/api.py` | HTTP endpoints for account setup |
-| `azure/` | Abstract Azure DevOps SDK access; factory for concrete clients |
-| `azure/__init__.py` | AzureService (stateless service); client selection via feature flags |
-| `azure/AzureNativeClient.py` | Native Azure SDK client; works with PAT directly |
-| `azure/AzureCachingClient.py` | Caching wrapper around AzureNativeClient; optional in-memory cache |
-| `azure/work_items.py` | Fetch work items from Azure; parse properties |
-| `azure/teams_plans.py` | Fetch team plans; parse iterations and sprints |
-| `azure/markers.py` | Parse delivery plan markers from Azure |
-| `cost/` | Compute cost metrics |
-| `cost/engine.py` | Cost calculation algorithm |
-| `cost/service.py` | Cost service orchestration; expose cost API |
-| `admin/` | Admin-only operations |
-| `admin/service.py` | Admin logic (user management, config updates) |
-| `admin/api.py` | HTTP endpoints for admin actions |
-| `storage/` | Pluggable persistence |
-| `storage/base.py` | Abstract StorageBackend base class |
-| `storage/file_backend.py` | File-based backend using OS filesystem |
-| `storage/memory_backend.py` | In-memory backend for tests |
-| `storage/serializer.py` | YAML and Pickle serializers |
-| `middleware/` | Cross-cutting concerns |
-| `middleware/session.py` | SessionManager, SessionMiddleware; session lifecycle |
-| `middleware/admin.py` | Admin route protection |
-| `middleware/brotli.py` | Optional Brotli compression |
-| `services/` | DI infrastructure |
-| `services/container.py` | ServiceContainer (registry, singletons, factories) |
-| `services/resolver.py` | Request-scoped service resolution |
-| `services/interfaces.py` | Storage protocol definition |
-| `server/` | Health checks and server info |
-| `server/api.py` | HTTP endpoints for server status |
-| `session/` | Session API endpoints |
-| `session/api.py` | Session creation, validation endpoints |
-| `main.py` | Application factory; composes all services and registers routers |
-| `logging_config.py` | Logging setup and configuration |
-| `setup.py` | Feature flag access; initialization helpers |
-| `util.py` | General-purpose utilities (e.g., slugify) |
-
-**Request Flow Example**
-
-Here's a typical request flow for fetching tasks:
-
-1. Client sends GET `/api/tasks?project=project-id` with sessionId cookie.
-2. SessionMiddleware validates cookie, extracts session ID, loads session data (user email, PAT) into `request.state`.
-3. Route handler `api_tasks()` calls `resolve_service(request, 'task_service')` to get TaskService instance.
-4. TaskService calls ProjectService to validate project, TeamService to list teams, CapacityService to compute capacity.
-5. TaskService calls `azure_service.connect(pat)` to obtain a per-request concrete client.
-6. Concrete client (AzureNativeClient or AzureCachingClient) connects to Azure, fetches work items, parses them.
-7. TaskService filters and transforms work items into frontend-ready format.
-8. Route returns JSON response to client.
-
-**Data Flow: Baseline → Scenario**
-
-1. Server configuration (projects, teams) is stored in YAML and loaded at startup via ProjectService and TeamService.
-2. Azure DevOps provides live work-item data (linked work items, effort, team assignments).
-3. TaskService merges configuration with Azure data.
-4. Client-side state (www/js) computes derived data (effective features, capacity).
-5. User creates a scenario (variation of baseline) and sends it to `/api/scenario` POST.
-6. Route handler saves scenario to storage under user ID using ScenarioStore.
-7. Client can later load scenario via GET `/api/scenario?id=scenario-id`.
-
-**Testing Strategy**
-
-- **Unit tests:** Test services in isolation using mock storage (MemoryBackend), mock Azure clients, and fixture data.
-- **Integration tests:** Wire services together with real storage backends and verify end-to-end flows.
-- **Route tests:** Mock services, call route handlers directly or via test client, verify response format and status codes.
-- **Storage tests:** Test storage implementations with various formats (YAML, Pickle) and ensure data round-trips correctly.
-- **Dependency injection tests:** Verify ServiceContainer registration and resolution, test app factory with custom Config.
-
-**Development Guidelines**
-
-**Adding a New Endpoint**
-1. Create or extend an API router in `module/api.py`.
-2. Decorate with `@router.get/post/put/delete(...)` and `@require_session` if authentication is needed.
-3. Extract service from container via `resolve_service(request, 'service_key')`.
-4. Call service method; handle exceptions and return appropriate HTTP status code.
-
-**Adding a New Service**
-1. Create `module/service.py` and implement the domain logic.
-2. Declare a protocol in `module/interfaces.py` for testability (dependency inversion).
-3. Instantiate and register the service in `main.py::create_app()` under a unique key.
-4. Inject dependencies (storage, other services) via constructor.
-
-**Adding a New Storage Backend**
-1. Implement `StorageProtocol` (methods: `save`, `load`, `delete`, `list_keys`, `exists`, `configure`).
-2. Ensure thread-safety if necessary (e.g., FileBackend uses filesystem locks).
-3. Create a factory or wiring logic in `storage/__init__.py`.
-4. Update `main.py` to allow config-time backend selection.
-
-**Adding a New Serializer**
-1. Implement the serializer protocol in `storage/serializer.py`.
-2. Register with the backend's serializer registry.
-3. Test round-tripping (serialize → deserialize → equality).
-
-**Configuration & Feature Flags**
-- Configuration is stored in diskcache (key `config::server_config`) and loaded by ProjectService, TeamService, and other services.
-- Feature flags are keys in the server config under `feature_flags` section.
-- At runtime, services check flags via config lookups or via the `setup.py::has_feature_flag()` helper.
-- To add a flag: update diskcache `server_config`, check flag in service code, gate the behavior.
-
-**Known Limitations & Future Improvements**
-
-- **Session persistence:** SessionManager stores sessions in-memory; server restart loses all sessions. Consider persistent session store (e.g., Redis).
-- **Admin service complexity:** AdminService handles multiple concerns (user management, config updates); could be split into smaller services.
-- **Error codes:** Error responses could use standardized error codes and schemas for better client handling.
-- **Caching strategy:** Azure caching is per-client instance; could be improved with request-scoped or app-scoped caches.
-- **TypeScript/Strong typing:** Python types are good but could be stricter. Consider gradual migration to TypeScript or stricter Python type checking.
-- **Async services:** Some services are sync; consider async/await for I/O-bound operations (storage, Azure SDK).
-- **Testing coverage:** Aim for >80% statement coverage on services; prioritize high branch coverage for critical paths.
-
-**Deployment & Operations**
-
-- **Environment variables:** Configuration via `Config` dataclass (e.g., `data_dir`, `storage_backend`).
-- **Logging:** Structured logging with configurable levels. Output to console or file via `logging_config.py`.
-- **Health checks:** `/api/server/health` endpoint for monitoring.
-- **Performance:** Feature flags control expensive operations (e.g., Azure caching); use flags to tune performance for large workloads.
-- **Scaling:** Stateless service design allows horizontal scaling. Session state and user data must be persisted to a shared backend (not in-memory) for multi-instance deployments.
-
-**Directory Structure Quick Reference**
-
-```
-planner_lib/
-  __init__.py
-  main.py                    # App factory: create_app(Config)
-  logging_config.py          # Logging setup
-  setup.py                   # Feature flags, initialization
-  util.py                    # Utilities (e.g., slugify)
-  
-  accounts/                  # User authentication & accounts
-    config.py                # Email validation, account storage
-    api.py                   # HTTP endpoints
-    interfaces.py            # Protocols
-    
-  admin/                     # Admin operations
-    service.py               # Admin logic
-    api.py                   # HTTP endpoints
-    
-  azure/                     # Azure DevOps integration
-    __init__.py              # AzureService (stateless)
-    AzureNativeClient.py     # Native SDK client
-    AzureCachingClient.py    # Caching wrapper
-    work_items.py            # Work-item parsing
-    teams_plans.py           # Team plan fetching
-    markers.py               # Delivery marker parsing
-    caching.py               # Cache implementation
-    interfaces.py            # Protocols
-    
-  cost/                      # Cost calculations
-    engine.py                # Algorithm
-    service.py               # Cost service
-    api.py                   # HTTP endpoints
-    
-  middleware/                # Cross-cutting concerns
-    session.py               # SessionManager, SessionMiddleware
-    admin.py                 # Admin protection
-    brotli.py                # Compression
-    interfaces.py            # Protocols
-    
-  projects/                  # Projects & teams
-    project_service.py       # Project listing
-    team_service.py          # Team listing
-    capacity_service.py      # Capacity calculation
-    task_service.py          # Task/work-item fetching
-    api.py                   # HTTP endpoints
-    interfaces.py            # Protocols
-    
-  scenarios/                 # User scenarios
-    scenario_store.py        # Scenario persistence
-    api.py                   # HTTP endpoints
-    
-  server/                    # Server info & health
-    api.py                   # HTTP endpoints (health check)
-    health.py                # Health check logic
-    
-  services/                  # DI infrastructure
-    container.py             # ServiceContainer
-    resolver.py              # Service resolution
-    interfaces.py            # Storage protocol
-    
-  session/                   # Session endpoints
-    api.py                   # HTTP endpoints
-    
-  storage/                   # Persistence layer
-    base.py                  # StorageBackend base class
-    file_backend.py          # File-based backend
-    memory_backend.py        # In-memory backend
-    serializer.py            # YAML & Pickle serializers
-    accessor.py              # Storage wrapper
-    interfaces.py            # Protocols
+    user -->|Uses planning and user-data API| client
+    admin -->|Uses administration API| client
+    client -->|Authenticated HTTP/JSON requests| backend
+    backend -->|Reads and writes work-item data with session credentials| ado
+    backend -->|Persists configuration, accounts, user data, and cache databases| data
 ```
 
-End of architecture document.
+## Level 2: Container Diagram
+
+The deployed backend is a Python/Uvicorn process plus two logical persistent
+data stores. The stores are separate diskcache locations so TTL-governed remote
+cache entries can be deleted without deleting authoritative data.
+
+| Container | Technology | Responsibility |
+|---|---|---|
+| PlannerTool API process | Python, FastAPI, Uvicorn | Handles HTTP requests, authentication, routing, domain orchestration, backend selection, and response/error handling. Created by `planner_lib.main.create_app`. |
+| Authoritative storage | Diskcache by default; file or memory backends are supported | Stores server configuration, accounts, user data, and other durable application records. |
+| Remote cache storage | Separate diskcache location | Stores TTL-governed results from Azure, static, or mock remote-data backends when caching is enabled. |
+| Azure DevOps | External SaaS system | Remote source and destination for Azure-backed planning data. |
+
+`Config` selects `data_dir`, `storage_backend`, `raw_serializer`, compression,
+and the deployed asset directory. The root HTTP route may serve configured
+deployment assets, but those assets are not part of the backend model here.
+
+### Container diagram
+
+```mermaid
+flowchart TB
+    client[External system: HTTP API client]
+    ado[External system: Azure DevOps]
+    api[Container: PlannerTool API process\nPython + FastAPI + Uvicorn]
+    auth[(Container: Authoritative storage\nDiskcache/file/memory abstraction)]
+    cache[(Container: Remote cache storage\nTTL-governed diskcache)]
+
+    client -->|HTTPS/JSON| api
+    api -->|Configuration, accounts, user data| auth
+    api -->|Cached remote-data reads and invalidation| cache
+    api -->|Credentialed work-item, plan, team, history, and iteration access| ado
+```
+
+### Container responsibilities
+
+#### PlannerTool API process
+
+`planner_lib.main.create_app(config)` constructs this container in three
+phases:
+
+1. `_build_storages` creates authoritative storage.
+2. `_build_services` registers lazy service and repository factories.
+3. `_build_app` creates FastAPI, installs middleware and exception handlers,
+   and includes the routers.
+
+The process has no import-time global application instance. `planner.py:make_app`
+is the zero-argument Uvicorn factory.
+
+#### Authoritative storage
+
+`planner_lib.storage.create_storage` provides the storage abstraction. Runtime
+roles are exposed through:
+
+- `storage` for authoritative records;
+- `config_backend` for shared server, project, team, people, plan, iteration,
+  and Azure configuration;
+- `user_data_backend` for scenarios, views, and local event data.
+
+The default is raw `DiskCacheStorage`. `FileStorageBackend` and `MemoryStorage`
+are available for alternate deployments and tests. Serializers support raw,
+YAML, JSON, and encrypted values when composed with a compatible storage
+backend.
+
+#### Remote cache storage
+
+`remote_cache_storage` is a separate storage instance used by `CachingBackend`.
+It holds TTL-governed fetch results and can be discarded independently of
+configuration, accounts, sessions, and user data. Cache behavior is selected by
+the `enable_cache` feature flag and configured TTL values.
+
+## Level 3: Component Diagram
+
+The following components are inside the **PlannerTool API process** container.
+The Python `ServiceContainer` is shown as a component, not as a C4 container.
+
+```mermaid
+flowchart TB
+    routes[Component: FastAPI route modules]
+    middleware[Component: Session and compression middleware]
+    di[Component: ServiceContainer and resolver]
+    repos[Component: Domain repositories]
+    services[Component: Domain services]
+    registry[Component: Backend registry and caching]
+    adapters[Component: Backend adapters]
+    storage[Component: Storage abstraction]
+    credentials[Component: Credential provider]
+    authstore[(Container: Authoritative storage)]
+    cachestore[(Container: Remote cache storage)]
+    ado[External system: Azure DevOps]
+
+    routes --> middleware
+    routes --> di
+    di --> repos
+    di --> services
+    repos --> credentials
+    repos --> registry
+    repos --> storage
+    services --> repos
+    services --> storage
+    registry --> adapters
+    registry --> cachestore
+    adapters --> ado
+    storage --> authstore
+    credentials --> services
+```
+
+### Component catalogue
+
+#### API route modules
+
+FastAPI routers in `planner_lib/*/api.py` parse HTTP input, resolve a
+repository or service, and format the response. They cover session,
+configuration, projects, scenarios, views, cost, server, administration,
+events, groups, and Azure endpoints. Routes do not directly implement storage
+or provider-specific orchestration.
+
+#### Session and compression middleware
+
+`planner_lib.middleware` provides `SessionMiddleware`, `require_session`,
+`require_admin_session`, optional Brotli compression, GZip registration, and
+access-denied/error response handling. Authentication is route-specific:
+session creation and setup are public entry points; protected domain and admin
+routes apply explicit decorators.
+
+#### ServiceContainer and resolver
+
+`planner_lib.services.container.ServiceContainer` registers singletons and lazy
+factories. Factories are evaluated once and cached. `resolve_service(request,
+key)` resolves a service through `request.app.state.container`, keeping route
+modules independent from construction details.
+
+#### Domain repositories
+
+Repositories provide the application-facing data boundary:
+
+| Component | Main responsibility |
+|---|---|
+| `TaskRepository` | Work-item reads and writes |
+| `HistoryRepository` | Work-item revision history |
+| `ProjectRepository` / `TeamRepository` | Configured projects and teams |
+| `PeopleRepository` | Configured people/team members |
+| `PlanRepository` / `IterationRepository` | Plans, markers, and iterations |
+| `ScenarioRepository` / `ViewRepository` | User-scoped scenarios and views |
+| `EventRepository` / `GroupRepository` | Plan-scoped events and task groups |
+
+Repositories depend on focused protocols or local configuration backends, not
+on route handlers.
+
+#### Domain services
+
+- `AccountManager` validates and persists account records.
+- `SessionManager` tracks active sessions in a thread-safe process-local map
+  and loads account credentials during session creation.
+- `CapacityService` calculates capacity from configured team data.
+- `AzureProjectMetadataService` obtains project metadata.
+- `CostService` coordinates cost calculations across people, projects, teams,
+  and storage.
+- `AdminService` handles privileged configuration, account, cache, backup,
+  and reload operations.
+- `CacheCoordinator` coordinates invalidation/reload behavior.
+- `HealthConfig` supports server health/status behavior.
+
+#### Backend registry and caching
+
+`planner_lib.backend.registry` selects the active backend by feature flags. Its
+priority order is `StaticBackend`, `MockGeneratorBackend`,
+`MockFixtureBackend`, then the default `AzureDevOpsBackend`. `CachingBackend` is
+composed around the selected backend when caching is enabled.
+
+#### Backend adapters
+
+`planner_lib.backend.port` defines focused protocols such as `TaskBackend`,
+`HistoryBackend`, `TeamsBackend`, `PlansBackend`, `IterationsBackend`,
+`ProjectConfigBackend`, `TeamConfigBackend`, `PeopleBackend`, scenario/view
+backends, and event backends. `BackendPort` is the composite remote-data
+contract.
+
+Remote operations receive a `BackendCredential` containing an opaque token and
+session user ID. Local configuration and user-data operations do not require
+remote credentials. Azure-specific client lifecycle and SDK calls remain behind
+the backend/Azure adapter boundary.
+
+#### Storage abstraction
+
+`planner_lib.storage` composes storage implementations and serializers. It
+provides namespaced `save`, `load`, `delete`, `list_keys`, and existence
+operations to the application-facing backends.
+
+## Level 4: Code Diagram
+
+The Code level is intentionally limited to the application-factory path and a
+representative authenticated task request. These classes are the primary
+construction and request-flow anchors:
+
+```mermaid
+classDiagram
+    class Config
+    class create_app
+    class ServiceContainer
+    class SessionMiddleware
+    class TaskRepository
+    class CredentialProvider
+    class BackendPort
+    class CachingBackend
+    class AzureDevOpsBackend
+    class StorageBackend
+
+    create_app --> Config : reads
+    create_app --> ServiceContainer : builds
+    create_app --> SessionMiddleware : installs
+    ServiceContainer --> TaskRepository : lazy factory
+    ServiceContainer --> BackendPort : active backend
+    TaskRepository --> CredentialProvider : obtains credential
+    TaskRepository --> BackendPort : fetches tasks
+    CachingBackend ..|> BackendPort
+    AzureDevOpsBackend ..|> BackendPort
+    BackendPort --> StorageBackend : cache/config dependencies
+```
+
+Representative Python definitions and ownership:
+
+| Code element | Location | Role |
+|---|---|---|
+| `Config` | `planner_lib/main.py` | Runtime application configuration |
+| `create_app` | `planner_lib/main.py` | Application factory and startup composition |
+| `ServiceContainer` | `planner_lib/services/container.py` | Lazy singleton/factory registry |
+| `SessionMiddleware` / `require_session` | `planner_lib/middleware/session.py` | Session cookie handling and route authentication |
+| `TaskRepository` | `planner_lib/repository/task_repository.py` | Application-facing task operations |
+| `BackendPort` | `planner_lib/backend/port.py` | Composite remote-data protocol |
+| `get_active_class` / `build_active_backend` | `planner_lib/backend/registry.py` | Feature-flag backend selection |
+| `CachingBackend` | `planner_lib/backend/caching.py` | TTL cache decorator around a remote backend |
+| `AzureDevOpsBackend` | `planner_lib/backend/azure.py` | Azure DevOps backend implementation |
+| `StorageBackend` | `planner_lib/storage/base.py` | Persistence protocol |
+
+## Supporting C4 Dynamic Diagram: Authenticated Task Request
+
+This dynamic view describes one representative request without adding a new
+structural level:
+
+```mermaid
+sequenceDiagram
+    participant C as HTTP API client
+    participant M as Session middleware
+    participant R as Task route
+    participant T as TaskRepository
+    participant P as Credential provider
+    participant B as Active BackendPort
+    participant K as Remote cache storage
+    participant A as Azure DevOps
+
+    C->>M: GET /api/tasks + session ID
+    M->>R: Dispatch request
+    R->>M: Validate session
+    R->>T: Resolve and invoke task operation
+    T->>P: Obtain BackendCredential
+    T->>B: fetch_tasks(..., credential)
+    B->>K: Check TTL cache
+    alt Cache hit
+        K-->>B: Cached task data
+    else Cache miss
+        B->>A: Credentialed work-item request
+        A-->>B: Work-item data
+        B->>K: Store result when caching enabled
+    end
+    B-->>T: Domain task data
+    T-->>R: Repository result
+    R-->>C: HTTP response
+```
+
+## Cross-Cutting Concerns
+
+### Authentication
+
+`POST /api/session` creates a session for a configured account.
+`SessionManager` stores the session ID, email, and account PAT in process-local
+memory. Repositories that need external access use
+`AccountManagerCredentialProvider` to obtain a session-scoped
+`BackendCredential`. Session state is lost on process restart; account and
+application data remain in configured storage.
+
+### Error handling
+
+FastAPI handles request-model validation. Missing or invalid sessions produce
+HTTP 401 responses. Domain and storage operations raise explicit exceptions
+such as `KeyError` and `ValueError`, which routes translate into expected HTTP
+errors. Unexpected failures are not converted into empty data; they remain
+visible through error responses and logging.
+
+### Testing
+
+Tests should target the same C4 boundaries:
+
+- storage and serializer tests for persistence and namespaces;
+- backend tests for Azure, mock, static, and caching protocols;
+- repository tests for mapping, credentials, scoping, and persistence;
+- service tests for account/session, capacity, cost, administration, and health;
+- route tests with isolated FastAPI apps and memory storage;
+- integration tests for `create_app`, middleware, router registration, and
+  repository wiring.
+
+Avoid network calls in unit tests. Use `MemoryStorage`, mock backends, and
+explicit session fixtures.
+
+## Deployment and Current Limitations
+
+- `planner.py:make_app` is the zero-argument Uvicorn factory.
+- A typical local command is:
+
+  ```text
+  uvicorn planner:make_app --factory --reload --port 8001
+  ```
+
+- `SessionManager` is process-local; multi-instance deployments need shared
+  session storage to share sessions reliably.
+- Diskcache persistence and cache invalidation/TTL behavior remain
+  configuration-driven.
+- Some Azure SDK and storage operations are synchronous inside the web app.
+- Error payloads are not standardized across every route family.

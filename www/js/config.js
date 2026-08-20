@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Feature Flags Configuration
  * Controls which new features are enabled

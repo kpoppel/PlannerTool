@@ -11,6 +11,7 @@ Template - do not change :
 ## [v] - unreleased
 ### Added
 ### Changed
+- Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
 
 ---
@@ -33,6 +34,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Removed unused legacy ViewManagementService, ViewService, and ConfigService modules and their orphaned tests now that store-backed view and configuration flows are active.
+- Preserved the exact groups payload in the GroupService cache instead of coercing invalid values to empty arrays during loading.
 - Removed remaining sidebar and feature-board fallback reads so store-backed selectors now fail fast on invalid state instead of silently defaulting to stale compatible values.
 - Fixed saved-view activation so Sidebar task filters and the graph-type toggle refresh immediately when a view is applied.
 - Fixed parent/child expansion state changes to emit the board refresh signals required for the featureboard to re-render with the newly computed expanded set.
@@ -54,6 +57,12 @@ Template - do not change :
 - Fixed store `setAllStatesSelected(true)` to derive available feature states from canonical baseline features, removing the stale dependency on a non-existent `state.filter` slice that broke plugin lifecycle tests.
 
 ### Changed
+- Simplified annotation overlay pointer handling and made annotation dates the sole persisted position source so annotations remain aligned across timeline scaling.
+- Continued plugin checkJs cleanup in `PluginPortfolioComponent.lit.js`, `annotations/AnnotationOverlay.js`, and `export/TimelineExportRenderer.js` by tightening null guards and selector API typing without changing runtime behavior.
+- Vendor bundling now injects `// @ts-nocheck` in generated `www/js/vendor/*` files via Rollup, so `build:vendor` outputs remain excluded from checkJs diagnostics after rebuilds.
+- Tightened canonical store checkJs contracts by removing untyped `this` selector/command self-calls, hardening nullable command dependencies, and aligning store command wiring/typing so `npx tsc --noEmit` passes for the application-layer model surface.
+- Added shared JSDoc typedefs for the store-backed command/selector surface in `www/js/application` and annotated command/store/selector factories to improve `tsc --noEmit` type clarity.
+- Continued JSDoc service-layer documentation in view/config/data init/provider base modules, clarifying bus/state/result contracts and dynamic sidebar/browser interactions for checkJs consumers.
 - Tightened application team-allocation helpers to the canonical feature capacity contract by using only `capacity[].teamId` and removing legacy nullable/fallback field normalization.
 - Tightened shared task-filter, scenario-mutation, group-projection, and feature-projection helpers to the canonical store contract by removing optional/nullish/fallback shape guards from those internal paths.
 - Tightened the current application changeset to strict canonical contracts across state derivations, group/feature/filter/view/data command-selector paths, and their targeted tests by removing optional/nullish/fallback guard patterns from those internal flows.

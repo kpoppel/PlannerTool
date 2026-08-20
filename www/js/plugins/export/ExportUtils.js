@@ -10,8 +10,8 @@ import { boardCoords } from '../../services/BoardCoordinateService.js';
  * Get bounds of the visible timeline viewport
  * Queries the DOM to find timeline elements and calculate their bounds
  * @param {Object} options - Optional overrides
- * @param {number} options.scrollLeft - Override horizontal scroll position
- * @param {number} options.scrollTop - Override vertical scroll position
+ * @param {number} [options.scrollLeft] - Override horizontal scroll position
+ * @param {number} [options.scrollTop] - Override vertical scroll position
  * @returns {Object} - { x, y, width, height, scrollLeft, scrollTop, totalWidth, totalHeight, mainGraphHeight, fullHeight }
  */
 export function getViewportBounds(options = {}) {
@@ -121,8 +121,9 @@ export function createSvgText(text, x, y, attrs = {}) {
     y: String(y),
     ...mergedAttrs,
   });
-  el.textContent = text;
-  return el;
+  const textEl = /** @type {SVGTextElement} */ (el);
+  textEl.textContent = text;
+  return textEl;
 }
 
 /**
@@ -196,6 +197,9 @@ export async function svgToPngBlob(svg, width, height, scale = 2) {
         canvas.height = height * scale;
 
         const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Canvas 2D context unavailable');
+        }
         ctx.scale(scale, scale);
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, width, height);
@@ -216,8 +220,8 @@ export async function svgToPngBlob(svg, width, height, scale = 2) {
         URL.revokeObjectURL(url);
         const msg =
           'Canvas operation failed during PNG creation — the export may be too large for your browser. Try showing fewer items and try again.';
-        const wrapped = new Error(msg + (err && err.message ? ` (${err.message})` : ''));
-        wrapped.originalError = err;
+        const wrapped = new Error(msg + (err && /** @type {any} */ (err).message ? ` (${/** @type {any} */ (err).message})` : ''));
+        /** @type {any} */ (wrapped).originalError = err;
         reject(wrapped);
       }
     };
@@ -226,7 +230,7 @@ export async function svgToPngBlob(svg, width, height, scale = 2) {
       URL.revokeObjectURL(url);
       const msg = 'Failed to load SVG as image — export may be too large or malformed.';
       const err = new Error(msg);
-      err.event = ev;
+      /** @type {any} */ (err).event = ev;
       reject(err);
     };
 

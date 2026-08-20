@@ -5,6 +5,13 @@ import { DataEvents, SessionEvents } from '../core/EventRegistry.js';
 import { RestProviderBase } from './RestProviderBase.js';
 import { ok, fail } from './result.js';
 
+/**
+ * @template T
+ * @typedef {{ ok: true, data: T } | { ok: false, error: any }} Result
+ */
+
+/** @typedef {HTMLElement & { message?: string, duration?: number, open?: boolean }} AutoCloseModalElement */
+
 export class ProviderREST extends RestProviderBase {
   constructor() {
     super({
@@ -66,6 +73,7 @@ export class ProviderREST extends RestProviderBase {
         console.error('Failed to create session', result.error);
         return;
       }
+      /** @type {any} */
       const data = result.data || {};
       this.sessionId = data.sessionId || null;
       console.log('Created session id:', this.sessionId);
@@ -109,6 +117,11 @@ export class ProviderREST extends RestProviderBase {
     return await this._reacquirePromise;
   }
 
+  /**
+   * @param {string} url
+   * @param {RequestInit} [options]
+   * @returns {Promise<Result<any>>}
+   */
   async _requestJson(url, options = {}) {
     return this._fetchJson(url, {
       ...options,
@@ -116,8 +129,12 @@ export class ProviderREST extends RestProviderBase {
     });
   }
 
-  _headers(extra) {
-    const h = Object.assign({}, extra || {});
+  /**
+   * @param {HeadersInit|undefined} extra
+   * @returns {Record<string, string>}
+   */
+  _headers(extra = undefined) {
+    const h = /** @type {Record<string, string>} */ (Object.assign({}, extra || {}));
     if (this.sessionId) {
       h['X-Session-Id'] = this.sessionId;
     }
@@ -138,9 +155,9 @@ export class ProviderREST extends RestProviderBase {
 
     try {
       await import('../components/AutoCloseMessageModal.js');
-      let modal = document.getElementById('app-message-modal');
+      let modal = /** @type {AutoCloseModalElement|null} */ (document.getElementById('app-message-modal'));
       if (!modal) {
-        modal = document.createElement('modal-autoclose');
+        modal = /** @type {AutoCloseModalElement} */ (document.createElement('modal-autoclose'));
         modal.id = 'app-message-modal';
         document.body.appendChild(modal);
       }
@@ -436,7 +453,7 @@ export class ProviderREST extends RestProviderBase {
   /**
    * Fetch plan events, optionally filtered by plan.
    * @param {string} [planId]
-   * @returns {Promise<Array<{id:string, date:string, title:string, plan_id:string}>>}
+    * @returns {Promise<Result<Array<{id:string, date:string, title:string, plan_id:string}>>>}
    */
   async getEvents(planId) {
     const url = planId ? `/api/events?plan_id=${encodeURIComponent(planId)}` : '/api/events';
@@ -482,7 +499,7 @@ export class ProviderREST extends RestProviderBase {
 
   /**
    * Fetch all event categories.
-   * @returns {Promise<Array>}
+    * @returns {Promise<Result<Array>>}
    */
   async getEventCategories() {
     return this._requestJson('/api/event-categories');
@@ -612,7 +629,7 @@ export class ProviderREST extends RestProviderBase {
   /**
    * List all groups, optionally filtered by plan_id.
    * @param {string} [planId]
-   * @returns {Promise<Array>}
+    * @returns {Promise<Result<Array>>}
    */
   async listGroups(planId) {
     const qs = planId ? `?plan_id=${encodeURIComponent(planId)}` : '';
@@ -622,7 +639,7 @@ export class ProviderREST extends RestProviderBase {
   /**
    * Create a new group.
    * @param {{ plan_id:string, name:string, color?:string, rank?:number }} payload
-   * @returns {Promise<object|null>}
+    * @returns {Promise<Result<object>>}
    */
   async createGroup(payload) {
     return this._requestJson('/api/groups', {
@@ -636,7 +653,7 @@ export class ProviderREST extends RestProviderBase {
    * Update an existing group.
    * @param {string} groupId
    * @param {{ name?:string, color?:string, rank?:number }} fields
-   * @returns {Promise<object|null>}
+    * @returns {Promise<Result<object>>}
    */
   async updateGroup(groupId, fields) {
     return this._requestJson(`/api/groups/${encodeURIComponent(groupId)}`, {
@@ -649,7 +666,7 @@ export class ProviderREST extends RestProviderBase {
   /**
    * Delete a group (server cascades sub-groups).
    * @param {string} groupId
-   * @returns {Promise<boolean>}
+    * @returns {Promise<Result<boolean>>}
    */
   async deleteGroup(groupId) {
     const result = await this._requestJson(`/api/groups/${encodeURIComponent(groupId)}`, {
@@ -661,8 +678,8 @@ export class ProviderREST extends RestProviderBase {
 
   /**
    * Fetch runtime plugin configuration from the backend.
-    * Returns an object: {schema_version, plugins:[...]} or null when unavailable.
-    * @returns {Promise<object|null>}
+    * Returns an object: {schema_version, plugins:[...]} in Result envelope.
+    * @returns {Promise<Result<object>>}
    */
   async getPluginsConfig() {
     const result = await this._requestJson('/api/plugins/config');

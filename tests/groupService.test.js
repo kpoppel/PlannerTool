@@ -143,6 +143,16 @@ describe('GroupService', () => {
       expect(svc.getGroupsForPlan('p1')).toEqual(groups);
     });
 
+    it('stores the fetched value without coercing it to an empty array', async () => {
+      const groups = null;
+      dataService.listGroups.mockResolvedValue(groups);
+
+      const result = await svc.loadGroups('p1');
+
+      expect(result).toBe(groups);
+      expect(svc._groupsByPlan.get('p1')).toBe(groups);
+    });
+
     it('emits GroupEvents.LOADED after fetch', async () => {
       dataService.listGroups.mockResolvedValue([]);
       await svc.loadGroups('p1');

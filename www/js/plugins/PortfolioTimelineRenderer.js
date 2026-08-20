@@ -11,8 +11,19 @@ import { sel } from '../application/imports.js';
 const TIMELINE_FADED_CATEGORIES = new Set(['completed', 'removed']);
 
 /**
+ * @typedef {{
+ *   id?: string,
+ *   state?: string,
+ *   title?: string,
+ *   project?: string,
+ *   start?: string,
+ *   end?: string
+ * }} TimelineFeature
+ */
+
+/**
  * Get the category for a timeline bar
- * @param {object} feature
+ * @param {TimelineFeature} feature
  * @returns {string}
  */
 function getTimelineBarCategory(feature) {
@@ -22,7 +33,7 @@ function getTimelineBarCategory(feature) {
 
 /**
  * Get the opacity for a timeline bar based on its category
- * @param {object} feature
+ * @param {TimelineFeature} feature
  * @returns {number}
  */
 function getTimelineBarOpacity(feature) {
@@ -31,7 +42,7 @@ function getTimelineBarOpacity(feature) {
 
 /**
  * Get the tooltip text for a timeline bar
- * @param {object} feature
+ * @param {TimelineFeature} feature
  * @param {string} projectName
  * @returns {string}
  */

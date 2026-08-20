@@ -630,6 +630,7 @@ export class FeatureService {
 
     while (toProcess.length > 0) {
       const id = toProcess.pop();
+      if (id === undefined) continue;
       const feature = featureById.get(id);
       if (!feature) continue;
 
@@ -673,6 +674,7 @@ export class FeatureService {
 
     while (toProcess.length > 0) {
       const id = toProcess.pop();
+      if (id === undefined) continue;
       const feature = featureById.get(id);
       if (!feature) continue;
 
@@ -726,10 +728,10 @@ export class FeatureService {
    * Each expansion type works from the original selectedIds to avoid compounding
    * @param {Set<string>} selectedIds - Base selected feature IDs
    * @param {Object} expansionOptions - Expansion configuration
-   * @param {boolean} expansionOptions.expandParentChild - Include parent/child transitive closure
-   * @param {boolean} expansionOptions.expandRelations - Include relation-linked tasks
-   * @param {boolean} expansionOptions.expandTeamAllocated - Include team-allocated tasks
-   * @param {Array<string>} expansionOptions.selectedTeamIds - Team IDs for team allocation expansion
+  * @param {boolean} [expansionOptions.expandParentChild] - Include parent/child transitive closure
+  * @param {boolean} [expansionOptions.expandRelations] - Include relation-linked tasks
+  * @param {boolean} [expansionOptions.expandTeamAllocated] - Include team-allocated tasks
+  * @param {Array<string>} [expansionOptions.selectedTeamIds] - Team IDs for team allocation expansion
    * @returns {Object} - { expandedIds: Set, counts: { parentChild: number, relations: number, teamAllocated: number } }
    */
   computeExpandedFeatureSet(selectedIds, expansionOptions = {}) {

@@ -22,6 +22,12 @@ import { dataService } from '../services/dataService.js';
 import { groupService } from '../services/GroupService.js';
 import { DataEvents, GroupEvents } from '../core/EventRegistry.js';
 
+/** @typedef {import('./types.js').AppState} AppState */
+/** @typedef {import('./types.js').StoreApi} StoreApi */
+
+/**
+ * @returns {void}
+ */
 function syncGroupsFromService() {
   const nextByPlanId = {};
   for (const [planId, groups] of groupService._groupsByPlan.entries()) {
@@ -54,6 +60,10 @@ function syncGroupsFromService() {
   );
 }
 
+/**
+ * @param {any[]|{scenarios?: any[]}|null|undefined} payload
+ * @returns {void}
+ */
 function syncScenariosFromServer(payload) {
   const scenarios = Array.isArray(payload) ? payload : payload?.scenarios;
   if (!Array.isArray(scenarios)) return;
@@ -123,6 +133,7 @@ bus.on(GroupEvents.CHANGED, syncGroupsFromService);
 
 const pluginStateCommands = createPluginStateCommands(store);
 
+/** @type {any} */
 const stateStoreCommands = {
   ui: createUiCommands(store, bus),
   data: createDataCommands(store, bus, dataService),
@@ -151,9 +162,9 @@ stateStoreCommands.feature = createFeatureCommands(
   () => stateStoreCommands.data.recomputeCapacity()
 );
 stateStoreCommands.scenario = createScenarioCommands(store, bus, null, {
-  hydrateBaseline: (...args) => stateStoreCommands.data.hydrateBaseline(...args),
-  recomputeCapacity: (...args) => stateStoreCommands.data.recomputeCapacity(...args),
-  invalidateCache: (...args) => dataService.invalidateCache(...args),
+  hydrateBaseline: () => stateStoreCommands.data.hydrateBaseline(),
+  recomputeCapacity: () => stateStoreCommands.data.recomputeCapacity(),
+  invalidateCache: () => dataService.invalidateCache(),
 });
 const stateStoreSelectors = {
   ui: uiSelectors,

@@ -113,8 +113,8 @@ export class ColorService {
   /**
    * Get color for a project
    * @param {string} projectId - Project ID
-   * @param {Array} [projects] - Optional project array for lookup
-   * @param {Array} [baselineProjects] - Optional baseline project array for fallback
+   * @param {Array|null} [projects] - Optional project array for lookup
+   * @param {Array|null} [baselineProjects] - Optional baseline project array for fallback
    * @returns {string} Hex color code
    */
   getProjectColor(projectId, projects = null, baselineProjects = null) {
@@ -169,7 +169,7 @@ export class ColorService {
    */
   getFeatureStateColors(availableStates) {
     const colors = {};
-    const states = availableStates || [];
+    const states = availableStates;
 
     for (const s of states) {
       const bg = this.getFeatureStateColor(s);

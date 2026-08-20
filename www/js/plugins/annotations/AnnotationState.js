@@ -63,7 +63,7 @@ export const TOOL_DEFINITIONS = [
 
 /**
  * Create a new note annotation
- * @param {number} x - X position
+ * @param {number} dateMs - X-axis timestamp anchor
  * @param {number} y - Y position
  * @param {string} text - Note text
  * @param {Object} options - { fill, stroke, width, height }
@@ -88,7 +88,7 @@ export function createNoteAnnotation(dateMs, y, text = 'Note', options = {}) {
 
 /**
  * Create a new rectangle annotation
- * @param {number} x - X position
+ * @param {number} dateMs - X-axis timestamp anchor
  * @param {number} y - Y position
  * @param {number} width - Rectangle width
  * @param {number} height - Rectangle height
@@ -113,9 +113,9 @@ export function createRectAnnotation(dateMs, y, width, height, options = {}) {
 
 /**
  * Create a new line annotation
- * @param {number} x1 - Start X
+ * @param {number} date1 - Start date timestamp
  * @param {number} y1 - Start Y
- * @param {number} x2 - End X
+ * @param {number} date2 - End date timestamp
  * @param {number} y2 - End Y
  * @param {Object} options - { stroke, strokeWidth, arrow }
  * @returns {Object} Line annotation object
@@ -375,6 +375,7 @@ export class AnnotationState {
 }
 
 // Singleton instance
+/** @type {AnnotationState|null} */
 let _stateInstance = null;
 
 /**

@@ -41,7 +41,7 @@ export class DataInitService {
 
   /**
    * Initialize state with baseline data from backend
-   * @returns {Object} - Object containing baselineProjects, baselineTeams, baselineFeatures
+    * @returns {Promise<Object>} - Object containing baselineProjects, baselineTeams, baselineFeatures
    */
   async initState() {
     const projects = await this._dataService.getProjects();
@@ -116,7 +116,7 @@ export class DataInitService {
   /**
    * Refresh baseline data from backend
    * Preserves selection state from ProjectTeamService
-   * @returns {Object} - Object containing refreshed baseline data
+    * @returns {Promise<Object>} - Object containing refreshed baseline data
    */
   async refreshBaseline() {
     // Fetch fresh data from backend — the server cache is already up to date
@@ -198,7 +198,7 @@ export class DataInitService {
    * Use this for explicit user-triggered refreshes (admin UI, manual sync button).
    * For post-write refreshes after a scenario push, use refreshBaseline() instead —
    * the server cache is already patched by the write-through mechanism.
-   * @returns {Object} - Object containing refreshed baseline data
+    * @returns {Promise<Object>} - Object containing refreshed baseline data
    */
   async invalidateAndRefreshBaseline() {
     console.log('Invalidating server cache before baseline refresh...');

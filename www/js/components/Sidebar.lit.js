@@ -1292,7 +1292,7 @@ export class SidebarLit extends LitElement {
     ].forEach((evt) => bus.on(evt, onPluginsChanged));
 
     // Sidebar state restore removed - views are now the primary persistence mechanism
-    // Last active view will be restored via ViewManagementService on app init
+    // Last active view is restored through the store-backed view commands on app init
   }
 
   disconnectedCallback() {
@@ -1473,7 +1473,7 @@ export class SidebarLit extends LitElement {
 
   _toggleTaskType(type) {
     if (!type) return;
-    // Use ViewService as the authoritative source for current visibility —
+    // Use the store-backed selectors as the authoritative source for current visibility —
     // avoids stale-selectedTaskTypes bugs when selectedTaskTypes was never
     // initialised (e.g. data loaded after connectedCallback ran with no features).
     const isCurrentlyVisible = sel.view.isTypeVisible(type);
@@ -1702,7 +1702,7 @@ export class SidebarLit extends LitElement {
 
   /**
    * Restore sidebar state from localStorage
-   * DEPRECATED: Views are restored via ViewManagementService.
+  * DEPRECATED: Views are restored through the store-backed view commands.
    */
   async _restoreSidebarState() {
     // No-op: This method is deprecated - views restored automatically

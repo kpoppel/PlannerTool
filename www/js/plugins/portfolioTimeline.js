@@ -14,6 +14,10 @@ export function formatTimelineMonthLabel(date) {
   return `${month}/${year}`;
 }
 
+/**
+ * @param {any} date
+ * @returns {date is Date}
+ */
 function isValidDate(date) {
   return date instanceof Date && !Number.isNaN(date.getTime());
 }

@@ -1,5 +1,8 @@
 import { ProjectEvents, TeamEvents, FeatureEvents } from '../../core/EventRegistry.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+/** @typedef {import('../types.js').EventBusLike} EventBusLike */
+
 function nextIds(currentIds, id, selected) {
   const set = new Set(Array.isArray(currentIds) ? currentIds : []);
   if (selected) set.add(id);
@@ -47,6 +50,12 @@ export function createLegacySelectionCommands(state) {
   };
 }
 
+/**
+ * @param {StoreApi} store
+ * @param {EventBusLike} bus
+ * @param {Function|null} [recomputeCapacity]
+ * @returns {object}
+ */
 export function createSelectionCommands(store, bus, recomputeCapacity = null) {
   return {
     setProjectSelected(id, selected, options = {}) {

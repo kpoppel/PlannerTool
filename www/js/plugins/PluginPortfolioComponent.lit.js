@@ -39,6 +39,18 @@ const TIMELINE_MONTH_GRID_SPACING = 120;
 // Tune this default cap for the timeline viewport height.
 const DEFAULT_TIMELINE_MAX_HEIGHT_VH = 50;
 
+/**
+ * @typedef {{
+ *   featureId: string | null,
+ *   fromState: string | null,
+ *   fromTeamId: string | null,
+ *   toState: string | null,
+ *   toTeamId: string | null,
+ *   active: boolean,
+ *   allowed: boolean
+ * }} PortfolioDragState
+ */
+
 export class PluginPortfolioComponent extends LitElement {
   static properties = {
     _open: { type: Boolean, state: true },
@@ -74,6 +86,7 @@ export class PluginPortfolioComponent extends LitElement {
     this._unallocatedOpen = true;
     this._boardOpen = true;
     this._timelineOpen = false;
+    /** @type {any} */
     this._timelineLayout = {
       empty: true,
       rows: [],
@@ -84,6 +97,7 @@ export class PluginPortfolioComponent extends LitElement {
       rangeStart: null,
       rangeEnd: null,
     };
+    /** @type {PortfolioDragState} */
     this._dragState = {
       featureId: null,
       fromState: null,
@@ -156,13 +170,19 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _onFeatureSelected() {
-    this._selectedFeatureId = sel.feature.getSelectedFeatureId();
+    const featureApi = /** @type {any} */ (sel.feature);
+    this._selectedFeatureId = featureApi.getSelectedFeatureId();
   }
 
   _refresh() {
+    const featureApi = /** @type {any} */ (sel.feature);
+    const selectionApi = /** @type {any} */ (sel.selection);
+    const filterApi = /** @type {any} */ (sel.filter);
+    const viewApi = /** @type {any} */ (sel.view);
+
     let features = [];
     try {
-      features = sel.feature.getEffectiveFeatures() || [];
+      features = featureApi.getEffectiveFeatures() || [];
     } catch (_) {
       return;
     }
@@ -174,27 +194,27 @@ export class PluginPortfolioComponent extends LitElement {
     }
     const deduped = Array.from(uniqueById.values());
 
-    const projects = sel.selection.getProjects() || [];
-    const teams = sel.selection.getTeams() || [];
-    const selectedProjectIds = sel.selection.getSelectedProjectIds();
+    const projects = selectionApi.getProjects() || [];
+    const teams = selectionApi.getTeams() || [];
+    const selectedProjectIds = selectionApi.getSelectedProjectIds();
     const selectedProjects = new Set(selectedProjectIds.map((id) => String(id)));
-    const selectedTeamIdsArr = sel.selection.getSelectedTeamIds();
+    const selectedTeamIdsArr = selectionApi.getSelectedTeamIds();
     const selectedTeams = teams.filter((t) => selectedTeamIdsArr.includes(t?.id));
     const selectedTeamIds = new Set(selectedTeams.map((t) => String(t.id)));
 
     this._projectById = Object.fromEntries(projects.map((p) => [String(p.id), p]));
 
-    const sidebarStateFilterRaw = sel.filter.getSelectedFeatureStateNames();
+    const sidebarStateFilterRaw = filterApi.getSelectedFeatureStateNames();
     const sidebarStateFilter = new Set(sidebarStateFilterRaw.map((s) => normalizeState(s)));
 
     const allAvailableStates =
-      (sel.filter.getAvailableFeatureStates() || []).length > 0 ?
-        [...sel.filter.getAvailableFeatureStates()]
+      (filterApi.getAvailableFeatureStates() || []).length > 0 ?
+        [...filterApi.getAvailableFeatureStates()]
       : Array.from(
           new Set(deduped.map((f) => String(f.state || '').trim()).filter(Boolean))
         ).sort((a, b) => {
-          if (typeof sel.filter.compareFeatureStates === 'function') {
-            return sel.filter.compareFeatureStates(a, b);
+          if (typeof filterApi.compareFeatureStates === 'function') {
+            return filterApi.compareFeatureStates(a, b);
           }
           return a.localeCompare(b);
         });
@@ -207,21 +227,21 @@ export class PluginPortfolioComponent extends LitElement {
     const stateMap = new Map(this._columnStates.map((s) => [normalizeState(s), s]));
 
     const availableTypes =
-      (sel.feature.getAvailableTaskTypes() || []).length > 0 ?
-        [...sel.feature.getAvailableTaskTypes()]
+      (featureApi.getAvailableTaskTypes() || []).length > 0 ?
+        [...featureApi.getAvailableTaskTypes()]
       : Array.from(new Set(deduped.map((f) => getFeatureType(f)).filter(Boolean))).sort();
 
     const sidebarVisibleTypes = new Set(
-      availableTypes.filter((t) => sel.view.isTypeVisible(t) !== false)
+      availableTypes.filter((t) => viewApi.isTypeVisible(t) !== false)
     );
 
-    const expansion = sel.view.getExpansionState() || {};
+    const expansion = viewApi.getExpansionState() || {};
     const hasExpansion =
       !!expansion.expandParentChild ||
       !!expansion.expandRelations ||
       !!expansion.expandTeamAllocated;
 
-    const expandedIds = hasExpansion ? sel.view.getExpandedFeatureIds() : null;
+    const expandedIds = hasExpansion ? viewApi.getExpandedFeatureIds() : null;
     const rows = selectedTeams.map((team) => {
       const cells = {};
       for (const stateName of this._columnStates) {
@@ -249,7 +269,7 @@ export class PluginPortfolioComponent extends LitElement {
       const featureType = getFeatureType(feature);
       if (!sidebarVisibleTypes.has(featureType)) return false;
 
-      if (!sel.filter.featurePassesFilters(feature)) return false;
+      if (!filterApi.featurePassesFilters(feature)) return false;
 
       if (hasAnyCapacity(feature)) {
         const hasSelectedTeamAllocation =
@@ -313,9 +333,10 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _updateScenarioInfo() {
+    const scenarioApi = /** @type {any} */ (sel.scenario);
     try {
-      this._activeScenarioId = sel.scenario.getActiveScenarioId() || 'baseline';
-      const activeScenario = sel.scenario.getActiveScenario();
+      this._activeScenarioId = scenarioApi.getActiveScenarioId() || 'baseline';
+      const activeScenario = scenarioApi.getActiveScenario();
       this._pendingChangesCount =
         activeScenario?.overrides ? Object.keys(activeScenario.overrides).length : 0;
     } catch (_) {
@@ -358,7 +379,10 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _getStateColorInfo(stateName) {
-    const stateColors = sel.filter.getFeatureStateColors() || {};
+    const filterApi = /** @type {any} */ (sel.filter);
+    const stateColors =
+      typeof filterApi.getFeatureStateColors === 'function' ? filterApi.getFeatureStateColors()
+      : {};
     const configured = stateColors?.[stateName] || null;
     const background = configured?.background || '#94a3b8';
     const text = configured?.text || '#ffffff';
@@ -800,6 +824,7 @@ export class PluginPortfolioComponent extends LitElement {
     });
   }
 
+  // @ts-expect-error Bundled lit typings expose an incompatible render() base signature.
   render() {
     const isBaselineScenario = this._activeScenarioId === 'baseline';
     const hasWarnings = isBaselineScenario || this._pendingChangesCount === 0;

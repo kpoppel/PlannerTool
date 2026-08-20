@@ -69,10 +69,6 @@ export class LinkEditorOverlay extends LitElement {
     document.removeEventListener('keydown', this._boundOnKeyDown);
   }
 
-  render() {
-    return html``;
-  }
-
   /**
    * Inject CSS styles into the document head for quadrants in light DOM
    * @private

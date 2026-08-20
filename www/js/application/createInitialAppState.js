@@ -1,5 +1,11 @@
 import { getAllTaskFiltersEnabled } from './shared/taskFilters.js';
 
+/** @typedef {import('./types.js').AppState} AppState */
+
+/**
+ * Build the canonical initial Zustand state for Planner.
+ * @returns {AppState}
+ */
 export function createInitialAppState() {
   return {
     lifecycle: {

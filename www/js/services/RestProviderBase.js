@@ -1,5 +1,7 @@
 import { ok, fail } from './result.js';
 
+/** @typedef {{ APP_BASE_URL?: string }} WindowWithBaseUrl */
+
 export class RestProviderBase {
   constructor(options = {}) {
     this._retry = !!options.retry;
@@ -15,14 +17,19 @@ export class RestProviderBase {
     this._onNetworkError =
       typeof options.onNetworkError === 'function' ? options.onNetworkError : null;
     this._fetchImpl =
-      typeof options.fetchImpl === 'function' ? options.fetchImpl : (...args) => fetch(...args);
+      typeof options.fetchImpl === 'function'
+        ? options.fetchImpl
+        : (url, init) => fetch(url, init);
     this._defaultCredentials = options.defaultCredentials;
     this._baseUrlProvider =
       typeof options.baseUrlProvider === 'function'
         ? options.baseUrlProvider
         : () => {
-            if (typeof window !== 'undefined' && window.APP_BASE_URL) {
-              return window.APP_BASE_URL;
+            const win = /** @type {WindowWithBaseUrl|undefined} */ (
+              typeof window !== 'undefined' ? window : undefined
+            );
+            if (win && win.APP_BASE_URL) {
+              return win.APP_BASE_URL;
             }
             return '';
           };
@@ -38,8 +45,12 @@ export class RestProviderBase {
     return url;
   }
 
-  _headers(extra) {
-    const headers = Object.assign({}, extra || {});
+  /**
+   * @param {HeadersInit|undefined} extra
+   * @returns {Record<string, string>}
+   */
+  _headers(extra = undefined) {
+    const headers = /** @type {Record<string, string>} */ (Object.assign({}, extra || {}));
     if (!headers.Accept) {
       headers.Accept = 'application/json';
     }
@@ -61,8 +72,12 @@ export class RestProviderBase {
     }
   }
 
+  /**
+   * @param {RequestInit} [options]
+   * @returns {RequestInit}
+   */
   _buildFetchOptions(options = {}) {
-    const out = { ...options };
+    const out = /** @type {RequestInit} */ ({ ...options });
     out.headers = this._headers(options.headers);
     if (this._defaultCredentials && out.credentials == null) {
       out.credentials = this._defaultCredentials;
@@ -136,7 +151,10 @@ export class RestProviderBase {
 
       if (!response.ok) {
         const detail = parsed ? payload : null;
-        const code = detail && (detail.error || detail.code) ? detail.error || detail.code : undefined;
+        const detailRecord = /** @type {any} */ (detail);
+        const code = detailRecord && (detailRecord.error || detailRecord.code)
+          ? detailRecord.error || detailRecord.code
+          : undefined;
         return fail({
           message: `HTTP ${response.status}`,
           status: response.status,

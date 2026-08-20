@@ -1,6 +1,8 @@
 // providerMock.js
 // Mock implementation of the BackendProvider interface
 
+/** @typedef {{ state?: number, status?: number }} MinimalResponseLike */
+
 // Simulate async to match future fetch-based API
 function _delay(ms) {
   return new Promise((res) => setTimeout(res, ms));
@@ -322,7 +324,7 @@ export class ProviderMock {
     const summary = [];
     for (const id of ids) {
       const ov = s.overrides[id];
-      const f = this.features.find((x) => x.id === id);
+      const f = /** @type {any} */ (this.features.find((x) => x.id === id));
       if (!ov || !f) continue;
       annotated++;
       summary.push({
@@ -347,16 +349,17 @@ export class ProviderMock {
 
   async saveScenario(scenario) {
     this.logCall('saveScenario', arguments);
-    let existing = this.scenarios.find((s) => s.id === scenario.id);
+    let existing = /** @type {any|null} */ (this.scenarios.find((s) => s.id === scenario.id));
     if (existing) {
       Object.assign(existing, scenario);
     } else {
-      existing = {
+      const created = {
         ...scenario,
         id: scenario.id || this.nextId('scen'),
         isLive: false,
       };
-      this.scenarios.push(existing);
+      this.scenarios.push(created);
+      existing = created;
     }
     const count = Object.keys(existing.overrides || {}).length;
     return {
@@ -466,10 +469,13 @@ export class ProviderMock {
     // The built site serves files from the `www/` folder at the web root.
     // `www/docs/cost.json` is therefore available at `/js/docs/cost.json`
     // for client code loaded from `www/js/...` paths.
-    const resp = await fetch((window.APP_BASE_URL || '') + '/static/docs/cost.json', {
+    const w = /** @type {any} */ (window);
+    const resp = /** @type {MinimalResponseLike & Response} */ (
+      await fetch((w.APP_BASE_URL || '') + '/static/docs/cost.json', {
       cache: 'no-cache',
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.state}`);
+      })
+    );
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     return data;
   }

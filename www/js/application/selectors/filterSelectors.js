@@ -5,6 +5,8 @@ import {
   deriveOrderedFeatureStateNames,
 } from '../shared/stateDerivations.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 function toStateSet(input) {
   if (input instanceof Set) return new Set(Array.from(input));
   return new Set(input);
@@ -114,6 +116,10 @@ function deriveStateCategoryMap(projects) {
   return categories;
 }
 
+/**
+ * @param {StoreApi} store
+ * @returns {object}
+ */
 export function createFilterSelectors(store) {
   const fallbackTaskFilter = createFallbackTaskFilterFn(store);
 
@@ -129,7 +135,7 @@ export function createFilterSelectors(store) {
     return deriveConfiguredStateSequence(store.getState().baseline.projects);
   }
 
-  return {
+  const selectors = {
     getSelectedFeatureStateSet() {
       return toStateSet(store.getState().selection.featureStateNames);
     },
@@ -144,7 +150,7 @@ export function createFilterSelectors(store) {
     },
 
     getFeatureStateColors() {
-      return deriveStateColorMap(this.getAvailableFeatureStates());
+      return deriveStateColorMap(selectors.getAvailableFeatureStates());
     },
 
     featurePassesFilters(feature) {
@@ -178,4 +184,6 @@ export function createFilterSelectors(store) {
       return getSelectionTaskFilters();
     },
   };
+
+  return selectors;
 }

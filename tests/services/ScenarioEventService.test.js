@@ -5,7 +5,6 @@ import { ScenarioEvents, FeatureEvents } from '../../www/js/core/EventRegistry.j
 describe('ScenarioEventService basic flows', () => {
   let bus;
   let scenarioManager;
-  let viewService;
   let svc;
 
   beforeEach(() => {
@@ -30,13 +29,7 @@ describe('ScenarioEventService basic flows', () => {
       },
       markScenarioSaved() {},
     };
-    viewService = {
-      captureCurrentView() {
-        return { zoom: 'months' };
-      },
-    };
-
-    svc = new ScenarioEventService(bus, scenarioManager, viewService);
+    svc = new ScenarioEventService(bus, scenarioManager, () => ({ zoom: 'months' }));
   });
 
   it('initDefaultScenario creates baseline readonly scenario', () => {

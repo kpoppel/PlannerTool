@@ -14,6 +14,8 @@ import {
   deriveAvailableTaskTypes,
 } from '../shared/stateDerivations.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 function cloneValue(value) {
   return value == null ? null : structuredClone(value);
 }
@@ -144,12 +146,22 @@ function writeLastViewId(viewId) {
   }
 }
 
+/**
+ * @param {StoreApi} store
+ * @param {any} dataService
+ * @param {any|null} [pluginStateCommands]
+ * @returns {object}
+ */
 export function createViewRestoreCommands(store, dataService, pluginStateCommands = null) {
   const pluginStateApi = pluginStateCommands === null ? {
     captureForView: () => ({}),
     restoreFromView: async () => {},
   } : pluginStateCommands;
 
+  /**
+   * @param {any[]} views
+   * @param {string|null} [activeId]
+   */
   function setViews(views, activeId = null) {
     const nextViews = withSyntheticDefaultView(views);
     const nextActiveId = activeId !== null ? activeId : store.getState().view.activeId;
@@ -293,7 +305,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
     });
   }
 
-  return {
+  const commands = {
     async loadViews() {
       const views = withSyntheticDefaultView(await dataService.listViews());
       setViews(views);
@@ -368,7 +380,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
     async restoreLastView() {
       const existingViews = store.getState().view.saved;
       if (!existingViews.length) {
-        await this.loadViews();
+        await commands.loadViews();
       }
 
       const availableViews = store.getState().view.saved;
@@ -382,7 +394,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
       }
 
       const targetId = hasPreferred ? String(preferredId) : 'default';
-      await this.loadAndApplyView(targetId);
+      await commands.loadAndApplyView(targetId);
       return true;
     },
 
@@ -391,4 +403,6 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
       return buildViewSnapshotOptions(snapshot);
     },
   };
+
+  return commands;
 }

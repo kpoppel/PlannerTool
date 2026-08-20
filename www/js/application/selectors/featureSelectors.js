@@ -7,6 +7,8 @@ import { computeExpandedFeatureSet } from '../shared/featureExpansion.js';
 import { deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
 import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 function buildBaselineFeatureMap(state) {
   return buildFeatureMap(state.baseline.features);
 }
@@ -82,8 +84,12 @@ function makeCountsMap(features, predicate) {
   return counts;
 }
 
+/**
+ * @param {StoreApi} store
+ * @returns {object}
+ */
 export function createFeatureSelectors(store) {
-  return {
+  const selectors = {
     getBaselineFeatures() {
       return store.getState().baseline.features;
     },
@@ -101,7 +107,7 @@ export function createFeatureSelectors(store) {
     },
 
     getChildrenByParentMap() {
-      return buildChildrenByParentMap(this.getEffectiveFeatures());
+      return buildChildrenByParentMap(selectors.getEffectiveFeatures());
     },
 
     getIterationsForProject(projectId) {
@@ -118,11 +124,11 @@ export function createFeatureSelectors(store) {
     },
 
     getTypeLevel(type) {
-      return getTypeLevelFromHierarchy(type, this.getTaskTypeHierarchy());
+      return getTypeLevelFromHierarchy(type, selectors.getTaskTypeHierarchy());
     },
 
     getTypeDisplayName(type) {
-      return getTypeDisplayNameFromHierarchy(type, this.getTaskTypeHierarchy());
+      return getTypeDisplayNameFromHierarchy(type, selectors.getTaskTypeHierarchy());
     },
 
     getBaselineFeatureById(id) {
@@ -132,14 +138,14 @@ export function createFeatureSelectors(store) {
     },
 
     getChildrenByParentId(parentId) {
-      const ids = this.getChildrenByParentMap().get(String(parentId));
+      const ids = selectors.getChildrenByParentMap().get(String(parentId));
       if (ids === undefined) return [];
       return Array.from(ids).map((id) => String(id));
     },
 
     computeExpandedFeatureSet(selectedFeatureIds, options = {}) {
       return computeExpandedFeatureSet(
-        this.getEffectiveFeatures(),
+        selectors.getEffectiveFeatures(),
         selectedFeatureIds,
         {
           expandParentChild: options.expandParentChild,
@@ -151,8 +157,8 @@ export function createFeatureSelectors(store) {
     },
 
     getAvailableTaskTypesOrdered() {
-      const taskTypes = this.getAvailableTaskTypes();
-      const hierarchy = this.getTaskTypeHierarchy();
+      const taskTypes = selectors.getAvailableTaskTypes();
+      const hierarchy = selectors.getTaskTypeHierarchy();
       const orderMap = buildTaskTypeOrderMap(taskTypes, hierarchy);
       return [...taskTypes].sort((a, b) => {
         const rawLevelA = orderMap.get(String(a).toLowerCase());
@@ -166,13 +172,13 @@ export function createFeatureSelectors(store) {
 
     getCountsForProject(projectId) {
       return makeCountsMap(
-        this.getEffectiveFeatures(),
+        selectors.getEffectiveFeatures(),
         (feature) => String(feature.project) === String(projectId)
       );
     },
 
     getCountsForTeam(teamId) {
-      return makeCountsMap(this.getEffectiveFeatures(), (feature) => hasFeatureTeamId(feature, teamId));
+      return makeCountsMap(selectors.getEffectiveFeatures(), (feature) => hasFeatureTeamId(feature, teamId));
     },
 
     getSelectedFeatureId() {
@@ -183,7 +189,9 @@ export function createFeatureSelectors(store) {
 
     getSelectedFeature() {
       const id = store.getState().featureDisplay.selectedId;
-      return id ? this.getEffectiveFeatureById(id) : null;
+      return id ? selectors.getEffectiveFeatureById(id) : null;
     },
   };
+
+  return selectors;
 }

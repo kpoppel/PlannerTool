@@ -5,6 +5,10 @@ import {
   ViewEvents,
 } from '../../core/EventRegistry.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+/** @typedef {import('../types.js').EventBusLike} EventBusLike */
+/** @typedef {import('../types.js').CommandOptions} CommandOptions */
+
 function mergedExpansion(current, incoming = {}) {
   return {
     parentChild:
@@ -35,6 +39,11 @@ function toUniqueStringArray(values) {
   return out;
 }
 
+/**
+ * @param {StoreApi} store
+ * @param {EventBusLike} bus
+ * @returns {object}
+ */
 export function createViewCommands(store, bus) {
   function setViewOptions(updater, actionName) {
     store.setState(

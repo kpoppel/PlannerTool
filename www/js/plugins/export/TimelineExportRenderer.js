@@ -40,24 +40,40 @@ const CARD_TITLE_FONT_SIZE = 12;
 const ICON_SIZE = 16;
 const ICON_GAP = 4;
 
+/**
+ * @typedef {{
+ *   includeAnnotations?: boolean,
+ *   includeDependencies?: boolean,
+ *   scrollLeft?: number,
+ *   scrollTop?: number
+ * }} TimelineExportOptions
+ */
+
+/**
+ * @typedef {{ success: boolean, filename?: string }} TimelineExportResult
+ */
+
 // ============================================================================
 // Main Export Class
 // ============================================================================
 
 export class TimelineExportRenderer {
   constructor() {
+    /** @type {SVGElement|null} */
     this._svg = null;
     this._width = 0;
     this._height = 0;
   }
 
+  _appendToSvg(node) {
+    if (!this._svg) return;
+    this._svg.appendChild(node);
+  }
+
   /**
    * Export the current timeline view to PNG
-   * @param {Object} options - Export options
-   * @param {boolean} options.includeAnnotations - Whether to include annotations
-   * @param {number} options.scrollLeft - Override scroll left position
-   * @param {number} options.scrollTop - Override scroll top position
-   * @returns {Promise<void>}
+    * @param {TimelineExportOptions} options - Export options
+    * @returns {Promise<TimelineExportResult>}
    */
   async exportToPng(options = {}) {
     const {
@@ -92,7 +108,7 @@ export class TimelineExportRenderer {
 
   /**
    * Build the complete export SVG
-   * @param {Object} options - { includeAnnotations, scrollLeft, scrollTop }
+  * @param {TimelineExportOptions} options - { includeAnnotations, scrollLeft, scrollTop }
    * @returns {Promise<SVGElement>}
    */
   async buildExportSvg(options = {}) {
@@ -128,7 +144,7 @@ export class TimelineExportRenderer {
       height: this._height,
       fill: '#ffffff',
     });
-    this._svg.appendChild(bg);
+    this._appendToSvg(bg);
 
     // Layer 1: MainGraph canvas image
     const mainGraphY = 0;
@@ -161,7 +177,7 @@ export class TimelineExportRenderer {
 
   /**
    * Build SVG and return the SVG element (public)
-   * @param {Object} options
+  * @param {TimelineExportOptions} options
    * @returns {Promise<SVGElement>}
    */
   async getExportSvg(options = {}) {
@@ -171,7 +187,7 @@ export class TimelineExportRenderer {
 
   /**
    * Return PNG blob for given options without downloading
-   * @param {Object} options
+  * @param {TimelineExportOptions} options
    * @returns {Promise<Blob>}
    */
   async exportToPngBlob(options = {}) {
@@ -207,7 +223,7 @@ export class TimelineExportRenderer {
         preserveAspectRatio: 'xMinYMin slice',
       });
 
-      this._svg.appendChild(img);
+      this._appendToSvg(img);
     } catch (e) {
       console.warn('[TimelineExportRenderer] Could not capture MainGraph canvas:', e);
       // Fallback: render a placeholder
@@ -218,7 +234,7 @@ export class TimelineExportRenderer {
         height: viewport.mainGraphHeight,
         fill: '#b0cbe6',
       });
-      this._svg.appendChild(placeholder);
+      this._appendToSvg(placeholder);
     }
   }
 
@@ -238,7 +254,7 @@ export class TimelineExportRenderer {
       height: TIMELINE_HEADER_HEIGHT,
       fill: '#23344d',
     });
-    this._svg.appendChild(headerBg);
+    this._appendToSvg(headerBg);
 
     // Calculate visible months
     const startMonthIdx = Math.floor(scrollLeft / monthWidth);
@@ -263,7 +279,7 @@ export class TimelineExportRenderer {
         fill: '#ffffff',
         anchor: 'middle',
       });
-      this._svg.appendChild(text);
+      this._appendToSvg(text);
     }
   }
 
@@ -304,7 +320,7 @@ export class TimelineExportRenderer {
         height: boardHeight,
         fill,
       });
-      this._svg.appendChild(stripe);
+      this._appendToSvg(stripe);
     }
   }
 
@@ -467,7 +483,7 @@ export class TimelineExportRenderer {
       }
 
       // Append the assembled card group to the root svg so it sits above board background
-      this._svg.appendChild(cardGroup);
+      this._appendToSvg(cardGroup);
     }
 
     if (renderedCount === 0 && features.length > 0) {
@@ -637,18 +653,26 @@ export class TimelineExportRenderer {
       ghostGroup.appendChild(arrow);
 
       // Append ghost to SVG
-      this._svg.appendChild(ghostGroup);
+      this._appendToSvg(ghostGroup);
     }
   }
 
   /**
    * Render dependency lines between cards
    */
-  _renderDependencies(yOffset, viewport, includeDependencies = undefined) {
+  _renderDependencies(yOffset, viewport, includeDependencies) {
     // If the caller explicitly requests dependencies disabled, skip rendering
     if (includeDependencies === false) return;
     // If caller did not specify, fall back to the global view setting
-    if (includeDependencies === undefined && !sel.view.getShowDependencies()) return;
+    if (includeDependencies === undefined) {
+      const viewApi = /** @type {any} */ (sel.view);
+      if (
+        typeof viewApi.getShowDependencies !== 'function' ||
+        !viewApi.getShowDependencies()
+      ) {
+        return;
+      }
+    }
 
     const featureBoard = findInBoard('feature-board');
     if (!featureBoard) return;
@@ -670,7 +694,11 @@ export class TimelineExportRenderer {
     }
 
     // Get all features with relations
-    const allFeatures = sel.feature?.getEffectiveFeatures?.() || [];
+    const featureApi = /** @type {any} */ (sel.feature);
+    const allFeatures =
+      typeof featureApi.getEffectiveFeatures === 'function' ?
+        featureApi.getEffectiveFeatures()
+      : [];
     const drawn = new Set();
 
     for (const f of allFeatures) {
@@ -681,7 +709,7 @@ export class TimelineExportRenderer {
       if (!targetPos) continue;
 
       for (const rel of relations) {
-        let otherId = null;
+        let otherId = '';
         let relType = 'Related';
 
         if (typeof rel === 'string' || typeof rel === 'number') {
@@ -746,7 +774,7 @@ export class TimelineExportRenderer {
           path.setAttribute('stroke-dasharray', '6,4');
         }
 
-        this._svg.appendChild(path);
+        this._appendToSvg(path);
       }
     }
   }
@@ -831,7 +859,7 @@ export class TimelineExportRenderer {
       'text-anchor': 'middle',
       'dominant-baseline': 'middle',
     });
-    this._svg.appendChild(txt);
+    this._appendToSvg(txt);
   }
 
   _renderNoteAnnotation(ann, xOffset = 0, yOffset = 0) {
@@ -876,7 +904,7 @@ export class TimelineExportRenderer {
       stroke: ann.stroke || ANNOTATION_COLORS.defaultStroke,
       'stroke-width': 1,
     });
-    this._svg.appendChild(bg);
+    this._appendToSvg(bg);
 
     // Text with wrapping
     const lines = wrapText(ann.text || '', ann.width - 12, ann.fontSize || 12);
@@ -891,7 +919,7 @@ export class TimelineExportRenderer {
       });
       // Adjust baseline for proper alignment
       text.setAttribute('dominant-baseline', 'hanging');
-      this._svg.appendChild(text);
+      this._appendToSvg(text);
     }
   }
 
@@ -936,7 +964,7 @@ export class TimelineExportRenderer {
       rx: 2,
       ry: 2,
     });
-    this._svg.appendChild(rect);
+    this._appendToSvg(rect);
   }
 
   _renderLineAnnotation(ann, xOffset = 0, yOffset = 0) {
@@ -1005,7 +1033,7 @@ export class TimelineExportRenderer {
       'stroke-width': ann.strokeWidth || 2,
       'stroke-linecap': 'round',
     });
-    this._svg.appendChild(line);
+    this._appendToSvg(line);
 
     // Arrow head if enabled
     if (ann.arrow) {
@@ -1025,7 +1053,7 @@ export class TimelineExportRenderer {
         'stroke-width': ann.strokeWidth || 2,
         'stroke-linecap': 'round',
       });
-      this._svg.appendChild(arrowHead);
+      this._appendToSvg(arrowHead);
     }
   }
 
@@ -1048,6 +1076,7 @@ export class TimelineExportRenderer {
 // Singleton accessor
 // ============================================================================
 
+/** @type {TimelineExportRenderer|null} */
 let _rendererInstance = null;
 
 /**
@@ -1063,7 +1092,7 @@ export function getExportRenderer() {
 
 /**
  * Quick export function
- * @param {Object} options - { includeAnnotations }
+ * @param {TimelineExportOptions} options - { includeAnnotations }
  * @returns {Promise<{success: boolean, filename?: string}>}
  */
 export async function exportTimelineToPng(options = {}) {

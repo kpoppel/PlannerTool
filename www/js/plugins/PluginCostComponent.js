@@ -553,7 +553,7 @@ export class PluginCostComponent extends LitElement {
     cmd.filter.setAllStatesSelected(true);
 
     // Ensure all task types are checked via public State API
-    // Prefer the sidebar's known available task types. The ViewManagementService
+    // Prefer the sidebar's known available task types. The view store
     // does not reliably expose the loaded task types at runtime.
     // Read available task types from State service (preferred) or fall back
     // to any saved view options. Do NOT query other components' internals.

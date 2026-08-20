@@ -3,8 +3,8 @@
  *
  * Covers the bugs fixed in the "task type filter not applied on load" fix:
  *   1. _taskTypesInitialized must not be set when no types are available yet.
- *   2. _toggleTaskType uses ViewService as the authoritative source (not selectedTaskTypes).
- *   3. _renderTaskFilters active class driven by ViewService.isTypeVisible().
+ *   2. _toggleTaskType uses the view state as the authoritative source (not selectedTaskTypes).
+ *   3. _renderTaskFilters active class driven by the view state.
  *   4. _onSidebarFilterChanged syncs selected task types from selectors on signal events.
  */
 
@@ -67,10 +67,10 @@ describe('Sidebar task-type filter', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Bug 2: _toggleTaskType reads ViewService, not selectedTaskTypes
+  // Bug 2: _toggleTaskType reads view state, not selectedTaskTypes
   // -------------------------------------------------------------------------
-  it('_toggleTaskType hides type via ViewService even when selectedTaskTypes is empty', () => {
-    // Simulate the bug scenario: selectedTaskTypes is empty but ViewService says all visible
+  it('_toggleTaskType hides type via view state even when selectedTaskTypes is empty', () => {
+    // Simulate the bug scenario: selectedTaskTypes is empty but view state says all visible
     sidebar.selectedTaskTypes = new Set(); // empty — old bug: would ADD instead of remove
     sidebar.availableTaskTypes = ['epic', 'feature'];
     cmd.view.setTypeVisibility('epic', true);
@@ -78,7 +78,7 @@ describe('Sidebar task-type filter', () => {
 
     sidebar._toggleTaskType('feature');
 
-    // Feature should now be hidden in ViewService
+    // Feature should now be hidden in view state
     expect(sel.view.isTypeVisible('feature')).to.equal(false,
       'feature should be hidden after toggle when it was visible');
     // selectedTaskTypes should reflect the new state
@@ -98,9 +98,9 @@ describe('Sidebar task-type filter', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Bug 3: _renderTaskFilters active class driven by ViewService
+  // Bug 3: _renderTaskFilters active class driven by view state
   // -------------------------------------------------------------------------
-  it('task-type button active class reflects ViewService, not stale selectedTaskTypes', async () => {
+  it('task-type button active class reflects view state, not stale selectedTaskTypes', async () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(); // empty – simulates the stale/cold state
     cmd.view.setTypeVisibility('epic', true);
@@ -109,22 +109,22 @@ describe('Sidebar task-type filter', () => {
 
     const root = sidebar.shadowRoot || sidebar;
     const typeOptions = root.querySelectorAll('.filter-option');
-    // Find a type button and check its active class — should be active because ViewService says visible
+    // Find a type button and check its active class — should be active because view state says visible
     // (The filter-option divs for task types are interspersed with state filter options;
     //  we just check that at least one .active button exists for the types.)
     const activeButtons = Array.from(typeOptions).filter((el) =>
       el.classList.contains('active')
     );
-    // With ViewService saying all visible, should have active buttons for both types
+    // With view state saying all visible, should have active buttons for both types
     expect(activeButtons.length).to.be.greaterThan(0,
-      'At least one type button should be active when ViewService says all visible');
+      'At least one type button should be active when view state says all visible');
   });
 
-  it('task-type button loses active class when ViewService hides the type', async () => {
+  it('task-type button loses active class when view state hides the type', async () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic', 'feature']);
     cmd.view.setTypeVisibility('feature', false);
-    // Trigger re-render so the Lit template picks up the new ViewService state
+    // Trigger re-render so the Lit template picks up the new view state
     sidebar.requestUpdate();
     await sidebar.updateComplete;
 

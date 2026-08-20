@@ -2,10 +2,19 @@ import { FeatureEvents, FilterEvents, StateFilterEvents } from '../../core/Event
 import { normalizeTaskFilters } from '../shared/taskFilters.js';
 import { deriveAvailableFeatureStates } from '../shared/stateDerivations.js';
 
-export function createFilterCommands(store, bus, recomputeCapacity = null) {
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+/** @typedef {import('../types.js').EventBusLike} EventBusLike */
+
+/**
+ * @param {StoreApi} store
+ * @param {EventBusLike} bus
+ * @param {Function} [recomputeCapacity]
+ * @returns {object}
+ */
+export function createFilterCommands(store, bus, recomputeCapacity) {
   const recompute = recomputeCapacity;
 
-  return {
+  const commands = {
     setSelectedTaskTypes(types, options = {}) {
       const taskTypeNames = types;
       store.setState(
@@ -203,7 +212,9 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
     toggleTaskFilter(dimension, option, options = {}) {
       const current = store.getState().selection.taskFilters[dimension][option];
       const nextSelected = !current;
-      this.setTaskFilter(dimension, option, nextSelected, options);
+      commands.setTaskFilter(dimension, option, nextSelected, options);
     },
   };
+
+  return commands;
 }

@@ -97,14 +97,6 @@ if (!window.ProviderMock) {
   };
 }
 
-if (!window.ConfigService) {
-  window.ConfigService = {
-    getPref(key) {
-      return window.ProviderMock.getLocalPref(key);
-    },
-  };
-}
-
 // Global fetch stub: return a resolved successful JSON response by default.
 // Individual tests should override `window.fetch` when they need specific
 // API responses; leaving this unmocked caused retries and browser timeouts.

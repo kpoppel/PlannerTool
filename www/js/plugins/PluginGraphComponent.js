@@ -32,6 +32,8 @@ export class PluginGraph extends LitElement {
 
   constructor() {
     super();
+    /** @type {DocumentFragment} */
+    this.renderRoot;
     this.visible = false;
     this.mode = 'project';
     this._scheduledRenderTimer = null;
@@ -139,7 +141,6 @@ export class PluginGraph extends LitElement {
     });
     bus.on(FilterEvents.CHANGED, () => this._scheduleRender());
     bus.on(CapacityEvents.UPDATED, () => this._scheduleRender());
-    // TODO: Should use getViewService...
     this.mode = sel.view.getCapacityViewMode();
   }
 
@@ -217,7 +218,6 @@ export class PluginGraph extends LitElement {
     await this.updateComplete;
 
     // Set graph mode to match current view mode
-    // TODO: should use getViewService
     this.mode = sel.view.getCapacityViewMode();
 
     // Always set date range from the current timeline selection.

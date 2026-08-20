@@ -1,6 +1,11 @@
 import { CapacityEvents, FeatureEvents, GroupEvents, ScenarioEvents } from '../../core/EventRegistry.js';
 import { dataService } from '../../services/dataService.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+/** @typedef {import('../types.js').EventBusLike} EventBusLike */
+/** @typedef {import('../types.js').AppState} AppState */
+/** @typedef {import('../types.js').ScenarioItem} ScenarioItem */
+
 function cloneValue(value) {
   if (value == null) return {};
   return structuredClone(value);
@@ -77,10 +82,17 @@ function withScenarioChangedIds(state, scenarioId, changed) {
   return next;
 }
 
+/**
+ * @param {StoreApi} store
+ * @param {EventBusLike} bus
+ * @param {any} [_legacyState]
+ * @param {{ hydrateBaseline?: Function, recomputeCapacity?: Function, invalidateCache?: Function }} [deps]
+ * @returns {object}
+ */
 export function createScenarioCommands(store, bus, _legacyState = null, deps = {}) {
-  const hydrateBaseline = deps.hydrateBaseline ?? null;
-  const recomputeCapacity = deps.recomputeCapacity ?? null;
-  const invalidateCache = deps.invalidateCache ?? null;
+  const hydrateBaseline = deps.hydrateBaseline;
+  const recomputeCapacity = deps.recomputeCapacity;
+  const invalidateCache = deps.invalidateCache;
 
   function requireHydrateBaseline() {
     if (typeof hydrateBaseline !== 'function') {

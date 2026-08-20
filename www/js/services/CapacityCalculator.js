@@ -17,6 +17,7 @@ export class CapacityCalculator {
     // Caches for incremental updates
     this._lastResultCache = null; // { dates, teamDaily, teamDailyMap, projectDaily, projectDailyMap, totalOrgDaily }
     this._lastFeaturesById = new Map(); // featureId -> feature (last seen)
+    /** @type {(Map<string, number> & {_key?: string})|null} */
     this._dateIndexMap = null; // dateIso -> index
   }
 
@@ -24,7 +25,7 @@ export class CapacityCalculator {
    * Find the ultimate type='project' project by following parent chain
    * @param {Object} feature - The feature to trace
    * @param {Map} effectiveById - Map of feature ID to feature
-   * @returns {string|null} Project ID if found, null if orphaned
+  * @returns {{ projectId: string, taskId: string }|null} Project/task pair if found, null if orphaned
    */
   _findUltimateProjectParent(feature, effectiveById) {
     const visited = new Set();
@@ -131,7 +132,7 @@ export class CapacityCalculator {
     // Build/refresh date index map for fast ISO->index lookup
     const datesKey = dates.join('|');
     if (!this._dateIndexMap || this._dateIndexMap._key !== datesKey) {
-      const map = new Map();
+      const map = /** @type {Map<string, number> & {_key?: string}} */ (new Map());
       dates.forEach((d, i) => map.set(d, i));
       map._key = datesKey;
       this._dateIndexMap = map;
@@ -267,6 +268,15 @@ export class CapacityCalculator {
     const selectedStateSet = new Set(selectedStates);
 
     const dateIndex = this._dateIndexMap;
+    if (!dateIndex) {
+      return {
+        teamDaily,
+        teamDailyMap,
+        projectDaily,
+        projectDailyMap,
+        totalOrgDaily,
+      };
+    }
 
     for (const f of features) {
       if (!f || !f.start || !f.end) continue;
@@ -286,14 +296,15 @@ export class CapacityCalculator {
       // finer level, so we suppress ALL parent-level allocation for that team across
       // the entire parent date range (including days the children don't cover).
       // Teams that have no children continue to show the parent estimate normally.
-      let teamsWithChildren = null;
+        /** @type {Set<string>|null} */
+        let teamsWithChildren = null;
       if (childIds.length) {
-        teamsWithChildren = new Set();
+          teamsWithChildren = new Set();
         for (const cid of childIds) {
           const ch = effectiveById.get(cid);
           if (!ch) continue;
           for (const ctl of (ch.capacity || [])) {
-            teamsWithChildren.add(ctl.team);
+              teamsWithChildren.add(String(ctl.team));
           }
         }
       }
@@ -305,7 +316,7 @@ export class CapacityCalculator {
           if (!selectedTeamSet.has(tl.team)) continue;
           // Children take full precedence for their team: if this parent has a child
           // with capacity for this team, skip the parent's contribution entirely.
-          if (teamsWithChildren && teamsWithChildren.has(tl.team)) continue;
+          if (teamsWithChildren && teamsWithChildren.has(String(tl.team))) continue;
           const ti = teamIndexById.get(tl.team);
           const load = Number(tl.capacity) || 0;
           if (ti !== undefined) {
@@ -369,6 +380,7 @@ export class CapacityCalculator {
     if (!cache) return;
 
     const dateIndex = this._dateIndexMap;
+    if (!dateIndex) return;
     const teamDaily = cache.teamDaily;
     const projectDaily = cache.projectDaily;
     const teamDailyMap = cache.teamDailyMap;
@@ -409,6 +421,7 @@ export class CapacityCalculator {
       const endIdx = dateIndex.get(f.end);
       if (startIdx === undefined || endIdx === undefined) return;
 
+      /** @type {Set<string>|null} */
       let teamsWithChildren = null;
       if (childIds.length) {
         teamsWithChildren = new Set();
@@ -416,7 +429,7 @@ export class CapacityCalculator {
           const ch = childSource.get(cid);
           if (!ch) continue;
           for (const ctl of (ch.capacity || [])) {
-            teamsWithChildren.add(ctl.team);
+            teamsWithChildren.add(String(ctl.team));
           }
         }
       }
@@ -427,7 +440,7 @@ export class CapacityCalculator {
         for (const tl of tls) {
           if (!selectedTeamSet.has(tl.team)) continue;
           // Children take full precedence for their team.
-          if (teamsWithChildren && teamsWithChildren.has(tl.team)) continue;
+          if (teamsWithChildren && teamsWithChildren.has(String(tl.team))) continue;
           const ti = teamIndexById.get(tl.team);
           const load = Number(tl.capacity) || 0;
           if (ti !== undefined) {

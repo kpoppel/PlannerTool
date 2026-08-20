@@ -104,14 +104,14 @@ export class GroupService {
    * Fetch groups for a plan from the server, update the local cache, and
    * emit GroupEvents.LOADED.
    * @param {string} planId
-   * @returns {Promise<Array>}
+  * @returns {Promise<Array>} The fetched groups, or an empty array when loading fails.
    */
   async loadGroups(planId) {
     try {
       const groups = await dataService.listGroups(planId);
-      this._groupsByPlan.set(String(planId), groups || []);
+      this._groupsByPlan.set(String(planId), groups);
       bus.emit(GroupEvents.LOADED);
-      return this._groupsByPlan.get(String(planId));
+      return groups;
     } catch (err) {
       console.error('[GroupService] loadGroups error', planId, err);
       return [];

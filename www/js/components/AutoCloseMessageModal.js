@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { LitElement, html, css } from '../vendor/lit.js';
 
 /**

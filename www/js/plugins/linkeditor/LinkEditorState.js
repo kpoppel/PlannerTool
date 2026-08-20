@@ -140,13 +140,14 @@ class LinkEditorState {
     // link edits stay aligned with the same effective data the rest of the app renders.
     import('../../application/imports.js').then(({ sel }) => {
       try {
-        const scenario = sel.scenario.getActiveScenario();
+        const seam = /** @type {any} */ (sel);
+        const scenario = /** @type {any} */ (seam.scenario.getActiveScenario());
         if (!scenario) {
           console.warn('[LinkEditorState] No active scenario');
           return;
         }
 
-        const baselineFeature = sel.feature.getBaselineFeatureById(fromId);
+        const baselineFeature = /** @type {any} */ (seam.feature.getBaselineFeatureById(fromId));
         if (!baselineFeature) {
           console.warn('[LinkEditorState] Feature not found:', fromId);
           return;
@@ -225,10 +226,11 @@ class LinkEditorState {
     // add/edit operations, so the plugin remains internally consistent.
     import('../../application/imports.js').then(({ sel }) => {
       try {
-        const scenario = sel.scenario.getActiveScenario();
+        const seam = /** @type {any} */ (sel);
+        const scenario = /** @type {any} */ (seam.scenario.getActiveScenario());
         if (!scenario) return;
 
-        const baselineFeature = sel.feature.getBaselineFeatureById(fromId);
+        const baselineFeature = /** @type {any} */ (seam.feature.getBaselineFeatureById(fromId));
         if (!baselineFeature) return;
 
         // Get current effective relations
@@ -290,6 +292,7 @@ class LinkEditorState {
 }
 
 // Singleton instance
+/** @type {LinkEditorState|null} */
 let instance = null;
 
 /**

@@ -5,12 +5,18 @@ import {
 } from '../shared/groupProjection.js';
 import { getActiveScenario } from '../shared/scenarioMutations.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 function getBaselineGroupsForPlan(state, planId) {
   const byPlanId = state.groups.byPlanId;
   const key = String(planId);
   return byPlanId[key];
 }
 
+/**
+ * @param {StoreApi} store
+ * @returns {object}
+ */
 export function createGroupSelectors(store) {
   return {
     getEffectiveGroups(planId) {

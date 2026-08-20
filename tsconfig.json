@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "noImplicitAny": false,
+    "target": "ES2022",
+    "module": "ESNext"
+  },
+  "include": [
+    "www/js/**/*"
+  ],
+  "exclude": [
+    "www/js/vendor/**/*",
+    "www/js/plugins/**/*"
+  ]
+}

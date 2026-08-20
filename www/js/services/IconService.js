@@ -121,10 +121,16 @@ export function featureSvgElement(attrs = {}) {
 }
 
 
+/**
+ * @param {string} svgString
+ * @returns {SVGElement|null}
+ */
 function parseSvgString(svgString) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgString, 'image/svg+xml');
-  return doc.documentElement;
+  const root = doc.documentElement;
+  if (!root) return null;
+  return /** @type {SVGElement} */ (/** @type {unknown} */ (root));
 }
 
 // Map of lower-cased type name → Lit template (for dynamic lookup)

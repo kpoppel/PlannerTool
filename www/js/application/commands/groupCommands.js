@@ -7,6 +7,9 @@ import {
   withActiveScenario,
 } from '../shared/scenarioMutations.js';
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+/** @typedef {import('../types.js').EventBusLike} EventBusLike */
+
 function applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op) {
   const key = String(groupId);
   const nextOverrides = { ...scenario.groupOverrides };
@@ -39,8 +42,13 @@ function buildTempGroupId() {
   return `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * @param {StoreApi} store
+ * @param {EventBusLike} bus
+ * @returns {object}
+ */
 export function createGroupCommands(store, bus) {
-  return {
+  const commands = {
     createGroupInScenario(planId, name, color = null, parentId = null) {
       const safeName = String(name).trim();
       if (!planId || !safeName) return null;
@@ -241,13 +249,13 @@ export function createGroupCommands(store, bus) {
         if (hasMember) return true;
 
         return Boolean(
-          this.updateGroupInScenario(groupId, {
+          commands.updateGroupInScenario(groupId, {
             members: [...localGroup.members, String(taskId)],
           })
         );
       }
 
-      return this.applyGroupMemberDelta(groupId, taskId, 'add');
+      return commands.applyGroupMemberDelta(groupId, taskId, 'add');
     },
 
     removeMemberFromGroup(groupId, taskId) {
@@ -266,10 +274,10 @@ export function createGroupCommands(store, bus) {
         const nextMembers = localGroup.members.filter(
           (memberId) => String(memberId) !== String(taskId)
         );
-        return Boolean(this.updateGroupInScenario(groupId, { members: nextMembers }));
+        return Boolean(commands.updateGroupInScenario(groupId, { members: nextMembers }));
       }
 
-      return this.applyGroupMemberDelta(groupId, taskId, 'remove');
+      return commands.applyGroupMemberDelta(groupId, taskId, 'remove');
     },
 
     clearPendingGroupChanges() {
@@ -331,4 +339,6 @@ export function createGroupCommands(store, bus) {
       return true;
     },
   };
+
+  return commands;
 }

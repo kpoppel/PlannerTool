@@ -2,6 +2,8 @@ function cloneValue(value) {
   return value == null ? null : structuredClone(value);
 }
 
+/** @typedef {import('../types.js').StoreApi} StoreApi */
+
 function isSerializable(value) {
   try {
     JSON.stringify(value);
@@ -51,6 +53,10 @@ export function createLegacyPluginStateCommands(state) {
   };
 }
 
+/**
+ * @param {StoreApi} store
+ * @returns {object}
+ */
 export function createPluginStateCommands(store) {
   const metaByPluginId = new Map();
   const subscribersByPluginId = new Map();
