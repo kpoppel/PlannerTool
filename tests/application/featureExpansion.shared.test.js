@@ -53,9 +53,9 @@ describe('application/shared/featureExpansion', () => {
 
   it('counts team-allocated additions against the base set', () => {
     const features = [
-      { id: 'selected', project: 'p1', capacity: [{ teamId: 't1', capacity: 3 }], relations: [] },
-      { id: 'outside-selected-project', project: 'p2', capacity: [{ teamId: 't1', capacity: 2 }], relations: [] },
-      { id: 'other-team', project: 'p3', capacity: [{ teamId: 't2', capacity: 4 }], relations: [] },
+      { id: 'selected', project: 'p1', capacity: [{ team: 't1', capacity: 3 }], relations: [] },
+      { id: 'outside-selected-project', project: 'p2', capacity: [{ team: 't1', capacity: 2 }], relations: [] },
+      { id: 'other-team', project: 'p3', capacity: [{ team: 't2', capacity: 4 }], relations: [] },
     ];
 
     const result = computeExpandedFeatureSet(features, ['selected'], {

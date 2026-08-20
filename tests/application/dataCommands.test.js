@@ -45,7 +45,7 @@ describe('application/commands/dataCommands', () => {
             state: 'In Progress',
             start: '2025-01-01',
             end: '2025-01-05',
-            capacity: [{ teamId: 't1', capacity: 4 }],
+            capacity: [{ team: 't1', capacity: 4 }],
           },
           {
             id: 'f2',
@@ -53,7 +53,7 @@ describe('application/commands/dataCommands', () => {
             state: 'Done',
             start: '2025-01-03',
             end: '2025-01-08',
-            capacity: [{ teamId: 't2', capacity: 3 }],
+            capacity: [{ team: 't2', capacity: 3 }],
           },
         ],
       },
@@ -83,7 +83,7 @@ describe('application/commands/dataCommands', () => {
         state: 'In Progress',
         start: '2025-01-01',
         end: '2025-01-05',
-        capacity: [{ teamId: 't1', capacity: 4 }],
+        capacity: [{ team: 't1', capacity: 4 }],
         originalRank: 0,
       },
       {
@@ -92,7 +92,7 @@ describe('application/commands/dataCommands', () => {
         state: 'Done',
         start: '2025-01-03',
         end: '2025-01-08',
-        capacity: [{ teamId: 't2', capacity: 3 }],
+        capacity: [{ team: 't2', capacity: 3 }],
         originalRank: 1,
       },
     ]);

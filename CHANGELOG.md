@@ -38,6 +38,7 @@ Template - do not change :
 - Preserved the exact groups payload in the GroupService cache instead of coercing invalid values to empty arrays during loading.
 - Removed remaining sidebar and feature-board fallback reads so store-backed selectors now fail fast on invalid state instead of silently defaulting to stale compatible values.
 - Fixed saved-view activation so Sidebar task filters and the graph-type toggle refresh immediately when a view is applied.
+- Fixed team allocation lookups reading a non-existent `teamId` capacity field, which made TeamMenu task counts and the "Team Allocated" expansion always report zero.
 - Fixed parent/child expansion state changes to emit the board refresh signals required for the featureboard to re-render with the newly computed expanded set.
 - Aligned store-backed filter command callers with the array-based interface so task/state selections are written from canonical arrays instead of relying on coercion at the command boundary.
 - Tightened Phase 5 seam contracts so required internal `recomputeCapacity`, `hydrateBaseline`, and `invalidateCache` hooks fail loudly instead of silently proceeding.

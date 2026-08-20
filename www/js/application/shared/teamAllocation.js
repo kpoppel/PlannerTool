@@ -1,5 +1,6 @@
+// Capacity entries follow the backend contract `{ team, capacity }`.
 export function getCapacityTeamId(capacityEntry) {
-  return capacityEntry.teamId;
+  return capacityEntry.team;
 }
 
 export function hasFeatureTeamAllocation(feature, selectedTeamIds) {

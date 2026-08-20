@@ -44,8 +44,8 @@ describe('application/selectors/selectionSelectors', () => {
           projects: [],
           teams: [],
           features: [
-            { id: 'f1', project: 'p1', capacity: [{ teamId: 't2', capacity: 4 }] },
-            { id: 'f2', project: 'p2', capacity: [{ teamId: 't1', capacity: 6 }] },
+            { id: 'f1', project: 'p1', capacity: [{ team: 't2', capacity: 4 }] },
+            { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 6 }] },
             { id: 'f3', project: 'p3', capacity: [] },
           ],
         },
@@ -72,7 +72,7 @@ describe('application/selectors/selectionSelectors', () => {
           projects: [],
           teams: [],
           features: [
-            { id: 'f2', project: 'p2', capacity: [{ teamId: 't1', capacity: 6 }] },
+            { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 6 }] },
           ],
         },
       }),
