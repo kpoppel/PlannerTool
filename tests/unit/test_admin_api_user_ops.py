@@ -42,33 +42,6 @@ class RecordingStorage:
         return (ns == 'accounts') and (key in self.data['accounts'])
 
 
-def _do_sync(storage, users, admins):
-    """Simple sync helper that mirrors AccountAdminService.sync_accounts_full logic."""
-    if isinstance(users, list):
-        users = {e: {'email': e} for e in users}
-    if isinstance(admins, list):
-        admins_set = set(admins)
-    else:
-        admins_set = set(admins.keys())
-
-    current_users = set(storage.list_keys('accounts'))
-    for k, v in users.items():
-        record = dict(v) if v else {'email': k}
-        permissions = list(record.get('permissions') or [])
-        if k in admins_set:
-            if 'admin' not in permissions:
-                permissions.append('admin')
-        else:
-            permissions = [p for p in permissions if p != 'admin']
-        record['permissions'] = permissions
-        storage.save('accounts', k, record)
-    for k in current_users - set(users):
-        try:
-            storage.delete('accounts', k)
-        except KeyError:
-            pass
-
-
 class SessMgr:
     def __init__(self, ctx=None):
         self._ctx = ctx or {}
@@ -90,50 +63,175 @@ def make_request(container, payload, session_email=None):
     return Req(payload, container, session_email)
 
 
-def test_add_admin_copies_existing_account_and_removes_user_admin_marker():
-    storage = RecordingStorage()
-    # existing accounts: u1. existing admin: admin_old (has 'admin' permission)
-    storage.save('accounts', 'u1', {'email': 'u1', 'permissions': []})
-    storage.save('accounts', 'admin_old', {'email': 'admin_old', 'permissions': ['admin']})
+class ExplicitAccountManager:
+    def __init__(self):
+        self.accounts = {
+            'current@example.com': {
+                'id': '11111111-1111-4111-8111-111111111111',
+                'email': 'current@example.com',
+                'permissions': ['admin'],
+            },
+        }
 
-    admin_svc = SimpleNamespace(
-        _storage=storage,
-        get_all_users=lambda: list(storage.list_keys('accounts')),
-        get_all_with_permission=lambda permission: [k for k, v in storage.data['accounts'].items()
-                                                   if 'admin' in (v.get('permissions') or [])],
-        sync_accounts_full=lambda users, admins: _do_sync(storage, users, admins),
+    def create_account(self, credentials, permissions=None):
+        self.accounts[credentials.email] = {
+            'id': '33333333-3333-4333-8333-333333333333',
+            'email': credentials.email,
+            'pat': credentials.pat,
+            'permissions': list(permissions or []),
+        }
+        return {'ok': True, 'id': self.accounts[credentials.email]['id'], 'email': credentials.email}
+
+    def get_account_by_id(self, account_id):
+        return next(account for account in self.accounts.values() if account['id'] == account_id)
+
+    def get_account_id(self, email):
+        return self.accounts[email]['id']
+
+    def list_accounts(self):
+        return list(self.accounts.values())
+
+    def set_permissions(self, account_id, permissions):
+        self.get_account_by_id(account_id)['permissions'] = list(permissions)
+
+    def delete_account(self, account_id):
+        account = self.get_account_by_id(account_id)
+        del self.accounts[account['email']]
+
+    def get_all_with_permission(self, permission):
+        return [
+            email for email, account in self.accounts.items()
+            if permission in account['permissions']
+        ]
+
+    def count_all_with_permission(self, permission):
+        return len(self.get_all_with_permission(permission))
+
+
+def _explicit_request(account_manager, payload=None):
+    session_manager = SessMgr({'email': 'current@example.com'})
+    container = SimpleNamespace(get=lambda name: {
+        'account_manager': account_manager,
+        'session_manager': session_manager,
+    }.get(name))
+    return make_request(container, payload or {}, session_email='current@example.com')
+
+
+def test_create_user_uses_explicit_account_creation():
+    from planner_lib.admin.users_routes import admin_create_user
+    account_manager = ExplicitAccountManager()
+    request = _explicit_request(account_manager, {
+        'email': 'new-admin@example.com',
+        'permissions': ['admin'],
+    })
+
+    result = asyncio.run(admin_create_user.__wrapped__(request))
+
+    assert result == {'ok': True}
+    assert account_manager.accounts['new-admin@example.com']['permissions'] == ['admin']
+
+
+def test_create_user_rejects_invalid_email():
+    from fastapi import HTTPException
+    from planner_lib.admin.users_routes import admin_create_user
+    request = _explicit_request(ExplicitAccountManager(), {
+        'email': 'not-an-email',
+        'permissions': [],
+    })
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(admin_create_user.__wrapped__(request))
+
+    assert exc_info.value.status_code == 400
+
+
+def test_setup_updates_existing_account_permissions_by_id():
+    from planner_lib.admin.setup_routes import admin_setup
+
+    class ExistingAccountManager:
+        def __init__(self):
+            self.updated_account_id = None
+
+        def count_all_with_permission(self, permission):
+            return 0
+
+        def create_account(self, credentials, permissions):
+            raise ValueError('Account already exists')
+
+        def update_credentials(self, credentials):
+            return {'ok': True}
+
+        def get_account_id(self, email):
+            return '11111111-1111-4111-8111-111111111111'
+
+        def set_permissions(self, account_id, permissions):
+            self.updated_account_id = account_id
+
+    class SetupSessionManager:
+        def create(self, email):
+            return 'setup-session'
+
+        def set_val(self, session_id, key, value):
+            pass
+
+    account_manager = ExistingAccountManager()
+    container = SimpleNamespace(get=lambda name: {
+        'account_manager': account_manager,
+        'session_manager': SetupSessionManager(),
+    }.get(name))
+    request = make_request(
+        container,
+        {'email': 'current@example.com', 'pat': 'valid-pat'},
     )
-    session_mgr = SessMgr({'email': 'admin_old'})
-    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
-    # incoming: add admin_new (should be given admin permission), remove nothing
-    payload = {'users': ['u1', 'u2', 'admin_old', 'admin_new'], 'admins': ['admin_old', 'admin_new']}
-    req = make_request(container, payload, session_email='admin_old')
-    res = asyncio.run(admin_api.admin_save_users.__wrapped__(req))
-    assert res['ok']
-    # admin_new should have been saved to 'accounts' with 'admin' permission
-    assert any(ns == 'accounts' and key == 'admin_new' for (ns, key, _) in storage.saved)
-    saved_admin_new = storage.data['accounts'].get('admin_new', {})
-    assert 'admin' in (saved_admin_new.get('permissions') or [])
+    result = asyncio.run(admin_setup(request))
+
+    assert result.status_code == 200
+    assert account_manager.updated_account_id == '11111111-1111-4111-8111-111111111111'
 
 
-def test_remove_user_also_removes_account():
-    storage = RecordingStorage()
-    storage.save('accounts', 'remove_me', {'email': 'remove_me', 'permissions': ['admin']})
+def test_get_users_returns_account_ids_and_current_id():
+    from planner_lib.admin.users_routes import admin_get_users
+    account_manager = ExplicitAccountManager()
+    request = _explicit_request(account_manager)
 
-    admin_svc = SimpleNamespace(
-        _storage=storage,
-        get_all_users=lambda: list(storage.list_keys('accounts')),
-        get_all_with_permission=lambda permission: [k for k, v in storage.data['accounts'].items()
-                                                   if 'admin' in (v.get('permissions') or [])],
-        sync_accounts_full=lambda users, admins: _do_sync(storage, users, admins),
-    )
-    session_mgr = SessMgr({'email': 'someone@admin'})
-    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+    result = asyncio.run(admin_get_users.__wrapped__(request))
 
-    payload = {'users': [], 'admins': []}
-    req = make_request(container, payload, session_email='someone@admin')
-    res = asyncio.run(admin_api.admin_save_users.__wrapped__(req))
-    assert res['ok']
-    # deletion should have been attempted for the accounts record
-    assert ('accounts', 'remove_me') in storage.deleted
+    assert result == {
+        'accounts': [{
+            'id': '11111111-1111-4111-8111-111111111111',
+            'email': 'current@example.com',
+            'permissions': ['admin'],
+        }],
+        'currentId': '11111111-1111-4111-8111-111111111111',
+    }
+
+
+def test_set_user_permissions_blocks_current_admin_demotion():
+    from fastapi import HTTPException
+    from planner_lib.admin.users_routes import admin_set_user_permissions
+    account_manager = ExplicitAccountManager()
+    request = _explicit_request(account_manager, {'permissions': []})
+
+    with pytest.raises(HTTPException, match='Cannot remove current admin'):
+        asyncio.run(admin_set_user_permissions.__wrapped__(
+            '11111111-1111-4111-8111-111111111111', request
+        ))
+
+
+def test_delete_user_uses_explicit_account_deletion():
+    from planner_lib.admin.users_routes import admin_delete_user
+    account_manager = ExplicitAccountManager()
+    account_manager.accounts['remove@example.com'] = {
+        'id': '22222222-2222-4222-8222-222222222222',
+        'email': 'remove@example.com',
+        'permissions': [],
+    }
+    request = _explicit_request(account_manager)
+
+    result = asyncio.run(admin_delete_user.__wrapped__(
+        '22222222-2222-4222-8222-222222222222', request
+    ))
+
+    assert result == {'ok': True}
+    assert 'remove@example.com' not in account_manager.accounts

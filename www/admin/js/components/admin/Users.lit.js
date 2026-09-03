@@ -295,10 +295,10 @@ export class AdminUsers extends LitElement {
       if (!result?.ok) {
         throw new Error(resultErrorMessage(result, 'Failed to load users'));
       }
-      const data = result.data || {};
-      this.users = Array.isArray(data.users) ? data.users.slice().sort() : [];
-      this.admins = Array.isArray(data.admins) ? data.admins.slice().sort() : [];
-      this.current = data.current || null;
+      const data = result.data;
+      this.users = data.accounts.slice().sort((left, right) => left.email.localeCompare(right.email));
+      this.admins = this.users.filter((account) => account.permissions.includes('admin'));
+      this.current = data.currentId;
     } catch (e) {
       console.error(e);
       this.error = String(e);
@@ -307,14 +307,13 @@ export class AdminUsers extends LitElement {
     }
   }
 
-  async save() {
+  async _runMutation(operation) {
     this.statusMsg = 'Saving...';
     this.statusType = '';
     this.error = '';
 
     try {
-      const body = { users: this.users, admins: this.admins };
-      const resp = await adminProvider.saveUsers(body);
+      const resp = await operation();
       if (!resp || !resp.ok) {
         throw new Error(resultErrorMessage(resp, 'Save failed'));
       }
@@ -341,7 +340,7 @@ export class AdminUsers extends LitElement {
     }
   }
 
-  addUser() {
+  async addUser() {
     const v = (this.newUser || '').trim();
     if (!v) return;
 
@@ -351,16 +350,15 @@ export class AdminUsers extends LitElement {
       return;
     }
 
-    if (!this.users.includes(v)) {
-      this.users = [...this.users, v].sort();
+    if (!this.users.some((account) => account.email === v)) {
+      await this._runMutation(() => adminProvider.createUser(v, []));
       this.newUser = '';
-      this.save();
     } else {
       this.error = 'User already exists';
     }
   }
 
-  addAdmin() {
+  async addAdmin() {
     const v = (this.newAdmin || '').trim();
     if (!v) return;
 
@@ -370,36 +368,29 @@ export class AdminUsers extends LitElement {
       return;
     }
 
-    if (!this.admins.includes(v)) {
-      this.admins = [...this.admins, v].sort();
-      // Ensure the user list contains the admin as well
-      if (!this.users.includes(v)) this.users = [...this.users, v].sort();
+    if (!this.admins.some((account) => account.email === v)) {
+      const account = this.users.find((candidate) => candidate.email === v);
+      if (account) {
+        await this._runMutation(() => adminProvider.setUserPermissions(account.id, ['admin']));
+      } else {
+        await this._runMutation(() => adminProvider.createUser(v, ['admin']));
+      }
       this.newAdmin = '';
-      this.save();
     } else {
       this.error = 'Admin already exists';
     }
   }
 
-  removeFrom(listName, value) {
-    // Remove the value from both lists to keep storage consistent.
-    this.users = this.users.filter((x) => x !== value);
-    this.admins = this.admins.filter((x) => x !== value);
-    this.save();
+  async removeFrom(account) {
+    await this._runMutation(() => adminProvider.deleteUser(account.id));
   }
 
-  moveTo(targetList, value) {
-    // Promote/demote without deleting the counterpart entry.
+  async moveTo(targetList, account) {
     if (targetList === 'users') {
-      // Demote from admin: remove from admins but keep user present
-      this.admins = this.admins.filter((x) => x !== value);
-      if (!this.users.includes(value)) this.users = [...this.users, value].sort();
+      await this._runMutation(() => adminProvider.setUserPermissions(account.id, []));
     } else {
-      // Promote to admin: add to admins and ensure user exists
-      if (!this.admins.includes(value)) this.admins = [...this.admins, value].sort();
-      if (!this.users.includes(value)) this.users = [...this.users, value].sort();
+      await this._runMutation(() => adminProvider.setUserPermissions(account.id, ['admin']));
     }
-    this.save();
   }
 
   _handleKeyDown(e, callback) {
@@ -459,15 +450,15 @@ export class AdminUsers extends LitElement {
                       (u) => html`
                         <li class="user-item">
                           <span
-                            class="user-email ${this.current === u ? 'user-current' : ''}"
+                            class="user-email ${this.current === u.id ? 'user-current' : ''}"
                           >
-                            ${u}
-                            ${this.current === u ?
+                            ${u.email}
+                            ${this.current === u.id ?
                               html`<span class="user-badge">You</span>`
                             : ''}
                           </span>
                           <div class="user-actions">
-                            ${this.admins.includes(u) ?
+                            ${u.permissions.includes('admin') ?
                               html` <span class="user-badge">Admin</span> `
                             : html`
                                 <button
@@ -480,8 +471,8 @@ export class AdminUsers extends LitElement {
                               `}
                             <button
                               class="btn btn-small btn-danger"
-                              ?disabled=${this.current === u}
-                              @click=${() => this.removeFrom('users', u)}
+                              ?disabled=${this.current === u.id}
+                              @click=${() => this.removeFrom(u)}
                               title="Remove user"
                             >
                               Remove
@@ -526,15 +517,15 @@ export class AdminUsers extends LitElement {
                       (a) => html`
                         <li class="user-item">
                           <span
-                            class="user-email ${this.current === a ? 'user-current' : ''}"
+                            class="user-email ${this.current === a.id ? 'user-current' : ''}"
                           >
-                            ${a}
-                            ${this.current === a ?
+                            ${a.email}
+                            ${this.current === a.id ?
                               html`<span class="user-badge">You</span>`
                             : ''}
                           </span>
                           <div class="user-actions">
-                            ${this.current === a ?
+                            ${this.current === a.id ?
                               ''
                             : html`
                                 <button
@@ -546,7 +537,7 @@ export class AdminUsers extends LitElement {
                                 </button>
                                 <button
                                   class="btn btn-small btn-danger"
-                                  @click=${() => this.removeFrom('admins', a)}
+                                  @click=${() => this.removeFrom(a)}
                                   title="Remove admin"
                                 >
                                   Remove

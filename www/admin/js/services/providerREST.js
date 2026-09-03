@@ -129,8 +129,22 @@ export class AdminProviderREST extends RestProviderBase {
     return this._requestJson('/admin/v1/users', { method: 'GET' });
   }
 
-  async saveUsers(payload) {
-    return this._requestWithBody('/admin/v1/users', payload);
+  async createUser(email, permissions) {
+    return this._requestWithBody('/admin/v1/users', { email, permissions });
+  }
+
+  async setUserPermissions(accountId, permissions) {
+    return this._requestWithBody(
+      `/admin/v1/users/${encodeURIComponent(accountId)}/permissions`,
+      { permissions },
+      'PUT'
+    );
+  }
+
+  async deleteUser(accountId) {
+    return this._requestJson(`/admin/v1/users/${encodeURIComponent(accountId)}`, {
+      method: 'DELETE',
+    });
   }
 
   async refreshAreaMapping(areaPath) {

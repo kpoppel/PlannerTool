@@ -58,14 +58,14 @@ def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):
     # Patch the symbol used by CostService (imported into service module)
     monkeypatch.setattr('planner_lib.cost.service.invalidate_team_rates_cache', _invalidate)
 
-    # Create a proxy account manager that delegates `save` to the real
+    # Create a proxy account manager that delegates credential updates to the real
     # manager but intercepts `load` so we can record calls. Register it in
     # the container so resolver picks it up.
     real_mgr = client.app.state.container.get('account_manager')
 
     class ProxyAcctMgr:
-        def save(self, payload):
-            return real_mgr.save(payload)
+        def update_credentials(self, payload):
+            return real_mgr.update_credentials(payload)
 
         def load(self, sid):
             called['account_load'] = True

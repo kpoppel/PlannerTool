@@ -28,7 +28,9 @@ const METHOD_ARGS = {
   saveTeams: [{ teams: [] }],
   savePeople: [{ people: [] }],
   saveCost: [{ rates: [] }],
-  saveUsers: [{ users: [] }],
+  createUser: ['new@example.com', []],
+  setUserPermissions: ['11111111-1111-4111-8111-111111111111', ['admin']],
+  deleteUser: ['11111111-1111-4111-8111-111111111111'],
   refreshAreaMapping: ['Area\\Path'],
   togglePlanEnabled: ['project-a', 'Area\\Path', 'plan-1', true],
   getSchema: ['iterations'],
@@ -70,7 +72,9 @@ const SUCCESS_JSON_METHODS = [
   'getCost',
   'saveCost',
   'getUsers',
-  'saveUsers',
+  'createUser',
+  'setUserPermissions',
+  'deleteUser',
   'refreshAreaMapping',
   'refreshAllAreaMappings',
   'togglePlanEnabled',
@@ -152,6 +156,19 @@ describe('AdminProviderREST Result contract', () => {
       expect(out.error.message.length).toBeGreaterThan(0);
     });
   }
+
+  it('account mutations put only anonymous IDs in resource URLs', async () => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { ok: true } }));
+    const accountId = '11111111-1111-4111-8111-111111111111';
+
+    await provider.setUserPermissions(accountId, ['admin']);
+    await provider.deleteUser(accountId);
+
+    expect(provider._fetch.mock.calls[0][0]).toBe(`/admin/v1/users/${accountId}/permissions`);
+    expect(provider._fetch.mock.calls[1][0]).toBe(`/admin/v1/users/${accountId}`);
+    expect(provider._fetch.mock.calls.flat().join(' ')).not.toContain('@');
+  });
 
   it('deleteIterationSet keeps status/detail on non-OK HTTP and returns Result failure', async () => {
     const provider = makeProvider();

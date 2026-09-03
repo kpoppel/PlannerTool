@@ -1,5 +1,5 @@
 from typing import Protocol, Union, runtime_checkable
-from planner_lib.accounts.config import AccountPayload
+from planner_lib.accounts.config import AccountCredentialsPayload
 @runtime_checkable
 class AccountManagerProtocol(Protocol):
     """Account manager interface used by the web layer.
@@ -9,7 +9,23 @@ class AccountManagerProtocol(Protocol):
     and the shape is tightly coupled to that module's behaviour.
     """
 
-    def save(self, config: AccountPayload) -> dict: ...
+    def create_account(
+        self,
+        credentials: AccountCredentialsPayload,
+        permissions: list[str] | None = None,
+    ) -> dict: ...
+
+    def update_credentials(self, credentials: AccountCredentialsPayload) -> dict: ...
+
+    def set_permissions(self, account_id: str, permissions: list[str]) -> None: ...
+
+    def get_account_by_id(self, account_id: str) -> dict: ...
+
+    def get_account_id(self, email: str) -> str: ...
+
+    def list_accounts(self) -> list[dict]: ...
+
+    def delete_account(self, account_id: str) -> None: ...
 
     def load(self, key: str) -> dict: ...
 
@@ -23,6 +39,6 @@ class AccountManagerProtocol(Protocol):
 
     def sync_accounts_full(
         self,
-        users: Union[list, dict],
+        users: dict,
         admins: Union[list, dict],
     ) -> None: ...

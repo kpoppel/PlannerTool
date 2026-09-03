@@ -63,3 +63,4 @@ Notes.md
 *.tmp
 backup/
 .aider*
+.zvec-grep

@@ -55,7 +55,9 @@ from planner_lib.admin.config_routes import (
 from planner_lib.admin.users_routes import (
     router as _users_router,
     admin_get_users,
-    admin_save_users,
+    admin_create_user,
+    admin_set_user_permissions,
+    admin_delete_user,
     admin_cache_invalidate,
     admin_cache_cleanup,
 )
@@ -89,6 +91,7 @@ __all__ = [
     'admin_get_ado', 'admin_save_ado',
     'admin_get_plugins_config', 'admin_save_plugins_config',
     # users + cache
-    'admin_get_users', 'admin_save_users',
+    'admin_get_users', 'admin_create_user', 'admin_set_user_permissions',
+    'admin_delete_user',
     'admin_cache_invalidate', 'admin_cache_cleanup',
 ]

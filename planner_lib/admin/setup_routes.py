@@ -14,7 +14,7 @@ from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
 from planner_lib.middleware.session import SESSION_COOKIE
 from planner_lib.middleware.session import get_session_id_from_request as _get_session_id_or_raise
-from planner_lib.accounts.config import _is_valid_pat, AccountPayload
+from planner_lib.accounts.config import _is_valid_pat, AccountCredentialsPayload
 from planner_lib.accounts.constants import AccountPermissions
 
 router = APIRouter()
@@ -66,8 +66,13 @@ async def admin_setup(request: Request):
         account_manager = resolve_service(request, 'account_manager')
         if account_manager.count_all_with_permission(AccountPermissions.ADMIN) > 0:
             raise HTTPException(status_code=403, detail={'error': 'already_setup', 'message': 'Admin accounts already exist'})
-        account_data = AccountPayload(email=email, pat=pat, permissions=[AccountPermissions.ADMIN])
-        account_manager.save(account_data)
+        credentials = AccountCredentialsPayload(email=email, pat=pat)
+        try:
+            account_manager.create_account(credentials, [AccountPermissions.ADMIN])
+        except ValueError:
+            account_manager.update_credentials(credentials)
+            account_id = account_manager.get_account_id(email)
+            account_manager.set_permissions(account_id, [AccountPermissions.ADMIN])
 
         session_mgr = resolve_service(request, 'session_manager')
         sid = session_mgr.create(email)

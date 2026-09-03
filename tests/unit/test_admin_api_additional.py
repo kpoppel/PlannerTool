@@ -94,7 +94,7 @@ def test_get_projects_raises_on_storage_error():
 
 
 def test_get_users_handles_list_errors():
-    # get_all_users / get_all_with_permission return [] on error -> admin_get_users returns empty lists
+    # Account manager owns storage error handling for the route.
     class S:
         def list_keys(self, ns):
             raise Exception('boom')
@@ -102,14 +102,9 @@ def test_get_users_handles_list_errors():
 
     class FakeAccountManager:
         _storage = storage
-        def get_all_users(self):
+        def list_accounts(self):
             try:
                 return list(self._storage.list_keys('accounts'))
-            except Exception:
-                return []
-        def get_all_with_permission(self, permission: str) -> list:
-            try:
-                return [k for k in self._storage.list_keys('accounts')]
             except Exception:
                 return []
         def sync_accounts_full(self, users, admins):
@@ -123,7 +118,7 @@ def test_get_users_handles_list_errors():
     container = SimpleNamespace(get=lambda name: {'account_manager': FakeAccountManager(), 'admin_service': admin_svc}.get(name))
     req = make_request(container)
     res = asyncio.run(admin_api.admin_get_users.__wrapped__(req))
-    assert res['users'] == [] and res['admins'] == []
+    assert res['accounts'] == []
 
 
 def test_admin_root_files_missing_raises_404(tmp_path, monkeypatch):
@@ -194,7 +189,7 @@ def test_admin_save_projects_success_and_backup(tmp_path, monkeypatch):
     assert any('projects_backup_' in key for (_, key, _) in storage.saved)
 
 
-def test_admin_save_users_delete_keyerror_handled():
+def test_admin_delete_user_returns_not_found_for_missing_storage_key():
     class Storage:
         def __init__(self):
             self.data = {'accounts': {'u1': {}}}
@@ -241,8 +236,10 @@ def test_admin_save_users_delete_keyerror_handled():
             if permission == 'admin':
                 return self._storage.data.get('accounts_admin', {}).keys()
             return []
-        def sync_accounts_full(self, users, admins):
-            _sync_full(users, admins)
+        def get_account_by_id(self, account_id):
+            return {'id': account_id, 'email': 'u1', 'permissions': []}
+        def delete_account(self, account_id):
+            self._storage.delete('accounts', 'u1')
 
     admin_svc = SimpleNamespace(_storage=storage)
     acct_mgr = FakeAccountManager()
@@ -259,10 +256,10 @@ def test_admin_save_users_delete_keyerror_handled():
         async def json(self):
             return self._payload
 
-    payload = {'users': [], 'admins': []}
-    req = Req(payload)
-    res = asyncio.run(admin_api.admin_save_users.__wrapped__(req))
-    assert res['ok']
+    req = Req({})
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(admin_api.admin_delete_user.__wrapped__('u1', req))
+    assert exc_info.value.status_code == 404
 
 
 def test_admin_root_session_admin_service_missing(tmp_path, monkeypatch):

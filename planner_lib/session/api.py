@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Response, Request
-from planner_lib.accounts.config import AccountPayload
+from planner_lib.accounts.config import AccountIdentityPayload
 from planner_lib.middleware.session import create_session
 import logging
 
@@ -8,7 +8,7 @@ router = APIRouter()
 
 
 @router.post('/session')
-async def api_session_post(payload: AccountPayload, response: Response, request: Request):
+async def api_session_post(payload: AccountIdentityPayload, response: Response, request: Request):
     email = payload.email
     if not email or '@' not in email:
         raise HTTPException(status_code=400, detail={'error': 'invalid_email', 'message': 'Invalid email address'})

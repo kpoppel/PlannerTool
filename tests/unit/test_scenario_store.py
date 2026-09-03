@@ -8,6 +8,15 @@ import pytest
 from planner_lib.scenarios import scenario_store as ss
 
 
+SCENARIO_DEFAULTS = {
+    'overrides': {},
+    'filters': {},
+    'view': {},
+    'groupOverrides': {},
+    'scenarioGroups': [],
+}
+
+
 class InMemoryBackend:
     def __init__(self):
         self.store = {}
@@ -58,7 +67,7 @@ def test_save_user_scenario_updates_register_and_returns_meta(tmp_path, monkeypa
     assert 'id' in meta and meta['user'] == 'userA'
     # stored scenario key present
     key = ss._scenario_key('userA', meta['id'])
-    assert b.load(ss.SCENARIO_NS, key) == {'foo': 'bar'}
+    assert b.load(ss.SCENARIO_NS, key) == {'foo': 'bar', **SCENARIO_DEFAULTS}
     reg = ss.load_scenario_register(b)
     assert key in reg
 
@@ -67,7 +76,7 @@ def test_load_user_scenario_reads_value():
     b = InMemoryBackend()
     b.save(ss.SCENARIO_NS, 'u_1', {'a': 1})
     got = ss.load_user_scenario(b, 'u', '1')
-    assert got == {'a': 1, '_meta': {'id': '1'}}
+    assert got == {'a': 1, '_meta': {'id': '1'}, **SCENARIO_DEFAULTS}
 
 
 def test_save_user_scenario_overrides_null_id(tmp_path, monkeypatch):
@@ -89,7 +98,11 @@ def test_save_user_scenario_strips_storage_metadata_from_raw_blob(tmp_path, monk
         {'id': 'transient', '_meta': {'id': 'old'}, 'name': 'Scenario A'},
     )
     raw = b.load(ss.SCENARIO_NS, ss._scenario_key('userA', meta['id']))
-    assert raw == {'id': 'transient', 'name': 'Scenario A'}
+    assert raw == {
+        'id': 'transient',
+        'name': 'Scenario A',
+        **SCENARIO_DEFAULTS,
+    }
 
 
 def test_load_user_scenario_preserves_domain_id_and_adds_storage_meta():

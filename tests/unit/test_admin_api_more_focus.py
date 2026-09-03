@@ -147,59 +147,7 @@ def test_backup_existing_fallback_uses_backend():
     assert key.startswith('projects_backup_')
 
 
-def test_admin_save_users_forbidden_removal_of_current_admin():
-    storage = FakeStorageBase()
-    storage.save('accounts', 'admin1@admin', {'email': 'admin1@admin'})
-    storage.save('accounts_admin', 'admin1@admin', {'email': 'admin1@admin'})
-
-    admin_svc = FakeAdminService(storage)
-    session_mgr = SessMgr({'email': 'admin1@admin'})
-    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
-
-    class Req:
-        def __init__(self, payload):
-            self._payload = payload
-            self.headers = {'X-Session-Id': 's1'}
-            self.cookies = {}
-            self.app = SimpleNamespace(state=SimpleNamespace(container=container))
-        async def json(self):
-            return self._payload
-
-    # attempt to remove current admin from admins list
-    payload = {'users': ['admin1@admin'], 'admins': []}
-    req = Req(payload)
-    with pytest.raises(HTTPException) as ei:
-        asyncio.run(admin_api.admin_save_users.__wrapped__(req))
-    assert ei.value.status_code == 400
-
-
-def test_admin_save_users_add_and_remove_users_and_admins():
-    storage = FakeStorageBase()
-    storage.save('accounts', 'u1', {'email': 'u1'})
-    storage.save('accounts_admin', 'admin1@admin', {'email': 'admin1@admin'})
-
-    admin_svc = FakeAdminService(storage)
-    session_mgr = SessMgr({'email': 'admin1@admin'})
-    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
-
-    class Req:
-        def __init__(self, payload):
-            self._payload = payload
-            self.headers = {'X-Session-Id': 's1'}
-            self.cookies = {}
-            self.app = SimpleNamespace(state=SimpleNamespace(container=container))
-        async def json(self):
-            return self._payload
-
-    payload = {'users': ['u1', 'u2'], 'admins': ['admin1@admin', 'admin2@admin']}
-    req = Req(payload)
-    res = asyncio.run(admin_api.admin_save_users.__wrapped__(req))
-    assert res['ok']
-    assert 'u2' in storage.data['accounts']
-    assert 'admin2@admin' in storage.data['accounts_admin']
-
-
-def test_admin_save_users_invalid_payload_types():
+def test_admin_create_user_rejects_non_object_payload():
     storage = FakeStorageBase()
     admin_svc = FakeAdminService(storage)
     session_mgr = SessMgr({'email': 'admin1@admin'})
@@ -214,10 +162,6 @@ def test_admin_save_users_invalid_payload_types():
         async def json(self):
             return self._payload
 
-    req1 = ReqBad(['not', 'a', 'dict'])
+    request = ReqBad(['not', 'a', 'dict'])
     with pytest.raises(HTTPException):
-        asyncio.run(admin_api.admin_save_users.__wrapped__(req1))
-
-    req2 = ReqBad({'users': 'string', 'admins': 'string'})
-    with pytest.raises(HTTPException):
-        asyncio.run(admin_api.admin_save_users.__wrapped__(req2))
+        asyncio.run(admin_api.admin_create_user.__wrapped__(request))

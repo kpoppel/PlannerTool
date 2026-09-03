@@ -210,6 +210,7 @@ def test_restore_backup_writes_config():
 def test_restore_backup_calls_sync_accounts_fn():
     from planner_lib.admin.config_manager import ConfigManager
     called = {}
+    account_id = '11111111-1111-4111-8111-111111111111'
 
     def sync(users, admins):
         called['users'] = users
@@ -217,9 +218,14 @@ def test_restore_backup_calls_sync_accounts_fn():
 
     cm = ConfigManager(storage=_Store())
     # New backup format: admin status in permissions field, no separate 'admins' dict
-    data = {'accounts': {'users': {'u@x.com': {'email': 'u@x.com', 'permissions': ['admin']}}}}
+    data = {'accounts': {'users': {'u@x.com': {
+        'account_id': account_id,
+        'email': 'u@x.com',
+        'permissions': ['admin'],
+    }}}}
     cm.restore_backup(data, sync_accounts_fn=sync)
     assert 'u@x.com' in called['users']
+    assert called['users']['u@x.com']['account_id'] == account_id
     # sync is called with the admin email list derived from permissions
     assert 'u@x.com' in called['admins']
 
@@ -244,13 +250,15 @@ def test_restore_backup_guards_current_admin():
 def test_get_backup_decrypts_pats_to_plaintext(monkeypatch):
     """get_backup must store PATs as plaintext in the JSON, not the Fernet ciphertext."""
     monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
-    from planner_lib.accounts.config import AccountManager, AccountPayload
+    from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload
     from planner_lib.admin.config_manager import ConfigManager
 
     acct = _Store()
     # Save a user with a properly encrypted PAT via AccountManager
     mgr = AccountManager(storage=acct)
-    mgr.save(AccountPayload(email='user@example.com', pat='my-azure-pat-abc123'))
+    mgr.update_credentials(
+        AccountCredentialsPayload(email='user@example.com', pat='my-azure-pat-abc123')
+    )
 
     cm = ConfigManager(storage=acct)
     bk = cm.get_backup()

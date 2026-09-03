@@ -1,9 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, Union
 import logging
 import os
 import re
 import base64
+from uuid import UUID, uuid4
 from planner_lib.storage import StorageBackend
 from planner_lib.accounts.constants import AccountPermissions
 
@@ -102,10 +103,19 @@ def _try_decrypt_pat(encrypted: str) -> Optional[str]:
         )
         return None
 
-class AccountPayload(BaseModel):
+class AccountIdentityPayload(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     email: str
+
+
+class AccountCredentialsPayload(AccountIdentityPayload):
     pat: Optional[str] = None
+
+
+class AccountPayload(AccountCredentialsPayload):
     permissions: Optional[list[str]] = None
+    account_id: Optional[str] = None
 
 class AccountManager:
     """Manages account configuration using a StorageBackend for persistence. All account management must pass
@@ -114,8 +124,87 @@ class AccountManager:
     def __init__(self, storage: StorageBackend):
         self._storage = storage
 
-    def save(self, config: AccountPayload) -> dict:
-        """Save an account configuration, validating input and handling PAT encryption."""
+    def create_account(
+        self,
+        credentials: AccountCredentialsPayload,
+        permissions: Optional[list[str]] = None,
+    ) -> dict:
+        """Create an account with an explicit initial permission set."""
+        try:
+            self._storage.load(self.DEFAULT_NS, credentials.email)
+        except KeyError:
+            pass
+        else:
+            raise ValueError(f'Account already exists: {credentials.email}')
+        return self._save_account(
+            AccountPayload(
+                email=credentials.email,
+                pat=credentials.pat,
+                permissions=list(permissions or []),
+                account_id=str(uuid4()),
+            )
+        )
+
+    def update_credentials(self, credentials: AccountCredentialsPayload) -> dict:
+        """Create or update credentials without changing existing permissions."""
+        try:
+            self._storage.load(self.DEFAULT_NS, credentials.email)
+        except KeyError:
+            return self.create_account(credentials)
+        return self._save_account(
+            AccountPayload(email=credentials.email, pat=credentials.pat)
+        )
+
+    def set_permissions(self, account_id: str, permissions: list[str]) -> None:
+        """Replace permissions for an account selected by anonymous ID."""
+        account = self.get_account_by_id(account_id)
+        email = account['email']
+        record = dict(self._storage.load(self.DEFAULT_NS, email))
+        record['permissions'] = list(permissions)
+        self._storage.save(self.DEFAULT_NS, email, record)
+        logger.info('Updated account permissions for %s', email)
+
+    def get_account_by_id(self, account_id: str) -> dict:
+        """Resolve an account summary by its anonymous identifier."""
+        try:
+            if str(UUID(account_id)) != account_id:
+                raise ValueError
+        except (AttributeError, TypeError, ValueError) as error:
+            raise KeyError(account_id) from error
+        for email in self._storage.list_keys(self.DEFAULT_NS):
+            record = self._storage.load(self.DEFAULT_NS, email)
+            if record['account_id'] == account_id:
+                return {
+                    'id': account_id,
+                    'email': email,
+                    'permissions': list(record.get('permissions') or []),
+                }
+        raise KeyError(account_id)
+
+    def list_accounts(self) -> list[dict]:
+        """Return admin-safe account summaries without credentials."""
+        accounts = []
+        for email in self._storage.list_keys(self.DEFAULT_NS):
+            record = self._storage.load(self.DEFAULT_NS, email)
+            accounts.append({
+                'id': record['account_id'],
+                'email': email,
+                'permissions': list(record.get('permissions') or []),
+            })
+        return sorted(accounts, key=lambda account: account['email'])
+
+    def get_account_id(self, email: str) -> str:
+        """Return the anonymous identifier for an internal login key."""
+        return self._storage.load(self.DEFAULT_NS, email)['account_id']
+
+    def delete_account(self, account_id: str) -> None:
+        """Delete an account selected by anonymous ID."""
+        email = self.get_account_by_id(account_id)['email']
+        self._storage.delete(self.DEFAULT_NS, email)
+        logger.info('Deleted account %s', email)
+
+    def _save_account(self, config: AccountPayload) -> dict:
+        """Persist a complete internal account representation."""
         # load from file storage to not change the PAT if empty
         try:
             existing = self._storage.load(self.DEFAULT_NS, config.email)
@@ -140,11 +229,23 @@ class AccountManager:
             encrypted_pat = existing.get('pat')
         else:
             encrypted_pat = _encrypt_pat(config.pat) if config.pat else None
-        payload = { 'email': config.email, 'pat': encrypted_pat, 'permissions': config.permissions or [] }
+        if config.permissions is None and existing:
+            permissions = list(existing.get('permissions') or [])
+        else:
+            permissions = list(config.permissions or [])
+        account_id = existing['account_id'] if existing else config.account_id
+        if account_id is None:
+            raise ValueError(f'Account ID is required: {config.email}')
+        payload = {
+            'account_id': account_id,
+            'email': config.email,
+            'pat': encrypted_pat,
+            'permissions': permissions,
+        }
         self._storage.save(self.DEFAULT_NS, config.email, payload)
 
         logger.info('Saved account configuration for %s', config.email)
-        return { 'ok': True, 'email': config.email }
+        return { 'ok': True, 'id': account_id, 'email': config.email }
 
     def load(self, key: str) -> dict:
         # Load configuration from the storage backend
@@ -194,33 +295,45 @@ class AccountManager:
             return []
         
     # ------------------------------------------------------------------
-    # Bulk sync (used by backup restore and the users admin endpoint)
+    # Bulk sync is reserved for restoring complete backup snapshots.
     # ------------------------------------------------------------------
     def sync_accounts_full(
         self,
-        users: Union[list, dict],
+        users: dict,
         admins: Union[list, dict],
     ) -> None:
         """Synchronize user and admin accounts to exactly the supplied sets.
 
-        *users* is the complete set of accounts; *admins* is the subset that
-        should have the ADMIN permission.  Both may be lists of email strings
-        (from the admin UI) or dicts of ``{email: user_data}`` (from backup
-        restore).  When a list is provided, existing stored data is preserved.
+        *users* is the complete ``{email: account_data}`` mapping from a backup;
+        every account must contain a unique ID. *admins* is the subset that
+        should have the ADMIN permission.
 
         Accounts no longer present in *users* are deleted.
         The ADMIN permission is added/removed from each account record to
         match the *admins* set exactly.
         """
-        # Normalise lists → dicts, preserving any existing stored user data.
-        if isinstance(users, list):
-            users_dict: dict = {}
-            for email in users:
-                try:
-                    users_dict[email] = self._storage.load('accounts', email)
-                except KeyError:
-                    users_dict[email] = {'email': email}
-            users = users_dict
+        if not isinstance(users, dict):
+            raise ValueError('Account restore requires records with Account IDs')
+
+        validated_users = {}
+        account_ids = set()
+        for user_key, user_data in users.items():
+            if not isinstance(user_data, dict):
+                raise ValueError(f'Account record must be an object: {user_key}')
+            record = dict(user_data)
+            account_id = record.get('account_id')
+            try:
+                canonical_id = str(UUID(account_id))
+            except (AttributeError, TypeError, ValueError) as error:
+                raise ValueError(f'Account ID must be a canonical UUID: {user_key}') from error
+            if canonical_id != account_id:
+                raise ValueError(f'Account ID must be a canonical UUID: {user_key}')
+            if account_id in account_ids:
+                raise ValueError(f'Account ID must be unique: {account_id}')
+            account_ids.add(account_id)
+            validated_users[user_key] = record
+
+        users = validated_users
         if isinstance(admins, list):
             admins_set = set(admins)
         else:

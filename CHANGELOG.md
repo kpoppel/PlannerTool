@@ -20,6 +20,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Added stable anonymous account IDs so admin permission and deletion URLs no longer expose email addresses; backups created before account IDs were introduced are no longer valid for restore.
 - Feature cards now show a top border in the colour of the group that directly owns them, so tasks in a nested group tree are visibly attributed to the right parent group.
 - Groups are now created at the position the board right-click points at: an insertion caret shows the target slot and sibling-scoped sparse ranks (`www/js/application/shared/ordering.js`) keep the order stable instead of always placing new groups at the top.
 - Group bands and tasks share one ordering scale, so a group can be inserted anywhere among the tasks instead of always above them; the separate "Ungrouped" band is gone and ungrouped tasks are ordinary board rows.
@@ -39,6 +40,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Aligned scenario-store unit coverage with the canonical normalized scenario payload contract.
+- Separated credential updates from admin authorization changes so saving account configuration cannot silently revoke permissions; admin user management now uses per-account commands.
 - Fixed double-click reset leaving a FeatureCard at its scenario position and size by routing reverts through the board's incremental geometry update contract.
 - Creating a new scenario no longer breaks group projection: cloned scenarios now carry the `groupOverrides` and `scenarioGroups` branches required by the canonical store.
 - Publishing a scenario no longer leaves the published group pending: the save path mutated scenario state in place instead of going through the store, so every later save re-created the same group and duplicates accumulated on the plan across scenarios. Sub-group parents are now published too, with temp ids remapped to the created ids.

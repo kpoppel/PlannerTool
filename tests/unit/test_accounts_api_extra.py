@@ -3,12 +3,12 @@ from tests.helpers import register_service_on_client
 
 
 def test_save_config_save_returns_false(client, monkeypatch):
-    # Force app.state.account_manager.save to return falsy value to exercise 400 branch
+    # Force credential update to return falsy value to exercise the route branch.
     def _save(payload):
         return False
 
     # Register a fake account manager via the container so resolver picks it up
-    fake_mgr = type('M', (), {'save': lambda self, payload: _save(payload)})()
+    fake_mgr = type('M', (), {'update_credentials': lambda self, payload: _save(payload)})()
     register_service_on_client(client, 'account_manager', fake_mgr)
     from fastapi.testclient import TestClient
 
@@ -20,11 +20,11 @@ def test_save_config_save_returns_false(client, monkeypatch):
 
 
 def test_save_config_save_raises(client, monkeypatch):
-    # Force save to raise and ensure 500 returned
+    # Force credential update to raise and ensure 500 returned.
     def _save(payload):
         raise RuntimeError('boom')
 
-    fake_mgr = type('M', (), {'save': lambda self, payload: _save(payload)})()
+    fake_mgr = type('M', (), {'update_credentials': lambda self, payload: _save(payload)})()
     register_service_on_client(client, 'account_manager', fake_mgr)
     from fastapi.testclient import TestClient
 

@@ -71,6 +71,12 @@ class FakeAccountManager:
         except Exception:
             return []
 
+    def list_accounts(self):
+        return [self._storage.load('accounts', email) for email in self._storage.list_keys('accounts')]
+
+    def get_account_id(self, email):
+        return self._storage.load('accounts', email)['id']
+
     # def get_all_admins(self):
     #     try:
     #         return list(self._storage.list_keys('accounts_admin'))
@@ -201,10 +207,10 @@ def test_admin_save_projects_success_and_invalid_payload():
     assert ei2.value.status_code == 400
 
 
-def test_admin_get_users_and_save_users():
+def test_admin_get_users():
     storage = FakeStorage()
-    storage.save('accounts', 'u1', {'email': 'u1'})
-    storage.save('accounts_admin', 'admin1', {'email': 'admin1'})
+    storage.save('accounts', 'u1', {'id': 'user-id', 'email': 'u1', 'permissions': []})
+    storage.save('accounts', 'admin1', {'id': 'admin-id', 'email': 'admin1', 'permissions': ['admin']})
     acct_mgr = FakeAccountManager(storage)
     admin_svc = FakeAdminService(storage)
     session_mgr = SessMgr({'email': 'admin1'})
@@ -213,33 +219,11 @@ def test_admin_get_users_and_save_users():
 
     # get users
     res = asyncio.run(admin_api.admin_get_users.__wrapped__(req))
-    assert 'users' in res and 'admins' in res
-    assert res['current'] == 'admin1'
-
-    class Req2:
-        def __init__(self, payload):
-            self._payload = payload
-            self.headers = {'X-Session-Id': 's1'}
-            self.cookies = {}
-            self.app = SimpleNamespace(state=SimpleNamespace(container=container))
-
-        async def json(self):
-            return self._payload
-
-    # attempt to remove current admin from admins -> should raise 400
-    payload = {'users': ['u1'], 'admins': []}
-    req2 = Req2(payload)
-    with pytest.raises(HTTPException) as ei:
-        asyncio.run(admin_api.admin_save_users.__wrapped__(req2))
-    assert ei.value.status_code == 400
-
-    # valid change: add u2 and admin2
-    payload2 = {'users': ['u1', 'u2'], 'admins': ['admin1', 'admin2']}
-    req3 = Req2(payload2)
-    res2 = asyncio.run(admin_api.admin_save_users.__wrapped__(req3))
-    assert res2['ok']
-    assert 'u2' in storage.data['accounts']
-    assert 'admin2' in storage.data['accounts_admin']
+    assert res['accounts'] == [
+        {'id': 'user-id', 'email': 'u1', 'permissions': []},
+        {'id': 'admin-id', 'email': 'admin1', 'permissions': ['admin']},
+    ]
+    assert res['currentId'] == 'admin-id'
 
 
 def test_admin_restore_backup_reloads_config_after_restore():

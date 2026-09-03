@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from planner_lib.main import create_app, Config
-from planner_lib.accounts.config import AccountPayload
+from planner_lib.accounts.config import AccountCredentialsPayload
 
 
 def _make_app(tmp_path: Path) -> TestClient:
@@ -61,7 +61,7 @@ def test_cost_post_pat_refresh_does_not_raise_attribute_error(client, caplog):
 
     # Register an account with a PAT so the refresh path can load it
     account_mgr = container.get("account_manager")
-    account_mgr.save(AccountPayload(email=email, pat=pat))
+    account_mgr.update_credentials(AccountCredentialsPayload(email=email, pat=pat))
 
     # Create a session for the user but leave PAT absent from session context
     session_mgr = container.get("session_manager")
