@@ -1,7 +1,13 @@
 import { expect, fixture } from '@open-wc/testing';
+import sinon from 'sinon';
 import '../../www/js/components/FeatureCard.lit.js';
+import { cmd } from '../../www/js/application/imports.js';
 
 describe('FeatureCardLit basic behaviors', () => {
+  afterEach(() => {
+    sinon.restore();
+  });
+
   it('constructor defaults and basic render', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     expect(el.feature).to.be.an('object');
@@ -58,6 +64,19 @@ describe('FeatureCardLit basic behaviors', () => {
     el.clearLiveDates();
     await el.updateComplete;
     expect(dates.querySelector('.dates-live').textContent).to.equal('');
+  });
+
+  it('reverts the scenario override when the card is double-clicked', async () => {
+    const revertFeature = sinon.stub(cmd.feature, 'revertFeature');
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'f4', title: 'Reset me', start: '2025-02-01', end: '2025-02-05' };
+    await el.updateComplete;
+
+    el.shadowRoot.querySelector('.feature-card').dispatchEvent(
+      new MouseEvent('dblclick', { bubbles: true, composed: true })
+    );
+
+    expect(revertFeature.calledOnceWithExactly('f4')).to.be.true;
   });
 
   it('renders ghost title text with initial card render', async () => {

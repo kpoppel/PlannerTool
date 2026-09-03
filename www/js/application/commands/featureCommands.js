@@ -377,7 +377,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       );
 
       recomputeAndEmitCapacity([id]);
-      emitFeatureMutation({ id: String(id), type: 'revert' });
+      emitFeatureMutation({ ids: [String(id)], type: 'revert' });
       return true;
     },
 

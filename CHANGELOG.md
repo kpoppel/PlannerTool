@@ -39,6 +39,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Fixed double-click reset leaving a FeatureCard at its scenario position and size by routing reverts through the board's incremental geometry update contract.
 - Creating a new scenario no longer breaks group projection: cloned scenarios now carry the `groupOverrides` and `scenarioGroups` branches required by the canonical store.
 - Publishing a scenario no longer leaves the published group pending: the save path mutated scenario state in place instead of going through the store, so every later save re-created the same group and duplicates accumulated on the plan across scenarios. Sub-group parents are now published too, with temp ids remapped to the created ids.
 - Removed unused legacy ViewManagementService, ViewService, and ConfigService modules and their orphaned tests now that store-backed view and configuration flows are active.
