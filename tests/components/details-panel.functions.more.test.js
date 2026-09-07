@@ -1,6 +1,7 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
+import { renderDetailsPanelScheduling } from '../../www/js/components/details-panel/DetailsPanelScheduling.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents, ProjectEvents } from '../../www/js/core/EventRegistry.js';
@@ -12,6 +13,31 @@ describe('DetailsPanel additional function coverage', () => {
 
   afterEach(() => {
     sinon.restore();
+  });
+
+  it('groups current and future iterations separately from past iterations', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const rendered = renderDetailsPanelScheduling({
+      host: { _formatIterationLabel: (iteration) => iteration.name },
+      feature: { id: 'x1' },
+      iterations: [
+        { name: 'Current', path: 'Current', finishDate: today },
+        { name: 'Past', path: 'Past', finishDate: '2020-01-01' },
+      ],
+      childrenByParent: new Map(),
+      orig: {},
+    });
+    const root = await fixture(html`<div>${rendered}</div>`);
+
+    expect([...root.querySelectorAll('optgroup')].map((group) => group.label)).to.deep.equal([
+      'Current and future iterations',
+      'Past iterations',
+    ]);
+    expect([...root.querySelectorAll('option')].map((option) => option.textContent.trim())).to.deep.equal([
+      '—',
+      'Current',
+      'Past',
+    ]);
   });
 
   it('_onShow opens and sets feature', async () => {

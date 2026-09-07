@@ -38,6 +38,23 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
       feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
     : 'Item';
 
+  const today = new Date().toISOString().slice(0, 10);
+  const currentAndFutureIterations = [];
+  const pastIterations = [];
+  for (const iteration of iterations || []) {
+    const finishDate = iteration.finishDate ? iteration.finishDate.slice(0, 10) : null;
+    if (!finishDate || finishDate >= today) {
+      currentAndFutureIterations.push(iteration);
+    } else {
+      pastIterations.push(iteration);
+    }
+  }
+  const renderIterationGroup = (label, group) => group.length ? html`
+    <optgroup label=${label}>
+      ${group.map((it) => html`<option value="${it.path}">${host._formatIterationLabel(it)}</option>`)}
+    </optgroup>
+  ` : '';
+
   return html`
     <div class="details-label" style="margin-top:8px;">Scheduling</div>
     <div style="margin-top:4px;">
@@ -55,7 +72,10 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
       >
         <option value="">—</option>
         ${iterations && iterations.length ?
-          iterations.map((it) => html`<option value="${it.path}">${host._formatIterationLabel(it)}</option>`)
+          html`
+            ${renderIterationGroup('Current and future iterations', currentAndFutureIterations)}
+            ${renderIterationGroup('Past iterations', pastIterations)}
+          `
         : html`<option disabled>No iterations available</option>`}
       </select>
     </div>

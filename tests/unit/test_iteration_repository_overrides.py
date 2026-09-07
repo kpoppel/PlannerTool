@@ -88,6 +88,30 @@ def test_list_iterations_with_iteration_sets_has_no_implicit_default():
     assert backend.calls == []
 
 
+def test_normalize_iterations_orders_current_and_future_before_past():
+    iterations = {
+        "TeamA\\Q2": {
+            "name": "Q2",
+            "startDate": "2026-03-23",
+            "finishDate": "2026-06-12",
+        },
+        "TeamA\\Q1": {
+            "name": "Q1",
+            "startDate": "2025-12-29",
+            "finishDate": "2026-03-20",
+        },
+        "TeamA\\Q4": {
+            "name": "Q4",
+            "startDate": "2026-09-07",
+            "finishDate": "2026-11-27",
+        },
+    }
+
+    result = IterationRepository._normalize_iterations(iterations)
+
+    assert [item["name"] for item in result] == ["Q4", "Q1", "Q2"]
+
+
 class _SetWithValuesIterationConfig:
     def fetch_iterations_config(self):
         return {

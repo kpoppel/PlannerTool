@@ -40,6 +40,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- The iteration selector now labels current and future iterations separately from past iterations.
 - Aligned scenario-store unit coverage with the canonical normalized scenario payload contract.
 - Separated credential updates from admin authorization changes so saving account configuration cannot silently revoke permissions; admin user management now uses per-account commands.
 - Fixed double-click reset leaving a FeatureCard at its scenario position and size by routing reverts through the board's incremental geometry update contract.
