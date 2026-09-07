@@ -73,6 +73,36 @@ describe('mergePluginConfig', () => {
     expect(alpha.mountPoint).to.equal('feature-board');
   });
 
+  it('preserves persistent as technical metadata when runtime config exists', () => {
+    const meta = {
+      modules: [
+        {
+          id: 'plugin-dependencies',
+          name: 'Dependencies',
+          version: '1.0.0',
+          description: 'Render dependency arrows between feature cards',
+          enabled: true,
+          activated: false,
+          exclusive: false,
+          persistent: true,
+          mountPoint: 'feature-board',
+          dependencies: [],
+        },
+      ],
+    };
+    const runtime = [
+      {
+        id: 'plugin-dependencies',
+        enabled: true,
+        activated: false,
+      },
+    ];
+
+    const result = mergePluginConfig(meta, runtime);
+
+    expect(result.modules[0].persistent).to.equal(true);
+  });
+
   it('output follows runtime config order, then appends remaining metadata plugins', () => {
     // Runtime lists beta before alpha; gamma is not in runtime
     const runtime = [

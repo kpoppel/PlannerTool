@@ -40,6 +40,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Dependencies plugin now stays active across other plugin switches, including full-screen plugins.
 - The iteration selector now labels current and future iterations separately from past iterations.
 - Aligned scenario-store unit coverage with the canonical normalized scenario payload contract.
 - Separated credential updates from admin authorization changes so saving account configuration cannot silently revoke permissions; admin user management now uses per-account commands.

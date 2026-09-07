@@ -7,7 +7,7 @@
  * Merge policy
  * ─────────────
  * Technical fields always come from modules.config.json (source of truth):
- *   id, name, version, description, mountPoint, dependencies, exclusive, fullscreen
+ *   id, name, version, description, mountPoint, dependencies, exclusive, fullscreen, persistent
  *
  * Runtime-managed fields come from the backend config when present:
  *   enabled, activated, order (expressed as list position), custom_config
@@ -25,15 +25,38 @@
  */
 
 /**
+ * @typedef {{
+ *   id: string,
+ *   name: string,
+ *   version: string,
+ *   description: string,
+ *   enabled: boolean,
+ *   activated: boolean,
+ *   exclusive: boolean,
+ *   mountPoint: string,
+ *   dependencies: string[],
+ *   fullscreen?: boolean,
+ *   persistent?: boolean,
+ *   custom_config?: unknown,
+ * }} PluginModuleConfig
+ * @typedef {{
+ *   id: string,
+ *   enabled: boolean,
+ *   activated: boolean,
+ *   custom_config?: unknown,
+ * }} RuntimePluginConfig
+ */
+
+/**
  * Merge modules.config.json metadata with backend runtime plugin config.
  *
- * @param {{ modules: object[] }} modulesConfig  - parsed modules.config.json
- * @param {object[]|null}         runtimeConfig  - array from /api/plugins/config,
- *                                                 or null/undefined when unavailable
- * @returns {{ modules: object[] }} merged config ready for PluginManager.loadFromConfig()
+ * @param {{ modules: PluginModuleConfig[] }} modulesConfig - parsed modules.config.json
+ * @param {RuntimePluginConfig[]|null|undefined} runtimeConfig - array from /api/plugins/config,
+ *                                                              or null/undefined when unavailable
+ * @returns {{ modules: PluginModuleConfig[] }} merged config ready for PluginManager.loadFromConfig()
  */
 export function mergePluginConfig(modulesConfig, runtimeConfig) {
-  const metaModules = (modulesConfig && modulesConfig.modules) || [];
+  const metaModules = modulesConfig.modules;
   const deprecatedRuntimeIds = new Set(['plugin-cost-v1']);
 
   // Index metadata by id for fast lookup (skip entries without id)
@@ -42,6 +65,7 @@ export function mergePluginConfig(modulesConfig, runtimeConfig) {
     if (m.id) metaById.set(m.id, m);
   });
 
+  // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
   if (!Array.isArray(runtimeConfig) || runtimeConfig.length === 0) {
     // No runtime config — use metadata as-is (modules.config.json defaults apply)
     return modulesConfig;
@@ -85,9 +109,9 @@ export function mergePluginConfig(modulesConfig, runtimeConfig) {
  * Build a single merged module entry.
  * Technical fields always from meta; runtime fields from runtime when available.
  *
- * @param {object}      meta    - entry from modules.config.json
- * @param {object|null} runtime - matching entry from backend runtime config, or null
- * @returns {object}
+ * @param {PluginModuleConfig} meta - entry from modules.config.json
+ * @param {RuntimePluginConfig|null} runtime - matching entry from backend runtime config, or null
+ * @returns {PluginModuleConfig}
  */
 function _buildMergedEntry(meta, runtime) {
   const base = {
@@ -97,10 +121,11 @@ function _buildMergedEntry(meta, runtime) {
     version: meta.version,
     description: meta.description,
     mountPoint: meta.mountPoint,
-    dependencies: meta.dependencies || [],
+    dependencies: meta.dependencies,
     exclusive: meta.exclusive,
     // fullscreen is optional
     ...(meta.fullscreen !== undefined ? { fullscreen: meta.fullscreen } : {}),
+    ...(meta.persistent !== undefined ? { persistent: meta.persistent } : {}),
   };
 
   if (runtime) {

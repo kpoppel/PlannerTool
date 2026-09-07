@@ -100,7 +100,7 @@ export class PluginManager {
     }
 
     // Determine dependency list for the target plugin (to avoid closing deps)
-    const deps = plugin.getMetadata().dependencies || [];
+    const deps = this._getDependencies(plugin);
     if (deps.length > 0) {
       console.log(`[PluginManager] Plugin ${pluginId} requires dependencies: ${deps.join(', ')}`);
     }
@@ -110,7 +110,7 @@ export class PluginManager {
     const collectDeps = (id) => {
       const p = this.plugins.get(id);
       if (!p) return;
-      const dlist = p.getMetadata().dependencies || [];
+      const dlist = this._getDependencies(p);
       for (const d of dlist) {
         if (!depsSet.has(d)) {
           depsSet.add(d);
@@ -125,8 +125,10 @@ export class PluginManager {
 
     // Decide shareability: a plugin may declare `config.exclusive = false` to
     // allow co-existence with other shareable plugins. Default is exclusive
-    // (true) to preserve current single-open UX.
+    // (true) to preserve current single-open UX. Persistent plugins are overlays
+    // that stay active across plugin switches and do not close the current view.
     const targetExclusive = !(plugin.config && plugin.config.exclusive === false);
+    const targetPersistent = plugin.config && plugin.config.persistent === true;
     const deactivated = [];
 
     for (const other of this.plugins.values()) {
@@ -134,6 +136,9 @@ export class PluginManager {
       if (!other.active) continue;
       // Never deactivate dependencies required by the target plugin
       if (depsSet.has(other.id)) continue;
+
+      if (targetPersistent) continue;
+      if (other.config && other.config.persistent === true) continue;
 
       const otherExclusive = !(other.config && other.config.exclusive === false);
 
@@ -248,11 +253,11 @@ export class PluginManager {
    * Activation: the first plugin found with `activated === true` is auto-activated
    * at startup. Subsequent activated entries are ignored (only one may be active).
    *
-   * @param {{modules: Array<object>}} config
+    * @param {{modules: Array<{id:string,enabled?:boolean,activated?:boolean,dependencies:string[]}>}} config
    * @returns {Promise<void>}
    */
   async loadFromConfig(config) {
-    const modules = config.modules || [];
+    const modules = config.modules;
 
     // Filter out disabled plugins before sorting so dependency checks only
     // consider enabled plugins.
@@ -304,7 +309,7 @@ export class PluginManager {
   // Private helpers
 
   _checkDependencies(plugin) {
-    return (plugin.getMetadata().dependencies || []).filter(
+    return this._getDependencies(plugin).filter(
       (id) => !this.plugins.has(id)
     );
   }
@@ -312,14 +317,14 @@ export class PluginManager {
   _findDependents(pluginId) {
     const dependents = [];
     for (const plugin of this.plugins.values()) {
-      if ((plugin.getMetadata().dependencies || []).includes(pluginId))
+      if (this._getDependencies(plugin).includes(pluginId))
         dependents.push(plugin.id);
     }
     return dependents;
   }
 
   _addToLoadOrder(plugin) {
-    const deps = plugin.getMetadata().dependencies || [];
+    const deps = this._getDependencies(plugin);
 
     // Find position after all dependencies
     let insertIndex = 0;
@@ -330,6 +335,14 @@ export class PluginManager {
     this.loadOrder.splice(insertIndex, 0, plugin.id);
   }
 
+  _getDependencies(plugin) {
+    return plugin.config.dependencies;
+  }
+
+  /**
+    * @param {Array<{id:string,enabled?:boolean,activated?:boolean,dependencies:string[]}>} modules
+    * @returns {Array<{id:string,enabled?:boolean,activated?:boolean,dependencies:string[]}>}
+   */
   _topologicalSort(modules) {
     // Simple topological sort by dependencies
     const sorted = [];
@@ -339,7 +352,7 @@ export class PluginManager {
       if (visited.has(module.id)) return;
       visited.add(module.id);
 
-      const deps = module.dependencies || [];
+      const deps = module.dependencies;
       for (const depId of deps) {
         const depModule = modules.find((m) => m.id === depId);
         if (depModule) visit(depModule);

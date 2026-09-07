@@ -20,12 +20,18 @@ export class PluginDependencies extends MountedPlugin {
   async activate() {
     await super.activate();
     cmd.view.setShowDependencies(true, { suppressEvents: true });
-    if (this._el?.open) this._el.open();
+    const component = /** @type {import('./PluginDependenciesComponent.js').PluginDependenciesComponent} */ (
+      /** @type {unknown} */ (this._el)
+    );
+    component.open();
   }
 
   async deactivate() {
     cmd.view.setShowDependencies(false, { suppressEvents: true });
-    if (this._el?.close) this._el.close();
+    const component = /** @type {import('./PluginDependenciesComponent.js').PluginDependenciesComponent} */ (
+      /** @type {unknown} */ (this._el)
+    );
+    component.close();
     await super.deactivate();
   }
 
@@ -37,6 +43,7 @@ export class PluginDependencies extends MountedPlugin {
       icon: 'account_tree',
       section: 'overlay',
       autoActivate: true,
+      persistent: true,
     };
   }
 }

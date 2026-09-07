@@ -29,6 +29,15 @@ class TestPlugin extends Plugin {
   }
 }
 
+class MetadataOnlyPlugin extends TestPlugin {
+  getMetadata() {
+    return {
+      id: this.id,
+      name: this.config.name,
+    };
+  }
+}
+
 describe('PluginManager & Plugin base', () => {
   let manager;
 
@@ -49,7 +58,7 @@ describe('PluginManager & Plugin base', () => {
   });
 
   it('should register a plugin', async () => {
-    const plugin = new TestPlugin('test-plugin');
+    const plugin = new TestPlugin('test-plugin', { dependencies: [] });
 
     await manager.register(plugin);
 
@@ -59,7 +68,7 @@ describe('PluginManager & Plugin base', () => {
   });
 
   it('should emit plugin:registered event', async () => {
-    const plugin = new TestPlugin('test-plugin');
+    const plugin = new TestPlugin('test-plugin', { dependencies: [] });
 
     const { PluginEvents } = await import('../../www/js/core/EventRegistry.js');
     const ev = new Promise((resolve) => bus.once(PluginEvents.REGISTERED, resolve));
@@ -70,8 +79,8 @@ describe('PluginManager & Plugin base', () => {
   });
 
   it('should prevent duplicate registration', async () => {
-    const plugin1 = new TestPlugin('test-plugin');
-    const plugin2 = new TestPlugin('test-plugin');
+    const plugin1 = new TestPlugin('test-plugin', { dependencies: [] });
+    const plugin2 = new TestPlugin('test-plugin', { dependencies: [] });
 
     await manager.register(plugin1);
 
@@ -84,7 +93,7 @@ describe('PluginManager & Plugin base', () => {
   });
 
   it('should activate and deactivate plugin with events', async () => {
-    const plugin = new TestPlugin('test-plugin');
+    const plugin = new TestPlugin('test-plugin', { dependencies: [] });
     await manager.register(plugin);
 
     await manager.activate('test-plugin');
@@ -97,7 +106,7 @@ describe('PluginManager & Plugin base', () => {
   });
 
   it('should unregister a plugin', async () => {
-    const plugin = new TestPlugin('test-plugin');
+    const plugin = new TestPlugin('test-plugin', { dependencies: [] });
     await manager.register(plugin);
 
     await manager.unregister('test-plugin');
@@ -144,7 +153,7 @@ describe('PluginManager & Plugin base', () => {
   });
 
   it('should return plugin via get(), isActive() and list()', async () => {
-    const plugin = new TestPlugin('list-plugin', { name: 'List' });
+    const plugin = new TestPlugin('list-plugin', { name: 'List', dependencies: [] });
     await manager.register(plugin);
 
     expect(manager.get('list-plugin')).to.equal(plugin);
@@ -158,7 +167,7 @@ describe('PluginManager & Plugin base', () => {
   });
 
   it('should prevent unregister when dependents exist', async () => {
-    const p1 = new TestPlugin('p1');
+    const p1 = new TestPlugin('p1', { dependencies: [] });
     const p2 = new TestPlugin('p2', { dependencies: ['p1'] });
 
     await manager.register(p1);
@@ -173,8 +182,16 @@ describe('PluginManager & Plugin base', () => {
     }
   });
 
+  it('uses plugin config dependencies when display metadata omits them', async () => {
+    const plugin = new MetadataOnlyPlugin('metadata-only', { dependencies: [] });
+
+    await manager.register(plugin);
+
+    expect(manager.has('metadata-only')).to.equal(true);
+  });
+
   it('topological sort should order modules by dependencies', () => {
-    const m1 = { id: 'a' };
+    const m1 = { id: 'a', dependencies: [] };
     const m2 = { id: 'b', dependencies: ['a'] };
     const m3 = { id: 'c', dependencies: ['b'] };
 
@@ -197,7 +214,7 @@ vi.mock('../../www/js/core/pluginRegistry.js', () => {
       this.initialized = false;
       this.active = false;
     }
-    getMetadata() { return { id: this.id, dependencies: this.config.dependencies || [] }; }
+    getMetadata() { return { id: this.id, dependencies: this.config.dependencies }; }
     async init() {}
     async activate() { this.active = true; }
     async deactivate() { this.active = false; }
