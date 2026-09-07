@@ -34,6 +34,12 @@ import {
   resolveGroupMoveSlot,
   resolveInsertionSlot,
 } from './groupBandLayout.js';
+import {
+  buildHierarchyModel,
+  collapseToDepth,
+  createFeatureComparator,
+  foldPropsFor,
+} from './hierarchyFold.js';
 import './FeatureGroup.lit.js';
 export { initBoard } from './FeatureBoard.init.js';
 
@@ -59,6 +65,13 @@ class FeatureBoard extends LitElement {
     this._swimlanes = [];
     // Set of group IDs the user has collapsed.
     this._collapsedGroups = new Set();
+    // Set of task IDs whose parent/child subtree the user has folded away.
+    // Ephemeral, like _collapsedGroups — not persisted and not saved with a View.
+    this._collapsedFeatures = new Set();
+    // Level chosen through the depth stepper, or null once the user hand-folds a
+    // single card — at that point no single level describes the board.
+    this._foldDepth = null;
+    this._hierarchyModel = null;
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
     this._overlayOffset = 0;
     this._renderGeneration = 0;
@@ -77,6 +90,7 @@ class FeatureBoard extends LitElement {
       this.setAttribute('role', 'list');
     }
     window.addEventListener('resize', this._handleViewportResize);
+    this.addEventListener('feature-toggle', this._onFeatureToggle);
     this._updateSwimlaneLabelStickyTop();
     this._onOverlayOffsetChanged = ({ offset }) => {
       if (offset !== this._overlayOffset) {
@@ -85,6 +99,10 @@ class FeatureBoard extends LitElement {
       }
     };
     bus.on(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
+    this._onSetFoldDepth = ({ depth }) => {
+      this.collapseToDepth(depth);
+    };
+    bus.on(BoardEvents.SET_FOLD_DEPTH, this._onSetFoldDepth);
     this._viewportUnsubscribe = boardCoords.subscribe(() => {
       this._scheduleViewportRender();
     });
@@ -169,6 +187,18 @@ class FeatureBoard extends LitElement {
     return `rgba(${r},${g},${b},${alpha})`;
   }
 
+  /** Fold props for a card row; swimlane layout paths omit them entirely. */
+  _foldPropsFor(item) {
+    return {
+      foldable: item.foldable === true,
+      collapsed: item.collapsed === true,
+      hiddenCount: item.hiddenCount === undefined ? 0 : item.hiddenCount,
+      depth: item.hierarchyDepth === undefined ? 0 : item.hierarchyDepth,
+      descendants: item.descendants === undefined ? [] : item.descendants,
+      subtreeExtent: item.subtreeExtent === undefined ? null : item.subtreeExtent,
+    };
+  }
+
   render() {
     if (!this.features?.length && !this._swimlanes?.length) {
       return html`<slot></slot>`;
@@ -246,6 +276,7 @@ class FeatureBoard extends LitElement {
               @group-drag-end=${this._onGroupDragEnd}
             ></feature-group>`;
           }
+          const fold = this._foldPropsFor(item);
           return html`<feature-card-lit
             .feature=${item.feature}
             .bus=${bus}
@@ -254,6 +285,12 @@ class FeatureBoard extends LitElement {
             .project=${item.project}
             .groupColor=${item.groupColor}
             .hideGhostTitle=${!!item.hideGhostTitle}
+            .foldable=${fold.foldable}
+            .collapsed=${fold.collapsed}
+            .hiddenCount=${fold.hiddenCount}
+            .depth=${fold.depth}
+            .descendants=${fold.descendants}
+            .subtreeExtent=${fold.subtreeExtent}
             style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px"
           ></feature-card-lit>`;
         }
@@ -324,6 +361,66 @@ class FeatureBoard extends LitElement {
   _onGroupContextMenuBubble(e) {
     // Already composed=true from FeatureGroup, so it will reach TimelineBoard.
     // Nothing extra needed — TimelineBoard listens on boardArea.
+  }
+
+  // ---------------------------------------------------------------------------
+  // Parent/child folding
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Hierarchical row ordering (and therefore folding) is on when the user is
+   * looking at one plan, or has pulled in parent/child links across plans.
+   * Packed mode shares lanes between unrelated tasks, so nesting cannot be read
+   * off the board there and the affordance stays hidden.
+   */
+  isHierarchyFoldActive() {
+    if (sel.view.getPackedMode()) return false;
+    if (sel.view.getExpansionState().expandParentChild) return true;
+    return sel.selection.getSelectedProjectIds().length === 1;
+  }
+
+  /** Deepest nesting level currently on the board; 0 when nothing is nested. */
+  getHierarchyMaxDepth() {
+    if (this._hierarchyModel === null) return 0;
+    return this._hierarchyModel.maxDepth;
+  }
+
+  /** Fold or unfold one task's subtree. */
+  async setFeatureCollapsed(featureId, collapsed) {
+    const key = String(featureId);
+    if (collapsed) {
+      this._collapsedFeatures.add(key);
+    } else {
+      this._collapsedFeatures.delete(key);
+    }
+    // A hand fold breaks out of whatever uniform level was applied.
+    this._foldDepth = null;
+    await this.renderFeatures();
+  }
+
+  /** Fold the board down to `depth` visible levels. */
+  async collapseToDepth(depth) {
+    if (this._hierarchyModel === null) return;
+    this._collapsedFeatures = collapseToDepth(this._hierarchyModel, depth);
+    this._foldDepth = depth;
+    await this.renderFeatures();
+  }
+
+  /**
+   * Level the depth stepper should show as active: the fully-expanded level
+   * while nothing is folded, otherwise the chosen level, or null when the
+   * board was folded card by card.
+   */
+  _reportedFoldDepth(hierarchy) {
+    if (hierarchy === null) return null;
+    if (this._collapsedFeatures.size === 0) return hierarchy.maxDepth + 1;
+    return this._foldDepth;
+  }
+
+  _onFeatureToggle(e) {
+    const { featureId, collapsed } = e.detail;
+    if (!featureId) return;
+    this.setFeatureCollapsed(featureId, collapsed);
   }
 
   _onGroupDragPreview(e) {
@@ -505,8 +602,12 @@ class FeatureBoard extends LitElement {
     super.disconnectedCallback();
     this._renderGeneration += 1;
     window.removeEventListener('resize', this._handleViewportResize);
+    this.removeEventListener('feature-toggle', this._onFeatureToggle);
     if (this._onOverlayOffsetChanged) {
       bus.off(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
+    }
+    if (this._onSetFoldDepth) {
+      bus.off(BoardEvents.SET_FOLD_DEPTH, this._onSetFoldDepth);
     }
     this._viewportUnsubscribe?.();
     this._viewportUnsubscribe = null;
@@ -790,13 +891,36 @@ class FeatureBoard extends LitElement {
       if (isPacked && (!feature.start || !feature.end)) continue;
       visibleFeatures.push(feature);
     }
+
+    // Fold model first: it decides the row order and which rows an ancestor
+    // hides, so it has to run before anything is laid out.
+    const hierarchy =
+      this.isHierarchyFoldActive() ?
+        buildHierarchyModel({
+          allFeatures: sourceFeatures,
+          visibleFeatures,
+          collapsed: this._collapsedFeatures,
+          sortSiblings: createFeatureComparator(sel.view.getFeatureSortMode()),
+        })
+      : null;
+    this._hierarchyModel = hierarchy;
+    bus.emit(BoardEvents.HIERARCHY_CHANGED, {
+      active: hierarchy !== null,
+      maxDepth: hierarchy === null ? 0 : hierarchy.maxDepth,
+      depth: this._reportedFoldDepth(hierarchy),
+    });
+    const unfoldedFeatures =
+      hierarchy === null ?
+        visibleFeatures
+      : visibleFeatures.filter((f) => !hierarchy.hidden.has(String(f.id)));
+
     const selectedProjects = sel.selection.getProjects();
     const selectedTeams = sel.selection.getTeams();
     const candidateSwimlanes = buildSwimlaneList(
       selectedProjects,
       selectedTeams,
       expansionState,
-      visibleFeatures
+      unfoldedFeatures
     );
     const swimlaneActive = isSwimlaneMode(
       selectedProjects,
@@ -828,7 +952,7 @@ class FeatureBoard extends LitElement {
 
       // Group visible features into per-swimlane buckets
       const buckets = new Map(swimlanes.map((s) => [s.id, []]));
-      for (const feature of visibleFeatures) {
+      for (const feature of unfoldedFeatures) {
         const sid = assignFeatureToSwimlane(
           feature,
           swimlanes,
@@ -941,7 +1065,7 @@ class FeatureBoard extends LitElement {
           );
           const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
-            sel.view.getCondensedCards(), isPacked, this._collapsedGroups
+            sel.view.getCondensedCards(), isPacked, this._collapsedGroups, hierarchy
           );
           renderList.push(...groupItems);
           swimlaneHeight = Math.max(gHeight, laneHeight());
@@ -973,27 +1097,37 @@ class FeatureBoard extends LitElement {
           swimlaneHeight = Math.max(rows.length, 1) * laneHeight();
         } else {
           // Per-swimlane flat hierarchical sort (no groups)
-          const ordered = this._orderFeaturesHierarchically(
-            bucket,
-            sel.view.getFeatureSortMode()
-          );
+          const ordered =
+            hierarchy === null ?
+              this._orderFeaturesHierarchically(bucket, sel.view.getFeatureSortMode())
+            : [...bucket].sort(
+                (a, b) =>
+                  hierarchy.order.get(String(a.id)) - hierarchy.order.get(String(b.id))
+              );
           let laneIndex = 0;
           for (const feature of ordered) {
-            const pos = computePosition(feature, months) || {};
+            const fold = foldPropsFor(hierarchy, feature);
+            // A folded row spans its whole subtree instead of its own dates.
+            const geometrySource =
+              fold.collapsed && fold.subtreeExtent !== null ?
+                fold.subtreeExtent
+              : feature;
+            const pos = computePosition(geometrySource, months);
             renderList.push({
               feature,
-              left: pos.left ?? 0,
-              width: pos.width ?? 0,
+              left: pos === null ? 0 : pos.left,
+              width: pos === null ? 0 : pos.width,
               top: swimlaneTop + laneIndex * laneHeight(),
               teams: selectedTeams,
               condensed: sel.view.getCondensedCards(),
               hideGhostTitle: false,
               project: selectedProjects.find((p) => p.id === feature.project),
+              ...fold,
             });
             laneIndex++;
           }
           // Reserve at least one lane height even for empty swimlanes.
-          swimlaneHeight = Math.max(bucket.length, 1) * laneHeight();
+          swimlaneHeight = Math.max(ordered.length, 1) * laneHeight();
         }
 
         // The band height includes the gap that visually separates this lane
@@ -1032,12 +1166,13 @@ class FeatureBoard extends LitElement {
       // Always go through the group band layout, even with zero groups: it is
       // what stamps the shared ordering keys onto every row, which the group
       // insertion caret needs in order to point between two ungrouped tasks.
-      const visibleFiltered = ordered.filter(
-        (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
-      );
+      const visibleFiltered =
+        hierarchy === null ?
+          ordered.filter((f) => this._featurePassesFilters(f, childrenMap, sourceFeatures))
+        : unfoldedFeatures;
       const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
         visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,
-        sel.view.getCondensedCards(), isPacked, this._collapsedGroups
+        sel.view.getCondensedCards(), isPacked, this._collapsedGroups, hierarchy
       );
       renderList = groupItems;
       totalHeight = allGroups.length > 0 ? gHeight : gHeight + this._overlayOffset;

@@ -27,7 +27,24 @@ export class FeatureCardLit extends LitElement {
     /** When true, suppresses the ghost (overflow) title label.
      *  Required in packed mode where multiple cards share a lane. */
     hideGhostTitle: { type: Boolean },
+    /** True when this task owns descendants that folding would actually hide. */
+    foldable: { type: Boolean },
+    /** True when the user has folded this task's subtree away. */
+    collapsed: { type: Boolean },
+    /** Number of descendants hidden by this fold, across every depth. */
+    hiddenCount: { type: Number },
+    /** Nesting level, used for the indent rail. */
+    depth: { type: Number },
+    /** Dated descendants, ordered by start, drawn as comb ticks when collapsed. */
+    descendants: { type: Array },
+    /** Date span of the whole subtree, used to place the comb ticks. */
+    subtreeExtent: { type: Object },
   };
+
+  /** Above this many descendants the comb buckets ticks instead of drawing each one. */
+  static COMB_MAX_TICKS = 40;
+  /** Below this width the comb is dropped — the ticks would be unreadable. */
+  static COMB_MIN_WIDTH = 120;
 
   static styles = css`
     :host {
@@ -478,6 +495,146 @@ export class FeatureCardLit extends LitElement {
       border-bottom: 10px solid transparent;
       border-left: 10px solid rgba(0, 0, 0, 0.1);
     }
+
+    /* ---- Parent/child folding ------------------------------------------- */
+
+    /* Reserve the gutter permanently on foldable cards so revealing the
+       chevron on hover cannot shift the card's content. */
+    .feature-card.foldable {
+      padding-left: 20px;
+    }
+
+    .feature-card.foldable.condensed {
+      padding-left: 20px;
+    }
+
+    /* The spine sits on top of the project-colour border-left, which is the one
+       strip of the card that is never culled at narrow widths. */
+    .fold-spine {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 18px;
+      margin-left: -4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      padding: 0;
+      background: transparent;
+      color: var(--project-color, #666);
+      cursor: pointer;
+      font-size: 11px;
+      line-height: 1;
+      opacity: 0.35;
+      transition:
+        opacity 140ms ease,
+        background 140ms ease;
+      z-index: 3;
+    }
+
+    .feature-card:hover .fold-spine {
+      opacity: 1;
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    /* A folded card must advertise itself without needing hover. */
+    .feature-card.collapsed .fold-spine {
+      opacity: 1;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .fold-spine:focus-visible {
+      opacity: 1;
+      outline: 2px solid var(--project-color, #3b82f6);
+      outline-offset: -2px;
+    }
+
+    .fold-chevron {
+      transition: transform 180ms ease;
+      pointer-events: none;
+    }
+
+    .feature-card.collapsed .fold-chevron {
+      transform: rotate(-90deg);
+    }
+
+    /* Hidden-descendant count, styled after the group pill badge. */
+    .fold-badge {
+      flex: 0 0 auto;
+      margin-left: 4px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 0.65em;
+      font-weight: 700;
+      background: var(--project-color, #666);
+      color: #fff;
+      white-space: nowrap;
+    }
+
+    /* Stacked-paper: two offset edges behind the card read instantly as
+       "there is more underneath this".  Painted behind the card by DOM order —
+       a negative z-index would drop it behind the opaque board background. */
+    .deck-edges {
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+    }
+
+    .deck-edges::before,
+    .deck-edges::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: 1px solid #c4c4c4;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .deck-edges::before {
+      transform: translate(4px, 4px);
+    }
+
+    .deck-edges::after {
+      transform: translate(8px, 8px);
+      opacity: 0.8;
+    }
+
+    /* Comb: hidden descendants sketched along the rolled-up bar. */
+    .comb {
+      position: absolute;
+      left: 20px;
+      right: 8px;
+      bottom: 3px;
+      height: 6px;
+      pointer-events: none;
+    }
+
+    .comb-tick {
+      position: absolute;
+      top: 0;
+      width: 2px;
+      height: 6px;
+      border-radius: 1px;
+      background: currentColor;
+      opacity: 0.55;
+    }
+
+    /* The ticks are meaningless once the card is too narrow to separate them. */
+    .feature-card:not(.wide) .comb {
+      display: none;
+    }
+
+    .feature-card.small-feature .fold-spine,
+    .feature-card.culled .fold-badge {
+      display: none;
+    }
   `;
 
   constructor() {
@@ -490,6 +647,12 @@ export class FeatureCardLit extends LitElement {
     this.project = null;
     this.groupColor = null;
     this.hideGhostTitle = false;
+    this.foldable = false;
+    this.collapsed = false;
+    this.hiddenCount = 0;
+    this.depth = 0;
+    this.descendants = [];
+    this.subtreeExtent = null;
     this._suppressClickUntil = 0;
     this._rootCard = null;
     this._titleEl = null;
@@ -535,6 +698,7 @@ export class FeatureCardLit extends LitElement {
           w,
           isSmall,
           isCulled: w < 70,
+          isWide: w >= FeatureCardLit.COMB_MIN_WIDTH,
           titleOverflows,
         });
       }
@@ -543,6 +707,7 @@ export class FeatureCardLit extends LitElement {
       for (const r of results) {
         r.rootCard.classList.toggle('small-feature', r.isSmall);
         r.rootCard.classList.toggle('culled', r.isCulled);
+        r.rootCard.classList.toggle('wide', r.isWide);
         r.rootCard.classList.toggle('narrow', r.titleOverflows && !r.isSmall);
         r.card.classList.toggle('ghost-visible', r.titleOverflows && !r.card.hideGhostTitle);
         r.card.classList.toggle('title-overflow', r.titleOverflows);
@@ -577,6 +742,7 @@ export class FeatureCardLit extends LitElement {
       Math.round(this._width || 0),
       this.condensed ? '1' : '0',
       this.hideGhostTitle ? '1' : '0',
+      this.collapsed ? '1' : '0',
     ].join('|');
   }
 
@@ -744,6 +910,9 @@ export class FeatureCardLit extends LitElement {
   _handleMouseDown(e) {
     const rootCard = this._rootCard || this.shadowRoot?.querySelector('.feature-card');
     if (rootCard?.classList.contains('small-feature')) return;
+    // A folded card spans its whole subtree, so its edges are not this task's
+    // own dates and dragging them would write back a meaningless range.
+    if (this.collapsed) return;
 
     const path = (e.composedPath && e.composedPath()) || [];
     const rh = this.shadowRoot?.querySelector('.drag-handle');
@@ -886,6 +1055,69 @@ export class FeatureCardLit extends LitElement {
     return html`<span class="feature-card-icon ${type.toLowerCase()}">${getIconTemplate(type)}</span>`;
   }
 
+  _onFoldToggle(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    this.dispatchEvent(
+      new CustomEvent('feature-toggle', {
+        detail: { featureId: this.feature.id, collapsed: !this.collapsed },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  /**
+   * Place each hidden descendant along the rolled-up bar as a fraction of the
+   * subtree span. Large subtrees are sampled evenly so the comb stays legible.
+   * @returns {{ left: number }[]}
+   */
+  _combTicks() {
+    if (!this.subtreeExtent) return [];
+    const spanStart = Date.parse(this.subtreeExtent.start);
+    const spanEnd = Date.parse(this.subtreeExtent.end);
+    const span = spanEnd - spanStart;
+    if (!(span > 0)) return [];
+
+    const dated = this.descendants.filter((child) => child.start);
+    const max = FeatureCardLit.COMB_MAX_TICKS;
+    const step = dated.length > max ? Math.ceil(dated.length / max) : 1;
+
+    const ticks = [];
+    for (let index = 0; index < dated.length; index += step) {
+      const offset = Date.parse(dated[index].start) - spanStart;
+      const ratio = Math.min(Math.max(offset / span, 0), 1);
+      ticks.push({ left: ratio * 100 });
+    }
+    return ticks;
+  }
+
+  _renderFoldSpine() {
+    if (!this.foldable) return '';
+    return html`<button
+      class="fold-spine"
+      type="button"
+      aria-expanded=${this.collapsed ? 'false' : 'true'}
+      aria-label=${this.collapsed ?
+        `Expand ${this.hiddenCount} hidden tasks`
+      : 'Collapse child tasks'}
+      title=${this.collapsed ? `Expand (${this.hiddenCount} hidden)` : 'Collapse'}
+      @click=${this._onFoldToggle}
+      @mousedown=${(e) => e.stopPropagation()}
+    >
+      <span class="fold-chevron">\u25be</span>
+    </button>`;
+  }
+
+  _renderComb() {
+    if (!this.collapsed) return '';
+    const ticks = this._combTicks();
+    if (ticks.length === 0) return '';
+    return html`<div class="comb" aria-hidden="true">
+      ${ticks.map((tick) => html`<span class="comb-tick" style="left:${tick.left}%"></span>`)}
+    </div>`;
+  }
+
   _splitTitleAtMiddle(title) {
     if (!title) return '';
     const words = String(title).split(/\s+/);
@@ -931,9 +1163,12 @@ export class FeatureCardLit extends LitElement {
       ghosted: isUnplanned,
       completed: isCompleted,
       'in-group': !!this.groupColor,
+      foldable: this.foldable,
+      collapsed: this.collapsed,
     };
 
     return html`
+      ${this.collapsed ? html`<div class="deck-edges" aria-hidden="true"></div>` : ''}
       <div
         class=${Object.keys(cardClasses)
           .filter((k) => cardClasses[k])
@@ -947,7 +1182,7 @@ export class FeatureCardLit extends LitElement {
         @contextmenu=${this._handleContextMenu}
         part="feature-card"
       >
-        ${this._renderTeamLoadRow()}
+        ${this._renderFoldSpine()} ${this._renderTeamLoadRow()}
         <div class="title-row">
           <div class="small-feature-indicator">
             <span class="small-feature-dot"></span>
@@ -956,6 +1191,11 @@ export class FeatureCardLit extends LitElement {
           <div class="feature-title" title=${this.feature.title}>
             ${this.feature.title}
           </div>
+          ${this.collapsed ?
+            html`<span class="fold-badge" title="${this.hiddenCount} hidden tasks"
+              >${this.hiddenCount}</span
+            >`
+          : ''}
         </div>
         ${!this.condensed ?
           html`
@@ -967,6 +1207,7 @@ export class FeatureCardLit extends LitElement {
             </div>
           `
         : ''}
+        ${this._renderComb()}
         <div class="drag-handle" data-drag-handle part="drag-handle"></div>
       </div>
       <div

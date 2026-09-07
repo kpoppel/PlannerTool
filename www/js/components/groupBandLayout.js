@@ -26,6 +26,7 @@
 import { computePosition, laneHeight } from './board-utils.js';
 import { sel } from '../application/imports.js';
 import { RANK_GAP, rankBetween } from '../application/shared/ordering.js';
+import { createFeatureComparator, foldPropsFor } from './hierarchyFold.js';
 
 /** Height of a group pill row in px. */
 export const GROUP_PILL_HEIGHT = 28;
@@ -267,42 +268,33 @@ export function resolveGroupDropSlot(items, groupId, y, bottomY) {
  * @param {boolean} condensed        Use condensed card height (normal mode)
  * @param {boolean} packed           Pack consecutive task rows horizontally
  * @param {Set<string>} collapsedGroups  Set of collapsed group IDs
+ * @param {object|null} hierarchy    Parent/child fold model from buildHierarchyModel().
+ *                                   When supplied, task rows are ordered depth-first so a
+ *                                   task's descendants sit directly beneath it, and each
+ *                                   row carries its fold metadata.  Null keeps the flat
+ *                                   rank/date ordering.
  * @returns {{ items: Array, totalHeight: number }}
  */
 export function buildGroupBandItems(
-  orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups
+  orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups,
+  hierarchy = null
 ) {
   const items = [];
   const planGroupIds = new Set(planGroups.map((g) => String(g.id)));
   const featureSortMode = sel.view.getFeatureSortMode();
 
-  // Phase 3 replaces this with a persisted PlannerTool sort key; until then a
-  // task without a fetch-order rank sorts first rather than failing the render.
-  const rankOf = (feature) =>
-    (Number.isInteger(feature.originalRank) ? feature.originalRank : 0);
-
-  const sortFeatures = (features) => {
-    const sorted = [...features];
-    if (featureSortMode === 'date') {
-      sorted.sort((a, b) => {
-        if (!a.start && !b.start) return rankOf(a) - rankOf(b);
-        if (!a.start) return 1;
-        if (!b.start) return -1;
-        const byDate = String(a.start).localeCompare(String(b.start));
-        if (byDate !== 0) return byDate;
-        return rankOf(a) - rankOf(b);
-      });
-      return sorted;
-    }
-    sorted.sort((a, b) => rankOf(a) - rankOf(b));
-    return sorted;
-  };
+  const sortFeatures = (features) => [...features].sort(createFeatureComparator(featureSortMode));
 
   // The shared ordering scale: a task's key is its position in the globally
   // sorted task list, spaced like group ranks so a group can be ranked between
-  // any two tasks.
+  // any two tasks.  With a hierarchy model the depth-first position is used
+  // instead, which is what keeps children adjacent to their parent.
+  const rankSource =
+    hierarchy === null ?
+      sortFeatures(orderedFeatures).map((f, index) => [String(f.id), index])
+    : orderedFeatures.map((f) => [String(f.id), hierarchy.order.get(String(f.id))]);
   const taskRankById = new Map(
-    sortFeatures(orderedFeatures).map((f, index) => [String(f.id), (index + 1) * RANK_GAP])
+    rankSource.map(([id, index]) => [id, (index + 1) * RANK_GAP])
   );
   const featureById = new Map(orderedFeatures.map((f) => [String(f.id), f]));
 
@@ -356,6 +348,19 @@ export function buildGroupBandItems(
 
   const groupById = new Map(planGroups.map((group) => [String(group.id), group]));
 
+  /** Fold metadata a card needs to draw its chevron, badge and folded state. */
+  const foldInfo = (feature) => foldPropsFor(hierarchy, feature);
+
+  /** A collapsed row spans its whole subtree instead of the task's own dates. */
+  const rowPosition = (feature) => {
+    const id = String(feature.id);
+    if (hierarchy !== null && hierarchy.collapsed.has(id)) {
+      const subtree = hierarchy.extent.get(id);
+      if (subtree !== undefined) return computePosition(subtree, months);
+    }
+    return computePosition(feature, months);
+  };
+
   /** Push feature card render items for a run of consecutive task rows. */
   const addFeatureRows = (features, slotParentId) => {
     // Colour of the group that *directly* owns these rows, so a card nested
@@ -388,6 +393,7 @@ export function buildGroupBandItems(
             groupColor,
             slotParentId,
             slotRank: taskRankById.get(String(bar.feature.id)),
+            ...foldInfo(bar.feature),
           });
         }
       });
@@ -396,7 +402,7 @@ export function buildGroupBandItems(
     }
 
     for (const feature of features) {
-      const fpos = computePosition(feature, months);
+      const fpos = rowPosition(feature);
       items.push({
         feature,
         left: fpos === null ? 0 : fpos.left,
@@ -409,6 +415,7 @@ export function buildGroupBandItems(
         groupColor,
         slotParentId,
         slotRank: taskRankById.get(String(feature.id)),
+        ...foldInfo(feature),
       });
       rowTop += laneHeight();
     }

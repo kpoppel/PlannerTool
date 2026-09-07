@@ -20,6 +20,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Task hierarchies can now be folded on the board: a chevron in the card's left gutter collapses a task's subtree into a rolled-up bar showing the hidden descendants as a stacked-paper deck, a count badge and a comb of date ticks, with a Hierarchy Depth stepper in the sidebar to fold every branch to a chosen level at once. Rows are ordered depth-first whenever one plan is selected or parent/child expansion is on.
 - Added stable anonymous account IDs so admin permission and deletion URLs no longer expose email addresses; backups created before account IDs were introduced are no longer valid for restore.
 - Feature cards now show a top border in the colour of the group that directly owns them, so tasks in a nested group tree are visibly attributed to the right parent group.
 - Groups are now created at the position the board right-click points at: an insertion caret shows the target slot and sibling-scoped sparse ranks (`www/js/application/shared/ordering.js`) keep the order stable instead of always placing new groups at the top.

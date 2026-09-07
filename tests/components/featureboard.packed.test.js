@@ -142,8 +142,7 @@ describe('Group band ordering', () => {
       monthDates,
       false,
       false,
-      new Set(),
-      'p1'
+      new Set()
     );
 
     const groupOrder = result.items
@@ -178,7 +177,7 @@ describe('Group band ordering', () => {
     ];
 
     const result = buildGroupBandItems(
-      features, groups, 0, monthDates, false, false, new Set(), 'p1'
+      features, groups, 0, monthDates, false, false, new Set()
     );
 
     const colourById = new Map(

@@ -147,6 +147,19 @@ export const BoardEvents = {
    * Payload: { offset: number }  (0 when the plugin is inactive or shows nothing)
    */
   OVERLAY_OFFSET_CHANGED: Symbol('board:overlay-offset-changed'),
+
+  /**
+   * Fired by FeatureBoard after each render with the state of parent/child
+   * folding, so the sidebar can offer a depth stepper that matches the data.
+   * Payload: { active: boolean, maxDepth: number }
+   */
+  HIERARCHY_CHANGED: Symbol('board:hierarchy-changed'),
+
+  /**
+   * Fired by the sidebar to fold the board down to N visible levels.
+   * Payload: { depth: number }
+   */
+  SET_FOLD_DEPTH: Symbol('board:set-fold-depth'),
 };
 
 // Group events — fired by GroupService

@@ -14,10 +14,12 @@ import {
   StateFilterEvents,
   TimelineEvents,
   FeatureEvents,
+  BoardEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { getIconTemplate } from '../services/IconService.js';
+import { foldDepthOptions } from './hierarchyFold.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -40,6 +42,9 @@ export class SidebarLit extends LitElement {
     expandParentChild: { type: Boolean },
     expandRelations: { type: Boolean },
     expandTeamAllocated: { type: Boolean },
+    _foldActive: { state: true },
+    _foldMaxDepth: { state: true },
+    _foldDepth: { state: true },
   };
 
   static styles = css`
@@ -952,6 +957,9 @@ export class SidebarLit extends LitElement {
     this.expandParentChild = false;
     this.expandRelations = false;
     this.expandTeamAllocated = false;
+    this._foldActive = false;
+    this._foldMaxDepth = 0;
+    this._foldDepth = null;
     // Expansion counts for display
     this.expandParentChildCount = 0;
     this.expandRelationsCount = 0;
@@ -985,6 +993,20 @@ export class SidebarLit extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._onHierarchyChanged = ({ active, maxDepth, depth }) => {
+      if (
+        active === this._foldActive &&
+        maxDepth === this._foldMaxDepth &&
+        depth === this._foldDepth
+      ) {
+        return;
+      }
+      this._foldActive = active;
+      this._foldMaxDepth = maxDepth;
+      this._foldDepth = depth;
+      this.requestUpdate();
+    };
+    bus.on(BoardEvents.HIERARCHY_CHANGED, this._onHierarchyChanged);
     this._scheduleDataFunnelRecompute = () => {
       if (this._recomputeDataFunnelScheduled) return;
       this._recomputeDataFunnelScheduled = true;
@@ -1297,6 +1319,8 @@ export class SidebarLit extends LitElement {
 
   disconnectedCallback() {
     // Remove reactive property handlers
+    if (this._onHierarchyChanged)
+      bus.off(BoardEvents.HIERARCHY_CHANGED, this._onHierarchyChanged);
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
     if (this._onTeamsChanged) bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
     if (this._onScenariosList) bus.off(ScenarioEvents.LIST, this._onScenariosList);
@@ -1700,6 +1724,46 @@ export class SidebarLit extends LitElement {
     this.requestUpdate();
   }
 
+  _setFoldDepth(depth) {
+    bus.emit(BoardEvents.SET_FOLD_DEPTH, { depth });
+  }
+
+  /**
+   * Depth stepper for parent/child folding. Only meaningful when the board is
+   * ordering rows hierarchically and something is actually nested, so it stays
+   * hidden otherwise rather than showing a control that does nothing.
+   *
+   * The active level comes from the board, so hand-folding a card leaves no
+   * level highlighted rather than showing a stale one.
+   */
+  _renderHierarchyDepth() {
+    if (!this._foldActive) return '';
+    const options = foldDepthOptions(this._foldMaxDepth);
+    if (options.length === 0) return '';
+
+    return html`
+      <div class="filter-dimension">
+        <div class="filter-dimension-title">Hierarchy Depth</div>
+        <div class="segmented-group">
+          ${options.map(
+            (option) => html`
+              <button
+                type="button"
+                class="segment-btn ${this._foldDepth === option.depth ? 'active' : ''}"
+                title=${option.label === 'All' ?
+                  'Expand every level'
+                : `Show ${option.label} level${option.label === '1' ? '' : 's'} of tasks`}
+                @click=${() => this._setFoldDepth(option.depth)}
+              >
+                ${option.label}
+              </button>
+            `
+          )}
+        </div>
+      </div>
+    `;
+  }
+
   /**
    * Restore sidebar state from localStorage
   * DEPRECATED: Views are restored through the store-backed view commands.
@@ -1849,6 +1913,8 @@ export class SidebarLit extends LitElement {
                   </button>
                 </div>
               </div>
+
+              ${this._renderHierarchyDepth()}
 
               <div class="filter-dimension">
                 <div class="filter-dimension-title">Graph Type</div>
