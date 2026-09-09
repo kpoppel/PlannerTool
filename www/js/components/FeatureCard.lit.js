@@ -7,7 +7,6 @@ import { bus } from '../core/EventBus.js';
 import { cmd, sel } from '../application/imports.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { getIconTemplate } from '../services/IconService.js';
-import { featureFlags } from '../config.js';
 
 /**
  * FeatureCardLit - Lit-based feature card component.
@@ -918,8 +917,7 @@ export class FeatureCardLit extends LitElement {
   }
 
   render() {
-    const isUnplanned =
-      featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
+    const isUnplanned = !this.feature.start || !this.feature.end;
     const projectColor = this.project?.color || '#ccc';
     const isCompleted = sel.filter.getFeatureStateCategory(this.feature.state) === 'Completed';
 

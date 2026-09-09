@@ -9,7 +9,6 @@ import {
   TimelineEvents,
 } from '../core/EventRegistry.js';
 import { sel } from '../application/imports.js';
-import { featureFlags } from '../config.js';
 
 export class EmptyBoardModal extends LitElement {
   static properties = { reasons: { type: Array }, open: { type: Boolean } };
@@ -121,7 +120,7 @@ export class EmptyBoardModal extends LitElement {
     }
 
     // Unplanned work visibility
-    if (featureFlags.SHOW_UNPLANNED_WORK && !sel.view.getShowUnplannedWork()) {
+    if (!sel.view.getShowUnplannedWork()) {
       reasons.push('Unplanned work is hidden (unplanned features filtered out).');
     }
 
@@ -206,10 +205,8 @@ export class EmptyBoardModal extends LitElement {
         if (!sel.view.isTypeVisible(feature.type)) continue;
 
         // unplanned work
-        if (featureFlags.SHOW_UNPLANNED_WORK) {
-          const isUnplanned = !feature.start || !feature.end;
-          if (isUnplanned && !sel.view.getShowUnplannedWork()) continue;
-        }
+        const isUnplanned = !feature.start || !feature.end;
+        if (isUnplanned && !sel.view.getShowUnplannedWork()) continue;
 
         // Task/dimensional filters: if service exists, use it to validate feature
         try {

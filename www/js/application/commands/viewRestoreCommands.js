@@ -9,6 +9,7 @@ import {
   ViewManagementEvents,
 } from '../../core/EventRegistry.js';
 import { getAllTaskFiltersEnabled } from '../shared/taskFilters.js';
+import { createDefaultViewOptions } from '../shared/viewDefaults.js';
 import {
   deriveAvailableFeatureStates,
   deriveAvailableTaskTypes,
@@ -50,26 +51,6 @@ function withSyntheticDefaultView(views) {
     ...syntheticDefaultView,
   };
   return nextViews;
-}
-
-function getDefaultViewOptions() {
-  return {
-    timelineScale: 'months',
-    condensedCards: false,
-    featureSortMode: 'rank',
-    capacityViewMode: 'team',
-    displayMode: 'normal',
-    packedMode: false,
-    showDependencies: false,
-    showUnassignedCards: true,
-    showUnplannedWork: true,
-    showOnlyProjectHierarchy: false,
-    highlightFeatureRelationMode: true,
-    hiddenTypes: [],
-    expandParentChild: false,
-    expandRelations: false,
-    expandTeamAllocated: false,
-  };
 }
 
 function deriveDefaultFeatureStates(snapshot) {
@@ -239,7 +220,7 @@ export function createViewRestoreCommands(
         : snapshot.selection.taskTypeNames);
 
     const nextViewOptions = isDefault ?
-      getDefaultViewOptions()
+      createDefaultViewOptions()
     : {
         ...snapshot.view.options,
         ...viewOptions,

@@ -25,6 +25,8 @@ Template - do not change :
 - Groups are now created at the position the board right-click points at: an insertion caret shows the target slot and sibling-scoped sparse ranks (`www/js/application/shared/ordering.js`) keep the order stable instead of always placing new groups at the top.
 - Group bands and tasks share one ordering scale, so a group can be inserted anywhere among the tasks instead of always above them; the separate "Ungrouped" band is gone and ungrouped tasks are ordinary board rows.
 - Tightened store-backed command contracts for filter, view, feature, group, and view-restore flows by removing dead legacy compatibility adapters and keeping the canonical store boundary strict.
+- Removed the pre-store service layer left over from the store migration (`DataInitService`, `FeatureService`, `ProjectTeamService`, `FeatureStateService`, `TaskFilterService`, `PluginStateService`, `ScenarioEventService`) and their orphaned unit tests; all behaviour is covered by `www/js/application` commands and selectors.
+- Removed the `SHOW_UNPLANNED_WORK` feature flag and its disabled branches; showing unplanned tasks as ghosted cards at today's date is now the only behaviour, controlled by the view's "show unplanned work" option.
 - `FeatureEvents.SELECTED` is now store-backed: `cmd.feature.setSelectedFeature(feature)` writes `featureDisplay.selectedId` to the store and emits a bare signal; subscribers read `sel.feature.getSelectedFeature()` / `sel.feature.getSelectedFeatureId()` instead of consuming the event payload.
 - Added `scripts/clear_scenarios.py` one-time maintenance utility to remove a single corrupted scenario entry (or all scenarios for a user) directly from local scenario storage and register metadata.
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`; removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
@@ -40,6 +42,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- The store started with an incomplete `view.options` branch, so any read of `hiddenTypes` before a view was applied threw `TypeError: items is undefined`; the initial state is now seeded from a single canonical `createDefaultViewOptions()` shared with the Default View restore path.
+- Feature cards and the details panel showed an organisational allocation of 0% because `orgLoad` was never derived in the store architecture; it is now computed from the live team selection in `deriveEffectiveFeatures`.
 - Added explicit project and global invalidation for Azure plan/team discovery caches so admin area-mapping refreshes persist current Azure data to the shared authoritative configuration store without removing API-level caching.
 - Dependencies plugin now stays active across other plugin switches, including full-screen plugins.
 - The iteration selector now labels current and future iterations separately from past iterations.

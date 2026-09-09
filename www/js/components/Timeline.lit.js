@@ -206,9 +206,8 @@ function computeRange() {
     return { min: today, max: addMonths(today, 6) };
   }
 
-  // Filter out unplanned features (those without dates) when SHOW_UNPLANNED_WORK is true
-  const plannedFeats =
-    featureFlags.SHOW_UNPLANNED_WORK ? feats.filter((f) => f.start && f.end) : feats;
+  // Unplanned features carry no dates and must not stretch the timeline range.
+  const plannedFeats = feats.filter((f) => f.start && f.end);
 
   if (!plannedFeats?.length) {
     const today = new Date();

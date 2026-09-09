@@ -1,7 +1,6 @@
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { parseDate } from './util.js';
 import { sel } from '../application/imports.js';
-import { featureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents } from '../core/EventRegistry.js';
 
@@ -77,8 +76,8 @@ export const computePosition = (feature, monthsArg) => {
   )
     _buildMonthCache(months);
 
-  // Handle unplanned features (when feature flag is ON)
-  if (featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end)) {
+  // Handle unplanned features
+  if (!feature.start || !feature.end) {
     // Position at today's date with 1-month default duration
     const today = new Date();
     const oneMonthLater = new Date(today);

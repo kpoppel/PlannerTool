@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createViewSelectors } from '../../www/js/application/selectors/viewSelectors.js';
+import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 
 describe('application/selectors/viewSelectors', () => {
   it('store branch reads timelineScale/showDependencies/condensedCards from view options', () => {
@@ -392,5 +393,19 @@ describe('application/selectors/viewSelectors', () => {
     expect(Array.from(result.expandedIds).sort()).toEqual(
       ['depends-on', 'depends-on-2', 'root'].sort()
     );
+  });
+
+  it('reads view options from the initial app state before any view is applied', () => {
+    const store = { getState: () => createInitialAppState() };
+    const selectors = createViewSelectors(store);
+
+    expect(selectors.getHiddenTypes()).toEqual(new Set());
+    expect(selectors.isTypeVisible('epic')).toBe(true);
+    expect(selectors.getTimelineScale()).toBe('months');
+    expect(selectors.getShowUnplannedWork()).toBe(true);
+    expect(selectors.getShowUnassignedCards()).toBe(true);
+    expect(selectors.getDisplayMode()).toBe('normal');
+    expect(selectors.getCapacityViewMode()).toBe('team');
+    expect(selectors.getFeatureSortMode()).toBe('rank');
   });
 });

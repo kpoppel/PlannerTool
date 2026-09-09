@@ -1,4 +1,5 @@
 import { getActiveScenarioId, getScenarioItems } from './scenarioMutations.js';
+import { computeFeatureOrgLoad } from './teamAllocation.js';
 
 export function computeDirtyFields(base, override) {
   const fields = [];
@@ -25,17 +26,26 @@ export function computeDirtyFields(base, override) {
 }
 
 export function applyFeatureOverride(baseFeature, override, options = {}) {
-  if (!override) return { ...baseFeature };
-  if (options.includeDirtyMetadata === false) return { ...baseFeature, ...override };
+  if (options.includeDirtyMetadata === false) {
+    if (!override) return { ...baseFeature };
+    return { ...baseFeature, ...override };
+  }
+
+  const selectedTeamIds = options.selectedTeamIds;
+  if (!override) {
+    return { ...baseFeature, orgLoad: computeFeatureOrgLoad(baseFeature, selectedTeamIds) };
+  }
 
   const changedFields = computeDirtyFields(baseFeature, override);
-  return {
+  const effective = {
     ...baseFeature,
     ...override,
     scenarioOverride: true,
     changedFields,
     dirty: changedFields.length > 0,
   };
+  effective.orgLoad = computeFeatureOrgLoad(effective, selectedTeamIds);
+  return effective;
 }
 
 export function deriveEffectiveFeatures(state, options = {}) {
@@ -43,11 +53,16 @@ export function deriveEffectiveFeatures(state, options = {}) {
   const activeId = getActiveScenarioId(state);
   const scenario = getScenarioItems(state).find((item) => item.id === activeId);
   const overrides = scenario.overrides;
+  // orgLoad follows the live team selection, so it is derived here rather than stored.
+  const projectionOptions = {
+    ...options,
+    selectedTeamIds: new Set(state.selection.teamIds.map((id) => String(id))),
+  };
 
   return baselineFeatures.map((feature) => {
     const key = String(feature.id);
     const override = overrides[key];
-    return applyFeatureOverride(feature, override, options);
+    return applyFeatureOverride(feature, override, projectionOptions);
   });
 }
 

@@ -63,8 +63,7 @@ export function startDragMove(
   const monthWidth = getMonthWidth();
 
   // Check if feature is unplanned (ghosted)
-  const isUnplanned =
-    featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end);
+  const isUnplanned = !feature.start || !feature.end;
 
   // For unplanned features, use today's date as start and 1-month duration
   let startDateOrig, endDateOrig, durationDays;
@@ -169,8 +168,7 @@ export function startResize(
   const monthWidth = getMonthWidth();
 
   // Check if feature is unplanned (ghosted)
-  const isUnplanned =
-    featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end);
+  const isUnplanned = !feature.start || !feature.end;
 
   // For unplanned features, fix start date at today's date
   const startDate = isUnplanned ? new Date() : parseDate(feature.start);
@@ -339,9 +337,7 @@ function computeMoveUpdates(feature, newStartDate, newEndDate, features) {
   // A parent item is considered "unplanned" if it has no dates (used to trigger legacy
   // child date assignment when PRESERVE_UNPLANNED_CHILDREN_ON_PARENT_MOVE is disabled).
   const isUnplannedParent =
-    featureFlags.SHOW_UNPLANNED_WORK &&
-    descendants.length > 0 &&
-    (!feature.start || !feature.end);
+    descendants.length > 0 && (!feature.start || !feature.end);
   const preserveUnplanned =
     featureFlags.PRESERVE_UNPLANNED_CHILDREN_ON_PARENT_MOVE === true;
   const origStart = feature.start ? parseDate(feature.start) : null;
@@ -361,8 +357,7 @@ function computeMoveUpdates(feature, newStartDate, newEndDate, features) {
     // parent is being planned (isUnplannedParent) we may assign default dates to unplanned descendants.
     if (deltaDays !== 0 || (isUnplannedParent && !preserveUnplanned)) {
       for (const ch of descendants) {
-        const isUnplannedChild =
-          featureFlags.SHOW_UNPLANNED_WORK && (!ch.start || !ch.end);
+        const isUnplannedChild = !ch.start || !ch.end;
         if (isUnplannedChild) {
           if (preserveUnplanned) {
             // preserve as unplanned

@@ -1,4 +1,5 @@
 import { getAllTaskFiltersEnabled } from './shared/taskFilters.js';
+import { createDefaultViewOptions } from './shared/viewDefaults.js';
 
 /** @typedef {import('./types.js').AppState} AppState */
 
@@ -42,10 +43,7 @@ export function createInitialAppState() {
     view: {
       activeId: null,
       saved: [],
-      options: {
-        debugFlag: false,
-        highlightFeatureRelationMode: true,
-      },
+      options: createDefaultViewOptions(),
       expansion: {
         parentChild: false,
         relations: false,

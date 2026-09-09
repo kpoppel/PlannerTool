@@ -114,13 +114,6 @@ test.describe('Feature Card dim-info e2e', () => {
           document.head.appendChild(s);
         });
       }
-      // Ensure state._dataInitService exists and expose children map
-      if (!window.state) window.state = {};
-      if (!window.state._dataInitService) window.state._dataInitService = {};
-      window.state._dataInitService.getChildrenByParentMap = function () {
-        return new Map([['epic-with-child', ['child-1']]]);
-      };
-
       // Create two plain divs that mirror the rendered structure of a feature card
       const parent = document.createElement('div');
       parent.className = 'feature-card';

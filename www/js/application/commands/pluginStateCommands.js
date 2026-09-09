@@ -13,46 +13,6 @@ function isSerializable(value) {
   }
 }
 
-export function createLegacyPluginStateCommands(state) {
-  return {
-    get(pluginId) {
-      return state.pluginStateService?.get(pluginId) ?? null;
-    },
-
-    set(pluginId, value, opts = {}) {
-      return state.pluginStateService?.set(pluginId, value, opts) ?? null;
-    },
-
-    update(pluginId, patch, opts = {}) {
-      return state.pluginStateService?.update(pluginId, patch, opts) ?? null;
-    },
-
-    clear(pluginId) {
-      return state.pluginStateService?.clear(pluginId);
-    },
-
-    clearAll() {
-      return state.pluginStateService?.clearAll();
-    },
-
-    captureForView() {
-      return state.pluginStateService?.captureForView?.() || {};
-    },
-
-    async restoreFromView(pluginStateMap) {
-      return state.pluginStateService?.restoreFromView?.(pluginStateMap);
-    },
-
-    subscribe(pluginId, cb) {
-      return state.pluginStateService?.subscribe?.(pluginId, cb) || (() => {});
-    },
-
-    subscribeAll(cb) {
-      return state.pluginStateService?.subscribeAll?.(cb) || (() => {});
-    },
-  };
-}
-
 /**
  * @param {StoreApi} store
  * @returns {object}

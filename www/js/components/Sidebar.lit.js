@@ -956,7 +956,7 @@ export class SidebarLit extends LitElement {
     this.expandParentChildCount = 0;
     this.expandRelationsCount = 0;
     this.expandTeamAllocatedCount = 0;
-    // Task filter state (from TaskFilterService)
+    // Task filter state (mirrors sel.filter.getTaskFilters())
     this.taskFilters = {
       schedule: { planned: true, unplanned: true },
       allocation: { allocated: true, unallocated: true },
@@ -1119,7 +1119,7 @@ export class SidebarLit extends LitElement {
     };
     bus.on(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
 
-    // Listen for task filter updates from TaskFilterService
+    // Listen for task filter updates
     this._onTaskFiltersChanged = () => {
       this.taskFilters = sel.filter.getTaskFilters();
       this.requestUpdate();

@@ -17,7 +17,6 @@ import { cmd, sel } from '../application/imports.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
-import { featureFlags } from '../config.js';
 import { findInBoard } from './board-utils.js';
 import { addDays, formatDate, parseDate } from './util.js';
 import {
@@ -682,9 +681,8 @@ class FeatureBoard extends LitElement {
 
     if (!sel.view.isTypeVisible(feature.type)) return false;
 
-    if (featureFlags.SHOW_UNPLANNED_WORK) {
-      if (this._isUnplanned(feature) && !sel.view.getShowUnplannedWork())
-        return false;
+    if (this._isUnplanned(feature) && !sel.view.getShowUnplannedWork()) {
+      return false;
     }
 
     // If a project/plan is selected, show tasks from that project regardless of team selection.
@@ -709,12 +707,7 @@ class FeatureBoard extends LitElement {
           (p) => p.id === child.project && p.selected
         );
         if (!childProject) return false;
-        if (
-          featureFlags.SHOW_UNPLANNED_WORK &&
-          this._isUnplanned(child) &&
-          !sel.view.getShowUnplannedWork()
-        )
-          return false;
+        if (this._isUnplanned(child) && !sel.view.getShowUnplannedWork()) return false;
         const hasCapacity = child.capacity?.length > 0;
         if (!hasCapacity) return sel.view.getShowUnassignedCards();
         // If the child's project is among selected projects, ignore team-selection and show it.

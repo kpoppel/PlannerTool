@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
-import { UIEvents, FeatureEvents, ProjectEvents } from '../core/EventRegistry.js';
+import { UIEvents, FeatureEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
 import { cmd, sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { renderDetailsPanelHeader } from './details-panel/DetailsPanelHeader.lit.js';
@@ -863,6 +863,7 @@ export class DetailsPanelLit extends LitElement {
     this._onFeatureUpdatedBound = this._onFeatureUpdated.bind(this);
     this._onCapacityUpdatedBound = this._onCapacityUpdated.bind(this);
     this._onProjectsChangedBound = this._onProjectsChanged.bind(this);
+    this._onTeamsChangedBound = this._onTeamsChanged.bind(this);
   }
 
   // Note: use component's shadow DOM (default) so component styles apply correctly
@@ -890,6 +891,7 @@ export class DetailsPanelLit extends LitElement {
     bus.on(FeatureEvents.UPDATED, this._onFeatureUpdatedBound);
     bus.on(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdatedBound);
     bus.on(ProjectEvents.CHANGED, this._onProjectsChangedBound);
+    bus.on(TeamEvents.CHANGED, this._onTeamsChangedBound);
     //TODO: Should the side panel receive update if it is shown and the feature is changed?
     //TODO: Should standardise what is sent on events (full feature vs id only)
 
@@ -984,12 +986,22 @@ export class DetailsPanelLit extends LitElement {
     this._loadIterationsForFeature();
   }
 
+  _onTeamsChanged() {
+    // orgLoad is derived from the team selection, so re-read the projected feature.
+    if (!this.open || !this.feature) return;
+    const updated = sel.feature.getEffectiveFeatureById(this.feature.id);
+    if (!updated) return;
+    this.feature = updated;
+    this.requestUpdate();
+  }
+
   disconnectedCallback() {
     bus.off(UIEvents.DETAILS_SHOW, this._onShow);
     bus.off(FeatureEvents.SELECTED, this._onShow);
     bus.off(FeatureEvents.UPDATED, this._onFeatureUpdatedBound);
     bus.off(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdatedBound);
     bus.off(ProjectEvents.CHANGED, this._onProjectsChangedBound);
+    bus.off(TeamEvents.CHANGED, this._onTeamsChangedBound);
     document.body.removeEventListener('mousedown', this._onBodyMouseDown);
     document.body.removeEventListener('click', this._onBodyClick);
     super.disconnectedCallback();
