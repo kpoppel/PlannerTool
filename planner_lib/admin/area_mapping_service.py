@@ -42,6 +42,7 @@ def refresh_single(area_path: str, pat: str, azure_client, admin_svc) -> dict:
     plan_dict: dict = {}
 
     with azure_client.connect(pat) as client:
+        client.invalidate_plans(project_name)
         owner_team_ids = client.get_team_from_area_path(project_name, area_path)  # type: ignore
         logger.info("Found %d teams owning area %s: %s", len(owner_team_ids), area_path, owner_team_ids)
         all_plans = client.get_all_plans(project_name)  # type: ignore
@@ -114,6 +115,7 @@ def refresh_all(pat: str, azure_client, admin_svc) -> dict:
             proj_name = area.split('\\')[0] if '\\' in area else area.split('/')[0]
             if proj_name not in project_plans:
                 try:
+                    client.invalidate_plans(proj_name)  # type: ignore
                     plans = client.get_all_plans(proj_name)  # type: ignore
                     project_plans[proj_name] = plans
                     logger.info("Fetched %d plans for %s", len(plans), proj_name)

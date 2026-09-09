@@ -59,6 +59,11 @@ class AzureServiceProtocol(Protocol):
         marked with `include_children` will match descendant area paths.
         """
         ...
+
+    def invalidate_plans(self, project: str, plan_ids: Optional[List[str]] = None) -> None:
+        """Invalidate cached plan and team discovery data for one project."""
+        ...
+
     def update_work_item_dates(self, work_item_id: int, **kwargs) -> Any:  # pragma: no cover - typing shim
         ...
 

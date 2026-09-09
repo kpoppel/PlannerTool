@@ -549,10 +549,19 @@ def test_fetch_teams_delegated_to_inner(caching, inner):
     assert result == [{'id': 't1', 'name': 'Arch'}]
 
 
-def test_fetch_plans_delegated_to_inner(caching, inner):
+def test_fetch_plans_cached_until_invalidation(caching, inner):
     inner.set_plans('ProjectX', [{'id': 'p1', 'name': 'Q1'}])
-    result = caching.fetch_plans('ProjectX')
-    assert result == [{'id': 'p1', 'name': 'Q1'}]
+    first = caching.fetch_plans('ProjectX')
+
+    inner.set_plans('ProjectX', [{'id': 'p2', 'name': 'Q2'}])
+    cached = caching.fetch_plans('ProjectX')
+
+    assert first == [{'id': 'p1', 'name': 'Q1'}]
+    assert cached == first
+
+    caching.invalidate_cache()
+
+    assert caching.fetch_plans('ProjectX') == [{'id': 'p2', 'name': 'Q2'}]
 
 
 def test_fetch_markers_delegated_to_inner(caching, inner):

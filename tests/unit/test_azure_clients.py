@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 import pytest
+from unittest.mock import MagicMock
 
 from planner_lib.azure.AzureClient import AzureClient
 
@@ -95,6 +96,63 @@ def test_get_projects_uses_connection():
     c.conn = make_dummy_conn_for_projects()
     projs = c.get_projects()
     assert 'ProjA' in projs and 'ProjB' in projs
+
+
+def test_get_all_plans_cached_until_project_invalidation():
+    class FakeWorkClient:
+        def __init__(self):
+            self.plans = [SimpleNamespace(id='plan-1', name='Plan 1')]
+
+        def get_plans(self, project):
+            return self.plans
+
+        def get_delivery_timeline_data(self, project, plan_id):
+            return SimpleNamespace(teams=[])
+
+    work_client = FakeWorkClient()
+    client = AzureClient('org', DummyStorage())
+    client._connected = True
+    client.conn = SimpleNamespace(
+        clients=SimpleNamespace(get_work_client=lambda: work_client)
+    )
+
+    assert [plan['id'] for plan in client.get_all_plans('Project')] == ['plan-1']
+
+    work_client.plans = [SimpleNamespace(id='plan-2', name='Plan 2')]
+
+    assert [plan['id'] for plan in client.get_all_plans('Project')] == ['plan-1']
+
+    client.invalidate_plans('Project')
+
+    assert [plan['id'] for plan in client.get_all_plans('Project')] == ['plan-2']
+
+
+def test_get_all_plans_cache_can_be_disabled():
+    work_client = MagicMock()
+    work_client.get_plans.side_effect = [
+        [SimpleNamespace(id='plan-1', name='Plan 1')],
+        [SimpleNamespace(id='plan-2', name='Plan 2')],
+    ]
+    work_client.get_delivery_timeline_data.return_value = SimpleNamespace(teams=[])
+    client = AzureClient('org', DummyStorage(), cache_plans=False)
+    client._connected = True
+    client.conn = SimpleNamespace(
+        clients=SimpleNamespace(get_work_client=lambda: work_client)
+    )
+
+    assert [plan['id'] for plan in client.get_all_plans('Project')] == ['plan-1']
+    assert [plan['id'] for plan in client.get_all_plans('Project')] == ['plan-2']
+
+
+def test_azure_service_global_invalidation_reaches_concrete_client():
+    from planner_lib.azure import AzureService
+
+    service = AzureService('org', DummyStorage())
+    service._client = MagicMock()
+    service._client.invalidate_all_caches.return_value = {'ok': True, 'cleared': 3}
+
+    assert service.invalidate_all_caches() == {'ok': True, 'cleared': 3}
+    service._client.invalidate_all_caches.assert_called_once_with()
 
 
 def test_wit_client_query_by_wiql_calls_sdk():

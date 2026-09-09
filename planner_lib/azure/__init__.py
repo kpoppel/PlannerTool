@@ -23,8 +23,9 @@ class AzureService:
     - ``use_azure_mock``            → AzureMockClient (fixture replay)
     - (default)                     → AzureClient (live Azure DevOps)
 
-    Caching of domain objects is the responsibility of CachingBackend; the
-    azure layer no longer maintains a separate disk cache.
+    Caching of domain objects is the responsibility of CachingBackend. The
+    concrete client may keep process-local Azure discovery data, which this
+    service exposes through explicit invalidation methods.
     """
 
     def __init__(self, organization_url: str, storage: StorageBackend, feature_flags: dict | None = None):
@@ -64,7 +65,8 @@ class AzureService:
                 persist_enabled=persist_enabled,
             )
 
-        # Live client — all caching is handled by CachingBackend at the domain layer.
+        # Live client — domain caching is handled by CachingBackend; this flag
+        # controls only provider-level team and plan discovery optimization.
         from planner_lib.azure.AzureClient import AzureClient
         cache_plans = bool(self.feature_flags.get('cache_azure_plans', True))
         return AzureClient(self.organization_url, storage=self.storage, cache_plans=cache_plans)
@@ -92,12 +94,8 @@ class AzureService:
         self._client = self._build_client()
 
     def invalidate_all_caches(self) -> dict:
-        """No-op: the azure service layer no longer owns a disk cache.
-
-        Domain-level caching is handled by CachingBackend; call
-        CacheCoordinator.invalidate_all() to invalidate the backend cache.
-        """
-        return {'ok': True, 'cleared': 0}
+        """Invalidate provider-level caches owned by the concrete client."""
+        return self._client.invalidate_all_caches()
 
     def invalidate_cache(self) -> None:
         """Satisfy the Invalidatable protocol."""

@@ -40,6 +40,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Added explicit project and global invalidation for Azure plan/team discovery caches so admin area-mapping refreshes persist current Azure data to the shared authoritative configuration store without removing API-level caching.
 - Dependencies plugin now stays active across other plugin switches, including full-screen plugins.
 - The iteration selector now labels current and future iterations separately from past iterations.
 - Aligned scenario-store unit coverage with the canonical normalized scenario payload contract.

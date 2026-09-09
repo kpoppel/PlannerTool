@@ -23,25 +23,21 @@ class AzureClient:
 
     Mock clients (AzureMockClient, AzureMockGeneratorClient) extend this class
     and override only ``_connect_with_pat`` to inject a fake SDK connection.
-    Caching at the domain level is the responsibility of CachingBackend.
+    Domain responses are cached by CachingBackend. The team/plan operation
+    helper may separately cache Azure discovery calls behind explicit
+    project-level and global invalidation methods.
     """
 
     def __init__(self, organization_url: str, storage: StorageBackend, *, cache_plans: bool = True):
         self.organization_url = organization_url
         self._connected = False
-        # Simple in-memory runtime caches for plans/teams (avoid repeated API calls
-        # within the same process lifetime when cache_plans is True).
-        self._plans_cache: dict[str, list] = {}
-        self._teams_cache: dict[str, list] = {}
         self.conn: Optional[Any] = None
         # optional storage backend (may be used by caching client)
         self.storage = storage
-        # Whether to enable caching for plans/teams. Subclasses may honor this.
-        self.cache_plans = bool(cache_plans)
         
         # Initialize operation classes
         self._work_item_ops = WorkItemOperations(self)
-        self._team_plan_ops = TeamPlanOperations(self)
+        self._team_plan_ops = TeamPlanOperations(self, cache_enabled=cache_plans)
         self._markers_ops = MarkersOperations(self, self._team_plan_ops)
 
     def _connect_with_pat(self, pat: str) -> None:
@@ -381,15 +377,13 @@ class AzureClient:
         return self._work_item_ops.get_work_items_by_ids(ids)
 
     def invalidate_plans(self, project: str, plan_ids: Optional[List[str]] = None) -> None:
-        """Invalidate cached plan-related artifacts for a project.
+        """Invalidate provider discovery data cached for one project."""
+        self._team_plan_ops.invalidate_project(project)
 
-        Default implementation is a no-op. Caching clients (e.g. ``AzureCachingClient``)
-        should override this to remove cached plan lists, per-plan markers and any
-        area->plan mappings. Callers may invoke this method unconditionally on
-        any client implementation.
-        """
-        # no-op in base client; subclasses may override
-        return None
+    def invalidate_all_caches(self) -> dict:
+        """Invalidate all provider-level discovery caches."""
+        self._team_plan_ops.invalidate_all()
+        return {'ok': True, 'cleared': 'all'}
     
     def get_iterations(self, project: str, root_path: Optional[str] = None, depth: int = 10) -> List[dict]:
         """Fetch iterations for a project, optionally filtered by root path.
@@ -424,98 +418,12 @@ class AzureClient:
         return None
 
     def get_all_teams(self, project: str) -> List[dict]:
-        """Fetch teams with optional in-memory caching."""
-        if self.cache_plans and self._teams_cache.get(project):
-            return self._teams_cache[project]
-        teams = self._team_plan_ops.get_all_teams(project)
-        if self.cache_plans:
-            self._teams_cache[project] = teams
-        return teams
+        """Fetch teams from Azure DevOps."""
+        return self._team_plan_ops.get_all_teams(project)
 
     def get_all_plans(self, project: str) -> List[dict]:
-        """Fetch plans with optional in-memory caching, including team membership via timeline API."""
-        if self.cache_plans and self._plans_cache.get(project):
-            return self._plans_cache[project]
-
-        if not self._connected:
-            raise RuntimeError(
-                "AzureClient is not connected. "
-                "Use 'with client.connect(pat):' to obtain a connected client."
-            )
-        assert self.conn is not None
-        work_client = self.conn.clients.get_work_client()
-
-        plans = work_client.get_plans(project=project)
-        items = getattr(plans, 'value', plans) or []
-        out: list = []
-
-        for p in items:
-            try:
-                plan_id = str(p.id)
-                plan_name = p.name
-            except Exception:
-                try:
-                    plan_id = str(getattr(p, 'id', ''))
-                    plan_name = str(p)
-                except Exception:
-                    continue
-
-            teams_for_plan: list = []
-            try:
-                if hasattr(work_client, 'get_delivery_timeline_data'):
-                    timeline = work_client.get_delivery_timeline_data(project, plan_id)
-                else:
-                    timeline = None
-            except Exception:
-                timeline = None
-
-            try:
-                seen_ids: set = set()
-                candidate_teams: list = []
-                if timeline is None:
-                    candidate_teams = []
-                elif hasattr(timeline, 'teams'):
-                    candidate_teams = getattr(timeline, 'teams') or []
-                elif isinstance(timeline, dict) and 'teams' in timeline:
-                    candidate_teams = timeline.get('teams', []) or []
-                else:
-                    rows = getattr(timeline, 'rows', None) or (
-                        timeline.get('rows') if isinstance(timeline, dict) else []
-                    ) or []
-                    candidate_teams = rows
-
-                for r in candidate_teams or []:
-                    team_id = None
-                    team_name = None
-                    if isinstance(r, dict):
-                        team_id = r.get('teamId') or r.get('id') or (r.get('team') or {}).get('id')
-                        team_name = r.get('teamName') or r.get('name') or (r.get('team') or {}).get('name')
-                    else:
-                        team_id = (
-                            getattr(r, 'teamId', None) or getattr(r, 'id', None) or
-                            (getattr(getattr(r, 'team', None), 'id', None)
-                             if getattr(r, 'team', None) is not None else None)
-                        )
-                        team_name = (
-                            getattr(r, 'teamName', None) or getattr(r, 'name', None) or
-                            (getattr(getattr(r, 'team', None), 'name', None)
-                             if getattr(r, 'team', None) is not None else None)
-                        )
-                    if team_id is None and not team_name:
-                        continue
-                    tid = str(team_id) if team_id is not None else str(team_name)
-                    if tid in seen_ids:
-                        continue
-                    seen_ids.add(tid)
-                    teams_for_plan.append({'id': tid, 'name': team_name or ''})
-            except Exception:
-                teams_for_plan = []
-
-            out.append({'id': plan_id, 'name': plan_name, 'teams': teams_for_plan})
-
-        if self.cache_plans:
-            self._plans_cache[project] = out
-        return out
+        """Fetch plans through the team and plan operations owner."""
+        return self._team_plan_ops.get_all_plans(project)
 
     def get_task_revision_history(
         self,

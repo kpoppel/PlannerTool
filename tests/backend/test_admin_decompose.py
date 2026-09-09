@@ -8,7 +8,7 @@ Covers:
 """
 import copy
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 
 # ===========================================================================
@@ -315,6 +315,46 @@ class TestRefreshSingle:
         admin_svc.save_config_raw.assert_called_once()
         key = admin_svc.save_config_raw.call_args[0][0]
         assert key == 'area_plan_map'
+
+    def test_invalidates_project_discovery_cache_before_refresh(self):
+        from planner_lib.admin import area_mapping_service
+        azure_svc = self._make_azure_mock()
+        admin_svc = self._make_admin_svc('Proj\\Team')
+
+        area_mapping_service.refresh_single('Proj\\Team', 'pat', azure_svc, admin_svc)
+
+        client = azure_svc.connect.return_value.__enter__.return_value
+        client.invalidate_plans.assert_called_once_with('Proj')
+        assert client.method_calls.index(call.invalidate_plans('Proj')) < client.method_calls.index(
+            call.get_all_plans('Proj')
+        )
+
+    def test_refresh_persists_to_shared_config_storage(self):
+        from planner_lib.admin import area_mapping_service
+        from planner_lib.admin.service import AdminService
+        from planner_lib.backend.config import ConfigBackend
+        from planner_lib.storage.memory_backend import MemoryStorage
+
+        storage = MemoryStorage()
+        project_repository = MagicMock()
+        project_repository.get_project_map.return_value = [
+            {'area_path': 'Proj\\Team', 'id': 'project-proj', 'name': 'Proj'}
+        ]
+        admin_svc = AdminService(
+            storage=storage,
+            project_repository=project_repository,
+            account_manager=MagicMock(),
+            azure_client=MagicMock(),
+        )
+
+        area_mapping_service.refresh_single(
+            'Proj\\Team', 'pat', self._make_azure_mock(), admin_svc
+        )
+
+        stored = ConfigBackend(storage=storage).fetch_area_plan_map()
+        assert stored['project-proj']['areas']['Proj\\Team']['plans'] == {
+            'p1': {'name': 'PI 1', 'enabled': True}
+        }
 
 
 class TestRefreshAll:

@@ -12,13 +12,16 @@ logger = logging.getLogger(__name__)
 class TeamPlanOperations:
     """Handles team and plan queries."""
     
-    def __init__(self, client):
+    def __init__(self, client, cache_enabled: bool = True):
         """Initialize with a reference to the parent client.
         
         Args:
             client: Parent Azure client with connection and storage
         """
         self.client = client
+        self._cache_enabled = cache_enabled
+        self._teams_cache: dict[str, List[dict]] = {}
+        self._plans_cache: dict[str, List[dict]] = {}
         # In-memory cache for team field values (expensive to fetch)
         self._team_field_cache: dict[tuple, list] = {}
     
@@ -31,6 +34,9 @@ class TeamPlanOperations:
         Returns:
             List of team dictionaries with 'id' and 'name' keys
         """
+        if self._cache_enabled and project in self._teams_cache:
+            return self._teams_cache[project]
+
         if not self.client._connected:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
@@ -50,6 +56,8 @@ class TeamPlanOperations:
                 except Exception:
                     continue
         
+        if self._cache_enabled:
+            self._teams_cache[project] = out
         return out
     
     def get_all_plans(self, project: str) -> List[dict]:
@@ -62,6 +70,9 @@ class TeamPlanOperations:
             List of plan dictionaries with 'id', 'name', and 'teams' keys.
             The 'teams' field contains a list of team dicts with 'id' and optionally 'name'.
         """
+        if self._cache_enabled and project in self._plans_cache:
+            return self._plans_cache[project]
+
         if not self.client._connected:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
@@ -124,7 +135,23 @@ class TeamPlanOperations:
             
             out.append({'id': plan_id, 'name': plan_name, 'teams': teams})
         
+        if self._cache_enabled:
+            self._plans_cache[project] = out
         return out
+
+    def invalidate_project(self, project: str) -> None:
+        """Clear cached Azure team and plan discovery data for one project."""
+        self._teams_cache.pop(project, None)
+        self._plans_cache.pop(project, None)
+        for key in list(self._team_field_cache):
+            if key[0] == project:
+                del self._team_field_cache[key]
+
+    def invalidate_all(self) -> None:
+        """Clear all cached Azure team and plan discovery data."""
+        self._teams_cache.clear()
+        self._plans_cache.clear()
+        self._team_field_cache.clear()
     
     def get_team_from_area_path(self, project: str, area_path: str) -> List[str]:
         """Find team IDs that own a given area path.
