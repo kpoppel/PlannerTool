@@ -56,7 +56,9 @@ export function deriveEffectiveFeatures(state, options = {}) {
   // orgLoad follows the live team selection, so it is derived here rather than stored.
   const projectionOptions = {
     ...options,
-    selectedTeamIds: new Set(state.selection.teamIds.map((id) => String(id))),
+    selectedTeamIds: options.selectedTeamIds !== undefined
+      ? options.selectedTeamIds
+      : new Set(state.selection.teamIds.map((id) => String(id))),
   };
 
   return baselineFeatures.map((feature) => {

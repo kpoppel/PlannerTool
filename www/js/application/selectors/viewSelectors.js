@@ -174,6 +174,16 @@ export function createViewSelectors(store) {
       return getStoreExpansionState(store.getState());
     },
 
+    getContext() {
+      const context = store.getState().view.context;
+      return {
+        parent: Boolean(context.parent),
+        child: Boolean(context.child),
+        dependency: Boolean(context.dependency),
+        otherAllocations: Boolean(context.otherAllocations),
+      };
+    },
+
     getExpandedFeatureSet() {
       return getExpandedFeatureSetMemoized();
     },

@@ -18,6 +18,7 @@ import { createFeatureSelectors } from './selectors/featureSelectors.js';
 import { createCapacitySelectors } from './selectors/capacitySelectors.js';
 import { createScenarioSelectors } from './selectors/scenarioSelectors.js';
 import { createGroupSelectors } from './selectors/groupSelectors.js';
+import { createScopeSelectors } from './selectors/scopeSelectors.js';
 import { dataService } from '../services/dataService.js';
 import { groupService } from '../services/GroupService.js';
 import { DataEvents, GroupEvents } from '../core/EventRegistry.js';
@@ -180,6 +181,7 @@ const stateStoreSelectors = {
   scenario: createScenarioSelectors(store),
   group: createGroupSelectors(store),
   capacity: createCapacitySelectors(store),
+  scope: createScopeSelectors(store),
 };
 
 // The store-backed command/selector surface is now the only runtime surface.

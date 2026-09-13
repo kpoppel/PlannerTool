@@ -10,6 +10,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 Template - do not change :
 ## [v] - unreleased
 ### Added
+- Added the initial v5 display-scope contract separating resolved features from Context, Team Drill-down, and task-filter visibility.
+- Added a standalone scope-first UI/UX v5 wireframe beside the redesign discussion notes.
+- Added a self-contained static capture of the shared AZ Planner UI at `backup/user_interface_v5/static_v4.html`.
 - Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.

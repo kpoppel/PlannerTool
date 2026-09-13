@@ -84,6 +84,19 @@ function toViewExpansion(existingExpansion, options = {}) {
   };
 }
 
+function toViewContext(existingContext, options = {}) {
+  const current = existingContext || {};
+  const incoming = options.context || {};
+  return {
+    parent: incoming.parent !== undefined ? Boolean(incoming.parent) : Boolean(current.parent),
+    child: incoming.child !== undefined ? Boolean(incoming.child) : Boolean(current.child),
+    dependency: incoming.dependency !== undefined ? Boolean(incoming.dependency) : Boolean(current.dependency),
+    otherAllocations: incoming.otherAllocations !== undefined
+      ? Boolean(incoming.otherAllocations)
+      : Boolean(current.otherAllocations),
+  };
+}
+
 function toSelectedMap(ids) {
   return Object.fromEntries(ids.map((id) => [String(id), true]));
 }
@@ -97,6 +110,7 @@ function buildViewSnapshotOptions(snapshot, pluginState = {}) {
     expandParentChild: Boolean(snapshot.view.expansion.parentChild),
     expandRelations: Boolean(snapshot.view.expansion.relations),
     expandTeamAllocated: Boolean(snapshot.view.expansion.teamAllocated),
+    context: cloneValue(snapshot.view.context),
     ...pluginState,
   };
 }
@@ -258,6 +272,7 @@ export function createViewRestoreCommands(
           activeId: viewId,
           options: nextViewOptions,
           expansion: toViewExpansion(state.view.expansion, nextViewOptions),
+          context: toViewContext(state.view.context, nextViewOptions),
         },
       }),
       false,

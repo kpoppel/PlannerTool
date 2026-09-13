@@ -26,6 +26,17 @@ function mergedExpansion(current, incoming = {}) {
   };
 }
 
+function mergedContext(current, incoming = {}) {
+  return {
+    parent: incoming.parent !== undefined ? Boolean(incoming.parent) : Boolean(current.parent),
+    child: incoming.child !== undefined ? Boolean(incoming.child) : Boolean(current.child),
+    dependency: incoming.dependency !== undefined ? Boolean(incoming.dependency) : Boolean(current.dependency),
+    otherAllocations: incoming.otherAllocations !== undefined
+      ? Boolean(incoming.otherAllocations)
+      : Boolean(current.otherAllocations),
+  };
+}
+
 function toUniqueStringArray(values) {
   if (!Array.isArray(values)) return [];
   const out = [];
@@ -60,6 +71,24 @@ export function createViewCommands(store, bus) {
   }
 
   return {
+    setContext(options, runtimeOptions = {}) {
+      store.setState(
+        (state) => ({
+          ...state,
+          view: {
+            ...state.view,
+            context: mergedContext(state.view.context, options),
+          },
+        }),
+        false,
+        'view.setContext'
+      );
+      if (!runtimeOptions.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
+      }
+    },
+
     setExpansionState(options, runtimeOptions = {}) {
       store.setState(
         (state) => ({

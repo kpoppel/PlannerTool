@@ -49,6 +49,12 @@ export function createInitialAppState() {
         relations: false,
         teamAllocated: false,
       },
+      context: {
+        parent: false,
+        child: false,
+        dependency: false,
+        otherAllocations: false,
+      },
     },
     groups: {
       byPlanId: {},

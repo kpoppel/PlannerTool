@@ -57,6 +57,15 @@
 
 /**
  * @typedef {{
+ *   parent: boolean,
+ *   child: boolean,
+ *   dependency: boolean,
+ *   otherAllocations: boolean
+ * }} ViewContextState
+ */
+
+/**
+ * @typedef {{
  *   debugFlag: boolean,
  *   highlightFeatureRelationMode: boolean,
  *   [key: string]: any
@@ -68,7 +77,8 @@
  *   activeId: string|null,
  *   saved: any[],
  *   options: ViewOptionsState,
- *   expansion: ViewExpansionState
+ *   expansion: ViewExpansionState,
+ *   context: ViewContextState
  * }} ViewState
  */
 
