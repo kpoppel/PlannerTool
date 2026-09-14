@@ -73,9 +73,10 @@ export function isSwimlaneMode(projects, expansionState, swimlanes = []) {
  * @param {Array<{id:string, name:string, color:string, selected:boolean}>} teams
  * @param {{expandParentChild:boolean, expandRelations:boolean, expandTeamAllocated:boolean}|null} expansionState
  * @param {Array<{project:string}>} visibleFeatures  Features that passed the visibility filter.
+ * @param {{includeExpandedPlans?:boolean}} [scopeOptions] Canonical visible-scope lane options.
  * @returns {Array<{id:string, name:string, color:string, type:'plan'|'expanded-plan'|'team'}>}
  */
-export function buildSwimlaneList(projects, teams, expansionState, visibleFeatures) {
+export function buildSwimlaneList(projects, teams, expansionState, visibleFeatures, scopeOptions = {}) {
   const swimlanes = [];
   const addedIds = new Set();
 
@@ -93,7 +94,9 @@ export function buildSwimlaneList(projects, teams, expansionState, visibleFeatur
 
   // --- 2. Expanded-plan swimlanes: unselected projects in visible features ---
   // Only relevant when parent/child or relation expansion pulls in cross-project features.
-  if (expansionState && (expansionState.expandParentChild || expansionState.expandRelations)) {
+  const includeExpandedPlans = Boolean(scopeOptions.includeExpandedPlans)
+    || Boolean(expansionState && (expansionState.expandParentChild || expansionState.expandRelations));
+  if (includeExpandedPlans) {
     const projectsById = new Map((projects || []).map((p) => [p.id, p]));
     for (const feature of visibleFeatures || []) {
       const pid = feature.project;

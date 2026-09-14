@@ -25,6 +25,10 @@ describe('Sidebar task-type filter', () => {
     // Reset type visibility via seam so store-backed selector state is authoritative.
     cmd.view.setTypeVisibility('epic', true);
     cmd.view.setTypeVisibility('feature', true);
+    cmd.view.setContext(
+      { parent: false, child: false, dependency: false, otherAllocations: false },
+      { suppressEvents: true }
+    );
   });
 
   afterEach(() => {
@@ -170,5 +174,91 @@ describe('Sidebar task-type filter', () => {
     expect(sel.view.isTypeVisible('epic')).to.equal(true);
     expect(sel.view.isTypeVisible('feature')).to.equal(true);
     expect(sidebar.selectedTaskTypes.has('feature')).to.equal(true);
+  });
+
+  it('renders Context segments and removes the legacy expansion label', async () => {
+    const root = sidebar.shadowRoot || sidebar;
+    const labels = Array.from(root.querySelectorAll('button')).map((button) => button.textContent.trim());
+
+    expect(labels).to.include.members(['Parent', 'Child', 'Dependency', 'Other allocations']);
+    const sectionTitles = Array.from(root.querySelectorAll('.section-title'))
+      .map((element) => element.textContent.trim());
+    expect(sectionTitles).to.not.include('Expand Dataset');
+  });
+
+  it('places Team Drill-down before Context and renders per-type team counts', async () => {
+    sidebar.teams = [{ id: 'team-1', name: 'Alpha', short: 'A', color: '#123456', selected: true }];
+    const originalGetContextTeams = sel.scope.getContextTeams;
+    const originalGetTaskTypes = sel.feature.getAvailableTaskTypesOrdered;
+    const originalGetCounts = sel.feature.getCountsForTeam;
+    sel.scope.getContextTeams = () => ['team-1'];
+    sel.feature.getAvailableTaskTypesOrdered = () => ['Feature'];
+    sel.feature.getCountsForTeam = () => new Map([['feature', 4]]);
+    sidebar.requestUpdate();
+    await sidebar.updateComplete;
+
+    const root = sidebar.shadowRoot || sidebar;
+    const titles = Array.from(root.querySelectorAll('.section-title'))
+      .map((element) => element.textContent.trim());
+    expect(titles.indexOf('Team Drill-down')).to.be.lessThan(titles.indexOf('Context'));
+    expect(root.textContent).to.include('Alpha');
+    expect(root.textContent).to.include('4');
+    sel.scope.getContextTeams = originalGetContextTeams;
+    sel.feature.getAvailableTaskTypesOrdered = originalGetTaskTypes;
+    sel.feature.getCountsForTeam = originalGetCounts;
+  });
+
+  it('updates canonical Context state when a segment is toggled', async () => {
+    const root = sidebar.shadowRoot || sidebar;
+    const parentButton = Array.from(root.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Parent');
+
+    parentButton.click();
+    await sidebar.updateComplete;
+
+    expect(sel.view.getContext().parent).to.equal(true);
+    expect(parentButton.getAttribute('aria-pressed')).to.equal('true');
+  });
+
+  it('renders Context-scoped teams with select-all and select-none controls', async () => {
+    const originalGetContextTeams = sel.scope.getContextTeams;
+    sel.scope.getContextTeams = () => ['team-1', 'team-2'];
+    sidebar.teams = [
+      { id: 'team-1', name: 'Alpha', selected: true },
+      { id: 'team-2', name: 'Beta', selected: false },
+      { id: 'team-3', name: 'Outside scope', selected: true },
+    ];
+    sidebar.requestUpdate();
+    await sidebar.updateComplete;
+
+    const root = sidebar.shadowRoot || sidebar;
+    expect(root.textContent).to.include('Team Drill-down');
+    expect(root.textContent).to.include('Alpha');
+    expect(root.textContent).to.include('Beta');
+    expect(root.textContent).to.not.include('Outside scope');
+    sel.scope.getContextTeams = originalGetContextTeams;
+  });
+
+  it('shows the empty Team Drill-down state when Context has no teams', async () => {
+    const originalGetContextTeams = sel.scope.getContextTeams;
+    sel.scope.getContextTeams = () => [];
+    sidebar.requestUpdate();
+    await sidebar.updateComplete;
+    expect((sidebar.shadowRoot || sidebar).textContent)
+      .to.include('This plan has no teams assigned.');
+    sel.scope.getContextTeams = originalGetContextTeams;
+  });
+
+  it('uses display-only team selection from the Sidebar', () => {
+    const originalSetTeamSelected = cmd.selection.setTeamSelected;
+    let receivedOptions;
+    cmd.selection.setTeamSelected = (id, selected, options) => {
+      receivedOptions = options;
+    };
+
+    sidebar._toggleTeamDrilldown('team-1');
+
+    expect(receivedOptions.displayOnly).to.equal(true);
+    cmd.selection.setTeamSelected = originalSetTeamSelected;
   });
 });

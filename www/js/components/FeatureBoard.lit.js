@@ -84,6 +84,11 @@ class FeatureBoard extends LitElement {
       }
     };
     bus.on(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
+    this._onPresentationScopeChanged = () => {
+      this.renderFeatures();
+    };
+    this._boundHandlers.set(FilterEvents.CHANGED, this._onPresentationScopeChanged);
+    bus.on(FilterEvents.CHANGED, this._onPresentationScopeChanged);
     this._viewportUnsubscribe = boardCoords.subscribe(() => {
       this._scheduleViewportRender();
     });
@@ -507,6 +512,9 @@ class FeatureBoard extends LitElement {
     if (this._onOverlayOffsetChanged) {
       bus.off(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
     }
+    if (this._onPresentationScopeChanged) {
+      bus.off(FilterEvents.CHANGED, this._onPresentationScopeChanged);
+    }
     this._viewportUnsubscribe?.();
     this._viewportUnsubscribe = null;
     this._boundHandlers.forEach((handler, event) => {
@@ -623,7 +631,12 @@ class FeatureBoard extends LitElement {
     return false;
   }
 
-  _featurePassesFilters(feature, childrenMap, allFeatures = []) {
+  _featurePassesFilters(feature, childrenMap, allFeatures = [], visibleScopeIds = null) {
+    const scopeIds = visibleScopeIds || new Set(
+      sel.scope.getVisibleFeatures().map((visibleFeature) => String(visibleFeature.id))
+    );
+    if (!scopeIds.has(String(feature.id))) return false;
+
     const projects = sel.selection.getProjects();
     const expansionState = sel.view.getExpansionState();
     const hasExpansion =
@@ -638,9 +651,6 @@ class FeatureBoard extends LitElement {
       // is in the expanded set, it must remain visible even when the project/team
       // filter would otherwise reject it.
       if (!isExpansionVisible) return false;
-    } else {
-      const project = projects.find((p) => p.id === feature.project && p.selected);
-      if (!project) return false;
     }
 
     if (sel.view.getShowOnlyProjectHierarchy()) {
@@ -774,12 +784,21 @@ class FeatureBoard extends LitElement {
       return true;
     });
     const childrenMap = this._buildChildrenMap(sourceFeatures);
+    const visibleScopeIds = new Set(
+      sel.scope.getVisibleFeatures().map((visibleFeature) => String(visibleFeature.id))
+    );
     const months = getTimelineMonths();
     const isPacked = sel.view.getPackedMode();
     const expansionState = sel.view.getExpansionState();
+    const context = sel.view.getContext();
+    const laneAssignmentState = {
+      ...expansionState,
+      expandParentChild:
+        expansionState.expandParentChild || context.parent || context.child,
+    };
     const visibleFeatures = [];
     for (const feature of sourceFeatures) {
-      if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+      if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures, visibleScopeIds)) continue;
       if (isPacked && (!feature.start || !feature.end)) continue;
       visibleFeatures.push(feature);
     }
@@ -789,7 +808,8 @@ class FeatureBoard extends LitElement {
       selectedProjects,
       selectedTeams,
       expansionState,
-      visibleFeatures
+      visibleFeatures,
+      { includeExpandedPlans: true }
     );
     const swimlaneActive = isSwimlaneMode(
       selectedProjects,
@@ -826,7 +846,7 @@ class FeatureBoard extends LitElement {
           feature,
           swimlanes,
           allFeaturesById,
-          expansionState,
+          laneAssignmentState,
           selectedProjectIds,
           selectedTeamIds
         );
@@ -1026,7 +1046,7 @@ class FeatureBoard extends LitElement {
       // what stamps the shared ordering keys onto every row, which the group
       // insertion caret needs in order to point between two ungrouped tasks.
       const visibleFiltered = ordered.filter(
-        (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
+        (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures, visibleScopeIds)
       );
       const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
         visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,

@@ -76,15 +76,77 @@ describe('application/selectors/scopeSelectors', () => {
     expect(selectors.getFunnel()).toEqual({ tasksVisible: 0, teamsInView: 0 });
   });
 
+  it('does not include related work until its Context flag is enabled', () => {
+    const state = baseState();
+    state.selection.teamIds = ['team-a', 'team-b'];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'hidden-type',
+    ]);
+    state.view.context.child = true;
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'child-task',
+      'hidden-type',
+    ]);
+  });
+
+  it('includes parent tasks when Parent context is enabled', () => {
+    const state = baseState({
+      view: { context: { parent: true, child: false, dependency: false, otherAllocations: false } },
+    });
+    state.selection.teamIds = ['team-a'];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'parent-task',
+      'hidden-type',
+    ]);
+  });
+
+  it('keeps selected-plan tasks when Team Drill-down is narrowed', () => {
+    const state = baseState();
+    state.baseline.features.push({
+      id: 'own-team-b',
+      project: 'selected',
+      parentId: null,
+      type: 'Feature',
+      relations: [],
+      capacity: [{ team: 'team-b' }],
+    });
+    state.selection.teamIds = ['team-a'];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own', 'own-team-b']);
+  });
+
   it('does not mutate resolved features when display filters narrow visibility', () => {
     const state = baseState();
     state.selection.taskTypeNames = [];
     const selectors = createScopeSelectors(createStore(state));
     const resolved = selectors.getResolvedFeatures();
 
-    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own']);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'hidden-type',
+    ]);
     state.selection.teamIds = ['team-b'];
     state.view.context.otherAllocations = true;
     expect(selectors.getResolvedFeatures()).toEqual(resolved);
+  });
+
+  it('reuses derived scopes while store inputs are unchanged', () => {
+    const state = baseState();
+    const selectors = createScopeSelectors(createStore(state));
+    const firstResolved = selectors.getResolvedFeatures();
+    const secondResolved = selectors.getResolvedFeatures();
+    const firstVisible = selectors.getVisibleFeatures();
+    const secondVisible = selectors.getVisibleFeatures();
+
+    expect(secondResolved).to.equal(firstResolved);
+    expect(secondVisible).to.equal(firstVisible);
   });
 });

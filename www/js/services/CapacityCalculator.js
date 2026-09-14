@@ -6,6 +6,7 @@
 
 import { CapacityEvents } from '../core/EventRegistry.js';
 import { isEnabled } from '../config.js';
+import { resolveFundedTargetProject } from '../application/shared/ownership.js';
 
 // Special project ID for unfunded/orphaned allocations
 const UNFUNDED_PROJECT_ID = '__unfunded__';
@@ -19,41 +20,6 @@ export class CapacityCalculator {
     this._lastFeaturesById = new Map(); // featureId -> feature (last seen)
     /** @type {(Map<string, number> & {_key?: string})|null} */
     this._dateIndexMap = null; // dateIso -> index
-  }
-
-  /**
-   * Find the ultimate type='project' project by following parent chain
-   * @param {Object} feature - The feature to trace
-   * @param {Map} effectiveById - Map of feature ID to feature
-  * @returns {{ projectId: string, taskId: string }|null} Project/task pair if found, null if orphaned
-   */
-  _findUltimateProjectParent(feature, effectiveById) {
-    const visited = new Set();
-    let current = feature;
-
-    while (current) {
-      // Prevent infinite loops
-      if (visited.has(current.id)) return null;
-      visited.add(current.id);
-
-      // Check if current item's project is type='project'
-      const projectId = current.project;
-      if (projectId) {
-        // Look up the project - need to check if it's type='project'
-        // We'll return the project ID and let the caller check the type
-        // since we don't have direct access to projects array here
-        return { projectId, taskId: current.id };
-      }
-
-      // Follow parent chain
-      if (current.parentId) {
-        current = effectiveById.get(current.parentId);
-      } else {
-        break;
-      }
-    }
-
-    return null;
   }
 
   /**
@@ -124,7 +90,8 @@ export class CapacityCalculator {
     allProjects.forEach((p, idx) => projectIndexById.set(p.id, idx));
 
     // Build project lookup for type checking
-    const projectById = new Map(allProjects.map((p) => [p.id, p]));
+    const projectById = new Map(allProjects.map((p) => [String(p.id), p]));
+    const fundedTargetMemo = new Map();
 
     // Build feature lookup for epic-child checks
     const effectiveById = new Map(features.map((f) => [f.id, f]));
@@ -266,6 +233,7 @@ export class CapacityCalculator {
     const selectedProjectSet = new Set(selectedProjects);
     const selectedTeamSet = new Set(selectedTeams);
     const selectedStateSet = new Set(selectedStates);
+    const fundedTargetMemo = new Map();
 
     const dateIndex = this._dateIndexMap;
     if (!dateIndex) {
@@ -324,22 +292,12 @@ export class CapacityCalculator {
             teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + load;
           }
 
-          // Determine target project: if feature is a child of an Epic, roll up to Epic's project
-          let targetProjectId = f.project;
-          if (f.parentId) {
-            const parentItem = effectiveById.get(f.parentId);
-            if (parentItem && parentItem.project) {
-              targetProjectId = parentItem.project;
-            }
-          }
-
-          // Check if target project is type='project', otherwise use unfunded
-          const targetProject = projectById.get(targetProjectId);
-          const isProjectType =
-            targetProject && (targetProject.type || 'project') === 'project';
-          if (!isProjectType) {
-            targetProjectId = UNFUNDED_PROJECT_ID;
-          }
+          const targetProjectId = resolveFundedTargetProject(
+            f,
+            effectiveById,
+            projectById,
+            fundedTargetMemo
+          ) || UNFUNDED_PROJECT_ID;
 
           const pi = projectIndexById.get(targetProjectId);
           if (pi !== undefined) {
@@ -390,6 +348,7 @@ export class CapacityCalculator {
     const selectedProjectSet = new Set(selectedProjects);
     const selectedTeamSet = new Set(selectedTeams);
     const selectedStateSet = new Set(selectedStates);
+    const fundedTargetMemo = new Map();
 
     // Expand the set of IDs to process beyond just the directly changed ones.
     // When a child's capacity changes, the parent's effective contribution also
@@ -448,22 +407,12 @@ export class CapacityCalculator {
             teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + sign * load;
           }
 
-          // Determine target project: if feature is a child of an Epic, roll up to Epic's project
-          let targetProjectId = f.project;
-          if (f.parentId) {
-            const parentItem = effectiveById.get(f.parentId);
-            if (parentItem && parentItem.project) {
-              targetProjectId = parentItem.project;
-            }
-          }
-
-          // Check if target project is type='project', otherwise use unfunded
-          const targetProject = projectById.get(targetProjectId);
-          const isProjectType =
-            targetProject && (targetProject.type || 'project') === 'project';
-          if (!isProjectType) {
-            targetProjectId = UNFUNDED_PROJECT_ID;
-          }
+          const targetProjectId = resolveFundedTargetProject(
+            f,
+            effectiveById,
+            projectById,
+            fundedTargetMemo
+          ) || UNFUNDED_PROJECT_ID;
 
           const pi = projectIndexById.get(targetProjectId);
           if (pi !== undefined) {

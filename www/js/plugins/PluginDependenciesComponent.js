@@ -6,8 +6,7 @@
  * into a proper plugin component that extends OverlaySvgPlugin.
  *
  * The overlay is always active once the plugin is registered (auto-activate).
- * Visibility is controlled by open()/close(), which are driven by PluginDependencies
- * on activate/deactivate and by ViewEvents.DEPENDENCIES on view restore.
+ * Visibility is controlled by the canonical view Context dependency flag.
  */
 
 import { html } from '../vendor/lit.js';
@@ -40,6 +39,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
     // Bound event handler references for reliable bus.off()
     this._onUpdate = this._scheduleRender.bind(this);
     this._onDepsToggle = this._handleDepsToggle.bind(this);
+    this._onContextChanged = this._handleDepsToggle.bind(this);
   }
 
   // No floating toolbar — dependencies are a passive overlay
@@ -54,6 +54,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
   _subscribeBusEvents() {
     bus.on(FeatureEvents.UPDATED, this._onUpdate);
     bus.on(ViewEvents.DEPENDENCIES, this._onDepsToggle);
+    bus.on(FilterEvents.CHANGED, this._onContextChanged);
     bus.on(ProjectEvents.CHANGED, this._onUpdate);
     bus.on(TeamEvents.CHANGED, this._onUpdate);
     bus.on(FilterEvents.CHANGED, this._onUpdate);
@@ -66,6 +67,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
   _unsubscribeBusEvents() {
     bus.off(FeatureEvents.UPDATED, this._onUpdate);
     bus.off(ViewEvents.DEPENDENCIES, this._onDepsToggle);
+    bus.off(FilterEvents.CHANGED, this._onContextChanged);
     bus.off(ProjectEvents.CHANGED, this._onUpdate);
     bus.off(TeamEvents.CHANGED, this._onUpdate);
     bus.off(FilterEvents.CHANGED, this._onUpdate);
@@ -79,11 +81,11 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
   // ---------------------------------------------------------------------------
 
   /**
-   * Called when ViewEvents.DEPENDENCIES fires (e.g. view restore or manual toggle).
-   * Controls overlay visibility so saved view state is honoured.
+   * Called when the view Context changes or a legacy dependency signal fires.
+   * Controls overlay visibility from the canonical Context state.
    */
   _handleDepsToggle() {
-    if (sel.view.getShowDependencies()) {
+    if (sel.view.getContext().dependency) {
       this.open();
     } else {
       this.close();

@@ -18,6 +18,8 @@ import {
 import { dataService } from '../services/dataService.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { getIconTemplate } from '../services/IconService.js';
+import { PALETTE } from '../services/ColorService.js';
+import { ColorPopoverLit } from './ColorPopover.lit.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -40,6 +42,10 @@ export class SidebarLit extends LitElement {
     expandParentChild: { type: Boolean },
     expandRelations: { type: Boolean },
     expandTeamAllocated: { type: Boolean },
+    contextParent: { type: Boolean },
+    contextChild: { type: Boolean },
+    contextDependency: { type: Boolean },
+    contextOtherAllocations: { type: Boolean },
   };
 
   static styles = css`
@@ -248,6 +254,91 @@ export class SidebarLit extends LitElement {
     .chip:focus-visible {
       outline: 2px solid #5cc8ff;
       outline-offset: 2px;
+    }
+
+    .team-drilldown-grid {
+      display: grid;
+      grid-template-columns: calc(100% - (var(--team-type-count) * 34px)) repeat(var(--team-type-count), 30px);
+      gap: 4px;
+      align-items: center;
+    }
+    .team-drilldown-header {
+      display: contents;
+      color: var(--color-sidebar-text);
+      opacity: 0.9;
+      min-height: 22px;
+    }
+    .team-drilldown-header .type-icon,
+    .team-drilldown-row .chip-badge {
+      justify-self: center;
+    }
+    .team-drilldown-header .type-icon svg {
+      width: 16px;
+      height: 16px;
+      display: block;
+    }
+    .team-drilldown-row {
+      grid-column: 1 / -1;
+      width: 100%;
+      min-width: 0;
+      position: relative;
+      padding: 0;
+      border-radius: 10px;
+      display: grid;
+      grid-template-columns: calc(100% - (var(--team-type-count) * 34px)) repeat(var(--team-type-count), 30px);
+      gap: 4px;
+      align-items: center;
+      overflow: hidden;
+    }
+    .sidebar-chip.team-drilldown-row {
+      display: grid;
+      align-items: center;
+      padding: 0;
+    }
+    .sidebar-chip.team-drilldown-row .team-name-col {
+      font-weight: 400;
+      padding-left: 26px;
+    }
+    .team-drilldown-row .color-dot {
+      width: 16px;
+      height: 25px;
+      border-radius: 0;
+      position: absolute;
+      left: 0;
+      z-index: 1;
+      cursor: pointer;
+    }
+    .team-drilldown-row .team-name-col {
+      min-width: 0;
+      padding-left: 26px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+      font-weight: 400;
+      overflow: hidden;
+    }
+    .team-drilldown-row .team-name-col > span:first-child {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
+    .team-drilldown-row .team-name-col small {
+      opacity: 0.8;
+      font-size: 0.68rem;
+      font-weight: 400;
+    }
+    .team-drilldown-row.active {
+      background: rgb(55, 85, 130);
+      border-color: transparent;
+      color: var(--color-sidebar-text);
+    }
+    .team-drilldown-row .chip-badge {
+      width: 26px;
+      height: 18px;
+      font-size: 0.68rem;
     }
 
     /* Data Funnel (dataset status) */
@@ -501,6 +592,15 @@ export class SidebarLit extends LitElement {
       cursor: not-allowed;
       pointer-events: none;
     }
+    .context-group {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .context-group .segment-btn {
+      min-width: 0;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
 
     /* Sidebar-specific chips and lists */
     .sidebar-chip {
@@ -573,13 +673,24 @@ export class SidebarLit extends LitElement {
       align-items: center;
       justify-content: center;
       width: 50px;
-      height: 16px;
-      border: 1px solid #5481e6;
-      color: #5cc8ff;
-      border-radius: 6px;
-      font-size: 12px;
+      height: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--color-sidebar-text);
+      border-radius: 10px;
+      font-size: 0.72rem;
+      font-weight: 400;
       cursor: pointer;
       margin-left: 3px;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    .list-toggle-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+    .list-toggle-btn:focus-visible {
+      outline: 2px solid #5cc8ff;
+      outline-offset: 2px;
     }
 
     /* Sidebar footer/config */
@@ -952,6 +1063,10 @@ export class SidebarLit extends LitElement {
     this.expandParentChild = false;
     this.expandRelations = false;
     this.expandTeamAllocated = false;
+    this.contextParent = false;
+    this.contextChild = false;
+    this.contextDependency = false;
+    this.contextOtherAllocations = false;
     // Expansion counts for display
     this.expandParentChildCount = 0;
     this.expandRelationsCount = 0;
@@ -983,6 +1098,14 @@ export class SidebarLit extends LitElement {
     this.expandTeamAllocated = Boolean(expansion.expandTeamAllocated);
   }
 
+  _syncContextFromSelectors() {
+    const context = sel.view.getContext();
+    this.contextParent = Boolean(context.parent);
+    this.contextChild = Boolean(context.child);
+    this.contextDependency = Boolean(context.dependency);
+    this.contextOtherAllocations = Boolean(context.otherAllocations);
+  }
+
   connectedCallback() {
     super.connectedCallback();
     this._scheduleDataFunnelRecompute = () => {
@@ -990,7 +1113,9 @@ export class SidebarLit extends LitElement {
       this._recomputeDataFunnelScheduled = true;
       requestAnimationFrame(() => {
         this._recomputeDataFunnelScheduled = false;
-        this._recomputeDataFunnelNow?.();
+        if (this._recomputeDataFunnelNow) {
+          this._recomputeDataFunnelNow();
+        }
       });
     };
     this._scheduleTaskTypesRecompute = () => {
@@ -1034,6 +1159,7 @@ export class SidebarLit extends LitElement {
       this.activeViewData =
         payload && payload.activeViewData ? payload.activeViewData : null;
       this._syncExpansionFromSelectors();
+      this._syncContextFromSelectors();
       this._scheduleDataFunnelRecompute();
       this.requestUpdate();
     };
@@ -1043,6 +1169,7 @@ export class SidebarLit extends LitElement {
       this.activeViewData =
         payload && payload.activeViewData ? payload.activeViewData : null;
       this._syncExpansionFromSelectors();
+      this._syncContextFromSelectors();
       this._scheduleDataFunnelRecompute();
       this.requestUpdate();
     };
@@ -1076,27 +1203,8 @@ export class SidebarLit extends LitElement {
         this.expandRelationsCount = expansionResult.counts.relations;
         this.expandTeamAllocatedCount = expansionResult.counts.teamAllocated;
 
-        // Displayed tasks: apply state filter and view filters to expanded set
-        const stateFilter = sel.filter.getSelectedFeatureStateSet();
-        // Build a lowercase version of the selected state set for case-insensitive checks
-        const stateFilterLower =
-          stateFilter && typeof stateFilter.size !== 'undefined' ?
-            new Set(Array.from(stateFilter).map((s) => String(s).toLowerCase()))
-          : new Set();
-
-        let displayedFeatures = feats.filter((f) => expandedFeatureIds.has(f.id));
-
-        // Apply state filter (case-insensitive using original configured state casing)
-        if (stateFilterLower && stateFilterLower.size > 0) {
-          displayedFeatures = displayedFeatures.filter((f) =>
-            stateFilterLower.has((f.state || '').toLowerCase())
-          );
-        }
-
-        // Apply task filters
-        displayedFeatures = displayedFeatures.filter((f) => sel.filter.featurePassesFilters(f));
-
-        this.displayedTasksCount = displayedFeatures.length;
+        // Displayed tasks: use the canonical Context, team, and task-filter scope.
+        this.displayedTasksCount = sel.scope.getVisibleFeatures().length;
       } catch (e) {
         console.warn('[Sidebar] _recomputeDataFunnel error:', e);
         this.selectedTasksCount = 0;
@@ -1373,10 +1481,67 @@ export class SidebarLit extends LitElement {
       expandTeamAllocated: this.expandTeamAllocated,
     });
     // Trigger data funnel recomputation immediately and re-render the count bubbles.
-    this._recomputeDataFunnelNow?.();
+    if (this._recomputeDataFunnelNow) {
+      this._recomputeDataFunnelNow();
+    }
     this.requestUpdate();
     // Emit filter change event so the board updates
     bus.emit(FilterEvents.CHANGED);
+  }
+
+  _toggleContext(type) {
+    const next = {
+      parent: this.contextParent,
+      child: this.contextChild,
+      dependency: this.contextDependency,
+      otherAllocations: this.contextOtherAllocations,
+    };
+    next[type] = !next[type];
+    cmd.view.setContext(next);
+    if (type === 'dependency') {
+      const method = next.dependency ? 'activate' : 'deactivate';
+      pluginManager[method]('plugin-dependencies').catch((error) => {
+        console.error('[Sidebar] Failed to update dependency overlay', error);
+        throw error;
+      });
+    }
+    this._syncContextFromSelectors();
+    if (this._recomputeDataFunnelNow) {
+      this._recomputeDataFunnelNow();
+    }
+    this.requestUpdate();
+  }
+
+  _getTeamDrilldownTeams() {
+    const contextTeamIds = new Set(sel.scope.getContextTeams().map((id) => String(id)));
+    return this.teams
+      ? this.teams.filter((team) => contextTeamIds.has(String(team.id)))
+      : [];
+  }
+
+  _toggleTeamDrilldown(teamId) {
+    const team = this.teams
+      ? this.teams.find((item) => String(item.id) === String(teamId))
+      : undefined;
+    cmd.selection.setTeamSelected(teamId, !(team && team.selected), { displayOnly: true });
+    this.requestUpdate();
+  }
+
+  async _openTeamColorPopover(event, teamId) {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const colorPopover = await ColorPopoverLit.ensureInstance(PALETTE);
+    await colorPopover.updateComplete;
+    colorPopover.openFor('team', teamId, rect);
+  }
+
+  _toggleAllTeamDrilldown() {
+    const teams = this._getTeamDrilldownTeams();
+    const selectAll = teams.some((team) => !team.selected);
+    const selections = {};
+    teams.forEach((team) => { selections[team.id] = selectAll; });
+    cmd.selection.setTeamsSelectedBulk(selections, { displayOnly: true });
+    this.requestUpdate();
   }
 
   _toggleTaskFilter(dimension, option) {
@@ -1873,130 +2038,83 @@ export class SidebarLit extends LitElement {
           </section>
 
           <section class="sidebar-section">
-            <div class="dataset-status">
-              <div class="status-title">Data Funnel</div>
-              <div class="status-flow">
-                <div class="status-item">
-                  <div class="status-number">${this.selectedTasksCount}</div>
-                  <div class="status-label">Selected</div>
-                </div>
-                <div class="status-arrow">→</div>
-                <div class="status-item">
-                  <div class="status-number">
-                    ${this.expandedTasksCount > 0 ?
-                      '+' + this.expandedTasksCount
-                    : this.expandedTasksCount}
+            <div class="expansion-section">
+              <div class="section-title">Team Drill-down</div>
+              ${(() => {
+                const teams = this._getTeamDrilldownTeams();
+                if (teams.length === 0) {
+                  return html`<div class="section-description">This plan has no teams assigned.</div>`;
+                }
+                const allSelected = teams.every((team) => team.selected);
+                const taskTypes = sel.feature.getAvailableTaskTypesOrdered();
+                return html`
+                  <div class="list-toggle">
+                    <button
+                      type="button"
+                      class="list-toggle-btn"
+                      @click=${this._toggleAllTeamDrilldown}
+                    >${allSelected ? 'None' : 'All'}</button>
                   </div>
-                  <div class="status-label">Expanded</div>
-                </div>
-                <div class="status-arrow">→</div>
-                <div class="status-item">
-                  <div class="status-number">${this.displayedTasksCount}</div>
-                  <div class="status-label">Displayed</div>
-                </div>
-              </div>
+                  <div
+                    class="team-drilldown-grid"
+                    style="--team-type-count:${taskTypes.length}"
+                  >
+                    <div class="team-drilldown-header team-drilldown-grid">
+                      <span></span>
+                      ${taskTypes.map((type) => html`
+                        <span class="type-icon" title=${type}>${getIconTemplate(type)}</span>
+                      `)}
+                    </div>
+                    ${teams.map((team) => html`
+                      <div class="sidebar-list-item" style="grid-column:1 / -1">
+                        <button
+                          type="button"
+                          class="chip sidebar-chip team-drilldown-row ${team.selected ? 'active' : ''}"
+                          aria-pressed=${team.selected ? 'true' : 'false'}
+                          @click=${() => this._toggleTeamDrilldown(team.id)}
+                        >
+                          <span
+                            class="color-dot"
+                            style="background:${team.color ? team.color : '#999'}"
+                            @click=${(event) => this._openTeamColorPopover(event, team.id)}
+                            title="Change team color"
+                          ></span>
+                          <span class="team-name-col">
+                            <span>${team.name ? team.name : team.id}</span>
+                            ${team.short ? html`<small>${team.short}</small>` : ''}
+                          </span>
+                          ${taskTypes.map((type) => {
+                            const counts = sel.feature.getCountsForTeam(team.id);
+                            const count = counts.get(type.toLowerCase());
+                            return html`<span class="chip-badge">${count === undefined ? 0 : count}</span>`;
+                          })}
+                        </button>
+                      </div>
+                    `)}
+                  </div>
+                `;
+              })()}
             </div>
           </section>
 
-          <!-- Expand Dataset Section -->
           <section class="sidebar-section">
             <div class="expansion-section">
-              <div class="section-title">🔗 Expand Dataset</div>
-              <div class="section-description">
-                Add related tasks to your working dataset
-              </div>
-
-              <div class="option-group">
-                ${(() => {
-                  const disabledParentChild = this._isControlDisabled(
-                    'expansion',
-                    'parentChild'
-                  );
-                  return html` <div
-                    class="option-row ${this.expandParentChild ? 'active' : ''} ${(
-                      disabledParentChild
-                    ) ?
-                      'disabled'
-                    : ''}"
-                    aria-disabled="${disabledParentChild ? 'true' : 'false'}"
-                    @click=${() => {
-                      if (!disabledParentChild) this._toggleExpansion('parentChild');
-                    }}
-                    title=${disabledParentChild ?
-                      'Not relevant in current tool context'
-                    : ''}
-                  >
-                    <div class="option-label">
-                      <div class="option-checkbox"></div>
-                      <span>Parent/Child Links</span>
-                    </div>
-                    <span class="option-count"
-                      >${this.expandParentChildCount > 0 ?
-                        '+' + this.expandParentChildCount
-                      : this.expandParentChildCount}</span
-                    >
-                  </div>`;
-                })()}
-                ${(() => {
-                  const disabledRelations = this._isControlDisabled(
-                    'expansion',
-                    'relations'
-                  );
-                  return html` <div
-                    class="option-row ${this.expandRelations ? 'active' : ''} ${(
-                      disabledRelations
-                    ) ?
-                      'disabled'
-                    : ''}"
-                    aria-disabled="${disabledRelations ? 'true' : 'false'}"
-                    @click=${() => {
-                      if (!disabledRelations) this._toggleExpansion('relations');
-                    }}
-                    title=${disabledRelations ?
-                      'Not relevant in current tool context'
-                    : ''}
-                  >
-                    <div class="option-label">
-                      <div class="option-checkbox"></div>
-                      <span>Dependencies</span>
-                    </div>
-                    <span class="option-count"
-                      >${this.expandRelationsCount > 0 ?
-                        '+' + this.expandRelationsCount
-                      : this.expandRelationsCount}</span
-                    >
-                  </div>`;
-                })()}
-                ${(() => {
-                  const disabledTeamAllocated = this._isControlDisabled(
-                    'expansion',
-                    'teamAllocated'
-                  );
-                  return html` <div
-                    class="option-row ${this.expandTeamAllocated ? 'active' : ''} ${(
-                      disabledTeamAllocated
-                    ) ?
-                      'disabled'
-                    : ''}"
-                    aria-disabled="${disabledTeamAllocated ? 'true' : 'false'}"
-                    @click=${() => {
-                      if (!disabledTeamAllocated) this._toggleExpansion('teamAllocated');
-                    }}
-                    title=${disabledTeamAllocated ?
-                      'Not relevant in current tool context'
-                    : ''}
-                  >
-                    <div class="option-label">
-                      <div class="option-checkbox"></div>
-                      <span>Team Allocated</span>
-                    </div>
-                    <span class="option-count"
-                      >${this.expandTeamAllocatedCount > 0 ?
-                        '+' + this.expandTeamAllocatedCount
-                      : this.expandTeamAllocatedCount}</span
-                    >
-                  </div>`;
-                })()}
+              <div class="section-title">Context</div>
+              <div class="section-description">Choose related work to show</div>
+              <div class="segmented-group context-group" role="group" aria-label="Context">
+                ${[
+                  ['parent', 'Parent', 'contextParent'],
+                  ['child', 'Child', 'contextChild'],
+                  ['dependency', 'Dependency', 'contextDependency'],
+                  ['otherAllocations', 'Other allocations', 'contextOtherAllocations'],
+                ].map(([key, label, property]) => html`
+                  <button
+                    type="button"
+                    class="segment-btn ${this[property] ? 'active' : ''}"
+                    aria-pressed=${this[property] ? 'true' : 'false'}
+                    @click=${() => this._toggleContext(key)}
+                  >${label}</button>
+                `)}
               </div>
             </div>
           </section>

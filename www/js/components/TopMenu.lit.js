@@ -7,6 +7,7 @@ import {
   ScenarioEvents,
   DataEvents,
   ViewManagementEvents,
+  FilterEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import './PlanMenu.lit.js';
@@ -27,6 +28,7 @@ export class TopMenuBarLit extends LitElement {
     activeViewData: { type: Object },
     selectedProjectsCount: { type: Number },
     selectedTeamsCount: { type: Number },
+    funnel: { type: Object },
   };
 
   static styles = css`
@@ -170,6 +172,15 @@ export class TopMenuBarLit extends LitElement {
       text-align: center;
       line-height: 1;
     }
+
+    .data-funnel-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 12px;
+      white-space: nowrap;
+    }
   `;
 
   constructor() {
@@ -184,6 +195,7 @@ export class TopMenuBarLit extends LitElement {
     this.activeViewData = null;
     this.selectedProjectsCount = 0;
     this.selectedTeamsCount = 0;
+    this.funnel = { tasksVisible: 0, teamsInView: 0 };
     this._ensureGlobalMenuStyles();
   }
 
@@ -258,6 +270,7 @@ export class TopMenuBarLit extends LitElement {
       const arr = sel.selection.getTeams();
       this.teams = arr;
       this.selectedTeamsCount = arr.filter((t) => t && t.selected).length;
+      this.funnel = sel.scope.getFunnel();
     };
     this._onScenariosList = () => {
       const scenarios = sel.scenario.getScenarios();
@@ -279,6 +292,12 @@ export class TopMenuBarLit extends LitElement {
     this._onViewActivated = (payload) => {
       this.activeViewId = payload?.id || null;
       this.activeViewData = payload?.data || null;
+      this.funnel = sel.scope.getFunnel();
+    };
+
+    this._onScopeChanged = () => {
+      this.funnel = sel.scope.getFunnel();
+      this.requestUpdate();
     };
 
     bus.on(ProjectEvents.CHANGED, this._onProjectsChanged);
@@ -289,6 +308,10 @@ export class TopMenuBarLit extends LitElement {
     bus.on(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     bus.on(ViewManagementEvents.LIST, this._onViewsList);
     bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    bus.on(TeamEvents.CHANGED, this._onScopeChanged);
+    bus.on(ProjectEvents.CHANGED, this._onScopeChanged);
+    bus.on(DataEvents.SCENARIOS_DATA, this._onScopeChanged);
+    bus.on(FilterEvents.CHANGED, this._onScopeChanged);
 
     // Initialize reactive properties from current state in case events were
     // emitted before this element was connected. This ensures the component
@@ -331,6 +354,12 @@ export class TopMenuBarLit extends LitElement {
     if (this._onViewsList) bus.off(ViewManagementEvents.LIST, this._onViewsList);
     if (this._onViewActivated)
       bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    if (this._onScopeChanged) {
+      bus.off(TeamEvents.CHANGED, this._onScopeChanged);
+      bus.off(ProjectEvents.CHANGED, this._onScopeChanged);
+      bus.off(DataEvents.SCENARIOS_DATA, this._onScopeChanged);
+      bus.off(FilterEvents.CHANGED, this._onScopeChanged);
+    }
   }
 
   _toggleMenu(menuName, e) {
@@ -414,18 +443,6 @@ export class TopMenuBarLit extends LitElement {
             : ''}
           </div>
           <div
-            class="menu-item ${this.openMenu === 'team' ? 'active' : ''}"
-            id="teamMenuBtn"
-            role="button"
-            tabindex="0"
-            @click=${(e) => this._toggleMenu('team', e)}
-          >
-            Team
-            ${this.selectedTeamsCount ?
-              html`<span class="menu-count-badge">${this.selectedTeamsCount}</span>`
-            : ''}
-          </div>
-          <div
             class="menu-item ${this.openMenu === 'tools' ? 'active' : ''}"
             id="toolsMenuBtn"
             role="button"
@@ -437,6 +454,15 @@ export class TopMenuBarLit extends LitElement {
         </div>
 
         <div class="menu-right">
+          <div
+            class="data-funnel-status"
+            id="dataFunnelSummary"
+            role="status"
+            aria-label="Data Funnel: tasks visible and teams in view"
+          >
+            <span>Tasks visible: ${this.funnel.tasksVisible}</span>
+            <span>Teams in view: ${this.funnel.teamsInView}</span>
+          </div>
           <button class="small-btn" id="openConfigBtn" @click=${this._onConfig}>
             ⚙️
           </button>

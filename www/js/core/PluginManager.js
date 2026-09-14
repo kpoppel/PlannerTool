@@ -235,7 +235,10 @@ export class PluginManager {
    * @returns {Array<object>} array of plugin metadata
    */
   list() {
-    return [...this.plugins.values()].map((p) => p.getMetadata());
+    return [...this.plugins.values()]
+      .filter((plugin) => !(plugin.config && plugin.config.showInTools === false))
+      .map((p) => p.getMetadata())
+      .filter((metadata) => metadata.showInTools !== false);
   }
 
   /**

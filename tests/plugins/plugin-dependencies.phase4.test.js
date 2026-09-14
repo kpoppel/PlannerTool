@@ -1,16 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-const mockCmd = vi.hoisted(() => ({
-  view: {
-    setShowDependencies: vi.fn(),
-  },
-}));
-
-vi.mock('../../www/js/application/imports.js', () => ({
-  cmd: mockCmd,
-  sel: {},
-}));
-
 import PluginDependencies from '../../www/js/plugins/PluginDependencies.js';
 
 function stubMountedElement(plugin) {
@@ -29,7 +18,6 @@ describe('PluginDependencies Phase 4 seam wrapper', () => {
   let host;
 
   beforeEach(() => {
-    mockCmd.view.setShowDependencies.mockReset();
     host = document.createElement('div');
     host.id = '_body';
     document.body.appendChild(host);
@@ -40,26 +28,22 @@ describe('PluginDependencies Phase 4 seam wrapper', () => {
     host = null;
   });
 
-  it('activate routes dependency visibility through cmd.view with suppressEvents', async () => {
+  it('activate opens the overlay without reading application Context state', async () => {
     const plugin = new PluginDependencies('plugin-dependencies');
     stubMountedElement(plugin);
 
     await plugin.activate();
 
-    expect(mockCmd.view.setShowDependencies).toHaveBeenCalledWith(true, {
-      suppressEvents: true,
-    });
+    expect(plugin._el.open).toHaveBeenCalledTimes(1);
   });
 
-  it('deactivate routes dependency visibility through cmd.view with suppressEvents', async () => {
+  it('deactivate closes the overlay without changing calculation or view options', async () => {
     const plugin = new PluginDependencies('plugin-dependencies');
     stubMountedElement(plugin);
 
     await plugin.activate();
     await plugin.deactivate();
 
-    expect(mockCmd.view.setShowDependencies).toHaveBeenLastCalledWith(false, {
-      suppressEvents: true,
-    });
+    expect(plugin._el.close).toHaveBeenCalled();
   });
 });

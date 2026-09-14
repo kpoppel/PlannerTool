@@ -32,6 +32,7 @@
       "activated": false,
       "exclusive": false,
       "persistent": true,
+      "showInTools": false,
       "mountPoint": "feature-board",
       "dependencies": []
     },

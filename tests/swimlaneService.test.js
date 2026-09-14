@@ -172,6 +172,18 @@ describe('buildSwimlaneList', () => {
     expect(list.find((s) => s.id === 'p3')).toBeFalsy();
   });
 
+  it('adds expanded plans for canonical visible-scope lanes', () => {
+    const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p3')];
+    const list = buildSwimlaneList(
+      projects,
+      teams,
+      noExpansion,
+      visibleFeatures,
+      { includeExpandedPlans: true }
+    );
+    expect(list.find((s) => s.id === 'p3').type).toBe('expanded-plan');
+  });
+
   it('does not duplicate a selected project as expanded-plan', () => {
     const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p2')];
     const list = buildSwimlaneList(

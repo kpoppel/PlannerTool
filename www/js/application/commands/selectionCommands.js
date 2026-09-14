@@ -70,7 +70,7 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         false,
         'selection.setProjectSelected'
       );
-      if (recomputeCapacity) {
+      if (recomputeCapacity && !options.displayOnly) {
         recomputeCapacity();
       }
       if (!options?.suppressEvents) {
@@ -91,7 +91,7 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         false,
         'selection.setTeamSelected'
       );
-      if (recomputeCapacity) {
+      if (recomputeCapacity && !options.displayOnly) {
         recomputeCapacity();
       }
       if (!options?.suppressEvents) {
@@ -113,7 +113,7 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         false,
         'selection.setProjectsSelectedBulk'
       );
-      if (recomputeCapacity) {
+      if (recomputeCapacity && !options.displayOnly) {
         recomputeCapacity();
       }
       if (!options?.suppressEvents) {
@@ -135,7 +135,7 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         false,
         'selection.setTeamsSelectedBulk'
       );
-      if (recomputeCapacity) {
+      if (recomputeCapacity && !options.displayOnly) {
         recomputeCapacity();
       }
       if (!options?.suppressEvents) {

@@ -10,6 +10,11 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 Template - do not change :
 ## [v] - unreleased
 ### Added
+- Completed Phase 1 presentation-scope migration across Sidebar, TopMenu, FeatureBoard, swimlanes, and dependency overlay lifecycle.
+- Dependency overlay visibility is now owned by the Sidebar Context dependency flag.
+- Added the canonical Data Funnel summary to the top bar in place of the Team trigger.
+- Added Context-scoped Team Drill-down controls with select-all/select-none behavior.
+- Added the first v5 Context control with Parent, Child, Dependency, and Other allocations segments in the Sidebar.
 - Added the initial v5 display-scope contract separating resolved features from Context, Team Drill-down, and task-filter visibility.
 - Added a standalone scope-first UI/UX v5 wireframe beside the redesign discussion notes.
 - Added a self-contained static capture of the shared AZ Planner UI at `backup/user_interface_v5/static_v4.html`.
@@ -18,6 +23,8 @@ Template - do not change :
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
 - Removed a duplicate `TimelineEvents.MONTHS` subscription in `TimelineBoard` that could trigger duplicate today-line updates and leave one listener untracked on teardown.
+- Context Parent filtering now updates visible task counts, and the Context-owned dependency plugin is removed from the Tools menu.
+- Team Drill-down now preserves selected-plan tasks while filtering only additive Context tasks.
 
 ---
 

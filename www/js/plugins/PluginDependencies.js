@@ -1,10 +1,9 @@
 /**
  * PluginDependencies - Lifecycle wrapper for the Dependencies SVG overlay plugin.
  * Migrated to MountedPlugin pattern — replaces manual element creation/mounting.
- * This plugin auto-activates at startup (activated: true in modules.config.json).
+ * This plugin is activated only by the Context dependency control.
  */
 import { MountedPlugin } from './MountedPlugin.js';
-import { cmd } from '../application/imports.js';
 
 export class PluginDependencies extends MountedPlugin {
   static get defaultId() { return 'plugin-dependencies'; }
@@ -19,7 +18,6 @@ export class PluginDependencies extends MountedPlugin {
 
   async activate() {
     await super.activate();
-    cmd.view.setShowDependencies(true, { suppressEvents: true });
     const component = /** @type {import('./PluginDependenciesComponent.js').PluginDependenciesComponent} */ (
       /** @type {unknown} */ (this._el)
     );
@@ -27,7 +25,6 @@ export class PluginDependencies extends MountedPlugin {
   }
 
   async deactivate() {
-    cmd.view.setShowDependencies(false, { suppressEvents: true });
     const component = /** @type {import('./PluginDependenciesComponent.js').PluginDependenciesComponent} */ (
       /** @type {unknown} */ (this._el)
     );
@@ -42,7 +39,8 @@ export class PluginDependencies extends MountedPlugin {
       description: 'Render dependency arrows between feature cards',
       icon: 'account_tree',
       section: 'overlay',
-      autoActivate: true,
+      autoActivate: false,
+      showInTools: this.config.showInTools !== false,
       persistent: true,
     };
   }

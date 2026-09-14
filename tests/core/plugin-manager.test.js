@@ -166,6 +166,16 @@ describe('PluginManager & Plugin base', () => {
     expect(listing.find((p) => p.id === 'list-plugin')).to.exist;
   });
 
+  it('does not list plugins configured outside the Tools menu', async () => {
+    const plugin = new TestPlugin('context-plugin', {
+      dependencies: [],
+      showInTools: false,
+    });
+    await manager.register(plugin);
+
+    expect(manager.list().find((p) => p.id === 'context-plugin')).to.not.exist;
+  });
+
   it('should prevent unregister when dependents exist', async () => {
     const p1 = new TestPlugin('p1', { dependencies: [] });
     const p2 = new TestPlugin('p2', { dependencies: ['p1'] });

@@ -6,7 +6,7 @@ import { expect } from '@open-wc/testing';
 import { vi } from 'vitest';
 
 const mockView = vi.hoisted(() => ({
-  showDependencies: false,
+  dependencyContext: false,
   condensedCards: false,
 }));
 
@@ -18,7 +18,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
   cmd: {},
   sel: {
     view: {
-      getShowDependencies: () => mockView.showDependencies,
+      getContext: () => ({ dependency: mockView.dependencyContext }),
       getCondensedCards: () => mockView.condensedCards,
     },
     feature: {
@@ -52,7 +52,7 @@ describe('PluginDependenciesComponent', () => {
   let boardArea;
 
   beforeEach(() => {
-    mockView.showDependencies = false;
+    mockView.dependencyContext = false;
     mockView.condensedCards = false;
     mockFeatures.list = [];
 
@@ -95,7 +95,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];
-    mockView.showDependencies = true;
+    mockView.dependencyContext = true;
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -116,7 +116,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 2, relations: [{ id: 3, type: 'Related' }] },
       { id: 3, relations: [] },
     ];
-    mockView.showDependencies = true;
+    mockView.dependencyContext = true;
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -141,7 +141,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];
-    mockView.showDependencies = true;
+    mockView.dependencyContext = true;
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -150,7 +150,7 @@ describe('PluginDependenciesComponent', () => {
     component.open();
     await new Promise((r) => setTimeout(r, 50));
 
-    mockView.showDependencies = false;
+    mockView.dependencyContext = false;
     component._handleDepsToggle();
     await new Promise((r) => setTimeout(r, 50));
 
