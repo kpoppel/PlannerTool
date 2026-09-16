@@ -8,6 +8,7 @@ const {
   mockAddMember,
   mockRemoveMember,
   mockEffectiveGroups,
+  mockEffectiveFeatures,
 } = vi.hoisted(() => ({
   mockCreateGroup: vi.fn(),
   mockUpdateGroup: vi.fn(),
@@ -16,6 +17,7 @@ const {
   mockAddMember: vi.fn(),
   mockRemoveMember: vi.fn(),
   mockEffectiveGroups: vi.fn(() => []),
+  mockEffectiveFeatures: vi.fn(() => []),
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
@@ -32,6 +34,9 @@ vi.mock('../../www/js/application/imports.js', () => ({
   sel: {
     group: {
       getEffectiveGroups: mockEffectiveGroups,
+    },
+    feature: {
+      getEffectiveFeatures: mockEffectiveFeatures,
     },
   },
 }));
@@ -71,6 +76,7 @@ describe('GroupContextMenu phase 5 seam migration', () => {
   });
 
   it('reassigns feature membership via sel.group + cmd.group calls', () => {
+    mockEffectiveFeatures.mockReturnValue([{ id: 'f1', project: 'p1' }]);
     mockEffectiveGroups.mockReturnValue([
       { id: 'g1', members: ['f1'] },
       { id: 'g2', members: [] },
@@ -85,6 +91,44 @@ describe('GroupContextMenu phase 5 seam migration', () => {
     expect(mockEffectiveGroups).toHaveBeenCalledWith('p1');
     expect(mockRemoveMember).toHaveBeenCalledWith('g1', 'f1');
     expect(mockAddMember).toHaveBeenCalledWith('g2', 'f1');
+  });
+
+  it('finds ancestor-plan groups for a Child Context task', () => {
+    mockEffectiveFeatures.mockReturnValue([
+      { id: 'parent', project: 'p1' },
+      { id: 'child', project: 'p2', parentId: 'parent' },
+    ]);
+    mockEffectiveGroups.mockImplementation((planId) => (
+      planId === 'p1' ? [{ id: 'g1', members: [] }] : []
+    ));
+
+    const menu = new GroupContextMenu();
+    const groups = menu._getFeaturePlanGroups({ id: 'child', project: 'p2', parentId: 'parent' });
+
+    expect(groups.map((group) => group.id)).toEqual(['g1']);
+    expect(mockEffectiveGroups).toHaveBeenCalledWith('p2');
+    expect(mockEffectiveGroups).toHaveBeenCalledWith('p1');
+  });
+
+  it('assigns a parent and all descendants to the selected group', () => {
+    mockEffectiveFeatures.mockReturnValue([
+      { id: 'parent', project: 'p1' },
+      { id: 'child', project: 'p2', parentId: 'parent' },
+      { id: 'grandchild', project: 'p2', parentId: 'child' },
+    ]);
+    mockEffectiveGroups.mockReturnValue([{ id: 'g1', members: [] }]);
+
+    const menu = new GroupContextMenu();
+    menu._config = { feature: { id: 'parent', project: 'p1' } };
+    menu._close = vi.fn();
+
+    menu._assignToGroup('g1');
+
+    expect(mockAddMember.mock.calls).toEqual([
+      ['g1', 'parent'],
+      ['g1', 'child'],
+      ['g1', 'grandchild'],
+    ]);
   });
 
   it('moves a group via cmd.group.moveGroupInScenario', () => {

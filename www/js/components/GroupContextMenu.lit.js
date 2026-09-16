@@ -271,20 +271,63 @@ class GroupContextMenu extends LitElement {
   // Feature card actions
   // ---------------------------------------------------------------------------
 
+  _getFeaturePlanGroups(feature) {
+    const features = sel.feature.getEffectiveFeatures();
+    const featuresById = new Map(features.map((item) => [String(item.id), item]));
+    let current = feature;
+    const visited = new Set();
+
+    while (current && !visited.has(String(current.id))) {
+      visited.add(String(current.id));
+      const planGroups = sel.group.getEffectiveGroups(current.project);
+      if (planGroups.length > 0) return planGroups;
+      current = current.parentId ? featuresById.get(String(current.parentId)) : null;
+    }
+    return [];
+  }
+
+  _getFeatureAndDescendants(feature) {
+    const features = sel.feature.getEffectiveFeatures();
+    const childrenByParent = new Map();
+    for (const item of features) {
+      if (!item.parentId) continue;
+      const parentId = String(item.parentId);
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId).push(item);
+    }
+
+    const result = [feature];
+    const queue = [feature];
+    const visited = new Set([String(feature.id)]);
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const children = childrenByParent.get(String(current.id)) || [];
+      for (const child of children) {
+        if (visited.has(String(child.id))) continue;
+        visited.add(String(child.id));
+        result.push(child);
+        queue.push(child);
+      }
+    }
+    return result;
+  }
+
   _assignToGroup(groupId) {
     const feature = this._config?.feature;
     if (!feature) return;
     this._close();
     // Remove from current group first so the card doesn't appear in both groups.
-    const planGroups = sel.group.getEffectiveGroups(feature.project);
-    for (const g of planGroups) {
-      if (String(g.id) === String(groupId)) continue; // skip the target
-      if ((g.members || []).includes(String(feature.id))) {
-        cmd.group.removeMemberFromGroup(g.id, feature.id);
-        break;
+    const planGroups = this._getFeaturePlanGroups(feature);
+    for (const task of this._getFeatureAndDescendants(feature)) {
+      for (const g of planGroups) {
+        if (String(g.id) === String(groupId)) continue; // skip the target
+        if ((g.members || []).includes(String(task.id))) {
+          cmd.group.removeMemberFromGroup(g.id, task.id);
+          break;
+        }
       }
+      cmd.group.addMemberToGroup(groupId, task.id);
     }
-    cmd.group.addMemberToGroup(groupId, feature.id);
   }
 
   _removeFromGroup() {
@@ -292,7 +335,7 @@ class GroupContextMenu extends LitElement {
     if (!feature) return;
     this._close();
     // Use getEffectiveGroups so scenario-local groups are included in the search.
-    const planGroups = sel.group.getEffectiveGroups(feature.project);
+    const planGroups = this._getFeaturePlanGroups(feature);
     for (const g of planGroups) {
       if ((g.members || []).includes(String(feature.id))) {
         cmd.group.removeMemberFromGroup(g.id, feature.id);
@@ -524,8 +567,8 @@ class GroupContextMenu extends LitElement {
     const feature = this._config?.feature;
     if (!feature) return html``;
 
-    // Use getEffectiveGroups so scenario-local groups (scenarioGroups) are included.
-    const planGroups = sel.group.getEffectiveGroups(feature.project);
+    // Resolve the nearest ancestor plan so Child Context tasks can use mother-plan groups.
+    const planGroups = this._getFeaturePlanGroups(feature);
 
     // Determine if this feature is already in a group by checking group.members
     const currentGroup = planGroups.find(

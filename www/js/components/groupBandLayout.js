@@ -267,10 +267,12 @@ export function resolveGroupDropSlot(items, groupId, y, bottomY) {
  * @param {boolean} condensed        Use condensed card height (normal mode)
  * @param {boolean} packed           Pack consecutive task rows horizontally
  * @param {Set<string>} collapsedGroups  Set of collapsed group IDs
+ * @param {{preserveFeatureOrder?: boolean}} options  Layout options
  * @returns {{ items: Array, totalHeight: number }}
  */
 export function buildGroupBandItems(
-  orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups
+  orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups,
+  options = {}
 ) {
   const items = [];
   const planGroupIds = new Set(planGroups.map((g) => String(g.id)));
@@ -301,8 +303,11 @@ export function buildGroupBandItems(
   // The shared ordering scale: a task's key is its position in the globally
   // sorted task list, spaced like group ranks so a group can be ranked between
   // any two tasks.
+  const orderedTaskFeatures = options.preserveFeatureOrder
+    ? orderedFeatures
+    : sortFeatures(orderedFeatures);
   const taskRankById = new Map(
-    sortFeatures(orderedFeatures).map((f, index) => [String(f.id), (index + 1) * RANK_GAP])
+    orderedTaskFeatures.map((f, index) => [String(f.id), (index + 1) * RANK_GAP])
   );
   const featureById = new Map(orderedFeatures.map((f) => [String(f.id), f]));
 
@@ -318,8 +323,8 @@ export function buildGroupBandItems(
     childGroupsByParent.set(String(group.id), []);
   }
 
-  const allGroupedIds = new Set(planGroups.flatMap((g) => memberIds(g).map(String)));
-  const rootFeatures = orderedFeatures.filter((f) => !allGroupedIds.has(String(f.id)));
+  const allGroupedIds = new Set(planGroups.flatMap((group) => memberIds(group).map(String)));
+  const rootFeatures = orderedFeatures.filter((feature) => !allGroupedIds.has(String(feature.id)));
 
   const rootGroups = [];
   for (const group of planGroups) {

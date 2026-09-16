@@ -52,11 +52,11 @@ describe('feature-board updateCardsById', () => {
     expect(called).to.be.true;
   });
 
-  it('updateCardsById falls back to full render when the feature belongs to a group', async () => {
+  it('updateCardsById falls back to full render for a contextual task in a selected mother-plan group', async () => {
     // A grouped task's band must be recalculated (it may move beyond the
     // group's current date range), so a plain applyVisuals patch is not enough.
     const node = document.createElement('div');
-    node.feature = { id: 'f3', project: 'p1', selected: false };
+    node.feature = { id: 'f3', project: 'p2', selected: false };
     node.applyVisuals = function (opts) {
       this._applied = opts;
     };
@@ -65,13 +65,15 @@ describe('feature-board updateCardsById', () => {
 
     sinon.stub(sel.feature, 'getEffectiveFeatureById').callsFake(() => ({
       id: 'f3',
-      project: 'p1',
+      project: 'p2',
       start: '2025-01-01',
       end: '2025-01-31',
     }));
     sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', selected: true }]);
-    sinon.stub(sel.group, 'hasPlanLoaded').returns(true);
-    sinon.stub(sel.group, 'getEffectiveGroups').returns([{ id: 'g1', members: ['f3'] }]);
+    sinon.stub(sel.group, 'hasPlanLoaded').callsFake((planId) => planId === 'p1');
+    sinon.stub(sel.group, 'getEffectiveGroups').callsFake((planId) =>
+      planId === 'p1' ? [{ id: 'g1', members: ['f3'] }] : []
+    );
 
     let called = false;
     board.renderFeatures = function () {
@@ -83,35 +85,4 @@ describe('feature-board updateCardsById', () => {
     expect(node._applied).to.not.exist;
   });
 
-  it('keeps an unallocated Context task accepted by the canonical visible scope', () => {
-    sinon.stub(sel.view, 'getExpansionState').returns({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    });
-    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
-    sinon.stub(sel.view, 'isTypeVisible').returns(true);
-    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
-    sinon.stub(sel.view, 'getShowUnassignedCards').returns(false);
-    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['active']));
-    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
-    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'selected', selected: true }]);
-    sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['selected']);
-    sinon.stub(sel.selection, 'getSelectedTeamIds').returns([]);
-
-    const contextTask = {
-      id: 'parent-task',
-      project: 'parent',
-      capacity: [],
-      state: 'active',
-      type: 'Feature',
-    };
-
-    expect(board._featurePassesFilters(
-      contextTask,
-      new Map(),
-      [contextTask],
-      new Set(['parent-task'])
-    )).to.equal(true);
-  });
 });

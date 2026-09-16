@@ -33,6 +33,7 @@ import {
   resolveGroupMoveSlot,
   resolveInsertionSlot,
 } from './groupBandLayout.js';
+import { RANK_GAP } from '../application/shared/ordering.js';
 import './FeatureGroup.lit.js';
 export { initBoard } from './FeatureBoard.init.js';
 
@@ -776,7 +777,8 @@ class FeatureBoard extends LitElement {
           );
           const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
-            sel.view.getCondensedCards(), isPacked, this._collapsedGroups
+            sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
+            { preserveFeatureOrder: true }
           );
           renderList.push(...groupItems);
           swimlaneHeight = Math.max(gHeight, laneHeight());
@@ -824,6 +826,8 @@ class FeatureBoard extends LitElement {
               condensed: sel.view.getCondensedCards(),
               hideGhostTitle: false,
               project: selectedProjects.find((p) => p.id === feature.project),
+              slotParentId: null,
+              slotRank: (laneIndex + 1) * RANK_GAP,
             });
             laneIndex++;
           }
@@ -873,7 +877,8 @@ class FeatureBoard extends LitElement {
       );
       const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
         visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,
-        sel.view.getCondensedCards(), isPacked, this._collapsedGroups
+        sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
+        { preserveFeatureOrder: true }
       );
       renderList = groupItems;
       totalHeight = allGroups.length > 0 ? gHeight : gHeight + this._overlayOffset;
@@ -1092,15 +1097,20 @@ class FeatureBoard extends LitElement {
     }
   }
 
-  /** True if the feature is a member of any group on its plan. */
+  /** True if the feature is a member of any selected mother-plan group. */
   _featureIsInAnyGroup(feature) {
-    if (!feature || !feature.project) return false;
-    if (!sel.group.hasPlanLoaded(String(feature.project))) return false;
+    if (!feature) return false;
     const key = String(feature.id);
-    const planGroups = sel.group.getEffectiveGroups(String(feature.project));
-    return planGroups.some((group) =>
-      (group.members || []).some((memberId) => String(memberId) === key)
-    );
+    const selectedPlans = sel.selection.getProjects().filter((plan) => plan.selected);
+    for (const plan of selectedPlans) {
+      const planId = String(plan.id);
+      if (!sel.group.hasPlanLoaded(planId)) continue;
+      const planGroups = sel.group.getEffectiveGroups(planId);
+      if (planGroups.some((group) =>
+        (group.members || []).some((memberId) => String(memberId) === key)
+      )) return true;
+    }
+    return false;
   }
 
   _getCardNodeById(featureId) {

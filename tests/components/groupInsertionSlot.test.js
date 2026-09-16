@@ -146,6 +146,18 @@ describe('resolveInsertionSlot', () => {
   it('carries the plan id so the menu can scope the new group', () => {
     expect(resolveInsertionSlot(mixed, 20, BOTTOM).planId).toBe('p1');
   });
+
+  it('places a new group after a parent and descendant task stream', () => {
+    const hierarchical = [
+      card('parent', 0, RANK_GAP),
+      card('descendant', LANE, 2 * RANK_GAP),
+    ];
+
+    const slot = resolveInsertionSlot(hierarchical, 60, 80);
+
+    expect(slot.rank).toBe(3 * RANK_GAP);
+    expect(slot.caretTop).toBe(80);
+  });
 });
 
 describe('resolveGroupMoveSlot', () => {

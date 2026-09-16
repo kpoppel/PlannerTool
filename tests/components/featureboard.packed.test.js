@@ -192,6 +192,61 @@ describe('Group band ordering', () => {
     expect(colourById.get('t4')).to.equal('#ff0000');
     expect(colourById.get('t5')).to.equal(null);
   });
+
+  it('places a visible contextual task in its selected mother-plan group', () => {
+    const months = [
+      new Date('2025-01-01T00:00:00Z'),
+      new Date('2025-02-01T00:00:00Z'),
+    ];
+    const features = [
+      {
+        id: 'context-task', project: 'p2', start: '2025-01-05', end: '2025-01-12',
+        originalRank: 10,
+      },
+    ];
+    const groups = [
+      {
+        id: 'g1', plan_id: 'p1', name: 'Selected plan group', members: ['context-task'],
+        color: '#ff0000', rank: 10,
+      },
+    ];
+
+    const result = buildGroupBandItems(features, groups, 0, months, false, false, new Set());
+    const card = result.items.find((item) => !item.isGroup);
+
+    expect(result.items.filter((item) => item.isGroup).map((item) => item.id)).to.deep.equal(['g1']);
+    expect(card.slotParentId).to.equal('g1');
+    expect(card.groupColor).to.equal('#ff0000');
+  });
+
+  it('preserves parent-first hierarchy order when a new group is added', () => {
+    sel.view.getFeatureSortMode.returns('rank');
+    const months = [
+      new Date('2025-01-01T00:00:00Z'),
+      new Date('2025-02-01T00:00:00Z'),
+    ];
+    // FeatureBoard has already ordered this parent and Child Context descendant.
+    // The child has a lower raw rank, which must not pull it above its parent.
+    const features = [
+      {
+        id: 'parent-task', project: 'p1', start: '2025-01-05', end: '2025-01-12',
+        originalRank: 20,
+      },
+      {
+        id: 'child-task', project: 'p2', parentId: 'parent-task', start: '2025-01-06',
+        end: '2025-01-10', originalRank: 1,
+      },
+    ];
+    const groups = [{ id: 'new-group', plan_id: 'p1', name: 'Hello', members: [], rank: 3072 }];
+
+    const result = buildGroupBandItems(
+      features, groups, 0, months, false, false, new Set(), { preserveFeatureOrder: true }
+    );
+
+    expect(result.items.map((item) =>
+      item.isGroup ? item.id : item.feature.id
+    )).to.deep.equal(['parent-task', 'child-task', 'new-group']);
+  });
 });
 
 describe('FeatureBoard renderFeatures — no duplicate cards', () => {
@@ -356,6 +411,40 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     } finally {
       scrollContainer.remove();
     }
+  });
+
+  it('preserves an append insertion slot after Child Context task rows', async () => {
+    projects = [
+      { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
+      { id: 'p2', name: 'Plan B', color: '#00aa00', selected: false },
+    ];
+    const parent = makeFeature('parent');
+    const descendant = {
+      ...makeFeature('descendant'), project: 'p2', parentId: 'parent', originalRank: 2,
+    };
+    parent.originalRank = 1;
+    effectiveFeatures = [parent, descendant];
+    sinon.stub(sel.view, 'getContext').returns({
+      parent: false, child: true, dependency: false, otherAllocations: false,
+    });
+
+    await board.renderFeatures();
+
+    const taskRows = board._fullRenderList.filter((item) => !item.isGroup);
+    const appendSlot = board.getInsertionSlotAt(board._boardHeight + 1);
+
+    expect(taskRows.map((item) => item.feature.id)).to.deep.equal(['parent', 'descendant']);
+    expect(taskRows.map((item) => item.slotRank)).to.deep.equal([1024, 2048]);
+    expect(appendSlot.rank).to.equal(3072);
+
+    sel.group.getEffectiveGroups.returns([{
+      id: 'new-group', plan_id: 'p1', name: 'New group', members: [], rank: appendSlot.rank,
+    }]);
+    await board.renderFeatures();
+
+    expect(board._fullRenderList.map((item) =>
+      item.isGroup ? item.id : item.feature.id
+    )).to.deep.equal(['parent', 'descendant', 'new-group']);
   });
 });
 

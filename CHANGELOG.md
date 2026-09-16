@@ -25,6 +25,9 @@ Template - do not change :
 - Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
 - MainGraph now normalizes Team-mode values against the full organization roster, filters only displayed team series by Team Drill-down, and renders empty when no plans are selected.
+- Grouped contextual tasks now resolve their selected mother-plan ownership when board date changes refresh group spans.
+- New groups now retain cursor-based placement in Child Context swimlanes instead of defaulting to the board top.
+- Group layout now preserves resolved parent-child ordering instead of re-sorting Context descendants by raw rank.
 - Canonical scope selection now owns visible-task filtering, Scope Context is the only dependency visibility setting, and display filters no longer recompute capacity.
 - Documented the accepted v5 prototype: top-bar Scope derives the candidate display set and Sidebar Team Drill-down applies the selected-team display filter.
 - View menu headings now use visually distinct tinted label bands to separate section names from selectable options.
@@ -32,6 +35,7 @@ Template - do not change :
 - Scope inclusion now derives participating teams from selected base plans, independently of the Team Drill-down focus, and hierarchy links are excluded from dependency scope.
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
+- Right-click group assignment now finds mother-plan groups for Child Context tasks and assigns selected parent task subtrees together.
 - Parent Context now retains unallocated ancestor tasks for unallocated work in a selected team-level plan.
 - Removed the superseded TeamMenu component and aligned timeline export dependency visibility with Scope Context.
 - Sidebar task filters now hide all tasks when neither option in a filter dimension is selected.
