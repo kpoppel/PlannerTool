@@ -67,6 +67,66 @@ describe('application/commands/dataCommands', () => {
     featureFlags.GRAPH_ONLY_SELECTED_PLANS = originalGraphOnlySelectedPlans;
   });
 
+  it('keeps full-organization totals stable when presentation filters hide allocations', () => {
+    const dataService = makeDataServiceMock();
+    const bus = { emit: vi.fn() };
+    const commands = createDataCommands(store, bus, dataService);
+    store.setState((state) => ({
+      ...state,
+      baseline: {
+        ...state.baseline,
+        teams: [{ id: 't1' }, { id: 't2' }],
+        projects: [{ id: 'p1', type: 'project' }, { id: 'p2', type: 'project' }],
+        features: [
+          {
+            id: 'visible', project: 'p1', state: 'Active', type: 'Feature',
+            start: '2025-01-01', end: '2025-01-01', capacity: [{ team: 't1', capacity: 20 }],
+          },
+          {
+            id: 'hidden-context', project: 'p2', state: 'Done', type: 'Bug',
+            start: '2025-01-01', end: '2025-01-01', capacity: [{ team: 't2', capacity: 110 }],
+          },
+        ],
+      },
+      selection: {
+        ...state.selection,
+        projectIds: ['p1'],
+        teamIds: ['t1'],
+        featureStateNames: ['Active'],
+        taskFilters: { type: { Feature: true, Bug: false } },
+      },
+      view: {
+        ...state.view,
+        context: { parent: false, child: false, dependency: false, otherAllocations: false },
+      },
+    }), false, 'test.setPresentationFilteredCapacityBaseline');
+
+    commands.recomputeCapacity();
+    const before = structuredClone(store.getState().capacity);
+
+    store.setState((state) => ({
+      ...state,
+      selection: {
+        ...state.selection,
+        teamIds: ['t2'],
+        taskFilters: { type: { Feature: false, Bug: true } },
+      },
+      view: {
+        ...state.view,
+        context: { parent: true, child: true, dependency: true, otherAllocations: true },
+      },
+    }), false, 'test.changePresentationFilters');
+    commands.recomputeCapacity();
+
+    const after = store.getState().capacity;
+    expect(before.organizationDaily).toEqual([130]);
+    expect(before.organizationDailyPerTeamAverage).toEqual([65]);
+    expect(before.teamDailyMap[0]).toEqual({ t1: 20, t2: 110 });
+    expect(after.organizationDaily).toEqual(before.organizationDaily);
+    expect(after.organizationDailyPerTeamAverage).toEqual(before.organizationDailyPerTeamAverage);
+    expect(after.teamDailyMap).toEqual(before.teamDailyMap);
+  });
+
   it('hydrateBaseline sets baseline slice and emits loaded events', async () => {
     const dataService = makeDataServiceMock({
       getProjects: {

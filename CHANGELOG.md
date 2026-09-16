@@ -11,6 +11,7 @@ Template - do not change :
 ## [v] - unreleased
 ### Added
 - Added a hover tooltip to MainGraph with the selected day and displayed capacity values.
+- Added Stage 2 regressions for full-organization capacity invariance under presentation filters and normalized unfunded graph buckets.
 - Added icon-led top-bar status metrics for tasks and teams in scope plus tasks currently displayed, with explanatory tooltips.
 - Added a Scope menu for related-work inclusion, with per-option task counts and an informative base-versus-related task summary in the top bar.
 - Completed Phase 1 presentation-scope migration across Sidebar, TopMenu, FeatureBoard, swimlanes, and dependency overlay lifecycle.

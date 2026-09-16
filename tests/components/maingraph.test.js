@@ -281,6 +281,47 @@ describe('MainGraph Tests', () => {
       el.remove();
     });
 
+    it('keeps project and unfunded values normalized by the full roster', async () => {
+      const el = document.createElement('maingraph-lit');
+      document.body.appendChild(el);
+      await el.updateComplete;
+
+      const mockCtx = {
+        clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        save() {}, restore() {}, setLineDash() {},
+      };
+      el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
+      const snapshot = {
+        months,
+        teams: [{ id: 't1', color: '#111' }, { id: 't2', color: '#222' }],
+        projects: [{ id: 'p1', name: 'Plan', color: '#333', type: 'project' }],
+        capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
+        teamDailyCapacity: [],
+        teamDailyCapacityMap: { 0: { t1: 20, t2: 110 }, 1: { t1: 20, t2: 110 } },
+        projectDailyCapacity: [],
+        projectDailyCapacityMap: { 0: { p1: 100, __unfunded__: 40 }, 1: { p1: 100, __unfunded__: 40 } },
+        totalOrgDailyPerTeamAvg: [],
+        capacityViewMode: 'project',
+        selectedTeamIds: new Set(['t1']),
+        selectedProjectIds: new Set(['p1']),
+      };
+
+      el._fullRender(mockCtx, snapshot);
+      const narrowDrillDownEntries = el._hoverDays[0].entries;
+
+      el._hoverDays = [];
+      snapshot.selectedTeamIds = new Set(['t2']);
+      el._fullRender(mockCtx, snapshot);
+
+      expect(narrowDrillDownEntries).to.deep.equal([
+        { name: 'Plan', color: '#333', value: 50 },
+        { name: 'Unfunded', color: '#C49E78', value: 20 },
+      ]);
+      expect(el._hoverDays[0].entries).to.deep.equal(narrowDrillDownEntries);
+      el.remove();
+    });
+
     it('does not include unfunded project capacity in a Team-mode tooltip', async () => {
       const el = document.createElement('maingraph-lit');
       document.body.appendChild(el);
