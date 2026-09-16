@@ -620,11 +620,6 @@ class FeatureBoard extends LitElement {
     const isPacked = sel.view.getPackedMode();
     const expansionState = sel.view.getExpansionState();
     const context = sel.view.getContext();
-    const laneAssignmentState = {
-      ...expansionState,
-      expandParentChild:
-        expansionState.expandParentChild || context.parent || context.child,
-    };
     const selectedProjects = sel.selection.getProjects();
     const selectedTeams = sel.selection.getTeams();
     const candidateSwimlanes = buildSwimlaneList(
@@ -632,7 +627,7 @@ class FeatureBoard extends LitElement {
       selectedTeams,
       expansionState,
       visibleFeatures,
-      { includeExpandedPlans: true }
+      context
     );
     const swimlaneActive = isSwimlaneMode(
       selectedProjects,
@@ -669,9 +664,10 @@ class FeatureBoard extends LitElement {
           feature,
           swimlanes,
           allFeaturesById,
-          laneAssignmentState,
+          expansionState,
           selectedProjectIds,
-          selectedTeamIds
+          selectedTeamIds,
+          context
         );
         const bucket = buckets.get(sid) ?? buckets.get(swimlanes[0]?.id);
         if (bucket) bucket.push(feature);

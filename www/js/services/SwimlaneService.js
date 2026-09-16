@@ -73,7 +73,7 @@ export function isSwimlaneMode(projects, expansionState, swimlanes = []) {
  * @param {Array<{id:string, name:string, color:string, selected:boolean}>} teams
  * @param {{expandParentChild:boolean, expandRelations:boolean, expandTeamAllocated:boolean}|null} expansionState
  * @param {Array<{project:string}>} visibleFeatures  Features that passed the visibility filter.
- * @param {{includeExpandedPlans?:boolean}} [scopeOptions] Canonical visible-scope lane options.
+ * @param {{parent?:boolean, child?:boolean, dependency?:boolean, otherAllocations?:boolean, includeExpandedPlans?:boolean}} [scopeOptions] Canonical visible-scope lane options.
  * @returns {Array<{id:string, name:string, color:string, type:'plan'|'expanded-plan'|'team'}>}
  */
 export function buildSwimlaneList(projects, teams, expansionState, visibleFeatures, scopeOptions = {}) {
@@ -94,8 +94,14 @@ export function buildSwimlaneList(projects, teams, expansionState, visibleFeatur
 
   // --- 2. Expanded-plan swimlanes: unselected projects in visible features ---
   // Only relevant when parent/child or relation expansion pulls in cross-project features.
-  const includeExpandedPlans = Boolean(scopeOptions.includeExpandedPlans)
-    || Boolean(expansionState && (expansionState.expandParentChild || expansionState.expandRelations));
+  const includeExpandedPlans = Boolean(
+    scopeOptions.includeExpandedPlans
+    || scopeOptions.parent
+    || scopeOptions.child
+    || scopeOptions.dependency
+    || scopeOptions.otherAllocations
+    || (expansionState && (expansionState.expandParentChild || expansionState.expandRelations))
+  );
   if (includeExpandedPlans) {
     const projectsById = new Map((projects || []).map((p) => [p.id, p]));
     for (const feature of visibleFeatures || []) {
@@ -137,7 +143,7 @@ export function buildSwimlaneList(projects, teams, expansionState, visibleFeatur
  * Assignment priority (first match wins):
  *
  * 1. Own project is a *plan* swimlane (selected project) → use it directly.
- * 2. expandParentChild is on → walk the parent chain upward; use the swimlane
+ * 2. Parent or Child Context is on → walk the parent chain upward; use the swimlane
  *    of the first ancestor whose project is a plan swimlane (B-child follows
  *    A-parent into A's band).
  * 3. expandTeamAllocated is on AND the feature's project is NOT selected →
@@ -151,6 +157,7 @@ export function buildSwimlaneList(projects, teams, expansionState, visibleFeatur
  * @param {{expandParentChild:boolean, expandTeamAllocated:boolean}|null} expansionState
  * @param {Set<string>} selectedProjectIds  IDs of currently-selected projects.
  * @param {Set<string>} selectedTeamIds     IDs of currently-selected teams.
+ * @param {{parent?:boolean, child?:boolean}} [context] Canonical Context flags.
  * @returns {string|null}  Swimlane ID, or null if the swimlane list is empty.
  */
 export function assignFeatureToSwimlane(
@@ -159,14 +166,20 @@ export function assignFeatureToSwimlane(
   allFeaturesById,
   expansionState,
   selectedProjectIds,
-  selectedTeamIds
+  selectedTeamIds,
+  context = {}
 ) {
   if (!swimlanes || swimlanes.length === 0) return null;
 
   const swimlaneById = new Map(swimlanes.map((s) => [s.id, s]));
   const ownSwimlane = swimlaneById.get(feature.project);
 
-  // --- Priority 1: parent chain walk (expandParentChild) ---
+  // --- Priority 1: own project in a plan swimlane ---
+  if (ownSwimlane && ownSwimlane.type === 'plan') {
+    return ownSwimlane.id;
+  }
+
+  // --- Priority 2: parent chain walk ---
   // When parent/child expansion is active, a feature follows its nearest ancestor
   // that has a swimlane.  We prefer 'plan' (selected) swimlanes over 'expanded-plan'
   // ones, so we keep walking past expanded-plan ancestors in case a plan-type ancestor
@@ -178,7 +191,10 @@ export function assignFeatureToSwimlane(
   //   B) Team plan selected ('plan'), parent project resolved as 'expanded-plan':
   //      feature (T1/plan) → epic (P1/expanded) → no plan ancestor → returns P1 ✓
   //      feature (T1/plan) with no parent → no ancestor → falls to Priority 2 → T1 ✓
-  if (expansionState && expansionState.expandParentChild) {
+  const includeHierarchy = Boolean(
+    (expansionState && expansionState.expandParentChild) || context.parent || context.child
+  );
+  if (includeHierarchy) {
     /** @type {string|null} */
     let firstPlanAncestorProjectId = null;
     /** @type {string|null} */
@@ -208,11 +224,6 @@ export function assignFeatureToSwimlane(
     }
     if (firstPlanAncestorProjectId) return firstPlanAncestorProjectId;
     if (firstExpandedAncestorProjectId) return firstExpandedAncestorProjectId;
-  }
-
-  // --- Priority 2: own project in a plan swimlane ---
-  if (ownSwimlane && ownSwimlane.type === 'plan') {
-    return ownSwimlane.id;
   }
 
   // --- Priority 3: team swimlane (expandTeamAllocated) ---

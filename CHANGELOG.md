@@ -24,6 +24,7 @@ Template - do not change :
 - Added a self-contained static capture of the shared AZ Planner UI at `backup/user_interface_v5/static_v4.html`.
 - Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
+- Swimlane placement now consumes canonical Context flags for parent/child ownership and Other allocation source-plan lanes while retaining legacy expansion compatibility.
 - MainGraph now normalizes Team-mode values against the full organization roster, filters only displayed team series by Team Drill-down, and renders empty when no plans are selected.
 - Grouped contextual tasks now resolve their selected mother-plan ownership when board date changes refresh group spans.
 - New groups now retain cursor-based placement in Child Context swimlanes instead of defaulting to the board top.

@@ -184,6 +184,19 @@ describe('buildSwimlaneList', () => {
     expect(list.find((s) => s.id === 'p3').type).toBe('expanded-plan');
   });
 
+  it('adds a source-plan swimlane for Other allocations Context', () => {
+    const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p3', null, [['t1', 1]])];
+    const list = buildSwimlaneList(
+      projects,
+      teams,
+      noExpansion,
+      visibleFeatures,
+      { otherAllocations: true }
+    );
+
+    expect(list.find((swimlane) => swimlane.id === 'p3').type).toBe('expanded-plan');
+  });
+
   it('does not duplicate a selected project as expanded-plan', () => {
     const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p2')];
     const list = buildSwimlaneList(
@@ -294,7 +307,47 @@ describe('assignFeatureToSwimlane', () => {
   });
 
   describe('parent chain walking (expandParentChild)', () => {
-    it('moves B-plan child to A-plan swimlane when parent is in A-plan', () => {
+    it('keeps selected-plan work in its own lane before Parent Context placement', () => {
+      const features = [
+        mkFeature('epic1', 'p3'),
+        mkFeature('task1', 'p1', 'epic1'),
+      ];
+      const allFeaturesById = new Map(features.map((feature) => [String(feature.id), feature]));
+
+      expect(
+        assignFeatureToSwimlane(
+          features[1],
+          swimlanes,
+          allFeaturesById,
+          noExpansion,
+          selectedProjectIds,
+          selectedTeamIds,
+          { parent: true }
+        )
+      ).toBe('p1');
+    });
+
+    it('follows a parent into its selected-plan lane when Parent Context is active', () => {
+      const features = [
+        mkFeature('epic1', 'p1'),
+        mkFeature('task1', 'p3', 'epic1'),
+      ];
+      const allFeaturesById = new Map(features.map((feature) => [String(feature.id), feature]));
+
+      expect(
+        assignFeatureToSwimlane(
+          features[1],
+          swimlanes,
+          allFeaturesById,
+          noExpansion,
+          selectedProjectIds,
+          selectedTeamIds,
+          { parent: true }
+        )
+      ).toBe('p1');
+    });
+
+    it('keeps a selected child plan in its own swimlane when its parent is also selected', () => {
       const features = [
         mkFeature('epic1', 'p1'),           // A-plan parent (plan swimlane)
         mkFeature('task1', 'p2', 'epic1'),  // B-plan child, parent is A-plan epic
@@ -310,7 +363,7 @@ describe('assignFeatureToSwimlane', () => {
           selectedProjectIds,
           selectedTeamIds
         )
-      ).toBe('p1'); // follows parent to A's swimlane
+      ).toBe('p2');
     });
 
     it('does not follow parent when expandParentChild is off', () => {
@@ -375,10 +428,9 @@ describe('assignFeatureToSwimlane', () => {
       ).toBe('p3');
     });
 
-    it('moves team-plan feature to parent expanded-plan swimlane (team plan selected)', () => {
-      // Scenario: team plan p1 is selected ('plan'), parent project p3 is
-      // resolved as 'expanded-plan'.  Feature in p1 whose parent is an epic
-      // in p3 should migrate to the p3 swimlane.
+    it('keeps selected-plan work in its own lane when its parent is in an expanded plan', () => {
+      // A selected plan owns its tasks even when Parent or Child Context adds
+      // an ancestor from another plan as an expanded-plan lane.
       const swimlanesTeamBase = [
         { id: 'p1', name: 'Team Plan', color: '#f00', type: 'plan' },
         { id: 'p3', name: 'Project Plan', color: '#00f', type: 'expanded-plan' },
@@ -398,7 +450,7 @@ describe('assignFeatureToSwimlane', () => {
           new Set(['p1']),
           new Set()
         )
-      ).toBe('p3'); // migrates to parent's expanded-plan swimlane
+      ).toBe('p1');
     });
 
     it('keeps team-plan feature in its own swimlane when it has no parent', () => {
