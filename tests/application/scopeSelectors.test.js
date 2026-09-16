@@ -6,17 +6,17 @@ function createStore(state) {
 }
 
 function baseState(overrides = {}) {
-  return {
+  const state = {
     baseline: {
       projects: [{ id: 'selected' }, { id: 'parent' }, { id: 'child' }, { id: 'other' }],
       teams: [{ id: 'team-a' }, { id: 'team-b' }],
       features: [
-        { id: 'own', project: 'selected', parentId: 'parent-task', type: 'Feature', relations: [], capacity: [{ team: 'team-a' }] },
-        { id: 'parent-task', project: 'parent', parentId: null, type: 'Feature', relations: [], capacity: [{ team: 'team-a' }] },
-        { id: 'child-task', project: 'child', parentId: 'own', type: 'Feature', relations: [], capacity: [{ team: 'team-b' }] },
-        { id: 'dependency-task', project: 'other', parentId: null, type: 'Feature', relations: [], capacity: [{ team: 'team-a' }] },
-        { id: 'unrelated', project: 'other', parentId: null, type: 'Bug', relations: [], capacity: [{ team: 'team-b' }] },
-        { id: 'hidden-type', project: 'selected', parentId: null, type: 'Bug', relations: [], capacity: [] },
+        { id: 'own', project: 'selected', parentId: 'parent-task', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
+        { id: 'parent-task', project: 'parent', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
+        { id: 'child-task', project: 'child', parentId: 'own', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
+        { id: 'dependency-task', project: 'other', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
+        { id: 'unrelated', project: 'other', parentId: null, type: 'Bug', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
+        { id: 'hidden-type', project: 'selected', parentId: null, type: 'Bug', state: 'Active', relations: [], capacity: [] },
       ],
     },
     scenarios: {
@@ -26,13 +26,35 @@ function baseState(overrides = {}) {
     selection: {
       projectIds: ['selected'],
       teamIds: ['team-a', 'team-b'],
+      featureStateNames: ['Active'],
       taskFilters: { schedule: {}, allocation: {}, hierarchy: {}, relations: {} },
       taskTypeNames: ['Feature'],
     },
     view: {
+      options: { hiddenTypes: [], showUnplannedWork: true },
       context: { parent: false, child: false, dependency: false, otherAllocations: false },
     },
-    ...overrides,
+  };
+  const {
+    selection = {},
+    view = {},
+    ...rootOverrides
+  } = overrides;
+  const {
+    options = {},
+    context = {},
+    ...viewOverrides
+  } = view;
+  return {
+    ...state,
+    ...rootOverrides,
+    selection: { ...state.selection, ...selection },
+    view: {
+      ...state.view,
+      ...viewOverrides,
+      options: { ...state.view.options, ...options },
+      context: { ...state.view.context, ...context },
+    },
   };
 }
 
@@ -191,6 +213,21 @@ describe('application/selectors/scopeSelectors', () => {
     ]);
   });
 
+  it('keeps an unallocated parent visible for an unallocated task in a selected plan', () => {
+    const state = baseState({
+      view: { context: { parent: true, child: false, dependency: false, otherAllocations: false } },
+      selection: { teamIds: ['team-a'] },
+    });
+    state.baseline.features[0].capacity = [];
+    state.baseline.features[1].capacity = [];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'parent-task',
+    ]);
+  });
+
   it('filters allocated selected-plan and contextual tasks by Team Drill-down', () => {
     const state = baseState();
     state.view.context.parent = true;
@@ -199,6 +236,7 @@ describe('application/selectors/scopeSelectors', () => {
       project: 'selected',
       parentId: null,
       type: 'Feature',
+      state: 'Active',
       relations: [],
       capacity: [{ team: 'team-b' }],
     });
@@ -207,6 +245,7 @@ describe('application/selectors/scopeSelectors', () => {
       project: 'selected',
       parentId: null,
       type: 'Feature',
+      state: 'Active',
       relations: [],
       capacity: [],
     });
@@ -230,6 +269,7 @@ describe('application/selectors/scopeSelectors', () => {
       project: 'selected',
       parentId: null,
       type: 'Feature',
+      state: 'Active',
       relations: [],
       capacity: [{ team: 'team-b' }],
     });
@@ -238,6 +278,7 @@ describe('application/selectors/scopeSelectors', () => {
       project: 'selected',
       parentId: null,
       type: 'Feature',
+      state: 'Active',
       relations: [],
       capacity: [],
     });

@@ -16,7 +16,7 @@ const mockSel = vi.hoisted(() => ({
   view: {
     getCapacityViewMode: () => 'team',
     getHiddenTypes: () => new Set(['epic']),
-    getShowDependencies: () => true,
+    getContext: () => ({ dependency: true }),
   },
 }));
 
@@ -38,7 +38,7 @@ describe('PluginExportTimelineComponent Phase 4 selector seam', () => {
     expect(data.view).toEqual({
       capacityMode: 'team',
       hiddenTypes: ['epic'],
-      showDependencies: true,
+      dependencyContext: true,
     });
   });
 });

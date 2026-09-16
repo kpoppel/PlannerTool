@@ -3,7 +3,7 @@ import { createViewSelectors } from '../../www/js/application/selectors/viewSele
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 
 describe('application/selectors/viewSelectors', () => {
-  it('store branch reads timelineScale/showDependencies/condensedCards from view options', () => {
+  it('store branch reads timelineScale and presentation options from the view slice', () => {
     const store = {
       getState: () => ({
         baseline: {
@@ -16,7 +16,6 @@ describe('application/selectors/viewSelectors', () => {
         view: {
           options: {
             timelineScale: 'weeks',
-            showDependencies: true,
             condensedCards: false,
             capacityViewMode: 'project',
             highlightFeatureRelationMode: true,
@@ -41,7 +40,6 @@ describe('application/selectors/viewSelectors', () => {
 
     const selectors = createViewSelectors(store);
     expect(selectors.getTimelineScale()).toBe('weeks');
-    expect(selectors.getShowDependencies()).toBe(true);
     expect(selectors.getCondensedCards()).toBe(false);
     expect(selectors.getCapacityViewMode()).toBe('project');
     expect(selectors.getHighlightFeatureRelationMode()).toBe(true);
@@ -72,7 +70,6 @@ describe('application/selectors/viewSelectors', () => {
         view: {
           options: {
             timelineScale: 'months',
-            showDependencies: false,
             condensedCards: false,
             capacityViewMode: 'team',
             highlightFeatureRelationMode: false,
@@ -97,7 +94,6 @@ describe('application/selectors/viewSelectors', () => {
 
     const selectors = createViewSelectors(store);
     expect(selectors.getTimelineScale()).toBe('months');
-    expect(selectors.getShowDependencies()).toBe(false);
     expect(selectors.getCondensedCards()).toBe(false);
     expect(selectors.getFeatureSortMode()).toBe('rank');
     expect(selectors.getPackedMode()).toBe(false);

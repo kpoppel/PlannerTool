@@ -62,7 +62,6 @@ describe('application/commands/viewCommands', () => {
     commands.setFeatureSortMode('date');
     commands.setCapacityViewMode('project');
     commands.setDisplayMode('packed');
-    commands.setShowDependencies(true);
     commands.setTypeVisibility('feature', false);
     commands.setTypeVisibility('feature', true);
 
@@ -73,7 +72,6 @@ describe('application/commands/viewCommands', () => {
       capacityViewMode: 'project',
       displayMode: 'packed',
       packedMode: true,
-      showDependencies: true,
       hiddenTypes: [],
     });
     expect(bus.emit).toHaveBeenCalled();
@@ -82,7 +80,6 @@ describe('application/commands/viewCommands', () => {
     expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.CONDENSED)).toBe(true);
     expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.SORT_MODE)).toBe(true);
     expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.CAPACITY_MODE)).toBe(true);
-    expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.DEPENDENCIES)).toBe(true);
     expect(bus.emit.mock.calls.some(([event]) => event === FilterEvents.CHANGED)).toBe(true);
     expect(bus.emit.mock.calls.some(([event]) => event === FeatureEvents.UPDATED)).toBe(true);
   });

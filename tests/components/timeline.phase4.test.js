@@ -11,7 +11,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
     view: {
       getTimelineScale: () => mockView.timelineScale,
       getCondensedCards: () => false,
-      getShowDependencies: () => false,
+      getContext: () => ({ dependency: false }),
     },
   },
 }));

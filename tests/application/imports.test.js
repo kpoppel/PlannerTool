@@ -51,8 +51,7 @@ describe('application/imports', () => {
     expect(typeof mod.cmd.selection.setProjectsSelectedBulk).toBe('function');
     expect(typeof mod.cmd.selection.setTeamsSelectedBulk).toBe('function');
     expect(typeof mod.cmd.filter.toggleStateSelected).toBe('function');
-    expect(typeof mod.cmd.view.setExpansionState).toBe('function');
-    expect(typeof mod.cmd.view.setShowDependencies).toBe('function');
+    expect(typeof mod.cmd.view.setContext).toBe('function');
     expect(typeof mod.sel.ui.debugFlag).toBe('function');
     expect(typeof mod.sel.selection.getSelectedProjectIds).toBe('function');
     expect(typeof mod.sel.filter.getAvailableFeatureStates).toBe('function');
@@ -70,8 +69,7 @@ describe('application/imports', () => {
     expect(typeof mod.cmd.selection.setProjectsSelectedBulk).toBe('function');
     expect(typeof mod.cmd.selection.setTeamsSelectedBulk).toBe('function');
     expect(typeof mod.cmd.filter.toggleStateSelected).toBe('function');
-    expect(typeof mod.cmd.view.setExpansionState).toBe('function');
-    expect(typeof mod.cmd.view.setShowDependencies).toBe('function');
+    expect(typeof mod.cmd.view.setContext).toBe('function');
     expect(typeof mod.sel.ui.debugFlag).toBe('function');
     expect(typeof mod.sel.selection.getSelectedProjectIds).toBe('function');
     expect(typeof mod.sel.filter.getAvailableFeatureStates).toBe('function');

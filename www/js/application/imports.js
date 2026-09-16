@@ -154,13 +154,11 @@ const stateStoreCommands = {
 };
 stateStoreCommands.selection = createSelectionCommands(
   store,
-  bus,
-  () => stateStoreCommands.data.recomputeCapacity()
+  bus
 );
 stateStoreCommands.filter = createFilterCommands(
   store,
-  bus,
-  () => stateStoreCommands.data.recomputeCapacity()
+  bus
 );
 stateStoreCommands.feature = createFeatureCommands(
   store,

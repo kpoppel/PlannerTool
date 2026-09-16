@@ -10,10 +10,6 @@ function getTimelineScaleFromStore(state) {
   return state.view.options.timelineScale;
 }
 
-function getShowDependenciesFromStore(state) {
-  return Boolean(state.view.options.showDependencies);
-}
-
 function getCondensedCardsFromStore(state) {
   return Boolean(state.view.options.condensedCards);
 }
@@ -124,10 +120,6 @@ export function createViewSelectors(store) {
   const selectors = {
     getTimelineScale() {
       return getTimelineScaleFromStore(store.getState());
-    },
-
-    getShowDependencies() {
-      return getShowDependenciesFromStore(store.getState());
     },
 
     getCondensedCards() {

@@ -31,7 +31,7 @@ describe('application/commands/filterCommands', () => {
     expect(selection.taskTypeNames).toEqual(['feature']);
     expect(selection.featureStateNames).toEqual(['Doing']);
     expect(selection.sidebarDisabled).toEqual({ states: ['Doing'] });
-    expect(recomputeCapacity).toHaveBeenCalledTimes(1);
+    expect(recomputeCapacity).not.toHaveBeenCalled();
     expect(bus.emit).not.toHaveBeenCalled();
   });
 
@@ -49,9 +49,9 @@ describe('application/commands/filterCommands', () => {
     expect(store.getState().selection.taskFilters.schedule).toEqual({ planned: true, unplanned: true });
   });
 
-  it('fails loudly when the recomputeCapacity seam is missing', () => {
+  it('does not require a capacity seam for presentation filters', () => {
     const commands = createFilterCommands(store, { emit: vi.fn() }, undefined);
-    expect(() => commands.setSelectedStates(['Doing'])).toThrow(TypeError);
+    expect(() => commands.setSelectedStates(['Doing'])).not.toThrow();
   });
 
   it('accepts caller-provided arrays and stores them as selection values', () => {

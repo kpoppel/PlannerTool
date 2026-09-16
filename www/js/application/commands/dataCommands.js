@@ -96,8 +96,10 @@ export function createDataCommands(store, bus, dataService) {
       const teams = state.baseline.teams;
       const projects = state.baseline.projects;
       const selectedProjectIds = state.selection.projectIds.map((id) => String(id));
-      const selectedTeamIds = state.selection.teamIds.map((id) => String(id));
-      const selectedStateIds = state.selection.featureStateNames.map((s) => String(s));
+      const organizationTeamIds = teams.map((team) => String(team.id));
+      const organizationStateIds = Array.from(
+        new Set(features.map((feature) => String(feature.state)))
+      );
       // When GRAPH_ONLY_SELECTED_PLANS is off (default), graph always shows all plans.
       const projectsForFilter =
         featureFlags.GRAPH_ONLY_SELECTED_PLANS ?
@@ -107,7 +109,7 @@ export function createDataCommands(store, bus, dataService) {
       capacityCalculator.setChildrenByParent(buildChildrenByParentMap(features));
       const result = capacityCalculator.calculate(
         features,
-        { selectedProjects: projectsForFilter, selectedTeams: selectedTeamIds, selectedStates: selectedStateIds },
+        { selectedProjects: projectsForFilter, selectedTeams: organizationTeamIds, selectedStates: organizationStateIds },
         teams,
         projects,
         changedFeatureIds

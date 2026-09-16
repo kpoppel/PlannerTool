@@ -16,7 +16,6 @@ export function createDefaultViewOptions() {
     capacityViewMode: 'team',
     displayMode: 'normal',
     packedMode: false,
-    showDependencies: false,
     showUnassignedCards: true,
     showUnplannedWork: true,
     showOnlyProjectHierarchy: false,

@@ -579,7 +579,7 @@ export class PluginExportTimeline extends LitElement {
       view: {
         capacityMode: sel.view.getCapacityViewMode(),
         hiddenTypes: Array.from(sel.view.getHiddenTypes()),
-        showDependencies: sel.view.getShowDependencies(),
+        dependencyContext: sel.view.getContext().dependency,
       },
     };
     return out;

@@ -16,47 +16,12 @@ function nextIdsFromBulkSelections(selections) {
     .map(([id]) => id);
 }
 
-export function createLegacySelectionCommands(state) {
-  return {
-    // setProjectSelected(id, selected) {
-    //   return state.setProjectSelected(id, selected);
-    // },
-
-    // setTeamSelected(id, selected) {
-    //   return state.setTeamSelected(id, selected);
-    // },
-
-    // setProjectsSelectedBulk(selections, opts) {
-    //   return state.setProjectsSelectedBulk(selections, opts);
-    // },
-
-    // setTeamsSelectedBulk(selections, opts) {
-    //   return state.setTeamsSelectedBulk(selections, opts);
-    // },
-
-    // setProjectColor(id, color) {
-    //   const project = (state.projects || []).find((item) => String(item?.id) === String(id));
-    //   if (project) {
-    //     project.color = color;
-    //   }
-    // },
-
-    // setTeamColor(id, color) {
-    //   const team = (state.teams || []).find((item) => String(item?.id) === String(id));
-    //   if (team) {
-    //     team.color = color;
-    //   }
-    // },
-  };
-}
-
 /**
  * @param {StoreApi} store
  * @param {EventBusLike} bus
- * @param {Function|null} [recomputeCapacity]
  * @returns {object}
  */
-export function createSelectionCommands(store, bus, recomputeCapacity = null) {
+export function createSelectionCommands(store, bus) {
   return {
     setProjectSelected(id, selected, options = {}) {
       store.setState(
@@ -70,9 +35,6 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         false,
         'selection.setProjectSelected'
       );
-      if (recomputeCapacity && !options.displayOnly) {
-        recomputeCapacity();
-      }
       if (!options?.suppressEvents) {
         bus?.emit?.(ProjectEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
@@ -91,9 +53,6 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         false,
         'selection.setTeamSelected'
       );
-      if (recomputeCapacity && !options.displayOnly) {
-        recomputeCapacity();
-      }
       if (!options?.suppressEvents) {
         bus?.emit?.(TeamEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
@@ -113,9 +72,6 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         false,
         'selection.setProjectsSelectedBulk'
       );
-      if (recomputeCapacity && !options.displayOnly) {
-        recomputeCapacity();
-      }
       if (!options?.suppressEvents) {
         bus?.emit?.(ProjectEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
@@ -135,9 +91,6 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         false,
         'selection.setTeamsSelectedBulk'
       );
-      if (recomputeCapacity && !options.displayOnly) {
-        recomputeCapacity();
-      }
       if (!options?.suppressEvents) {
         bus?.emit?.(TeamEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);

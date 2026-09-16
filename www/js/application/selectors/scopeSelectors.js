@@ -71,6 +71,20 @@ function isLinkedContext(feature, selectedIds, featuresById, selectedFeatures) {
     || isDependencyLinked(feature, selectedFeatures);
 }
 
+function isInSelectedProjectHierarchy(feature, featuresById, selectedProjectIds) {
+  const visited = new Set();
+  let current = feature;
+  while (current) {
+    const currentId = String(current.id);
+    if (visited.has(currentId)) return false;
+    visited.add(currentId);
+    if (selectedProjectIds.has(String(current.project))) return true;
+    if (!current.parentId) return false;
+    current = featuresById.get(String(current.parentId));
+  }
+  return false;
+}
+
 /**
  * Derive the resolved and visible task scopes. Resolved features are independent
  * from presentation filters and are the only source used by later calculations.
@@ -103,10 +117,14 @@ export function createScopeSelectors(store) {
     const contextFeatures = getContextFeatures();
     const selectedTeamIds = toIdSet(state.selection.teamIds);
     const selectedProjectIds = toIdSet(state.selection.projectIds);
+    const selectedFeatureStates = new Set(
+      state.selection.featureStateNames.map((stateName) => String(stateName).toLowerCase())
+    );
     const selectedTaskTypeNames = new Set(
       state.selection.taskTypeNames.map((type) => String(type).toLowerCase())
     );
-    const key = [contextFeatures, state.selection.teamIds.join(','), state.selection.taskTypeNames.join(','), state.selection.taskFilters, state.view.options];
+    const hiddenTypes = new Set(state.view.options.hiddenTypes.map((type) => String(type)));
+    const key = [contextFeatures, state.selection.teamIds.join(','), state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','), state.selection.taskFilters, state.view.options];
     if (visibleCache && key.every((value, index) => value === visibleCacheKey[index])) return visibleCache;
     visibleCacheKey = key;
     const featuresById = new Map(
@@ -117,6 +135,11 @@ export function createScopeSelectors(store) {
         .filter((feature) => hasFeatureTeamAllocation(feature, selectedTeamIds))
         .map((feature) => String(feature.id))
     );
+    for (const feature of contextFeatures) {
+      if (selectedProjectIds.has(String(feature.project))) {
+        focusedFeatureIds.add(String(feature.id));
+      }
+    }
     visibleCache = contextFeatures.filter((feature) => {
       const isSelectedPlan = selectedProjectIds.has(String(feature.project));
       const hasSelectedTeam = hasFeatureTeamAllocation(feature, selectedTeamIds);
@@ -128,6 +151,12 @@ export function createScopeSelectors(store) {
         && !isFocusedAncestor) return false;
       if (selectedTaskTypeNames.size > 0
         && !selectedTaskTypeNames.has(String(feature.type).toLowerCase())) return false;
+      if (selectedFeatureStates.size === 0
+        || !selectedFeatureStates.has(String(feature.state).toLowerCase())) return false;
+      if (hiddenTypes.has(String(feature.type))) return false;
+      if (!state.view.options.showUnplannedWork && (!feature.start || !feature.end)) return false;
+      if (state.view.options.showOnlyProjectHierarchy
+        && !isInSelectedProjectHierarchy(feature, featuresById, selectedProjectIds)) return false;
       return filterSelectors.featurePassesFilters(feature);
     });
     return visibleCache;

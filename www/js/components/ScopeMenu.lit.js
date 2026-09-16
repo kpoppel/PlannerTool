@@ -2,7 +2,6 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, FilterEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
-import { pluginManager } from '../core/PluginManager.js';
 
 const SCOPE_OPTIONS = [
   ['parent', 'Ancestors', '↑'],
@@ -69,13 +68,6 @@ export class ScopeMenuLit extends LitElement {
   _toggleContext(option) {
     const next = { ...this.context, [option]: !this.context[option] };
     cmd.view.setContext(next);
-    if (option === 'dependency') {
-      const method = next.dependency ? 'activate' : 'deactivate';
-      pluginManager[method]('plugin-dependencies').catch((error) => {
-        console.error('[ScopeMenu] Failed to update dependency overlay', error);
-        throw error;
-      });
-    }
     this._syncScope();
   }
 

@@ -591,112 +591,6 @@ class FeatureBoard extends LitElement {
     return ordered;
   }
 
-  _isUnplanned(feature) {
-    return !feature.start || !feature.end;
-  }
-
-  _isHierarchicallyLinkedToSelectedProjectEpics(
-    feature,
-    allFeatures,
-    selectedProjectEpicIds,
-    visited = new Set()
-  ) {
-    if (!feature) return false;
-    if (visited.has(feature.id)) return false;
-    visited.add(feature.id);
-    if (selectedProjectEpicIds.has(feature.id)) return true;
-    if (feature.parentId) {
-      const parent = allFeatures.find((f) => f.id === feature.parentId);
-      if (parent)
-        return this._isHierarchicallyLinkedToSelectedProjectEpics(
-          parent,
-          allFeatures,
-          selectedProjectEpicIds,
-          visited
-        );
-    }
-    if (Array.isArray(feature.relations)) {
-      const parentRel = feature.relations.find((r) => r.type === 'Parent');
-      if (parentRel?.id) {
-        const parent = allFeatures.find((f) => f.id === parentRel.id);
-        if (parent)
-          return this._isHierarchicallyLinkedToSelectedProjectEpics(
-            parent,
-            allFeatures,
-            selectedProjectEpicIds,
-            visited
-          );
-      }
-    }
-    return false;
-  }
-
-  _featurePassesFilters(feature, childrenMap, allFeatures = [], visibleScopeIds = null) {
-    const scopeIds = visibleScopeIds || new Set(
-      sel.scope.getVisibleFeatures().map((visibleFeature) => String(visibleFeature.id))
-    );
-    if (!scopeIds.has(String(feature.id))) return false;
-
-    const projects = sel.selection.getProjects();
-    const expansionState = sel.view.getExpansionState();
-    const hasExpansion =
-      expansionState.expandParentChild ||
-      expansionState.expandRelations ||
-      expansionState.expandTeamAllocated;
-    const expandedIds = hasExpansion ? sel.view.getExpandedFeatureIds() : new Set();
-    const isExpansionVisible = hasExpansion && expandedIds.has(String(feature.id));
-
-    if (hasExpansion) {
-      // Expansion can pull in features from other projects or teams; once a feature
-      // is in the expanded set, it must remain visible even when the project/team
-      // filter would otherwise reject it.
-      if (!isExpansionVisible) return false;
-    }
-
-    if (sel.view.getShowOnlyProjectHierarchy()) {
-      const projectTypePlans = projects.filter((p) => {
-        const planType = p.type ? String(p.type) : 'project';
-        return p.selected && planType === 'project';
-      });
-      const projectTypePlanIds = new Set(projectTypePlans.map((p) => p.id));
-      const projectTypeEpicIds = new Set(
-        allFeatures
-          .filter((f) => !f.parentId && projectTypePlanIds.has(f.project))
-          .map((f) => f.id)
-      );
-      if (
-        !this._isHierarchicallyLinkedToSelectedProjectEpics(
-          feature,
-          allFeatures,
-          projectTypeEpicIds
-        )
-      )
-        return false;
-    }
-
-    const stateFilter = sel.filter.getSelectedFeatureStateSet();
-    if (stateFilter.size === 0) return false;
-
-    // Build lowercase version of selected states for case-insensitive comparison
-    const stateFilterLower = new Set(
-      Array.from(stateFilter).map((s) => String(s).toLowerCase())
-    );
-    const featureStateLower = (feature.state || '').toLowerCase();
-    if (!stateFilterLower.has(featureStateLower)) return false;
-
-    // Apply task filters (schedule, allocation, hierarchy, relations)
-    if (!sel.filter.featurePassesFilters(feature)) {
-      return false;
-    }
-
-    if (!sel.view.isTypeVisible(feature.type)) return false;
-
-    if (this._isUnplanned(feature) && !sel.view.getShowUnplannedWork()) {
-      return false;
-    }
-    return true;
-  }
-
   // ---- Render features ----
 
   /**
@@ -720,10 +614,7 @@ class FeatureBoard extends LitElement {
       seenIds.add(key);
       return true;
     });
-    const childrenMap = this._buildChildrenMap(sourceFeatures);
-    const visibleScopeIds = new Set(
-      sel.scope.getVisibleFeatures().map((visibleFeature) => String(visibleFeature.id))
-    );
+    const visibleFeatures = sel.scope.getVisibleFeatures();
     const months = getTimelineMonths();
     const isPacked = sel.view.getPackedMode();
     const expansionState = sel.view.getExpansionState();
@@ -733,12 +624,6 @@ class FeatureBoard extends LitElement {
       expandParentChild:
         expansionState.expandParentChild || context.parent || context.child,
     };
-    const visibleFeatures = [];
-    for (const feature of sourceFeatures) {
-      if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures, visibleScopeIds)) continue;
-      if (isPacked && (!feature.start || !feature.end)) continue;
-      visibleFeatures.push(feature);
-    }
     const selectedProjects = sel.selection.getProjects();
     const selectedTeams = sel.selection.getTeams();
     const candidateSwimlanes = buildSwimlaneList(
@@ -982,8 +867,9 @@ class FeatureBoard extends LitElement {
       // Always go through the group band layout, even with zero groups: it is
       // what stamps the shared ordering keys onto every row, which the group
       // insertion caret needs in order to point between two ungrouped tasks.
-      const visibleFiltered = ordered.filter(
-        (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures, visibleScopeIds)
+      const visibleFiltered = this._orderFeaturesHierarchically(
+        visibleFeatures,
+        sel.view.getFeatureSortMode()
       );
       const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
         visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,

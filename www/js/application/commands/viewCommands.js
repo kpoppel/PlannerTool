@@ -4,6 +4,7 @@ import {
   TimelineEvents,
   ViewEvents,
 } from '../../core/EventRegistry.js';
+import { pluginManager } from '../../core/PluginManager.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -35,6 +36,11 @@ function mergedContext(current, incoming = {}) {
       ? Boolean(incoming.otherAllocations)
       : Boolean(current.otherAllocations),
   };
+}
+
+export async function syncDependencyContext(context) {
+  const method = context.dependency ? 'activate' : 'deactivate';
+  await pluginManager[method]('plugin-dependencies');
 }
 
 function toUniqueStringArray(values) {
@@ -72,17 +78,25 @@ export function createViewCommands(store, bus) {
 
   return {
     setContext(options, runtimeOptions = {}) {
+      let context;
       store.setState(
-        (state) => ({
-          ...state,
-          view: {
-            ...state.view,
-            context: mergedContext(state.view.context, options),
-          },
-        }),
+        (state) => {
+          context = mergedContext(state.view.context, options);
+          return {
+            ...state,
+            view: {
+              ...state.view,
+              context,
+            },
+          };
+        },
         false,
         'view.setContext'
       );
+      syncDependencyContext(context).catch((error) => {
+        console.error('[view.setContext] Failed to update dependency overlay', error);
+        throw error;
+      });
       if (!runtimeOptions.suppressEvents) {
         bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);
@@ -183,21 +197,6 @@ export function createViewCommands(store, bus) {
       if (!runtimeOptions?.suppressEvents) {
         bus.emit(ViewEvents.CONDENSED);
         bus.emit(ViewEvents.DISPLAY_MODE);
-        bus.emit(FeatureEvents.UPDATED);
-      }
-    },
-
-    setShowDependencies(showDependencies, runtimeOptions = {}) {
-      const value = Boolean(showDependencies);
-      setViewOptions(
-        (options) => ({
-          ...options,
-          showDependencies: value,
-        }),
-        'view.setShowDependencies'
-      );
-      if (!runtimeOptions.suppressEvents) {
-        bus.emit(ViewEvents.DEPENDENCIES);
         bus.emit(FeatureEvents.UPDATED);
       }
     },

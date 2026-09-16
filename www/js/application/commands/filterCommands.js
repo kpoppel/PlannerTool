@@ -8,11 +8,9 @@ import { deriveAvailableFeatureStates } from '../shared/stateDerivations.js';
 /**
  * @param {StoreApi} store
  * @param {EventBusLike} bus
- * @param {Function} [recomputeCapacity]
  * @returns {object}
  */
-export function createFilterCommands(store, bus, recomputeCapacity) {
-  const recompute = recomputeCapacity;
+export function createFilterCommands(store, bus) {
 
   const commands = {
     setSelectedTaskTypes(types, options = {}) {
@@ -48,7 +46,6 @@ export function createFilterCommands(store, bus, recomputeCapacity) {
         'filter.setSelectedStates'
       );
 
-      recompute();
       if (!options.suppressEvents) {
         bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);
@@ -86,7 +83,6 @@ export function createFilterCommands(store, bus, recomputeCapacity) {
         );
       }
 
-      recompute();
       if (!options.suppressEvents) {
         bus.emit(FilterEvents.CHANGED);
         bus.emit(StateFilterEvents.CHANGED);
@@ -115,7 +111,6 @@ export function createFilterCommands(store, bus, recomputeCapacity) {
         'filter.toggleStateSelected'
       );
 
-      recompute();
       if (!options.suppressEvents) {
         bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);

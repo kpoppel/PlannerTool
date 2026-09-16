@@ -663,13 +663,10 @@ export class TimelineExportRenderer {
   _renderDependencies(yOffset, viewport, includeDependencies) {
     // If the caller explicitly requests dependencies disabled, skip rendering
     if (includeDependencies === false) return;
-    // If caller did not specify, fall back to the global view setting
+    // If caller did not specify, use the canonical Context setting.
     if (includeDependencies === undefined) {
       const viewApi = /** @type {any} */ (sel.view);
-      if (
-        typeof viewApi.getShowDependencies !== 'function' ||
-        !viewApi.getShowDependencies()
-      ) {
+      if (!viewApi.getContext().dependency) {
         return;
       }
     }
