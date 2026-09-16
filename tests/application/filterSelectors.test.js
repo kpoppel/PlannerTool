@@ -227,4 +227,50 @@ describe('application/selectors/filterSelectors', () => {
     expect(selectors.getFeatureStateCategory('Todo')).toBe('Proposed');
     expect(selectors.compareFeatureStates('Doing', 'Todo')).toBeGreaterThan(0);
   });
+
+  it('hides every task when neither option in a task-filter dimension is selected', () => {
+    const disabledDimensions = [
+      ['schedule', { planned: false, unplanned: false }],
+      ['allocation', { allocated: false, unallocated: false }],
+      ['hierarchy', { hasParent: false, noParent: false }],
+      ['relations', { hasLinks: false, noLinks: false }],
+    ];
+    const tasks = [
+      {
+        id: 'fully-populated',
+        start: '2026-01-01',
+        end: '2026-01-02',
+        capacity: [{ team: 'A' }],
+        parentId: 'parent-1',
+        relations: [{ id: 'link-1' }],
+      },
+      {
+        id: 'empty',
+        capacity: [],
+        relations: [],
+      },
+    ];
+
+    for (const [dimension, options] of disabledDimensions) {
+      const store = {
+        getState: () => ({
+          selection: {
+            featureStateNames: [],
+            taskFilters: {
+              schedule: { planned: true, unplanned: true },
+              allocation: { allocated: true, unallocated: true },
+              hierarchy: { hasParent: true, noParent: true },
+              relations: { hasLinks: true, noLinks: true },
+              [dimension]: options,
+            },
+          },
+          baseline: { features: [], projects: [] },
+          filter: { availableFeatureStates: [] },
+        }),
+      };
+
+      const selectors = createFilterSelectors(store);
+      expect(tasks.filter((task) => selectors.featurePassesFilters(task))).toEqual([]);
+    }
+  });
 });

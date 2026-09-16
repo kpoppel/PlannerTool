@@ -73,29 +73,25 @@ function createFallbackTaskFilterFn(store) {
     const hasParent = !!feature.parentId;
     const hasLinks = feature.relations.length > 0;
 
-    if (hasAnyTrueOption(schedule)) {
-      if (schedule.planned === true && !hasDates && schedule.unplanned !== true) return false;
-      if (schedule.unplanned === true && hasDates && schedule.planned !== true) return false;
+    if (!hasAnyTrueOption(schedule)) return false;
+    if (schedule.planned === true && !hasDates && schedule.unplanned !== true) return false;
+    if (schedule.unplanned === true && hasDates && schedule.planned !== true) return false;
+
+    if (!hasAnyTrueOption(allocation)) return false;
+    if (allocation.allocated === true && !hasCapacity && allocation.unallocated !== true) {
+      return false;
+    }
+    if (allocation.unallocated === true && hasCapacity && allocation.allocated !== true) {
+      return false;
     }
 
-    if (hasAnyTrueOption(allocation)) {
-      if (allocation.allocated === true && !hasCapacity && allocation.unallocated !== true) {
-        return false;
-      }
-      if (allocation.unallocated === true && hasCapacity && allocation.allocated !== true) {
-        return false;
-      }
-    }
+    if (!hasAnyTrueOption(hierarchy)) return false;
+    if (hierarchy.hasParent === true && !hasParent && hierarchy.noParent !== true) return false;
+    if (hierarchy.noParent === true && hasParent && hierarchy.hasParent !== true) return false;
 
-    if (hasAnyTrueOption(hierarchy)) {
-      if (hierarchy.hasParent === true && !hasParent && hierarchy.noParent !== true) return false;
-      if (hierarchy.noParent === true && hasParent && hierarchy.hasParent !== true) return false;
-    }
-
-    if (hasAnyTrueOption(relations)) {
-      if (relations.hasLinks === true && !hasLinks && relations.noLinks !== true) return false;
-      if (relations.noLinks === true && hasLinks && relations.hasLinks !== true) return false;
-    }
+    if (!hasAnyTrueOption(relations)) return false;
+    if (relations.hasLinks === true && !hasLinks && relations.noLinks !== true) return false;
+    if (relations.noLinks === true && hasLinks && relations.hasLinks !== true) return false;
 
     return true;
   };
