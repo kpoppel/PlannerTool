@@ -45,6 +45,10 @@ class BackendConfigError(BackendError):
     Azure DevOps (for example, an area path that no longer exists).
     """
 
+    def __init__(self, message: str, *, failed_path: str | None = None) -> None:
+        super().__init__(message)
+        self.failed_path = failed_path
+
 
 # Substrings (lower-cased) that identify an authentication/authorization failure
 # in raw Azure DevOps SDK / HTTP exception messages.  Anything not matching is

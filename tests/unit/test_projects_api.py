@@ -97,10 +97,11 @@ def _make_session_mgr(pat='token', email='test@example.com'):
 
 def _make_backend_with_warning():
     class BackendWithWarning:
-        def consume_warnings(self, user_id=None):
+        def consume_diagnostics(self, user_id=None):
             return [{
                 'code': 'tasks_stale_invalid_pat',
                 'message': 'PAT is invalid or expired. Showing cached task data that may be out of date.',
+                'severity': 'warning',
                 'user_id': user_id,
             }]
 
@@ -168,9 +169,9 @@ def test_tasks_returns_warning_headers_when_stale_fallback_used(client):
 
     r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
     assert r.status_code == 200
-    assert r.headers.get('X-Tasks-Data-Stale') == 'true'
-    assert r.headers.get('X-Tasks-Warning-Code') == 'tasks_stale_invalid_pat'
-    assert 'PAT is invalid or expired' in (r.headers.get('X-Tasks-Warning-Message') or '')
+    assert r.headers.get('X-Backend-Diagnostic-Severity') == 'warning'
+    assert r.headers.get('X-Backend-Diagnostic-Code') == 'tasks_stale_invalid_pat'
+    assert 'PAT is invalid or expired' in (r.headers.get('X-Backend-Diagnostic-Message') or '')
 
 
 def test_tasks_invalid_pat_without_stale_returns_401(client):

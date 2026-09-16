@@ -27,6 +27,7 @@ Template - do not change :
 - Scope inclusion now derives participating teams from selected base plans, independently of the Team Drill-down focus, and hierarchy links are excluded from dependency scope.
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
+- Backend diagnostics now use a backend-neutral contract from server to browser; reload warnings identify stale cached Azure DevOps work items and failed area paths, and distinguish denied or invalid configured queries from service outages; server log-level changes made in Admin take effect immediately.
 - Scope-derived tasks now leave the board when their last selected allocation team is deselected.
 - MainGraph no longer throws when a Years-scale viewport extends beyond the timeline end.
 - Packed cards now immediately suppress overflow ghost titles when switching display mode.

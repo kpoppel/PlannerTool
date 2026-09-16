@@ -105,6 +105,28 @@ class CredentialProvider(Protocol):
         ...
 
 
+class BackendDiagnostic(TypedDict):
+    """A user-facing diagnostic published by a backend operation."""
+
+    code: str
+    message: str
+    severity: str
+    user_id: Optional[str]
+    ts: float
+
+
+@runtime_checkable
+class DiagnosticBackend(Protocol):
+    """Backend capable of publishing user-facing operation diagnostics."""
+
+    def consume_diagnostics(
+        self,
+        user_id: Optional[str] = None,
+    ) -> List[BackendDiagnostic]:
+        """Return and clear diagnostics, optionally limited to one user."""
+        ...
+
+
 # ---------------------------------------------------------------------------
 # Focused single-domain protocols
 # ---------------------------------------------------------------------------

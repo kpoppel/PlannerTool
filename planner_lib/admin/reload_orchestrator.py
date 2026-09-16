@@ -72,6 +72,9 @@ class ReloadOrchestrator:
             server_cfg = self._storage.load('config', 'server_config') or {}
         except KeyError:
             server_cfg = {}
+        log_level = server_cfg.get('log_level')
+        if log_level:
+            logging.getLogger().setLevel(getattr(logging, str(log_level).upper()))
         merged_flags = {**(server_cfg.get('feature_flags') or {}), **(ado_cfg.get('feature_flags') or {})}
         self._azure_client.feature_flags = merged_flags
         # Rebuild the concrete client so feature-flag changes take effect.

@@ -145,7 +145,7 @@ def test_invalid_pat_serves_stale_tasks_snapshot_and_records_warning(storage):
     assert inner.refresh_attempted.wait(timeout=1.0)
     assert len(inner.fetch_tasks_calls) == 2
 
-    warnings = caching.consume_warnings(user_id='u2@example.com')
+    warnings = caching.consume_diagnostics(user_id='u2@example.com')
     assert warnings
     assert warnings[-1]['code'] == 'tasks_stale_invalid_pat'
 
@@ -192,9 +192,58 @@ def test_api_outage_serves_stale_tasks_and_records_outage_warning(storage):
     assert inner.refresh_attempted.wait(timeout=1.0)
     assert inner.calls == 2
 
-    warnings = caching.consume_warnings(user_id='u@example.com')
+    warnings = caching.consume_diagnostics(user_id='u@example.com')
     assert warnings
     assert warnings[-1]['code'] == 'tasks_stale_api_outage'
+
+
+def test_invalid_query_configuration_serves_stale_tasks_with_specific_warning(storage):
+    """An invalid configured Azure DevOps path must not be described as an outage."""
+    import time
+    import threading
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.backend.errors import BackendConfigError
+
+    class _InvalidPathBackend:
+        is_remote = True
+
+        def __init__(self):
+            self.calls = 0
+            self.refresh_attempted = threading.Event()
+
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return [dict(_TASK)]
+            self.refresh_attempted.set()
+            raise BackendConfigError(
+                'TF401232: area path does not exist',
+                failed_path=area_path,
+            )
+
+        def write_task(self, task_id, updates, credential):
+            return {'ok': True, 'updated': 1, 'errors': []}
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    inner = _InvalidPathBackend()
+    caching = CachingBackend(inner=inner, storage=storage)
+    caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+
+    meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
+    storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
+    cached = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+
+    assert cached == [dict(_TASK)]
+    assert inner.refresh_attempted.wait(timeout=1.0)
+    warnings = caching.consume_diagnostics(user_id='u@example.com')
+    assert warnings[-1]['code'] == 'tasks_stale_invalid_query_config'
+    assert warnings[-1]['message'] == (
+        f'Azure DevOps rejected the configured work-item query for area path "{AREA}", so '
+        'cached work items could not be refreshed. An administrator should verify the project, '
+        'area-path, and iteration-path configuration and the PAT permissions.'
+    )
 
 
 def test_remote_backend_error_propagates_when_no_cache(storage):
@@ -265,7 +314,7 @@ def test_non_task_method_survives_outage_after_soft_expiry(storage):
     assert inner.refresh_attempted.wait(timeout=1.0)
     assert inner.calls == 2
 
-    warnings = caching.consume_warnings(user_id=CRED['user_id'])
+    warnings = caching.consume_diagnostics(user_id=CRED['user_id'])
     assert warnings
     assert warnings[-1]['code'] == 'tasks_stale_api_outage'
 
@@ -311,9 +360,13 @@ def test_empty_refresh_keeps_existing_task_content(storage):
     assert inner.refresh_attempted.wait(timeout=1.0)
     assert inner.calls == 2
 
-    warnings = caching.consume_warnings(user_id='u@example.com')
+    warnings = caching.consume_diagnostics(user_id='u@example.com')
     assert warnings
     assert warnings[-1]['code'] == 'tasks_stale_no_data'
+    assert warnings[-1]['message'] == (
+        'Azure DevOps returned no work items while refreshing the cached work items. '
+        'The displayed work items may be out of date; contact an administrator to check Azure DevOps connectivity.'
+    )
 
 
 def test_empty_cached_content_does_not_emit_stale_warning(storage):
@@ -349,7 +402,7 @@ def test_empty_cached_content_does_not_emit_stale_warning(storage):
     second = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
     assert second == []
     assert inner.calls == 2
-    assert caching.consume_warnings(user_id='u@example.com') == []
+    assert caching.consume_diagnostics(user_id='u@example.com') == []
 
 
 def test_non_remote_backend_does_not_serve_stale_on_failure(storage):
@@ -392,7 +445,7 @@ def test_non_remote_backend_does_not_serve_stale_on_failure(storage):
         caching.fetch_tasks(AREA, credential={'token': 'x', 'user_id': 'u@example.com'})
 
     # No stale warning should have been queued for a local backend.
-    assert caching.consume_warnings(user_id='u@example.com') == []
+    assert caching.consume_diagnostics(user_id='u@example.com') == []
 
 
 def test_soft_expired_remote_cache_returns_immediately_and_refreshes_in_background(storage):

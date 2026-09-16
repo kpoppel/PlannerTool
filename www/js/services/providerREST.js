@@ -317,9 +317,9 @@ export class ProviderREST extends RestProviderBase {
       if (!resTasks.ok) {
         return fail({ message: `HTTP ${resTasks.status}`, status: resTasks.status });
       }
-      const staleWarning = resTasks.headers && resTasks.headers.get('X-Tasks-Warning-Message');
-      if (staleWarning) {
-        await this._showTasksWarning(staleWarning);
+      const backendDiagnostic = resTasks.headers && resTasks.headers.get('X-Backend-Diagnostic-Message');
+      if (backendDiagnostic) {
+        await this._showTasksWarning(backendDiagnostic);
       }
       const tasks = await resTasks.json();
       // Calculate derived fields used in the frontend.

@@ -134,6 +134,33 @@ def test_admin_reload_config_calls_invalidate_on_invalidatable_cost():
     assert cost.invalidated, "invalidate_cache() should have been called on cost service"
 
 
+def test_admin_reload_config_applies_server_log_level(monkeypatch):
+    """Saving a system log level must take effect without restarting the server."""
+    import logging
+    from planner_lib.admin.service import AdminService
+
+    storage = MagicMock()
+    storage.load.side_effect = lambda namespace, key: {
+        ('config', 'server_config'): {'log_level': 'DEBUG'},
+        ('config', 'ado_config'): {},
+    }[(namespace, key)]
+    azure_client = MagicMock()
+    azure_client.organization_url = None
+    azure_client.feature_flags = None
+
+    monkeypatch.setattr(logging.getLogger(), 'setLevel', MagicMock())
+    svc = AdminService(
+        storage=storage,
+        project_repository=None,
+        account_manager=MagicMock(),
+        azure_client=azure_client,
+    )
+
+    svc.reload_config()
+
+    logging.getLogger().setLevel.assert_called_once_with(logging.DEBUG)
+
+
 # ---------------------------------------------------------------------------
 # SessionManager — admin fallback via account_storage, no Request
 # ---------------------------------------------------------------------------

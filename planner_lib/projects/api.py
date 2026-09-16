@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Body, HTTPException, Response
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service
-from planner_lib.backend.port import BackendCredential
+from planner_lib.backend.port import BackendCredential, DiagnosticBackend
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 import logging
 
@@ -68,16 +68,13 @@ async def api_tasks(request: Request, response: Response):
         )
     try:
         backend = resolve_service(request, 'backend')
-        consume_warnings = getattr(backend, 'consume_warnings', None)
-        if callable(consume_warnings):
-            warnings = consume_warnings(user_id=email or None)
-            if warnings:
-                warning = warnings[-1]
-                response.headers['X-Tasks-Data-Stale'] = 'true'
-                response.headers['X-Tasks-Warning-Code'] = str(warning.get('code') or 'tasks_stale')
-                response.headers['X-Tasks-Warning-Message'] = str(
-                    warning.get('message') or 'Showing cached task data that may be out of date.'
-                )
+        if isinstance(backend, DiagnosticBackend):
+            diagnostics = backend.consume_diagnostics(user_id=email or None)
+            if diagnostics:
+                diagnostic = diagnostics[-1]
+                response.headers['X-Backend-Diagnostic-Severity'] = diagnostic['severity']
+                response.headers['X-Backend-Diagnostic-Code'] = diagnostic['code']
+                response.headers['X-Backend-Diagnostic-Message'] = diagnostic['message']
     except Exception:
         # Warning propagation must never break task reads.
         pass

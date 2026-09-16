@@ -26,6 +26,7 @@ from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter
 from planner_lib.backend.errors import (
     BackendAuthError,
+    BackendConfigError,
     classify_ado_exception,
 )
 from planner_lib.domain.tasks import DomainTask, WriteResult
@@ -330,7 +331,10 @@ class AzureDevOpsBackend(BackendPort):
                             azure_project, meta_exc,
                         )
         except Exception as exc:
-            raise classify_ado_exception(exc) from exc
+            error = classify_ado_exception(exc)
+            if isinstance(error, BackendConfigError):
+                error.failed_path = area_path
+            raise error from exc
 
         results: List[DomainTask] = []
         for raw_wi in (raw_items or []):

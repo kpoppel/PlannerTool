@@ -57,7 +57,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential
-from planner_lib.backend.errors import BackendAuthError, BackendError
+from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendError
 from planner_lib.domain.tasks import WriteResult
 from planner_lib.storage.base import StorageBackend
 
@@ -202,12 +202,13 @@ class CachingBackend:
             self._warnings.append({
                 'code': code,
                 'message': message,
+                'severity': 'warning',
                 'user_id': user_id,
                 'ts': time.time(),
             })
 
-    def consume_warnings(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Return and clear queued warnings, optionally filtered by user_id."""
+    def consume_diagnostics(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return and clear backend diagnostics, optionally filtered by user_id."""
         with self._warnings_lock:
             if user_id is None:
                 out = list(self._warnings)
@@ -273,13 +274,19 @@ class CachingBackend:
         """
         if isinstance(exc, BackendAuthError):
             code, message = 'tasks_stale_invalid_pat', (
-                'Your Azure DevOps PAT is invalid or expired. '
-                'Showing cached data that may be out of date.'
+                'Azure DevOps denied the work-item refresh due to a stale PAT, so cached work items could not be '
+                'refreshed. Latest cached results will be used instead.'
+            )
+        elif isinstance(exc, BackendConfigError):
+            code, message = 'tasks_stale_invalid_query_config', (
+                f'Azure DevOps rejected the configured work-item query for area path "{exc.failed_path}", '
+                'so cached work items could not be refreshed. An administrator should verify the project, '
+                'area-path, and iteration-path configuration.'
             )
         else:
             code, message = 'tasks_stale_api_outage', (
-                'Azure DevOps is currently unreachable. '
-                'Showing cached data that may be out of date.'
+                'Azure DevOps is currently unreachable, so cached Azure DevOps work items could '
+                'not be refreshed. Latest cached results will be used instead.'
             )
         self._record_warning(code=code, message=message, user_id=user_id)
         logger.warning(
@@ -291,8 +298,8 @@ class CachingBackend:
         self._record_warning(
             code='tasks_stale_no_data',
             message=(
-                'Azure DevOps returned no data (possible outage). '
-                'Showing previously cached data that may be out of date.'
+                'Azure DevOps returned no work items while refreshing the cached work items. '
+                'Latest cached results will be used instead.'
             ),
             user_id=user_id,
         )

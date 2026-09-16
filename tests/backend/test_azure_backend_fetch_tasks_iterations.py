@@ -92,3 +92,28 @@ def test_build_iteration_map_skips_projects_without_iteration_set_association():
 
     client.get_iterations.assert_not_called()
     assert result == {}
+
+
+def test_fetch_tasks_attaches_failed_area_path_to_configuration_error():
+    """The cache warning must identify the configured Azure DevOps path that failed."""
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    import pytest
+    from planner_lib.backend.errors import BackendConfigError
+
+    backend = _make_backend(_FakeConfig(project_map=[], iterations_config={'iteration_sets': []}))
+
+    class _FailingClient:
+        def get_work_items(self, *args, **kwargs):
+            raise RuntimeError('TF401232: area path does not exist')
+
+    @contextmanager
+    def _connect(_pat):
+        yield _FailingClient()
+
+    backend._conn = SimpleNamespace(connect=_connect)
+
+    with pytest.raises(BackendConfigError) as raised:
+        backend.fetch_tasks('MyADO\\MissingArea', credential={'token': 'valid'})
+
+    assert raised.value.failed_path == 'MyADO\\MissingArea'
