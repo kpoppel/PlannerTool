@@ -100,11 +100,7 @@ export function createDataCommands(store, bus, dataService) {
       const organizationStateIds = Array.from(
         new Set(features.map((feature) => String(feature.state)))
       );
-      // When GRAPH_ONLY_SELECTED_PLANS is off (default), graph always shows all plans.
-      const projectsForFilter =
-        featureFlags.GRAPH_ONLY_SELECTED_PLANS ?
-          selectedProjectIds
-        : projects.map((p) => String(p.id));
+      const projectsForFilter = projects.map((p) => String(p.id));
 
       capacityCalculator.setChildrenByParent(buildChildrenByParentMap(features));
       const result = capacityCalculator.calculate(

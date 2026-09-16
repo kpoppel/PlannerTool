@@ -15,6 +15,10 @@ describe('MainGraph Tests', () => {
       const canvas = el.shadowRoot.querySelector('canvas');
       expect(canvas).to.exist;
       expect(canvas.tagName).to.equal('CANVAS');
+      expect(canvas.getAttribute('aria-label')).to.equal(
+        'Organization-wide capacity load. Sidebar display filters do not change this graph.'
+      );
+      expect(canvas.hasAttribute('title')).to.equal(false);
       expect(el.renderGraph).to.be.a('function');
       expect(el.updateViewport).to.be.a('function');
     });
@@ -34,6 +38,46 @@ describe('MainGraph Tests', () => {
       await el.renderGraph(data);
       const canvas = el.shadowRoot.querySelector('canvas');
       expect(canvas).to.exist;
+    });
+
+    it('shows the hovered day and currently displayed series', async () => {
+      await import('../../www/js/components/MainGraph.lit.js');
+      const el = await fixture(html`<maingraph-lit .bus=${mockBus}></maingraph-lit>`);
+      await el.updateComplete;
+      const canvas = el.shadowRoot.querySelector('canvas');
+      el._canvasRef = canvas;
+      canvas.width = 300;
+      el._hoverDays = [{
+        startX: 0,
+        endX: 300,
+        date: '2025-01-01',
+        entries: [
+          { name: 'Team A', color: '#111111', value: 60.6 },
+          { name: 'Team B', color: '#222222', value: 40 },
+        ],
+      }];
+      canvas.getBoundingClientRect = () => ({ left: 0, width: 300 });
+
+      el._onGraphPointerMove(new MouseEvent('mousemove', { clientX: 15 }));
+      await el.updateComplete;
+
+      const tooltip = el.shadowRoot.querySelector('.graph-tooltip');
+      expect(tooltip.textContent).to.contain('2025-01-01');
+      expect(tooltip.style.zIndex).to.equal('1000');
+      expect(tooltip.textContent).to.contain('Team A');
+      expect(tooltip.textContent).to.contain('61%');
+      expect(tooltip.textContent).to.contain('Team B');
+      expect(tooltip.dataset.side).to.equal('right');
+      expect(tooltip.style.left).to.equal('27px');
+
+      el._onGraphPointerMove(new MouseEvent('mousemove', { clientX: 285 }));
+      await el.updateComplete;
+      expect(el.shadowRoot.querySelector('.graph-tooltip').dataset.side).to.equal('left');
+      expect(el.shadowRoot.querySelector('.graph-tooltip').style.left).to.equal('273px');
+
+      el._onGraphPointerLeave();
+      await el.updateComplete;
+      expect(el.shadowRoot.querySelector('.graph-tooltip')).to.equal(null);
     });
   });
 
@@ -151,9 +195,7 @@ describe('MainGraph Tests', () => {
       el.remove();
     });
 
-    it('renders team lines when all projects are deselected but teams are selected (expand-by-allocation)', async () => {
-      // Regression: previously the graph returned blank when selectedProjectIds was empty,
-      // even in team view mode with selected teams (e.g. expand-by-allocation scenario).
+    it('renders an empty team graph when no plans are selected', async () => {
       const el = document.createElement('maingraph-lit');
       document.body.appendChild(el);
       await el.updateComplete;
@@ -175,7 +217,7 @@ describe('MainGraph Tests', () => {
       el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
 
       const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
-      // All projects deselected (empty set) — teams still selected
+      // Team Drill-down does not override the no-plan graph contract.
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#111' }],
@@ -191,9 +233,84 @@ describe('MainGraph Tests', () => {
         selectedProjectIds: new Set(), // no plans selected
       };
 
-      // Should not throw and should draw the team line (stroke called at least once)
+      // Axes may be drawn, but no capacity line should be rendered.
       el._fullRender(mockCtx, snapshot);
-      expect(calls.stroke).to.be.at.least(1);
+      expect(calls.stroke).to.equal(0);
+      el.remove();
+    });
+
+    it('renders no team series when team drill-down is empty', async () => {
+      const el = document.createElement('maingraph-lit');
+      document.body.appendChild(el);
+      await el.updateComplete;
+
+      const calls = { stroke: 0 };
+      const mockCtx = {
+        clearRect() {},
+        fillRect() {},
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        stroke() {
+          calls.stroke++;
+        },
+        save() {},
+        restore() {},
+        setLineDash() {},
+      };
+      el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
+
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
+      const snapshot = {
+        months,
+        teams: [{ id: 't1', color: '#111' }, { id: 't2', color: '#222' }],
+        projects: [{ id: 'p1', color: '#333' }],
+        capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
+        teamDailyCapacity: [],
+        teamDailyCapacityMap: { 0: { t1: 50, t2: 60 }, 1: { t1: 40, t2: 70 } },
+        projectDailyCapacity: [],
+        projectDailyCapacityMap: null,
+        totalOrgDailyPerTeamAvg: [],
+        capacityViewMode: 'team',
+        selectedTeamIds: new Set(),
+        selectedProjectIds: new Set(['p1']),
+      };
+
+      el._fullRender(mockCtx, snapshot);
+      expect(calls.stroke).to.equal(0);
+      el.remove();
+    });
+
+    it('does not include unfunded project capacity in a Team-mode tooltip', async () => {
+      const el = document.createElement('maingraph-lit');
+      document.body.appendChild(el);
+      await el.updateComplete;
+
+      const mockCtx = {
+        clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        save() {}, restore() {}, setLineDash() {},
+      };
+      el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
+
+      el._fullRender(mockCtx, {
+        months,
+        teams: [{ id: 'bluetooth', name: 'Bluetooth', color: '#111' }],
+        projects: [{ id: 'p1', name: 'Project', color: '#222' }],
+        capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
+        teamDailyCapacity: [],
+        teamDailyCapacityMap: { 0: { bluetooth: 88 }, 1: { bluetooth: 88 } },
+        projectDailyCapacity: [],
+        projectDailyCapacityMap: { 0: { p1: 88, __unfunded__: 26 }, 1: { p1: 88, __unfunded__: 26 } },
+        totalOrgDailyPerTeamAvg: [],
+        capacityViewMode: 'team',
+        selectedTeamIds: new Set(['bluetooth']),
+        selectedProjectIds: new Set(['p1']),
+      });
+
+      expect(el._hoverDays[0].entries).to.deep.equal([
+        { name: 'Bluetooth', color: '#111', value: 88 },
+      ]);
       el.remove();
     });
 

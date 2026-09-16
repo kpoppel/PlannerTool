@@ -10,6 +10,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 Template - do not change :
 ## [v] - unreleased
 ### Added
+- Added a hover tooltip to MainGraph with the selected day and displayed capacity values.
 - Added icon-led top-bar status metrics for tasks and teams in scope plus tasks currently displayed, with explanatory tooltips.
 - Added a Scope menu for related-work inclusion, with per-option task counts and an informative base-versus-related task summary in the top bar.
 - Completed Phase 1 presentation-scope migration across Sidebar, TopMenu, FeatureBoard, swimlanes, and dependency overlay lifecycle.
@@ -22,11 +23,16 @@ Template - do not change :
 - Added a self-contained static capture of the shared AZ Planner UI at `backup/user_interface_v5/static_v4.html`.
 - Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
+- MainGraph now normalizes Team-mode values against the full organization roster, filters only displayed team series by Team Drill-down, and renders empty when no plans are selected.
+- Canonical scope selection now owns visible-task filtering, Scope Context is the only dependency visibility setting, and display filters no longer recompute capacity.
+- Documented the accepted v5 prototype: top-bar Scope derives the candidate display set and Sidebar Team Drill-down applies the selected-team display filter.
 - View menu headings now use visually distinct tinted label bands to separate section names from selectable options.
 - Restyled View menu display choices to match saved-view menu rows while retaining the primary save-view action.
 - Scope inclusion now derives participating teams from selected base plans, independently of the Team Drill-down focus, and hierarchy links are excluded from dependency scope.
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
+- Parent Context now retains unallocated ancestor tasks for unallocated work in a selected team-level plan.
+- Removed the superseded TeamMenu component and aligned timeline export dependency visibility with Scope Context.
 - Sidebar task filters now hide all tasks when neither option in a filter dimension is selected.
 - Backend diagnostics now use a backend-neutral contract from server to browser; reload warnings identify stale cached Azure DevOps work items and failed area paths, and distinguish denied or invalid configured queries from service outages; server log-level changes made in Admin take effect immediately.
 - Scope-derived tasks now leave the board when their last selected allocation team is deselected.

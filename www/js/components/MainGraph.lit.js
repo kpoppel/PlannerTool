@@ -38,6 +38,8 @@ export class MainGraphLit extends LitElement {
     this.height = 120;
     this._canvasRef = null;
     this._renderData = null;
+    this._hoverDays = [];
+    this._graphTooltip = null;
     // constructor
     this._resizeObserver = null;
   }
@@ -64,16 +66,115 @@ export class MainGraphLit extends LitElement {
       display: block;
       width: 100%;
       height: 100%;
+      cursor: crosshair;
+    }
+
+    .graph-tooltip {
+      position: absolute;
+      z-index: 1000;
+      top: 8px;
+      min-width: 150px;
+      max-width: 260px;
+      padding: 8px 10px;
+      border: 1px solid var(--color-border, #8fa5b9);
+      background: rgba(255, 255, 255, 0.96);
+      color: var(--color-text, #1f2933);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      font-size: 12px;
+      line-height: 1.35;
       pointer-events: none;
+    }
+
+    .graph-tooltip[data-side='left'] {
+      transform: translateX(-100%);
+    }
+
+    .graph-tooltip-date {
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .graph-tooltip-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .graph-tooltip-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .graph-tooltip-swatch {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 5px;
+      vertical-align: middle;
     }
   `;
 
   render() {
+    const graphScopeLabel =
+      'Organization-wide capacity load. Sidebar display filters do not change this graph.';
     return html`
       <div class="graph-container">
-        <canvas id="graphCanvas" width="${this.width}" height="${this.height}"></canvas>
+        <canvas
+          id="graphCanvas"
+          width="${this.width}"
+          height="${this.height}"
+          aria-label="${graphScopeLabel}"
+          @pointermove=${this._onGraphPointerMove}
+          @pointerleave=${this._onGraphPointerLeave}
+        ></canvas>
+        ${this._graphTooltip ? html`
+          <div
+            class="graph-tooltip"
+            role="tooltip"
+            data-side="${this._graphTooltip.side}"
+            style="left: ${this._graphTooltip.x}px; z-index: 1000"
+          >
+            <div class="graph-tooltip-date">${this._graphTooltip.date}</div>
+            ${this._graphTooltip.entries.map((entry) => html`
+              <div class="graph-tooltip-row">
+                <span class="graph-tooltip-label">
+                  <span class="graph-tooltip-swatch" style="background: ${entry.color}"></span>${entry.name}
+                </span>
+                <span>${Math.round(entry.value)}%</span>
+              </div>
+            `)}
+          </div>
+        ` : ''}
       </div>
     `;
+  }
+
+  _onGraphPointerMove(event) {
+    if (!this._canvasRef || this._hoverDays.length === 0) return;
+    const rect = this._canvasRef.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const x = (event.clientX - rect.left) * this._canvasRef.width / rect.width;
+    const hoveredDay = this._hoverDays.find((day) => x >= day.startX && x <= day.endX);
+    if (hoveredDay === undefined) {
+      this._onGraphPointerLeave();
+      return;
+    }
+    const offset = 12;
+    const side = x < this._canvasRef.width / 2 ? 'right' : 'left';
+    this._graphTooltip = {
+      ...hoveredDay,
+      x: side === 'right' ? x + offset : x - offset,
+      side,
+    };
+    this.requestUpdate();
+  }
+
+  _onGraphPointerLeave() {
+    if (this._graphTooltip === null) return;
+    this._graphTooltip = null;
+    this.requestUpdate();
   }
 
   firstUpdated() {
@@ -190,6 +291,8 @@ export class MainGraphLit extends LitElement {
     if (!this._canvasRef || !data) return;
 
     this._renderData = data;
+    this._hoverDays = [];
+    this._graphTooltip = null;
 
     // Extract commonly used data fields (fall back to empty arrays/maps)
     const months = Array.isArray(data.months) ? data.months : [];
@@ -203,11 +306,7 @@ export class MainGraphLit extends LitElement {
     const projectDailyCapacityMap = data.projectDailyCapacityMap || null;
     const totalOrgDailyPerTeamAvg = Array.isArray(data.totalOrgDailyPerTeamAvg) ? data.totalOrgDailyPerTeamAvg : [];
     const capacityViewMode = data.capacityViewMode || 'team';
-    const selectedTeamIds = new Set(
-      Array.isArray(data.selectedTeamIds)
-        ? data.selectedTeamIds
-        : teams.filter((t) => t?.selected).map((t) => t.id)
-    );
+    const selectedTeamIds = new Set(data.selectedTeamIds);
     const selectedProjectIds = new Set(
       Array.isArray(data.selectedProjectIds)
         ? data.selectedProjectIds
@@ -446,32 +545,13 @@ export class MainGraphLit extends LitElement {
     const projectDayMap = new Map();
     const orgTotalsTeam = new Map();
     const orgTotalsProject = new Map();
-    // Only teams the user has selected count towards the org-load denominator,
-    // consistent with CapacityCalculator (a deselected team's capacity is
-    // already excluded from project/org totals, so it must not dilute the
-    // average either). Computed here because this raw project map
-    // (projectDailyCapacityMap) is not pre-normalized by CapacityCalculator.
-    const nTeams = selectedTeamIdSet.size || 1;
+    // Capacity is normalized against the organization roster, not the
+    // presentation-only Team Drill-down selection.
+    const nTeams = teams.length || 1;
 
-    // Early exit only if the selection relevant to the current view mode is empty.
-    // Team mode cares about selectedTeamIds; project mode cares about selectedProjectIds.
-    // Using OR here would cause the graph to blank out when plans are deselected but
-    // teams are selected (e.g. expand-by-allocation scenario).
-    const _earlyExitUsingTeam = capacityViewMode === 'team';
-    if (
-      _earlyExitUsingTeam &&
-      teams &&
-      teams.length > 0 &&
-      selectedTeamIdSet.size === 0
-    )
-      return;
-    if (
-      !_earlyExitUsingTeam &&
-      projects &&
-      projects.length > 0 &&
-      selectedProjectIdSet.size === 0
-    )
-      return;
+    // A selected plan establishes the graph bands in both display modes.
+    if (selectedProjectIdSet.size === 0) return;
+    if (capacityViewMode === 'team' && selectedTeamIdSet.size === 0) return;
 
     for (let d = visibleStartIdx; d <= visibleEndIdx; d++) {
       const localIdx = d - visibleStartIdx;
@@ -500,18 +580,18 @@ export class MainGraphLit extends LitElement {
       if (dayTeamMap) {
         for (const team of teams) {
           const v = dayTeamMap[team.id] || 0;
-          const teamKey = String(team.id);
-          teamBucket[team.id] = selectedTeamIdSet.has(teamKey) ? v : 0;
-          if (selectedTeamIdSet.has(teamKey) && v > maxTeamVal) maxTeamVal = v;
+          if (!selectedTeamIdSet.has(String(team.id))) continue;
+          teamBucket[team.id] = v;
+          if (v > maxTeamVal) maxTeamVal = v;
         }
       } else {
         const tTuple = teamDailyCapacity[idx] || [];
         for (let i = 0; i < teams.length; i++) {
           const team = teams[i];
           const v = tTuple[i] || 0;
-          const teamKey = String(team.id);
-          teamBucket[team.id] = selectedTeamIdSet.has(teamKey) ? v : 0;
-          if (selectedTeamIdSet.has(teamKey) && v > maxTeamVal) maxTeamVal = v;
+          if (!selectedTeamIdSet.has(String(team.id))) continue;
+          teamBucket[team.id] = v;
+          if (v > maxTeamVal) maxTeamVal = v;
         }
       }
       teamDayMap.set(d, teamBucket);
@@ -580,16 +660,45 @@ export class MainGraphLit extends LitElement {
           if (!isProjectType) continue;
           totalPerTeam +=
             projectDailyCapacity[idx] && projectDailyCapacity[idx][i] ?
-              projectDailyCapacity[idx][i] / Math.max(1, nTeams)
+              projectDailyCapacity[idx][i]
             : 0;
         }
         // Include unfunded in total if calculator provided it (last index)
         const pTuple = projectDailyCapacity[idx] || [];
         if (pTuple.length > projects.length) {
-          totalPerTeam += (pTuple[projects.length] || 0) / Math.max(1, nTeams);
+          const unfundedValue = pTuple[projects.length];
+          if (unfundedValue !== undefined) totalPerTeam += unfundedValue;
         }
       }
       orgTotalsProject.set(d, totalPerTeam);
+
+      const date = capacityDates[idx] !== undefined ?
+        capacityDates[idx]
+      : indexToDate(months, d).toISOString().slice(0, 10);
+      const entries = capacityViewMode === 'team' ?
+        teams
+          .filter((team) => selectedTeamIdSet.has(String(team.id)))
+          .map((team) => ({
+            name: team.name === undefined ? String(team.id) : team.name,
+            color: team.color === undefined ? '#888' : team.color,
+            value: teamBucket[team.id],
+          }))
+      : projects
+          .filter((project) => projectBucket[project.id] !== undefined)
+          .map((project) => ({
+            name: project.name === undefined ? String(project.id) : project.name,
+            color: project.color === undefined ? '#888' : project.color,
+            value: projectBucket[project.id],
+          }));
+      if (capacityViewMode === 'project' && projectBucket.__unfunded__ !== undefined) {
+        entries.push({ name: 'Unfunded', color: '#C49E78', value: projectBucket.__unfunded__ });
+      }
+      this._hoverDays.push({
+        startX: dayX[localIdx],
+        endX: dayX[localIdx + 1],
+        date,
+        entries,
+      });
     }
 
     function pxPerDay(date) {

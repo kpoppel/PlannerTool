@@ -5,6 +5,7 @@ import {
   createDataCommands,
   DataCommandEvents,
 } from '../../www/js/application/commands/dataCommands.js';
+import { featureFlags } from '../../www/js/config.js';
 import { DataEvents, StateFilterEvents } from '../../www/js/core/EventRegistry.js';
 
 function makeDataServiceMock(overrides = {}) {
@@ -27,6 +28,43 @@ function makeDataServiceMock(overrides = {}) {
 describe('application/commands/dataCommands', () => {
   beforeEach(() => {
     store.setState(createInitialAppState(), true, 'test.resetStore');
+  });
+
+  it('keeps organization capacity independent of the legacy selected-plan graph flag', () => {
+    const dataService = makeDataServiceMock();
+    const bus = { emit: vi.fn() };
+    const commands = createDataCommands(store, bus, dataService);
+    const originalGraphOnlySelectedPlans = featureFlags.GRAPH_ONLY_SELECTED_PLANS;
+    featureFlags.GRAPH_ONLY_SELECTED_PLANS = true;
+    store.setState((state) => ({
+      ...state,
+      baseline: {
+        ...state.baseline,
+        teams: [{ id: 't1' }, { id: 't2' }],
+        projects: [{ id: 'p1' }, { id: 'p2' }],
+        features: [
+          {
+            id: 'f1', project: 'p1', state: 'Active', start: '2025-01-01',
+            end: '2025-01-01', capacity: [{ team: 't1', capacity: 20 }],
+          },
+          {
+            id: 'f2', project: 'p2', state: 'Active', start: '2025-01-01',
+            end: '2025-01-01', capacity: [{ team: 't2', capacity: 80 }],
+          },
+        ],
+      },
+      selection: {
+        ...state.selection,
+        projectIds: ['p1'],
+        featureStateNames: ['Active'],
+      },
+    }), false, 'test.setCapacityBaseline');
+
+    commands.recomputeCapacity();
+
+    expect(store.getState().capacity.organizationDaily).toEqual([100]);
+    expect(store.getState().capacity.organizationDailyPerTeamAverage).toEqual([50]);
+    featureFlags.GRAPH_ONLY_SELECTED_PLANS = originalGraphOnlySelectedPlans;
   });
 
   it('hydrateBaseline sets baseline slice and emits loaded events', async () => {

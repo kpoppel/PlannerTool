@@ -23,14 +23,6 @@ export const featureFlags = {
   // When false: moving/planning an epic may assign default dates to unplanned children (legacy behaviour).
   PRESERVE_UNPLANNED_CHILDREN_ON_PARENT_MOVE: true,
 
-  // Controls which plans contribute to the mainGraph capacity lines.
-  // false (default): graph always reflects ALL plans regardless of which project cards are
-  //   selected on the board.  The Teams menu continues to control which team lines are visible.
-  //   This gives an accurate total-org load picture at all times.
-  // true: legacy behaviour — graph only counts capacity from the currently selected plans,
-  //   which can hide overallocation caused by unselected plans.
-  GRAPH_ONLY_SELECTED_PLANS: false,
-
   // Runtime override support (for testing)
   // Usage: window.__featureFlags = { FEATURE_FLAG_NAME: true };
   ...(typeof window !== 'undefined' && window.__featureFlags ?
