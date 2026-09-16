@@ -57,7 +57,14 @@ describe('application/selectors/scopeSelectors', () => {
       'parent-task',
       'dependency-task',
     ]);
-    expect(selectors.getFunnel()).toEqual({ tasksVisible: 3, teamsInView: 1 });
+    expect(selectors.getFunnel()).toEqual({
+      baseTasks: 2,
+      relatedTasks: 3,
+      tasksInScope: 5,
+      teamsInScope: 2,
+      tasksVisible: 3,
+      teamsInView: 1,
+    });
   });
 
   it('returns empty visible scope without a selected plan', () => {
@@ -73,7 +80,24 @@ describe('application/selectors/scopeSelectors', () => {
 
     expect(selectors.getResolvedFeatures()).toHaveLength(6);
     expect(selectors.getVisibleFeatures()).toEqual([]);
-    expect(selectors.getFunnel()).toEqual({ tasksVisible: 0, teamsInView: 0 });
+    expect(selectors.getFunnel()).toEqual({
+      baseTasks: 0,
+      relatedTasks: 0,
+      tasksInScope: 0,
+      teamsInScope: 0,
+      tasksVisible: 0,
+      teamsInView: 0,
+    });
+  });
+
+  it('matches lowercase saved task type selections to canonical task types', () => {
+    const state = baseState();
+    state.selection.taskTypeNames = ['feature'];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+    ]);
   });
 
   it('does not include related work until its Context flag is enabled', () => {
@@ -93,6 +117,66 @@ describe('application/selectors/scopeSelectors', () => {
     ]);
   });
 
+  it('hides child-context tasks when Team Drill-down has no selected teams', () => {
+    const state = baseState({
+      view: { context: { parent: false, child: true, dependency: false, otherAllocations: false } },
+    });
+    state.selection.teamIds = [];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'child-task',
+      'hidden-type',
+    ]);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+    ]);
+  });
+
+  it('keeps matching child-context tasks and their ancestors visible', () => {
+    const state = baseState({
+      view: { context: { parent: false, child: true, dependency: false, otherAllocations: false } },
+    });
+    state.baseline.features[2].capacity = [{ team: 'team-a' }, { team: 'team-b' }];
+    state.selection.teamIds = ['team-b'];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'child-task',
+    ]);
+
+    state.selection.teamIds = [];
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+    ]);
+  });
+
+  it('derives related scope counts from base-plan participants, not Team Drill-down focus', () => {
+    const state = baseState({
+      view: { context: { parent: false, child: false, dependency: false, otherAllocations: false } },
+    });
+    state.selection.teamIds = [];
+    const selectors = createScopeSelectors(createStore(state));
+    const clearFocusCounts = selectors.getContextOptionCounts();
+
+    state.selection.teamIds = ['team-a'];
+    const focusedCounts = selectors.getContextOptionCounts();
+
+    expect(focusedCounts).toEqual(clearFocusCounts);
+    expect(clearFocusCounts.child).to.equal(1);
+  });
+
+  it('does not count Parent or Child relations as dependency scope', () => {
+    const state = baseState();
+    state.baseline.features[0].relations = [{ id: 'dependency-task', type: 'Child' }];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextOptionCounts().dependency).to.equal(0);
+  });
+
   it('includes parent tasks when Parent context is enabled', () => {
     const state = baseState({
       view: { context: { parent: true, child: false, dependency: false, otherAllocations: false } },
@@ -107,8 +191,9 @@ describe('application/selectors/scopeSelectors', () => {
     ]);
   });
 
-  it('keeps selected-plan tasks when Team Drill-down is narrowed', () => {
+  it('filters allocated selected-plan and contextual tasks by Team Drill-down', () => {
     const state = baseState();
+    state.view.context.parent = true;
     state.baseline.features.push({
       id: 'own-team-b',
       project: 'selected',
@@ -117,10 +202,81 @@ describe('application/selectors/scopeSelectors', () => {
       relations: [],
       capacity: [{ team: 'team-b' }],
     });
+    state.baseline.features.push({
+      id: 'own-unallocated',
+      project: 'selected',
+      parentId: null,
+      type: 'Feature',
+      relations: [],
+      capacity: [],
+    });
     state.selection.teamIds = ['team-a'];
     const selectors = createScopeSelectors(createStore(state));
 
-    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own', 'own-team-b']);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'parent-task',
+      'own-unallocated',
+    ]);
+  });
+
+  it('keeps ancestor context for matching team work while hiding unrelated allocations', () => {
+    const state = baseState({
+      view: { context: { parent: true, child: false, dependency: false, otherAllocations: false } },
+    });
+    state.baseline.features[1].capacity = [{ team: 'team-b' }];
+    state.baseline.features.push({
+      id: 'own-team-b',
+      project: 'selected',
+      parentId: null,
+      type: 'Feature',
+      relations: [],
+      capacity: [{ team: 'team-b' }],
+    });
+    state.baseline.features.push({
+      id: 'own-unallocated',
+      project: 'selected',
+      parentId: null,
+      type: 'Feature',
+      relations: [],
+      capacity: [],
+    });
+    state.selection.teamIds = ['team-a'];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'parent-task',
+      'own-unallocated',
+    ]);
+  });
+
+  it('keeps Other allocations in scope but hides them when Team Drill-down is clear', () => {
+    const state = baseState({
+      view: { context: { parent: false, child: false, dependency: false, otherAllocations: true } },
+    });
+    state.selection.teamIds = [];
+    state.selection.taskTypeNames = [];
+    state.baseline.features.push({
+      id: 'other-team-a',
+      project: 'other',
+      parentId: null,
+      type: 'Feature',
+      relations: [],
+      capacity: [{ team: 'team-a' }],
+    });
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'dependency-task',
+      'hidden-type',
+      'other-team-a',
+    ]);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own',
+      'hidden-type',
+    ]);
   });
 
   it('does not mutate resolved features when display filters narrow visibility', () => {

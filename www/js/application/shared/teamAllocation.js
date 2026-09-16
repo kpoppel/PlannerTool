@@ -19,19 +19,17 @@ export function hasFeatureTeamId(feature, teamId) {
 }
 
 /**
- * Organisational load of a feature: the summed allocation of the selected teams
- * spread evenly across those teams. A deselected team counts towards neither the
- * numerator nor the denominator, matching CapacityCalculator's org-weight model.
+ * Organisational load of a feature: every allocation spread evenly across the
+ * full organization roster. Team Drill-down only changes presentation.
  * @param {{capacity: {team: string, capacity: number}[]}} feature
- * @param {Set<string>} selectedTeamIds
+ * @param {Set<string>} organizationTeamIds
  * @returns {string} Percentage with one decimal, e.g. '8.0%'
  */
-export function computeFeatureOrgLoad(feature, selectedTeamIds) {
-  if (selectedTeamIds.size === 0) return '0.0%';
+export function computeFeatureOrgLoad(feature, organizationTeamIds) {
+  if (organizationTeamIds.size === 0) return '0.0%';
   let sum = 0;
   for (const entry of feature.capacity) {
-    if (!selectedTeamIds.has(String(getCapacityTeamId(entry)))) continue;
     sum += entry.capacity;
   }
-  return (sum / selectedTeamIds.size).toFixed(1) + '%';
+  return (sum / organizationTeamIds.size).toFixed(1) + '%';
 }

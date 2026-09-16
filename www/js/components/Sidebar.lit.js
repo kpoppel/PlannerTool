@@ -16,7 +16,6 @@ import {
   FeatureEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
-import { pluginManager } from '../core/PluginManager.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { PALETTE } from '../services/ColorService.js';
 import { ColorPopoverLit } from './ColorPopover.lit.js';
@@ -42,10 +41,6 @@ export class SidebarLit extends LitElement {
     expandParentChild: { type: Boolean },
     expandRelations: { type: Boolean },
     expandTeamAllocated: { type: Boolean },
-    contextParent: { type: Boolean },
-    contextChild: { type: Boolean },
-    contextDependency: { type: Boolean },
-    contextOtherAllocations: { type: Boolean },
   };
 
   static styles = css`
@@ -1056,6 +1051,7 @@ export class SidebarLit extends LitElement {
     this.activeViewId = null;
     this.activeViewData = null;
     // Data funnel metrics
+    this.resolvedTasksCount = 0;
     this.selectedTasksCount = 0;
     this.expandedTasksCount = 0; // placeholder until expansion features implemented
     this.displayedTasksCount = 0;
@@ -1063,10 +1059,6 @@ export class SidebarLit extends LitElement {
     this.expandParentChild = false;
     this.expandRelations = false;
     this.expandTeamAllocated = false;
-    this.contextParent = false;
-    this.contextChild = false;
-    this.contextDependency = false;
-    this.contextOtherAllocations = false;
     // Expansion counts for display
     this.expandParentChildCount = 0;
     this.expandRelationsCount = 0;
@@ -1096,14 +1088,6 @@ export class SidebarLit extends LitElement {
     this.expandParentChild = Boolean(expansion.expandParentChild);
     this.expandRelations = Boolean(expansion.expandRelations);
     this.expandTeamAllocated = Boolean(expansion.expandTeamAllocated);
-  }
-
-  _syncContextFromSelectors() {
-    const context = sel.view.getContext();
-    this.contextParent = Boolean(context.parent);
-    this.contextChild = Boolean(context.child);
-    this.contextDependency = Boolean(context.dependency);
-    this.contextOtherAllocations = Boolean(context.otherAllocations);
   }
 
   connectedCallback() {
@@ -1159,7 +1143,6 @@ export class SidebarLit extends LitElement {
       this.activeViewData =
         payload && payload.activeViewData ? payload.activeViewData : null;
       this._syncExpansionFromSelectors();
-      this._syncContextFromSelectors();
       this._scheduleDataFunnelRecompute();
       this.requestUpdate();
     };
@@ -1169,7 +1152,6 @@ export class SidebarLit extends LitElement {
       this.activeViewData =
         payload && payload.activeViewData ? payload.activeViewData : null;
       this._syncExpansionFromSelectors();
-      this._syncContextFromSelectors();
       this._scheduleDataFunnelRecompute();
       this.requestUpdate();
     };
@@ -1187,6 +1169,7 @@ export class SidebarLit extends LitElement {
       try {
         const feats = sel.feature.getEffectiveFeatures();
         const selectedProjectIds = sel.selection.getSelectedProjectIds();
+        this.resolvedTasksCount = sel.scope.getResolvedFeatures().length;
 
         // Selected tasks: features whose project is selected
         const selectedFeatureIds = new Set(
@@ -1207,6 +1190,7 @@ export class SidebarLit extends LitElement {
         this.displayedTasksCount = sel.scope.getVisibleFeatures().length;
       } catch (e) {
         console.warn('[Sidebar] _recomputeDataFunnel error:', e);
+        this.resolvedTasksCount = 0;
         this.selectedTasksCount = 0;
         this.expandedTasksCount = 0;
         this.displayedTasksCount = 0;
@@ -1487,29 +1471,6 @@ export class SidebarLit extends LitElement {
     this.requestUpdate();
     // Emit filter change event so the board updates
     bus.emit(FilterEvents.CHANGED);
-  }
-
-  _toggleContext(type) {
-    const next = {
-      parent: this.contextParent,
-      child: this.contextChild,
-      dependency: this.contextDependency,
-      otherAllocations: this.contextOtherAllocations,
-    };
-    next[type] = !next[type];
-    cmd.view.setContext(next);
-    if (type === 'dependency') {
-      const method = next.dependency ? 'activate' : 'deactivate';
-      pluginManager[method]('plugin-dependencies').catch((error) => {
-        console.error('[Sidebar] Failed to update dependency overlay', error);
-        throw error;
-      });
-    }
-    this._syncContextFromSelectors();
-    if (this._recomputeDataFunnelNow) {
-      this._recomputeDataFunnelNow();
-    }
-    this.requestUpdate();
   }
 
   _getTeamDrilldownTeams() {
@@ -1906,137 +1867,6 @@ export class SidebarLit extends LitElement {
     return html`
       <aside class="sidebar ${this.open ? '' : 'closed'}">
         <div class="sidebar-content">
-          <!-- Taskboard Options (new) -->
-          <section class="sidebar-section">
-            <div class="expansion-section">
-              <div class="section-title">🧭 Taskboard Options</div>
-              <div class="section-description">
-                Timeline and taskboard display settings
-              </div>
-
-              <div class="filter-dimension">
-                <div class="filter-dimension-title">Timeline Scale</div>
-                <div class="segmented-group">
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getTimelineScale() === 'threeMonths' ?
-                      'active'
-                    : ''}"
-                    @click=${() => this._setTimelineScale('threeMonths')}
-                  >
-                    3mo
-                  </button>
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getTimelineScale() === 'weeks' ? 'active' : ''}"
-                    @click=${() => this._setTimelineScale('weeks')}
-                  >
-                    Weeks
-                  </button>
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getTimelineScale() === 'months' ?
-                      'active'
-                    : ''}"
-                    @click=${() => this._setTimelineScale('months')}
-                  >
-                    Months
-                  </button>
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getTimelineScale() === 'quarters' ?
-                      'active'
-                    : ''}"
-                    @click=${() => this._setTimelineScale('quarters')}
-                  >
-                    Quarters
-                  </button>
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getTimelineScale() === 'years' ? 'active' : ''}"
-                    @click=${() => this._setTimelineScale('years')}
-                  >
-                    Years
-                  </button>
-                </div>
-              </div>
-
-              <div class="filter-dimension">
-                <div class="filter-dimension-title">Display</div>
-                <div class="segmented-group">
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getDisplayMode() === 'normal' ? 'active' : ''}"
-                    @click=${() => cmd.view.setDisplayMode('normal')}
-                  >
-                    Normal
-                  </button>
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getDisplayMode() === 'compact' ? 'active' : ''}"
-                    @click=${() => cmd.view.setDisplayMode('compact')}
-                  >
-                    Compact
-                  </button>
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getDisplayMode() === 'packed' ? 'active' : ''}"
-                    @click=${() => cmd.view.setDisplayMode('packed')}
-                    title="Pack cards with non-overlapping dates into the same lane"
-                  >
-                    Packed
-                  </button>
-                </div>
-              </div>
-
-              <div class="filter-dimension">
-                <div class="filter-dimension-title">Task Sort</div>
-                <div class="segmented-group">
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getFeatureSortMode() === 'rank' && !sel.view.getPackedMode() ?
-                      'active'
-                    : ''} ${sel.view.getPackedMode() ? 'disabled' : ''}"
-                    ?disabled=${sel.view.getPackedMode()}
-                    @click=${() => !sel.view.getPackedMode() && this._setFeatureSortMode('rank')}
-                  >
-                    Rank
-                  </button>
-                  <button
-                    type="button"
-                    class="segment-btn ${sel.view.getFeatureSortMode() === 'date' && !sel.view.getPackedMode() ?
-                      'active'
-                    : ''} ${sel.view.getPackedMode() ? 'disabled' : ''}"
-                    ?disabled=${sel.view.getPackedMode()}
-                    @click=${() => !sel.view.getPackedMode() && this._setFeatureSortMode('date')}
-                  >
-                    Date
-                  </button>
-                </div>
-              </div>
-
-              <div class="filter-dimension">
-                <div class="filter-dimension-title">Graph Type</div>
-                <div class="segmented-group">
-                  <button
-                    type="button"
-                    class="segment-btn ${this._graphType === 'team' ? 'active' : ''}"
-                    @click=${() => this._setGraphType('team')}
-                  >
-                    Team
-                  </button>
-                  <button
-                    type="button"
-                    class="segment-btn ${this._graphType === 'project' ? 'active' : ''}"
-                    @click=${() => this._setGraphType('project')}
-                  >
-                    Project
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-
           <section class="sidebar-section">
             <div class="expansion-section">
               <div class="section-title">Team Drill-down</div>
@@ -2097,28 +1927,6 @@ export class SidebarLit extends LitElement {
             </div>
           </section>
 
-          <section class="sidebar-section">
-            <div class="expansion-section">
-              <div class="section-title">Context</div>
-              <div class="section-description">Choose related work to show</div>
-              <div class="segmented-group context-group" role="group" aria-label="Context">
-                ${[
-                  ['parent', 'Parent', 'contextParent'],
-                  ['child', 'Child', 'contextChild'],
-                  ['dependency', 'Dependency', 'contextDependency'],
-                  ['otherAllocations', 'Other allocations', 'contextOtherAllocations'],
-                ].map(([key, label, property]) => html`
-                  <button
-                    type="button"
-                    class="segment-btn ${this[property] ? 'active' : ''}"
-                    aria-pressed=${this[property] ? 'true' : 'false'}
-                    @click=${() => this._toggleContext(key)}
-                  >${label}</button>
-                `)}
-              </div>
-            </div>
-          </section>
-
           <!-- Task Filters Section -->
           <section class="sidebar-section">
             <div class="expansion-section">
@@ -2135,6 +1943,7 @@ export class SidebarLit extends LitElement {
             <div class="footer-line status">
               ${this.serverName ? this.serverName + ' | ' : ''}${this.serverStatus}
             </div>
+            <div class="footer-line">Tasks loaded: ${this.resolvedTasksCount}</div>
             <div class="footer-line author">PlannerTool (C) 2025-2026 Kim Poulsen</div>
           </div>
         </div>

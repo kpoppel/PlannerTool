@@ -1,7 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { cmd } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
-import { ViewManagementEvents } from '../core/EventRegistry.js';
+import { TimelineEvents, ViewEvents, ViewManagementEvents } from '../core/EventRegistry.js';
 
 /**
  * ViewMenu - Dropdown menu for Views
@@ -24,13 +24,14 @@ export class ViewMenuLit extends LitElement {
       border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 6px;
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
-      min-width: 280px;
+      min-width: 320px;
       max-width: 400px;
       max-height: 500px;
       overflow-y: auto;
       padding: 12px;
       display: flex;
       flex-direction: column;
+      font-size: 13px;
       gap: 8px;
     }
 
@@ -48,7 +49,8 @@ export class ViewMenuLit extends LitElement {
     }
 
     .view-item {
-      padding: 8px 10px;
+      min-height: 32px;
+      padding: 6px 8px;
       border-radius: 6px;
       width: 100%;
       display: flex;
@@ -75,7 +77,7 @@ export class ViewMenuLit extends LitElement {
     .view-name {
       flex: 1 1 auto;
       font-weight: 600;
-      font-size: 0.85rem;
+      font-size: 13px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -114,14 +116,15 @@ export class ViewMenuLit extends LitElement {
 
     .save-view-btn {
       width: 100%;
-      padding: 8px 12px;
+      min-height: 32px;
+      padding: 6px 8px;
       background: rgba(102, 126, 234, 0.2);
       border: 1px solid rgba(102, 126, 234, 0.4);
       border-radius: 6px;
       color: var(--color-sidebar-text);
       cursor: pointer;
       font-weight: 600;
-      font-size: 0.85rem;
+      font-size: 13px;
       text-align: center;
       transition: all 0.15s;
       margin-top: 4px;
@@ -131,6 +134,55 @@ export class ViewMenuLit extends LitElement {
       background: rgba(102, 126, 234, 0.35);
       border-color: rgba(102, 126, 234, 0.6);
     }
+    .display-section {
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+      margin-top: 4px;
+      padding-top: 8px;
+    }
+
+    .display-title {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 20px;
+      margin: 0 0 4px;
+      padding: 0 8px;
+      text-transform: uppercase;
+    }
+
+    .segment-group {
+      display: flex;
+      gap: 4px;
+    }
+
+    .segment-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: inherit;
+      cursor: pointer;
+      flex: 1 1 0;
+      font: inherit;
+      min-height: 32px;
+      padding: 6px 8px;
+      transition: background 120ms ease;
+      white-space: nowrap;
+    }
+
+    .segment-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .segment-btn.active {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .segment-btn.active:hover {
+      background: rgba(255, 255, 255, 0.22);
+    }
+    .segment-btn:disabled { cursor: default; opacity: 0.45; }
   `;
 
   constructor() {
@@ -153,9 +205,14 @@ export class ViewMenuLit extends LitElement {
       this.activeViewId = payload?.id || null;
       this.requestUpdate();
     };
+    this._onDisplayChanged = () => this.requestUpdate();
 
     bus.on(ViewManagementEvents.LIST, this._onViewsList);
     bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    bus.on(TimelineEvents.SCALE_CHANGED, this._onDisplayChanged);
+    bus.on(ViewEvents.DISPLAY_MODE, this._onDisplayChanged);
+    bus.on(ViewEvents.SORT_MODE, this._onDisplayChanged);
+    bus.on(ViewEvents.CAPACITY_MODE, this._onDisplayChanged);
 
     // Don't initialize from state - views are passed as properties from TopMenu
   }
@@ -165,6 +222,12 @@ export class ViewMenuLit extends LitElement {
     if (this._onViewsList) bus.off(ViewManagementEvents.LIST, this._onViewsList);
     if (this._onViewActivated)
       bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    if (this._onDisplayChanged) {
+      bus.off(TimelineEvents.SCALE_CHANGED, this._onDisplayChanged);
+      bus.off(ViewEvents.DISPLAY_MODE, this._onDisplayChanged);
+      bus.off(ViewEvents.SORT_MODE, this._onDisplayChanged);
+      bus.off(ViewEvents.CAPACITY_MODE, this._onDisplayChanged);
+    }
   }
 
   async _onViewClick(e, view) {
@@ -225,6 +288,11 @@ export class ViewMenuLit extends LitElement {
     }
   }
 
+  _setTimelineScale(scale) { cmd.view.setTimelineScale(scale); }
+  _setDisplayMode(mode) { cmd.view.setDisplayMode(mode); }
+  _setFeatureSortMode(mode) { cmd.view.setFeatureSortMode(mode); }
+  _setGraphType(type) { cmd.view.setCapacityViewMode(type); }
+
   render() {
     const sorted = [...(this.views || [])].sort((a, b) => {
       if (a.readonly && !b.readonly) return -1;
@@ -234,6 +302,32 @@ export class ViewMenuLit extends LitElement {
 
     return html`
       <div class="menu-popover">
+        <div class="display-section">
+          <div class="display-title" role="heading" aria-level="2">Timeline Scale</div>
+          <div class="segment-group">
+            ${[['threeMonths', '3mo'], ['weeks', 'Weeks'], ['months', 'Months'], ['quarters', 'Quarters'], ['years', 'Years']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getTimelineScale() === value ? 'active' : ''}" @click=${() => this._setTimelineScale(value)}>${label}</button>`)}
+          </div>
+        </div>
+        <div class="display-section">
+          <div class="display-title" role="heading" aria-level="2">Cards</div>
+          <div class="segment-group">
+            ${[['normal', 'Normal'], ['compact', 'Compact'], ['packed', 'Packed']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getDisplayMode() === value ? 'active' : ''}" @click=${() => this._setDisplayMode(value)}>${label}</button>`)}
+          </div>
+        </div>
+        <div class="display-section">
+          <div class="display-title" role="heading" aria-level="2">Task Sort</div>
+          <div class="segment-group">
+            ${[['rank', 'Rank'], ['date', 'Date']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getFeatureSortMode() === value && !sel.view.getPackedMode() ? 'active' : ''}" ?disabled=${sel.view.getPackedMode()} @click=${() => this._setFeatureSortMode(value)}>${label}</button>`)}
+          </div>
+        </div>
+        <div class="display-section">
+          <div class="display-title" role="heading" aria-level="2">Graph Type</div>
+          <div class="segment-group">
+            ${[['team', 'Team'], ['project', 'Project']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getCapacityViewMode() === value ? 'active' : ''}" @click=${() => this._setGraphType(value)}>${label}</button>`)}
+          </div>
+        </div>
+        <div class="display-section">
+          <div class="display-title" role="heading" aria-level="2">Saved Views</div>
         <ul class="sidebar-list">
           ${sorted.map(
             (v) => html`
@@ -281,6 +375,7 @@ export class ViewMenuLit extends LitElement {
         <button type="button" class="save-view-btn" @click=${this._onSaveCurrentView}>
           💾 Save Settings as View
         </button>
+        </div>
       </div>
     `;
   }

@@ -1,5 +1,6 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import { stub } from 'sinon';
+import { TIMELINE_CONFIG } from '../../www/js/components/Timeline.lit.js';
 
 describe('MainGraph Tests', () => {
   describe('maingraph-lit basic API and rendering', () => {
@@ -235,6 +236,39 @@ describe('MainGraph Tests', () => {
 
       el._fullRender(mockCtx, snapshot);
       expect(calls.stroke).to.be.at.least(1);
+      el.remove();
+    });
+
+    it('clamps the Years viewport when it extends beyond the final month', async () => {
+      const el = document.createElement('maingraph-lit');
+      const timelineBoard = document.createElement('timeline-board');
+      document.body.prepend(timelineBoard);
+      document.body.appendChild(el);
+      const scrollContainer = document.createElement('div');
+      scrollContainer.id = 'scroll-container';
+      Object.defineProperty(scrollContainer, 'scrollLeft', { value: 50 });
+      timelineBoard.appendChild(scrollContainer);
+      await el.updateComplete;
+
+      const mockCtx = {
+        clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        save() {}, restore() {}, setLineDash() {},
+      };
+      el._canvasRef = { width: 615, height: 120, getContext: () => mockCtx };
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
+      const snapshot = {
+        months, teams: [{ id: 't1', color: '#111' }], projects: [], capacityDates: [],
+        teamDailyCapacity: [], teamDailyCapacityMap: null, projectDailyCapacity: [],
+        projectDailyCapacityMap: null, totalOrgDailyPerTeamAvg: [], capacityViewMode: 'team',
+        selectedTeamIds: new Set(['t1']), selectedProjectIds: new Set(),
+      };
+      const originalMonthWidth = TIMELINE_CONFIG.monthWidth;
+      TIMELINE_CONFIG.monthWidth = 30;
+
+      expect(() => el._fullRender(mockCtx, snapshot)).not.to.throw();
+
+      TIMELINE_CONFIG.monthWidth = originalMonthWidth;
+      timelineBoard.remove();
       el.remove();
     });
   });

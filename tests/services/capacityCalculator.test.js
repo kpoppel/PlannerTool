@@ -66,6 +66,35 @@ describe('CapacityCalculator (unit)', () => {
     expect(res.totalOrgDaily.every((v) => v === 2)).to.be.true;
   });
 
+  it('keeps organization capacity stable when team drill-down changes', () => {
+    const calc = new CapacityCalculator(bus);
+    const features = [{
+      id: 'f1',
+      start: '2025-01-01',
+      end: '2025-01-01',
+      project: 'p1',
+      state: 'active',
+      capacity: [
+        { team: 't1', capacity: 20 },
+        { team: 't2', capacity: 80 },
+      ],
+    }];
+    const teams = [{ id: 't1' }, { id: 't2' }];
+    const projects = [{ id: 'p1' }];
+    const baseFilters = {
+      selectedProjects: ['p1'],
+      selectedStates: ['active'],
+    };
+
+    const allTeams = calc.calculate(features, { ...baseFilters, selectedTeams: ['t1', 't2'] }, teams, projects);
+    const narrowedTeams = calc.calculate(features, { ...baseFilters, selectedTeams: ['t1'] }, teams, projects);
+
+    expect(narrowedTeams.totalOrgDaily).to.deep.equal(allTeams.totalOrgDaily);
+    expect(narrowedTeams.totalOrgDailyPerTeamAvg).to.deep.equal(allTeams.totalOrgDailyPerTeamAvg);
+    expect(narrowedTeams.teamDailyCapacityMap[0]).to.deep.equal({ t1: 20, t2: 80 });
+    expect(narrowedTeams.totalOrgDailyPerTeamAvg[0]).to.equal(50);
+  });
+
   it('incremental delta updates adjust cached result', () => {
     const calc = new CapacityCalculator(bus);
     const features = [
@@ -503,14 +532,9 @@ describe('CapacityCalculator (unit)', () => {
     expect(result.teamDailyCapacity[1][0]).to.equal(30);
   });
 
-  // ---------------------------------------------------------------------------
-  // Org-load denominator must reflect only the currently *selected* teams
-  // ---------------------------------------------------------------------------
-
-  it('deselecting a team removes it from both the numerator and the org-load denominator', () => {
-    // Two teams exist; only teamA is selected. Feature has capacity on both teams.
-    // Expected: projectDailyCapacity (normalized) counts only teamA's capacity,
-    // divided by 1 (the single selected team), not by 2 (total team count).
+  it('keeps deselected team allocations in the organization numerator and denominator', () => {
+    // Team Drill-down is presentation-only: both organization allocations count,
+    // normalized across the full organization roster.
     const calc = new CapacityCalculator(bus);
 
     const feature = {
@@ -529,7 +553,7 @@ describe('CapacityCalculator (unit)', () => {
     const projects = [{ id: 'p1', type: 'project' }];
     const filters = {
       selectedProjects: ['p1'],
-      // teamB intentionally NOT selected
+      // teamB is intentionally not in Team Drill-down
       selectedTeams: ['teamA'],
       selectedStates: ['s'],
     };
@@ -537,13 +561,12 @@ describe('CapacityCalculator (unit)', () => {
     const result = calc.calculate([feature], filters, teams, projects);
     const p1Idx = 0;
 
-    // Numerator: only teamA's 40 counts (teamB filtered out entirely).
-    // Denominator: 1 selected team, not 2 total teams → 40 / 1 = 40.
-    expect(result.projectDailyCapacity[0][p1Idx]).to.equal(40);
-    expect(result.totalOrgDailyPerTeamAvg[0]).to.equal(40);
+    // Both allocations count: (40 + 60) / 2 teams = 50.
+    expect(result.projectDailyCapacity[0][p1Idx]).to.equal(50);
+    expect(result.totalOrgDailyPerTeamAvg[0]).to.equal(50);
   });
 
-  it('incremental delta path also normalizes by selected-team count, not total team count', () => {
+  it('incremental delta path keeps the full-organization normalization', () => {
     const calc = new CapacityCalculator(bus);
 
     const feature = {
@@ -572,7 +595,7 @@ describe('CapacityCalculator (unit)', () => {
     // Trigger the incremental delta path with the same (unchanged) feature
     const result = calc.calculate([feature], filters, teams, projects, ['fDelta']);
 
-    expect(result.projectDailyCapacity[0][0]).to.equal(40);
-    expect(result.totalOrgDailyPerTeamAvg[0]).to.equal(40);
+    expect(result.projectDailyCapacity[0][0]).to.equal(50);
+    expect(result.totalOrgDailyPerTeamAvg[0]).to.equal(50);
   });
 });

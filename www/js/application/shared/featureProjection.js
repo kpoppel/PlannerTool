@@ -31,9 +31,9 @@ export function applyFeatureOverride(baseFeature, override, options = {}) {
     return { ...baseFeature, ...override };
   }
 
-  const selectedTeamIds = options.selectedTeamIds;
+  const organizationTeamIds = options.organizationTeamIds;
   if (!override) {
-    return { ...baseFeature, orgLoad: computeFeatureOrgLoad(baseFeature, selectedTeamIds) };
+    return { ...baseFeature, orgLoad: computeFeatureOrgLoad(baseFeature, organizationTeamIds) };
   }
 
   const changedFields = computeDirtyFields(baseFeature, override);
@@ -44,7 +44,7 @@ export function applyFeatureOverride(baseFeature, override, options = {}) {
     changedFields,
     dirty: changedFields.length > 0,
   };
-  effective.orgLoad = computeFeatureOrgLoad(effective, selectedTeamIds);
+  effective.orgLoad = computeFeatureOrgLoad(effective, organizationTeamIds);
   return effective;
 }
 
@@ -53,12 +53,12 @@ export function deriveEffectiveFeatures(state, options = {}) {
   const activeId = getActiveScenarioId(state);
   const scenario = getScenarioItems(state).find((item) => item.id === activeId);
   const overrides = scenario.overrides;
-  // orgLoad follows the live team selection, so it is derived here rather than stored.
+  // orgLoad is derived from the organization roster rather than stored.
   const projectionOptions = {
     ...options,
-    selectedTeamIds: options.selectedTeamIds !== undefined
-      ? options.selectedTeamIds
-      : new Set(state.selection.teamIds.map((id) => String(id))),
+    organizationTeamIds: options.organizationTeamIds !== undefined
+      ? options.organizationTeamIds
+      : new Set(state.baseline.teams.map((team) => String(team.id))),
   };
 
   return baselineFeatures.map((feature) => {

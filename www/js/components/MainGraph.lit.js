@@ -391,8 +391,8 @@ export class MainGraphLit extends LitElement {
     // Build date map
     const dateIndexMap = new Map((capacityDates || []).map((ds, i) => [ds, i]));
 
-    const visibleStartIdx = dateToIndex(months, range.startDate);
-    const visibleEndIdx = dateToIndex(months, range.endDate);
+    const rawVisibleStartIdx = dateToIndex(months, range.startDate);
+    const rawVisibleEndIdx = dateToIndex(months, range.endDate);
 
     // Precompute month/day metadata and per-day pixel widths for the full timeline; we'll only populate visible range
     const monthDayCounts = new Array(months.length);
@@ -406,8 +406,11 @@ export class MainGraphLit extends LitElement {
       dayCursor += dcount;
     }
 
-    // Build per-day px widths and cumulative X positions for visible range only
     const dayCount = dayCursor;
+    const visibleStartIdx = clamp(rawVisibleStartIdx, 0, dayCount - 1);
+    const visibleEndIdx = clamp(rawVisibleEndIdx, visibleStartIdx, dayCount - 1);
+
+    // Build per-day px widths and cumulative X positions for visible range only
     const dayX = new Array(visibleEndIdx - visibleStartIdx + 2); // include nextX
     const dayWidth = new Array(visibleEndIdx - visibleStartIdx + 1);
 

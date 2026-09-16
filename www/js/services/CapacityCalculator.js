@@ -58,10 +58,10 @@ export class CapacityCalculator {
       return this._emptyResult();
     }
 
-    // Check for empty selections
+    // Selected plans and task states define calculation scope. Team Drill-down
+    // is presentation-only and must not alter organization-wide capacity.
     if (
       selectedProjects.length === 0 ||
-      selectedTeams.length === 0 ||
       selectedStates.length === 0
     ) {
       return this._emptyResult();
@@ -113,7 +113,6 @@ export class CapacityCalculator {
     ) {
       this._applyFeatureDeltas(changedFeatureIds, effectiveById, {
         selectedProjects,
-        selectedTeams,
         selectedStates,
         teams,
         projects: allProjects,
@@ -124,18 +123,13 @@ export class CapacityCalculator {
       });
 
       const cached = this._lastResultCache;
-      // Normalize project capacities. Only teams the user has selected count
-      // towards the organisational-load denominator: a deselected team's
-      // capacity is already excluded from the numerator above, so excluding
-      // it here too keeps team selection consistent between the team graph
-      // (where a deselected team's line is zeroed) and the project/org graph
-      // (where its share would otherwise silently dilute the average).
-      const nSelectedTeams = selectedTeams.length || 1;
+      // The full organization roster establishes a stable denominator.
+      const nOrganizationTeams = teams.length;
       const projectDailyNormalized = cached.projectDaily.map((tuple) =>
-        tuple.map((v) => v / nSelectedTeams)
+        tuple.map((v) => v / nOrganizationTeams)
       );
       const totalOrgDailyPerTeamAvg = cached.totalOrgDaily.map(
-        (v) => v / nSelectedTeams
+        (v) => v / nOrganizationTeams
       );
 
       const result = {
@@ -159,7 +153,6 @@ export class CapacityCalculator {
         features,
         dates,
         selectedProjects,
-        selectedTeams,
         selectedStates,
         teams,
         teamIndexById,
@@ -168,13 +161,12 @@ export class CapacityCalculator {
         effectiveById
       );
 
-    // Normalize project capacities. See the delta path above for why the
-    // denominator is the selected-team count rather than the total team count.
-    const nSelectedTeams = selectedTeams.length || 1;
+    // The full organization roster establishes a stable denominator.
+    const nOrganizationTeams = teams.length;
     const projectDailyNormalized = projectDaily.map((tuple) =>
-      tuple.map((v) => v / nSelectedTeams)
+      tuple.map((v) => v / nOrganizationTeams)
     );
-    const totalOrgDailyPerTeamAvg = totalOrgDaily.map((v) => v / nSelectedTeams);
+    const totalOrgDailyPerTeamAvg = totalOrgDaily.map((v) => v / nOrganizationTeams);
 
     const result = {
       dates,
@@ -212,7 +204,6 @@ export class CapacityCalculator {
     features,
     dates,
     selectedProjects,
-    selectedTeams,
     selectedStates,
     teams,
     teamIndexById,
@@ -231,7 +222,6 @@ export class CapacityCalculator {
     const totalOrgDaily = new Array(dlen).fill(0);
 
     const selectedProjectSet = new Set(selectedProjects);
-    const selectedTeamSet = new Set(selectedTeams);
     const selectedStateSet = new Set(selectedStates);
     const fundedTargetMemo = new Map();
 
@@ -281,7 +271,6 @@ export class CapacityCalculator {
       for (let di = startIdx; di <= endIdx; di++) {
         let projectLoadForDay = 0;
         for (const tl of tls) {
-          if (!selectedTeamSet.has(tl.team)) continue;
           // Children take full precedence for their team: if this parent has a child
           // with capacity for this team, skip the parent's contribution entirely.
           if (teamsWithChildren && teamsWithChildren.has(String(tl.team))) continue;
@@ -324,7 +313,6 @@ export class CapacityCalculator {
   _applyFeatureDeltas(changedIds, effectiveById, ctx) {
     const {
       selectedProjects,
-      selectedTeams,
       selectedStates,
       teams,
       projects,
@@ -346,7 +334,6 @@ export class CapacityCalculator {
     const totalOrgDaily = cache.totalOrgDaily;
 
     const selectedProjectSet = new Set(selectedProjects);
-    const selectedTeamSet = new Set(selectedTeams);
     const selectedStateSet = new Set(selectedStates);
     const fundedTargetMemo = new Map();
 
@@ -397,7 +384,6 @@ export class CapacityCalculator {
       for (let di = startIdx; di <= endIdx; di++) {
         let projectLoadForDay = 0;
         for (const tl of tls) {
-          if (!selectedTeamSet.has(tl.team)) continue;
           // Children take full precedence for their team.
           if (teamsWithChildren && teamsWithChildren.has(String(tl.team))) continue;
           const ti = teamIndexById.get(tl.team);
@@ -517,7 +503,6 @@ export class CapacityCalculator {
     features,
     dates,
     selectedProjects,
-    selectedTeams,
     selectedStates,
     teams,
     teamIndexById,
@@ -531,7 +516,6 @@ export class CapacityCalculator {
     const totalOrgDaily = new Array(dates.length);
 
     const selectedProjectSet = new Set(selectedProjects);
-    const selectedTeamSet = new Set(selectedTeams);
     const selectedStateSet = new Set(selectedStates);
 
     for (let di = 0; di < dates.length; di++) {
@@ -580,9 +564,6 @@ export class CapacityCalculator {
         // Process capacity allocations
         const tls = f.capacity || [];
         for (const tl of tls) {
-          // Filter by selected teams
-          if (!selectedTeamSet.has(tl.team)) continue;
-
           const ti = teamIndexById.get(tl.team);
           if (ti !== undefined) {
             const load = Number(tl.capacity) || 0;

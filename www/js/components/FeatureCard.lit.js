@@ -245,6 +245,10 @@ export class FeatureCardLit extends LitElement {
       margin-bottom: 2px;
       font-size: 0.75em;
       /* Always constrain to card width to prevent overflow */
+    .team-load-box--dimmed {
+      opacity: 0.45;
+      filter: grayscale(60%);
+    }
       max-width: 100%;
       overflow: hidden;
     }
@@ -649,7 +653,7 @@ export class FeatureCardLit extends LitElement {
     this._rootCard = this.shadowRoot?.querySelector('.feature-card');
   }
 
-  updated() {
+  updated(changedProperties) {
     if (!this._rootCard) this._rootCard = this.shadowRoot?.querySelector('.feature-card');
     const inner = this._rootCard;
     if (inner) inner.classList.toggle('dirty', !!this.feature?.dirty);
@@ -668,6 +672,8 @@ export class FeatureCardLit extends LitElement {
       this._lastTitle = title;
       this._requestLayout();
     }
+
+    if (changedProperties.has('hideGhostTitle')) this._requestLayout();
   }
 
   disconnectedCallback() {
@@ -851,11 +857,11 @@ export class FeatureCardLit extends LitElement {
     const teamBoxes =
       this.feature.capacity
         ?.map((tl) => {
-          const team = this.teams?.find((t) => t.id === tl.team && t.selected);
+          const team = this.teams.find((t) => t.id === tl.team);
           if (!team) return null;
           return html`
             <span
-              class="team-load-box"
+              class="team-load-box ${team.selected ? '' : 'team-load-box--dimmed'}"
               style="background: ${team.color};"
               title="${team.name}: ${tl.capacity}"
             >

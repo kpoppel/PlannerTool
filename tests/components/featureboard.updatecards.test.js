@@ -82,4 +82,36 @@ describe('feature-board updateCardsById', () => {
     expect(called).to.be.true;
     expect(node._applied).to.not.exist;
   });
+
+  it('keeps an unallocated Context task accepted by the canonical visible scope', () => {
+    sinon.stub(sel.view, 'getExpansionState').returns({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    });
+    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
+    sinon.stub(sel.view, 'isTypeVisible').returns(true);
+    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
+    sinon.stub(sel.view, 'getShowUnassignedCards').returns(false);
+    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['active']));
+    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
+    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'selected', selected: true }]);
+    sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['selected']);
+    sinon.stub(sel.selection, 'getSelectedTeamIds').returns([]);
+
+    const contextTask = {
+      id: 'parent-task',
+      project: 'parent',
+      capacity: [],
+      state: 'active',
+      type: 'Feature',
+    };
+
+    expect(board._featurePassesFilters(
+      contextTask,
+      new Map(),
+      [contextTask],
+      new Set(['parent-task'])
+    )).to.equal(true);
+  });
 });

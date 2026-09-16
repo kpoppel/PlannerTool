@@ -215,6 +215,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     projects = [{ id: 'p1', name: 'Plan A', color: '#aa0000', selected: true }];
 
     sinon.stub(sel.feature, 'getEffectiveFeatures').callsFake(() => effectiveFeatures);
+    sinon.stub(sel.scope, 'getVisibleFeatures').callsFake(() => effectiveFeatures);
     sinon.stub(sel.selection, 'getProjects').callsFake(() => projects);
     sinon.stub(sel.selection, 'getTeams').returns([]);
     sinon.stub(sel.selection, 'getSelectedProjectIds').callsFake(() =>

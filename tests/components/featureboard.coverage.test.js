@@ -84,7 +84,12 @@ describe('FeatureBoard helper coverage', () => {
       state: 'New',
       capacity: [{ team: 't1' }],
     };
-    const passes = el._featurePassesFilters(feature, new Map(), [feature]);
+    const passes = el._featurePassesFilters(
+      feature,
+      new Map(),
+      [feature],
+      new Set(['f1'])
+    );
     expect(passes).to.be.true;
   });
 
@@ -113,7 +118,12 @@ describe('FeatureBoard helper coverage', () => {
       state: 'New',
       capacity: [],
     };
-    const passes = el._featurePassesFilters(feature, new Map(), [feature]);
+    const passes = el._featurePassesFilters(
+      feature,
+      new Map(),
+      [feature],
+      new Set(['f-outside'])
+    );
     expect(passes).to.be.true;
   });
 });

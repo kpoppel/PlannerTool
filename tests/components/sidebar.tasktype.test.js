@@ -176,17 +176,19 @@ describe('Sidebar task-type filter', () => {
     expect(sidebar.selectedTaskTypes.has('feature')).to.equal(true);
   });
 
-  it('renders Context segments and removes the legacy expansion label', async () => {
+  it('does not render moved Scope or display controls', async () => {
     const root = sidebar.shadowRoot || sidebar;
     const labels = Array.from(root.querySelectorAll('button')).map((button) => button.textContent.trim());
 
-    expect(labels).to.include.members(['Parent', 'Child', 'Dependency', 'Other allocations']);
+    expect(labels).to.not.include.members(['Parent', 'Child', 'Dependency', 'Other allocations']);
+    expect(labels).to.not.include.members(['3mo', 'Weeks', 'Months', 'Quarters', 'Years']);
     const sectionTitles = Array.from(root.querySelectorAll('.section-title'))
       .map((element) => element.textContent.trim());
-    expect(sectionTitles).to.not.include('Expand Dataset');
+    expect(sectionTitles).to.not.include('Context');
+    expect(sectionTitles).to.not.include('Taskboard Options');
   });
 
-  it('places Team Drill-down before Context and renders per-type team counts', async () => {
+  it('renders per-type team counts for the focused teams', async () => {
     sidebar.teams = [{ id: 'team-1', name: 'Alpha', short: 'A', color: '#123456', selected: true }];
     const originalGetContextTeams = sel.scope.getContextTeams;
     const originalGetTaskTypes = sel.feature.getAvailableTaskTypesOrdered;
@@ -200,24 +202,12 @@ describe('Sidebar task-type filter', () => {
     const root = sidebar.shadowRoot || sidebar;
     const titles = Array.from(root.querySelectorAll('.section-title'))
       .map((element) => element.textContent.trim());
-    expect(titles.indexOf('Team Drill-down')).to.be.lessThan(titles.indexOf('Context'));
+    expect(titles).to.include('Team Drill-down');
     expect(root.textContent).to.include('Alpha');
     expect(root.textContent).to.include('4');
     sel.scope.getContextTeams = originalGetContextTeams;
     sel.feature.getAvailableTaskTypesOrdered = originalGetTaskTypes;
     sel.feature.getCountsForTeam = originalGetCounts;
-  });
-
-  it('updates canonical Context state when a segment is toggled', async () => {
-    const root = sidebar.shadowRoot || sidebar;
-    const parentButton = Array.from(root.querySelectorAll('button'))
-      .find((button) => button.textContent.trim() === 'Parent');
-
-    parentButton.click();
-    await sidebar.updateComplete;
-
-    expect(sel.view.getContext().parent).to.equal(true);
-    expect(parentButton.getAttribute('aria-pressed')).to.equal('true');
   });
 
   it('renders Context-scoped teams with select-all and select-none controls', async () => {
@@ -247,6 +237,14 @@ describe('Sidebar task-type filter', () => {
     expect((sidebar.shadowRoot || sidebar).textContent)
       .to.include('This plan has no teams assigned.');
     sel.scope.getContextTeams = originalGetContextTeams;
+  });
+
+  it('shows the resolved task count as informational footer data', async () => {
+    sidebar.resolvedTasksCount = 12;
+    sidebar.requestUpdate();
+    await sidebar.updateComplete;
+
+    expect((sidebar.shadowRoot || sidebar).textContent).to.include('Tasks loaded: 12');
   });
 
   it('uses display-only team selection from the Sidebar', () => {

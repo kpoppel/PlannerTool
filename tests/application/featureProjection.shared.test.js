@@ -8,6 +8,7 @@ describe('application/shared/featureProjection', () => {
   it('derives effective features from active scenario overrides', () => {
     const state = {
       baseline: {
+        teams: [],
         features: [
           { id: 'f1', state: 'Todo', start: '2026-01-01', end: '2026-01-02', capacity: [] },
           { id: 'f2', state: 'Doing', start: '2026-01-03', end: '2026-01-04', capacity: [] },
@@ -42,6 +43,7 @@ describe('application/shared/featureProjection', () => {
   it('supports raw merge mode for non-selector paths', () => {
     const state = {
       baseline: {
+        teams: [],
         features: [{ id: 'f1', state: 'Todo', capacity: [] }],
       },
       selection: { teamIds: [] },
@@ -55,9 +57,10 @@ describe('application/shared/featureProjection', () => {
     expect(features[0]).toEqual({ id: 'f1', state: 'Done', capacity: [] });
   });
 
-  it('derives orgLoad as the selected-team allocation average', () => {
+  it('derives orgLoad as the full-organization allocation average', () => {
     const state = {
       baseline: {
+        teams: [{ id: 't1' }, { id: 't2' }, { id: 't3' }, { id: 't4' }, { id: 't5' }],
         features: [
           {
             id: 'f1',
@@ -70,7 +73,7 @@ describe('application/shared/featureProjection', () => {
           },
         ],
       },
-      // 5 selected teams, only 4 of which carry an allocation on f1.
+      // Only one drill-down team is selected; all five organization teams count.
       selection: { teamIds: ['t1', 't2', 't3', 't4', 't5'] },
       scenarios: {
         activeId: 'baseline',
@@ -81,9 +84,10 @@ describe('application/shared/featureProjection', () => {
     expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('8.0%');
   });
 
-  it('excludes deselected teams from both numerator and denominator of orgLoad', () => {
+  it('keeps orgLoad stable when teams are deselected from Team Drill-down', () => {
     const state = {
       baseline: {
+        teams: [{ id: 't1' }, { id: 't2' }],
         features: [
           {
             id: 'f1',
@@ -101,12 +105,13 @@ describe('application/shared/featureProjection', () => {
       },
     };
 
-    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('40.0%');
+    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('30.0%');
   });
 
   it('derives orgLoad from scenario-overridden capacity', () => {
     const state = {
       baseline: {
+        teams: [{ id: 't1' }, { id: 't2' }],
         features: [{ id: 'f1', capacity: [{ team: 't1', capacity: 10 }] }],
       },
       selection: { teamIds: ['t1', 't2'] },
@@ -131,9 +136,10 @@ describe('application/shared/featureProjection', () => {
     expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('40.0%');
   });
 
-  it('derives orgLoad of 0.0% when no teams are selected', () => {
+  it('derives orgLoad from the organization roster when no teams are selected', () => {
     const state = {
       baseline: {
+        teams: [{ id: 't1' }],
         features: [{ id: 'f1', capacity: [{ team: 't1', capacity: 10 }] }],
       },
       selection: { teamIds: [] },
@@ -143,7 +149,7 @@ describe('application/shared/featureProjection', () => {
       },
     };
 
-    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('0.0%');
+    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('10.0%');
   });
 
   it('builds children-by-parent maps from feature lists', () => {

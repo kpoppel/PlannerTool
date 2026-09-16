@@ -10,6 +10,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 Template - do not change :
 ## [v] - unreleased
 ### Added
+- Added icon-led top-bar status metrics for tasks and teams in scope plus tasks currently displayed, with explanatory tooltips.
+- Added a Scope menu for related-work inclusion, with per-option task counts and an informative base-versus-related task summary in the top bar.
 - Completed Phase 1 presentation-scope migration across Sidebar, TopMenu, FeatureBoard, swimlanes, and dependency overlay lifecycle.
 - Dependency overlay visibility is now owned by the Sidebar Context dependency flag.
 - Added the canonical Data Funnel summary to the top bar in place of the Team trigger.
@@ -20,11 +22,21 @@ Template - do not change :
 - Added a self-contained static capture of the shared AZ Planner UI at `backup/user_interface_v5/static_v4.html`.
 - Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
+- View menu headings now use visually distinct tinted label bands to separate section names from selectable options.
+- Restyled View menu display choices to match saved-view menu rows while retaining the primary save-view action.
+- Scope inclusion now derives participating teams from selected base plans, independently of the Team Drill-down focus, and hierarchy links are excluded from dependency scope.
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
+- Scope-derived tasks now leave the board when their last selected allocation team is deselected.
+- MainGraph no longer throws when a Years-scale viewport extends beyond the timeline end.
+- Packed cards now immediately suppress overflow ghost titles when switching display mode.
+- Saved views now match task-type filters case-insensitively, so legacy values such as `epic` and `feature` continue to refresh the FeatureBoard.
+- View menu controls now refresh their active selection styling after timeline, card, sort, or graph display events.
+- Clearing Team Drill-down now excludes Child Context tasks while retaining selected-plan tasks.
+- Team Drill-down now dims deselected allocation badges without removing them, and organizational capacity remains calculated from the full team roster.
 - Removed a duplicate `TimelineEvents.MONTHS` subscription in `TimelineBoard` that could trigger duplicate today-line updates and leave one listener untracked on teardown.
 - Context Parent filtering now updates visible task counts, and the Context-owned dependency plugin is removed from the Tools menu.
-- Team Drill-down now preserves selected-plan tasks while filtering only additive Context tasks.
+- Team Drill-down now shows selected-team allocations, unallocated base-plan tasks, and required ancestor context while hiding unrelated allocated work.
 
 ---
 
@@ -52,6 +64,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- FeatureBoard now renders Context and Team Drill-down scope results without reapplying legacy project/team visibility checks.
+- Team Drill-down now filters every allocated visible task consistently, while clear drill-downs retain Other-allocation source-plan discovery from selected-plan teams.
 - The store started with an incomplete `view.options` branch, so any read of `hiddenTypes` before a view was applied threw `TypeError: items is undefined`; the initial state is now seeded from a single canonical `createDefaultViewOptions()` shared with the Default View restore path.
 - Feature cards and the details panel showed an organisational allocation of 0% because `orgLoad` was never derived in the store architecture; it is now computed from the live team selection in `deriveEffectiveFeatures`.
 - Added explicit project and global invalidation for Azure plan/team discovery caches so admin area-mapping refreshes persist current Azure data to the shared authoritative configuration store without removing API-level caching.
@@ -93,6 +107,7 @@ Template - do not change :
 - Fixed store `setAllStatesSelected(true)` to derive available feature states from canonical baseline features, removing the stale dependency on a non-existent `state.filter` slice that broke plugin lifecycle tests.
 
 ### Changed
+- Moved the Sidebar Context controls before Team Drill-down so users choose related work before narrowing its teams.
 - Group context-menu move actions are now task-relative (Move up/down across the mixed task+group stream), while nesting changes are handled in-place through the existing Update Group modal parent selector.
 - Horizontal drag on a group pill now shifts all planned tasks contained by that group (including nested groups and task descendants) by the same day delta; unplanned tasks remain unplanned.
 - Group-pill dragging now gives live visual feedback: the pill itself follows the drag and shows a preview date range with a signed day delta (`+/-Nd`) while dragging.

@@ -694,69 +694,6 @@ class FeatureBoard extends LitElement {
     if (this._isUnplanned(feature) && !sel.view.getShowUnplannedWork()) {
       return false;
     }
-
-    // If a project/plan is selected, show tasks from that project regardless of team selection.
-    const selectedProjectIds = new Set(
-      sel.selection.getSelectedProjectIds().map((id) => String(id))
-    );
-    const selectedTeamIdSet = new Set(
-      sel.selection.getSelectedTeamIds().map((id) => String(id))
-    );
-
-    // A parent item is visible if it has direct or indirect visible children,
-    // or if it itself passes team/project/capacity checks.
-    // Use childrenMap to detect parent items generically (no type string check).
-    if (isExpansionVisible) {
-      return true;
-    }
-
-    if (childrenMap.has(feature.id)) {
-      const children = childrenMap.get(feature.id) || [];
-      const anyChildVisible = children.some((child) => {
-        const childProject = projects.find(
-          (p) => p.id === child.project && p.selected
-        );
-        if (!childProject) return false;
-        if (this._isUnplanned(child) && !sel.view.getShowUnplannedWork()) return false;
-        const hasCapacity = child.capacity?.length > 0;
-        if (!hasCapacity) return sel.view.getShowUnassignedCards();
-        // If the child's project is among selected projects, ignore team-selection and show it.
-        if (selectedProjectIds.has(String(child.project))) return true;
-        return child.capacity.some((tl) => selectedTeamIdSet.has(String(tl.team)));
-      });
-      const hasCapacity = feature.capacity?.length > 0;
-      const epicVisible =
-        hasCapacity ?
-          selectedProjectIds.has(String(feature.project)) ||
-          feature.capacity.some((tl) => selectedTeamIdSet.has(String(tl.team)))
-        : // Unassigned parent: only visible if it belongs to a selected plan.
-          // Features from expanded (non-selected) plans must always match the team
-          // filter; showUnassignedCards is not a bypass for cross-plan expansion.
-          selectedProjectIds.has(String(feature.project)) &&
-          sel.view.getShowUnassignedCards();
-      if (!epicVisible && !anyChildVisible) return false;
-    } else {
-      const hasCapacity = feature.capacity?.length > 0;
-      if (!hasCapacity) {
-        // Unassigned leaf: only visible if it belongs to a selected plan.
-        // Features from expanded (non-selected) plans must always match the team
-        // filter; showUnassignedCards is not a bypass for cross-plan expansion.
-        if (
-          !selectedProjectIds.has(String(feature.project)) ||
-          !sel.view.getShowUnassignedCards()
-        )
-          return false;
-      } else {
-        // If this feature belongs to a selected project, ignore team-selection and show it.
-        if (
-          !(
-            selectedProjectIds.has(String(feature.project)) ||
-            feature.capacity.some((tl) => selectedTeamIdSet.has(String(tl.team)))
-          )
-        )
-          return false;
-      }
-    }
     return true;
   }
 

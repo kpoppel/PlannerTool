@@ -79,6 +79,29 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(revertFeature.calledOnceWithExactly('f4')).to.be.true;
   });
 
+  it('renders deselected team allocations as dimmed badges', async () => {
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = {
+      id: 'f5',
+      title: 'Shared allocation',
+      capacity: [
+        { team: 't1', capacity: '30%' },
+        { team: 't2', capacity: '40%' },
+      ],
+    };
+    el.teams = [
+      { id: 't1', name: 'Selected team', color: '#111111', selected: true },
+      { id: 't2', name: 'Deselected team', color: '#222222', selected: false },
+    ];
+    await el.updateComplete;
+
+    const teamBadges = el.shadowRoot.querySelectorAll('.team-load-box:not(:first-child)');
+    expect(teamBadges).to.have.lengthOf(2);
+    expect(teamBadges[0].classList.contains('team-load-box--dimmed')).to.be.false;
+    expect(teamBadges[1].classList.contains('team-load-box--dimmed')).to.be.true;
+    expect(teamBadges[1].textContent.trim()).to.equal('40%');
+  });
+
   it('renders ghost title text with initial card render', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = {
@@ -94,5 +117,17 @@ describe('FeatureCardLit basic behaviors', () => {
       el.shadowRoot.querySelector('.ghost-title .ghost-title-text')?.textContent || '';
     const normalized = ghostText.replace(/\s+/g, '').trim();
     expect(normalized).to.include('Thisisalongfeaturetitleforghostrendering');
+  });
+
+  it('recalculates ghost visibility when packed mode suppresses ghost titles', async () => {
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'f6', title: 'Packed title' };
+    await el.updateComplete;
+    const requestLayout = sinon.spy(el, '_requestLayout');
+
+    el.hideGhostTitle = true;
+    await el.updateComplete;
+
+    expect(requestLayout).to.have.been.calledOnce;
   });
 });

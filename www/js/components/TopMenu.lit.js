@@ -8,12 +8,14 @@ import {
   DataEvents,
   ViewManagementEvents,
   FilterEvents,
+  FeatureEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import './PlanMenu.lit.js';
 import './TeamMenu.lit.js';
 import './ScenarioMenu.lit.js';
 import './ViewMenu.lit.js';
+import './ScopeMenu.lit.js';
 import './ToolsMenu.lit.js';
 
 export class TopMenuBarLit extends LitElement {
@@ -29,6 +31,7 @@ export class TopMenuBarLit extends LitElement {
     selectedProjectsCount: { type: Number },
     selectedTeamsCount: { type: Number },
     funnel: { type: Object },
+    scopeContext: { type: Object },
   };
 
   static styles = css`
@@ -176,11 +179,22 @@ export class TopMenuBarLit extends LitElement {
     .data-funnel-status {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 4px;
       color: rgba(255, 255, 255, 0.9);
       font-size: 12px;
       white-space: nowrap;
     }
+    .status-metric {
+      align-items: center;
+      border-radius: 4px;
+      display: inline-flex;
+      gap: 4px;
+      min-height: 28px;
+      padding: 0 6px;
+    }
+    .status-metric:hover { background: rgba(255, 255, 255, 0.08); }
+    .status-icon { color: #8ec8ff; font-size: 14px; line-height: 1; }
+    .scope-icons { color: #8ec8ff; font-size: 14px; letter-spacing: 2px; }
   `;
 
   constructor() {
@@ -195,7 +209,15 @@ export class TopMenuBarLit extends LitElement {
     this.activeViewData = null;
     this.selectedProjectsCount = 0;
     this.selectedTeamsCount = 0;
-    this.funnel = { tasksVisible: 0, teamsInView: 0 };
+    this.funnel = {
+      baseTasks: 0,
+      relatedTasks: 0,
+      tasksInScope: 0,
+      teamsInScope: 0,
+      tasksVisible: 0,
+      teamsInView: 0,
+    };
+    this.scopeContext = { parent: false, child: false, dependency: false, otherAllocations: false };
     this._ensureGlobalMenuStyles();
   }
 
@@ -297,6 +319,7 @@ export class TopMenuBarLit extends LitElement {
 
     this._onScopeChanged = () => {
       this.funnel = sel.scope.getFunnel();
+      this.scopeContext = sel.view.getContext();
       this.requestUpdate();
     };
 
@@ -312,6 +335,7 @@ export class TopMenuBarLit extends LitElement {
     bus.on(ProjectEvents.CHANGED, this._onScopeChanged);
     bus.on(DataEvents.SCENARIOS_DATA, this._onScopeChanged);
     bus.on(FilterEvents.CHANGED, this._onScopeChanged);
+    bus.on(FeatureEvents.UPDATED, this._onScopeChanged);
 
     // Initialize reactive properties from current state in case events were
     // emitted before this element was connected. This ensures the component
@@ -319,6 +343,7 @@ export class TopMenuBarLit extends LitElement {
     try {
       this._onProjectsChanged();
       this._onTeamsChanged();
+      this._onScopeChanged();
       this._onScenariosList();
       const savedViews = sel.view.getSavedViews();
       const activeViewId = sel.view.getActiveViewId();
@@ -359,6 +384,7 @@ export class TopMenuBarLit extends LitElement {
       bus.off(ProjectEvents.CHANGED, this._onScopeChanged);
       bus.off(DataEvents.SCENARIOS_DATA, this._onScopeChanged);
       bus.off(FilterEvents.CHANGED, this._onScopeChanged);
+      bus.off(FeatureEvents.UPDATED, this._onScopeChanged);
     }
   }
 
@@ -443,6 +469,19 @@ export class TopMenuBarLit extends LitElement {
             : ''}
           </div>
           <div
+            class="menu-item ${this.openMenu === 'scope' ? 'active' : ''}"
+            id="scopeMenuBtn"
+            role="button"
+            tabindex="0"
+            @click=${(e) => this._toggleMenu('scope', e)}
+          >
+            Scope
+            ${this.scopeContext.parent ? html`<span class="scope-icons" title="Ancestors">↑</span>` : ''}
+            ${this.scopeContext.child ? html`<span class="scope-icons" title="Descendant work">↓</span>` : ''}
+            ${this.scopeContext.dependency ? html`<span class="scope-icons" title="Dependencies">↔</span>` : ''}
+            ${this.scopeContext.otherAllocations ? html`<span class="scope-icons" title="Other work by participating teams">●</span>` : ''}
+          </div>
+          <div
             class="menu-item ${this.openMenu === 'tools' ? 'active' : ''}"
             id="toolsMenuBtn"
             role="button"
@@ -458,10 +497,20 @@ export class TopMenuBarLit extends LitElement {
             class="data-funnel-status"
             id="dataFunnelSummary"
             role="status"
-            aria-label="Data Funnel: tasks visible and teams in view"
+            aria-label="Current planning scope and displayed task counts"
           >
-            <span>Tasks visible: ${this.funnel.tasksVisible}</span>
-            <span>Teams in view: ${this.funnel.teamsInView}</span>
+            <span class="status-metric" title="Tasks included in the selected plan scope before display filters">
+              <span class="status-icon" aria-hidden="true">▤</span>
+              <span>${this.funnel.tasksInScope}</span>
+            </span>
+            <span class="status-metric" title="Participating teams allocated to tasks in the selected plan scope">
+              <span class="status-icon" aria-hidden="true">●</span>
+              <span>${this.funnel.teamsInScope}</span>
+            </span>
+            <span class="status-metric" title="Tasks currently displayed after team focus and task filters">
+              <span class="status-icon" aria-hidden="true">◈</span>
+              <span>${this.funnel.tasksVisible}</span>
+            </span>
           </div>
           <button class="small-btn" id="openConfigBtn" @click=${this._onConfig}>
             ⚙️
@@ -504,6 +553,8 @@ export class TopMenuBarLit extends LitElement {
           .activeViewId=${this.activeViewId}
           .activeViewData=${this.activeViewData}
         ></plan-menu>`;
+      case 'scope':
+        return html`<scope-menu style="${style}"></scope-menu>`;
       case 'team':
         return html`<team-menu
           style="${style}"
