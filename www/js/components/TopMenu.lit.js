@@ -12,7 +12,6 @@ import {
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import './PlanMenu.lit.js';
-import './TeamMenu.lit.js';
 import './ScenarioMenu.lit.js';
 import './ViewMenu.lit.js';
 import './ScopeMenu.lit.js';
@@ -555,13 +554,6 @@ export class TopMenuBarLit extends LitElement {
         ></plan-menu>`;
       case 'scope':
         return html`<scope-menu style="${style}"></scope-menu>`;
-      case 'team':
-        return html`<team-menu
-          style="${style}"
-          .teams=${this.teams}
-          .activeViewId=${this.activeViewId}
-          .activeViewData=${this.activeViewData}
-        ></team-menu>`;
       case 'tools':
         return html`<tools-menu style="${style}"></tools-menu>`;
       default:
