@@ -128,19 +128,7 @@ export class EmptyBoardModal extends LitElement {
     const selectedTeamIds = sel.selection.getSelectedTeamIds();
     const teams = sel.selection.getTeams() || [];
     if (teams.length && !selectedTeamIds.length) {
-      reasons.push('No teams selected — capacity-based filtering may exclude tasks.');
-    }
-
-    // If only teams are selected (no projects) and team-allocation expansion is disabled,
-    // explain that team-only selection won't surface tasks unless expansion is enabled.
-    if (
-      selectedTeamIds.length > 0 &&
-      (!selectedProjectIds || selectedProjectIds.length === 0) &&
-      !sel.view.getExpansionState().expandTeamAllocated
-    ) {
-      reasons.push(
-        "Only teams selected and 'Team Allocated' expansion is disabled — enable the expansion or select projects to show team-allocated tasks."
-      );
+      reasons.push('No teams selected; contextual allocated tasks are hidden.');
     }
 
     // Dimensional task filters (schedule, allocation, hierarchy, relations)
@@ -179,46 +167,7 @@ export class EmptyBoardModal extends LitElement {
   // Determine whether any features would be visible under current filters
   _hasVisibleFeatures() {
     try {
-      // Use state's expanded feature ids to determine the base visible set (respects expansion options)
-      const sourceFeatures = sel.feature?.getEffectiveFeatures?.() || [];
-      if (!sourceFeatures.length) return false;
-
-      const expandedIds = sel.view.getExpandedFeatureIds();
-      if (!expandedIds || expandedIds.size === 0) return false;
-
-      // State filter (preserve configured casing; compare case-insensitively)
-      const stateFilter = sel.filter.getSelectedFeatureStateSet();
-      const stateFilterLower = new Set(
-        Array.from(stateFilter).map((s) => String(s).toLowerCase())
-      );
-
-      // Task/dimensional filters
-      for (const feature of sourceFeatures) {
-        if (!expandedIds.has(String(feature.id))) continue;
-
-        // state filter (case-insensitive using configured state names)
-        if (stateFilter.size === 0) continue;
-        const featureStateLower = (feature.state || '').toLowerCase();
-        if (!stateFilterLower.has(featureStateLower)) continue;
-
-        // view options
-        if (!sel.view.isTypeVisible(feature.type)) continue;
-
-        // unplanned work
-        const isUnplanned = !feature.start || !feature.end;
-        if (isUnplanned && !sel.view.getShowUnplannedWork()) continue;
-
-        // Task/dimensional filters: if service exists, use it to validate feature
-        try {
-          if (!sel.filter.featurePassesFilters(feature)) continue;
-        } catch (e) {
-          /* ignore filter errors */
-        }
-
-        // If we reached here, feature would be visible
-        return true;
-      }
-      return false;
+      return sel.scope.getVisibleFeatures().length > 0;
     } catch (e) {
       return false;
     }

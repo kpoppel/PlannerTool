@@ -32,15 +32,6 @@ export class SidebarLit extends LitElement {
     activeViewData: { type: Object },
     serverStatus: { type: String },
     serverName: { type: String },
-    selectedTasksCount: { type: Number },
-    expandedTasksCount: { type: Number },
-    displayedTasksCount: { type: Number },
-    expandParentChildCount: { type: Number },
-    expandRelationsCount: { type: Number },
-    expandTeamAllocatedCount: { type: Number },
-    expandParentChild: { type: Boolean },
-    expandRelations: { type: Boolean },
-    expandTeamAllocated: { type: Boolean },
   };
 
   static styles = css`
@@ -379,7 +370,7 @@ export class SidebarLit extends LitElement {
       opacity: 0.6;
     }
 
-    /* Expand Dataset section */
+    /* Sidebar control sections */
     .expansion-section {
       background: linear-gradient(
         135deg,
@@ -1050,19 +1041,8 @@ export class SidebarLit extends LitElement {
     this.views = [];
     this.activeViewId = null;
     this.activeViewData = null;
-    // Data funnel metrics
+    // Informational footer metric
     this.resolvedTasksCount = 0;
-    this.selectedTasksCount = 0;
-    this.expandedTasksCount = 0; // placeholder until expansion features implemented
-    this.displayedTasksCount = 0;
-    // Expansion filter state
-    this.expandParentChild = false;
-    this.expandRelations = false;
-    this.expandTeamAllocated = false;
-    // Expansion counts for display
-    this.expandParentChildCount = 0;
-    this.expandRelationsCount = 0;
-    this.expandTeamAllocatedCount = 0;
     // Task filter state (mirrors sel.filter.getTaskFilters())
     this.taskFilters = {
       schedule: { planned: true, unplanned: true },
@@ -1081,13 +1061,6 @@ export class SidebarLit extends LitElement {
     this._packedModeUnplannedSnapshot = undefined;
     this._recomputeDataFunnelScheduled = false;
     this._computeTaskTypesScheduled = false;
-  }
-
-  _syncExpansionFromSelectors() {
-    const expansion = sel.view.getExpansionState();
-    this.expandParentChild = Boolean(expansion.expandParentChild);
-    this.expandRelations = Boolean(expansion.expandRelations);
-    this.expandTeamAllocated = Boolean(expansion.expandTeamAllocated);
   }
 
   connectedCallback() {
@@ -1142,7 +1115,6 @@ export class SidebarLit extends LitElement {
       this.activeViewId = payload && payload.activeViewId ? payload.activeViewId : null;
       this.activeViewData =
         payload && payload.activeViewData ? payload.activeViewData : null;
-      this._syncExpansionFromSelectors();
       this._scheduleDataFunnelRecompute();
       this.requestUpdate();
     };
@@ -1151,7 +1123,6 @@ export class SidebarLit extends LitElement {
       this.activeViewId = payload && payload.viewId ? payload.viewId : null;
       this.activeViewData =
         payload && payload.activeViewData ? payload.activeViewData : null;
-      this._syncExpansionFromSelectors();
       this._scheduleDataFunnelRecompute();
       this.requestUpdate();
     };
@@ -1167,36 +1138,10 @@ export class SidebarLit extends LitElement {
     // Recompute data funnel when features or filters change
     this._recomputeDataFunnelNow = () => {
       try {
-        const feats = sel.feature.getEffectiveFeatures();
-        const selectedProjectIds = sel.selection.getSelectedProjectIds();
         this.resolvedTasksCount = sel.scope.getResolvedFeatures().length;
-
-        // Selected tasks: features whose project is selected
-        const selectedFeatureIds = new Set(
-          feats.filter((f) => selectedProjectIds.includes(f.project)).map((f) => f.id)
-        );
-        this.selectedTasksCount = selectedFeatureIds.size;
-
-        // Expanded tasks: use the selector-owned expansion set so the sidebar remains a consumer.
-        const expansionResult = sel.view.getExpandedFeatureSet();
-
-        const expandedFeatureIds = expansionResult.expandedIds;
-        this.expandedTasksCount = expandedFeatureIds.size - this.selectedTasksCount;
-        this.expandParentChildCount = expansionResult.counts.parentChild;
-        this.expandRelationsCount = expansionResult.counts.relations;
-        this.expandTeamAllocatedCount = expansionResult.counts.teamAllocated;
-
-        // Displayed tasks: use the canonical Context, team, and task-filter scope.
-        this.displayedTasksCount = sel.scope.getVisibleFeatures().length;
       } catch (e) {
         console.warn('[Sidebar] _recomputeDataFunnel error:', e);
         this.resolvedTasksCount = 0;
-        this.selectedTasksCount = 0;
-        this.expandedTasksCount = 0;
-        this.displayedTasksCount = 0;
-        this.expandParentChildCount = 0;
-        this.expandRelationsCount = 0;
-        this.expandTeamAllocatedCount = 0;
       }
       this.requestUpdate();
     };
@@ -1326,7 +1271,6 @@ export class SidebarLit extends LitElement {
         views: sel.view.getSavedViews(),
         activeViewId: sel.view.getActiveViewId(),
       });
-      this._syncExpansionFromSelectors();
       this.taskFilters = sel.filter.getTaskFilters();
       // Initialize state & task type filters
       this.availableFeatureStates = sel.filter.getAvailableFeatureStates();
@@ -1448,29 +1392,6 @@ export class SidebarLit extends LitElement {
         PluginEvents.DEACTIVATED,
       ].forEach((evt) => bus.off(evt, this._onPluginsChanged));
     }
-  }
-
-  _toggleExpansion(type) {
-    if (type === 'parentChild') {
-      this.expandParentChild = !this.expandParentChild;
-    } else if (type === 'relations') {
-      this.expandRelations = !this.expandRelations;
-    } else if (type === 'teamAllocated') {
-      this.expandTeamAllocated = !this.expandTeamAllocated;
-    }
-    // Sync expansion state to State service
-    cmd.view.setExpansionState({
-      expandParentChild: this.expandParentChild,
-      expandRelations: this.expandRelations,
-      expandTeamAllocated: this.expandTeamAllocated,
-    });
-    // Trigger data funnel recomputation immediately and re-render the count bubbles.
-    if (this._recomputeDataFunnelNow) {
-      this._recomputeDataFunnelNow();
-    }
-    this.requestUpdate();
-    // Emit filter change event so the board updates
-    bus.emit(FilterEvents.CHANGED);
   }
 
   _getTeamDrilldownTeams() {
@@ -1773,8 +1694,7 @@ export class SidebarLit extends LitElement {
     : html``} `;
   }
 
-  // Project/team/view rendering and menu actions moved to TopMenu and small menu components;
-  // keep sidebar focused on dataset, expansions, filters and view options container.
+  // Project/team/view rendering and menu actions moved to TopMenu and small menu components.
 
   /**
    * Save current sidebar state to localStorage (debounced)

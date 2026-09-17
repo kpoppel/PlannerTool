@@ -19,7 +19,7 @@ import './ToolsMenu.lit.js';
 
 export class TopMenuBarLit extends LitElement {
   static properties = {
-    openMenu: { type: String }, // 'view', 'scenario', 'plan', 'team', or null
+    openMenu: { type: String }, // 'view', 'scenario', 'plan', 'scope', 'tools', or null
     projects: { type: Array },
     teams: { type: Array },
     scenarios: { type: Array },

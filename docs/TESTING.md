@@ -30,19 +30,29 @@ Run tests:
     npx playwright test --config=tests/playwright.config.js --project=firefox
 or
     npx playwright test --config=tests/playwright.config.js --project=chromium
-or
-    npx playwright test --config=playwright.smoke.config.js --project=chromium
 
-    To run with open browwser and pause execution:
+    To run with open browser and pause execution:
     PWDEBUG=1 npx playwright test tests/e2e/featureboard-hierarchy.spec.mjs --headed
-
-For browser / end-to-end tests use Playwright separately, e.g.:
-    npx playwright test --config=playwright.smoke.config.js --project=chromium
 
 Notes:
 - `tests/playwright.config.js` starts an isolated uvicorn server on `127.0.0.1:8010`.
 - The Playwright web server sets a dedicated `PLANNER_SECRET_KEY` for account PAT encryption in tests.
 - E2E storage is isolated under `tests/e2e/.tmp-data` so test runs do not modify the repository `data/` directory.
+
+## UI/UX v5 release validation
+
+Run the focused presentation-scope suites first, followed by the broad checks:
+
+    npx vitest run tests/application/scopeSelectors.test.js tests/components/sidebar.tasktype.test.js tests/components/empty-board-modal.scope.test.js tests/components/maingraph.test.js tests/swimlaneService.test.js tests/plugins/plugin-graph.test.js tests/plugins/plugin-markers.test.js tests/plugins/plugin-portfolio.phase4.test.js tests/plugins/plugin-plan-health-checks.test.js tests/plugins/plugin-dependencies.phase4.test.js
+    npm test
+    npm run test:coverage
+    pytest
+    xvfb-run -a npx playwright test --config=tests/playwright.config.js --project=chromium
+
+Acceptance requires no top-bar Teams menu or Sidebar expansion controls, exact
+Data Funnel counts under Scope and Team Drill-down changes, stable organization
+graph values under display filtering, Context-owned dependency lifecycle, and
+traceable source-plan lanes for Other allocations.
 
 # Run a session from CLI
 export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' localhost:8000/api/session | jq -r .sessionId)
@@ -55,7 +65,7 @@ Create a configuration
       localhost:8000/api/session
 
 Run browser based tests:
-source .venv/bin/activate && npx playwright test [modal-interactions.spec.js](http://_vscodecontentref_/4) --config=playwright.smoke.config.js --project=chromium --reporter=list
+    source .venv/bin/activate && npx playwright test tests/e2e/modal-interactions.spec.js --config=tests/playwright.config.js --project=chromium --reporter=list
 
 # Planner REST calls:
 

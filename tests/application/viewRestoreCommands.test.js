@@ -415,7 +415,6 @@ describe('application/commands/viewRestoreCommands', () => {
       featureSortMode: 'rank',
       capacityViewMode: 'team',
       displayMode: 'normal',
-      showDependencies: false,
       showUnassignedCards: true,
       showUnplannedWork: true,
       showOnlyProjectHierarchy: false,

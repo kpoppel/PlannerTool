@@ -79,11 +79,6 @@ export class ViewSaveModal extends LitElement {
       viewOptions: {},
       taskTypes: [],
       graphType: 'team',
-      expansionOptions: {
-        expandParentChild: false,
-        expandRelations: false,
-        expandTeamAllocated: false,
-      },
     };
 
     this.previewData.selectedProjects = (sel.selection.getSelectedProjects() || []).map(
@@ -113,15 +108,6 @@ export class ViewSaveModal extends LitElement {
     // Get graph type from sidebar
     if (sidebarElement && sidebarElement._graphType) {
       this.previewData.graphType = sidebarElement._graphType;
-    }
-
-    // Get expansion options from sidebar
-    if (sidebarElement) {
-      this.previewData.expansionOptions = {
-        expandParentChild: sidebarElement.expandParentChild || false,
-        expandRelations: sidebarElement.expandRelations || false,
-        expandTeamAllocated: sidebarElement.expandTeamAllocated || false,
-      };
     }
 
     this.requestUpdate();
@@ -301,35 +287,6 @@ export class ViewSaveModal extends LitElement {
                     </div>
                   </div>
 
-                  <div class="preview-group">
-                    <div class="preview-label">Expansion Options:</div>
-                    <ul class="preview-list">
-                      <li>
-                        Expand Parent/Child:
-                        <strong
-                          >${this.previewData.expansionOptions.expandParentChild ?
-                            'Yes'
-                          : 'No'}</strong
-                        >
-                      </li>
-                      <li>
-                        Expand Relations:
-                        <strong
-                          >${this.previewData.expansionOptions.expandRelations ?
-                            'Yes'
-                          : 'No'}</strong
-                        >
-                      </li>
-                      <li>
-                        Expand Team Allocated:
-                        <strong
-                          >${this.previewData.expansionOptions.expandTeamAllocated ?
-                            'Yes'
-                          : 'No'}</strong
-                        >
-                      </li>
-                    </ul>
-                  </div>
                 </div>
               `
             : ''}

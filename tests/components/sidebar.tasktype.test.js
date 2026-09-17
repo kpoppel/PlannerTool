@@ -25,10 +25,6 @@ describe('Sidebar task-type filter', () => {
     // Reset type visibility via seam so store-backed selector state is authoritative.
     cmd.view.setTypeVisibility('epic', true);
     cmd.view.setTypeVisibility('feature', true);
-    cmd.view.setContext(
-      { parent: false, child: false, dependency: false, otherAllocations: false },
-      { suppressEvents: true }
-    );
   });
 
   afterEach(() => {
@@ -186,6 +182,13 @@ describe('Sidebar task-type filter', () => {
       .map((element) => element.textContent.trim());
     expect(sectionTitles).to.not.include('Context');
     expect(sectionTitles).to.not.include('Taskboard Options');
+  });
+
+  it('does not retain obsolete expansion UI state', () => {
+    expect(sidebar._toggleExpansion).to.equal(undefined);
+    expect('expandParentChild' in sidebar).to.equal(false);
+    expect('expandRelations' in sidebar).to.equal(false);
+    expect('expandTeamAllocated' in sidebar).to.equal(false);
   });
 
   it('renders per-type team counts for the focused teams', async () => {

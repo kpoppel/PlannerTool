@@ -89,6 +89,23 @@ describe('view modals phase 5 seam migration', () => {
     expect(modal.remove).toHaveBeenCalledOnce();
   });
 
+  it('ViewSaveModal does not preview obsolete expansion controls', async () => {
+    const modal = new ViewSaveModal();
+    document.body.appendChild(modal);
+    modal.previewData = {
+      selectedProjects: [],
+      selectedTeams: [],
+      viewOptions: {},
+      taskTypes: [],
+      graphType: 'team',
+    };
+    await modal.updateComplete;
+
+    expect(modal.shadowRoot.textContent).not.toContain('Expansion Options');
+    expect(modal.shadowRoot.textContent).not.toContain('Expand Team Allocated');
+    modal.remove();
+  });
+
   it('ViewRenameModal uses cmd.viewRestore.renameView', async () => {
     const input = makeElement('input');
     input.value = 'Renamed';

@@ -1,15 +1,9 @@
 import { fixture, html, expect } from '@open-wc/testing';
-import sinon from 'sinon';
 import '../../www/js/components/FeatureBoard.lit.js';
-import { sel } from '../../www/js/application/imports.js';
 
 describe('FeatureBoard helper coverage', () => {
   beforeEach(async () => {
     await customElements.whenDefined('feature-board');
-  });
-
-  afterEach(() => {
-    sinon.restore();
   });
 
   it('_sortByRank sorts features by originalRank', async () => {
@@ -44,86 +38,4 @@ describe('FeatureBoard helper coverage', () => {
     expect(ordered[1].id).to.equal('f1');
   });
 
-  it('_isUnplanned identifies missing dates', async () => {
-    const el = await fixture(html`<feature-board></feature-board>`);
-    expect(el._isUnplanned({})).to.be.true;
-    expect(el._isUnplanned({ start: '2025-01-01', end: '2025-01-02' })).to.be.false;
-  });
-
-  it('_isHierarchicallyLinkedToSelectedProjectEpics follows parent chain', async () => {
-    const el = await fixture(html`<feature-board></feature-board>`);
-    const epic = { id: 'e1', type: 'epic' };
-    const child = { id: 'c1', parentId: 'e1' };
-    const all = [epic, child];
-    const selected = new Set(['e1']);
-    const res = el._isHierarchicallyLinkedToSelectedProjectEpics(child, all, selected);
-    expect(res).to.be.true;
-  });
-
-  it('_featurePassesFilters returns true for a basic visible feature', async () => {
-    const el = await fixture(html`<feature-board></feature-board>`);
-    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', selected: true }]);
-    sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['p1']);
-    sinon.stub(sel.selection, 'getSelectedTeamIds').returns(['t1']);
-    sinon.stub(sel.view, 'getExpansionState').returns({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    });
-    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
-    sinon.stub(sel.view, 'isTypeVisible').returns(true);
-    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
-    sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);
-    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['New']));
-    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
-
-    const feature = {
-      id: 'f1',
-      project: 'p1',
-      type: 'feature',
-      state: 'New',
-      capacity: [{ team: 't1' }],
-    };
-    const passes = el._featurePassesFilters(
-      feature,
-      new Map(),
-      [feature],
-      new Set(['f1'])
-    );
-    expect(passes).to.be.true;
-  });
-
-  it('_featurePassesFilters keeps relation-expanded features visible even when they are outside the selected project', async () => {
-    const el = await fixture(html`<feature-board></feature-board>`);
-    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', selected: true }]);
-    sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['p1']);
-    sinon.stub(sel.selection, 'getSelectedTeamIds').returns(['t1']);
-    sinon.stub(sel.view, 'getExpansionState').returns({
-      expandParentChild: false,
-      expandRelations: true,
-      expandTeamAllocated: false,
-    });
-    sinon.stub(sel.view, 'getExpandedFeatureIds').returns(new Set(['f-outside']));
-    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
-    sinon.stub(sel.view, 'isTypeVisible').returns(true);
-    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
-    sinon.stub(sel.view, 'getShowUnassignedCards').returns(false);
-    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['New']));
-    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
-
-    const feature = {
-      id: 'f-outside',
-      project: 'p2',
-      type: 'feature',
-      state: 'New',
-      capacity: [],
-    };
-    const passes = el._featurePassesFilters(
-      feature,
-      new Map(),
-      [feature],
-      new Set(['f-outside'])
-    );
-    expect(passes).to.be.true;
-  });
 });

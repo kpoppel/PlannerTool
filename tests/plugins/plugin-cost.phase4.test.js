@@ -61,7 +61,6 @@ describe('PluginCostComponent command/selector seam', () => {
       },
       taskTypes: [],
       states: ['New', 'Doing'],
-      expansion: ['parentChild', 'relations', 'teamAllocated'],
     });
     expect(mockCmd.view.setExpansionState).toHaveBeenCalledWith({
       expandParentChild: true,

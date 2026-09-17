@@ -2,7 +2,6 @@ import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/FeatureBoard.lit.js';
 import * as boardUtils from '../../www/js/components/board-utils.js';
-import { sel } from '../../www/js/application/imports.js';
 
 // Ensure `scrollTo` exists on elements in the test environment
 if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
@@ -47,47 +46,6 @@ describe('FeatureBoard helper coverage (additional)', () => {
     const ordered = el._orderFeaturesHierarchically([epic, child, standalone], 'rank');
     expect(ordered[0].id).to.equal('e1');
     expect(ordered.some((f) => f.id === 'c1')).to.be.true;
-  });
-
-  it('_isUnplanned and hierarchical linking', async () => {
-    const el = await fixture(html`<feature-board></feature-board>`);
-    expect(el._isUnplanned({})).to.be.true;
-    const epic = { id: 'e1', type: 'epic' };
-    const child = { id: 'c1', parentId: 'e1' };
-    const res = el._isHierarchicallyLinkedToSelectedProjectEpics(
-      child,
-      [epic, child],
-      new Set(['e1'])
-    );
-    expect(res).to.be.true;
-  });
-
-  it('_featurePassesFilters respects project/team and state filters', async () => {
-    const el = await fixture(html`<feature-board></feature-board>`);
-    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', selected: true }]);
-    sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['p1']);
-    sinon.stub(sel.selection, 'getSelectedTeamIds').returns(['t1']);
-    sinon.stub(sel.view, 'getExpansionState').returns({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    });
-    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
-    sinon.stub(sel.view, 'isTypeVisible').returns(true);
-    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
-    sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);
-    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['New']));
-    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
-
-    const feature = {
-      id: 'f1',
-      project: 'p1',
-      type: 'feature',
-      state: 'New',
-      capacity: [{ team: 't1' }],
-    };
-    const passes = el._featurePassesFilters(feature, new Map(), [feature]);
-    expect(passes).to.equal(true);
   });
 
   it('_startThumbDrag/_onThumbMove scrollbar rail was removed', async () => {

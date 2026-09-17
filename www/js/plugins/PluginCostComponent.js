@@ -491,7 +491,7 @@ export class PluginCostComponent extends LitElement {
       this._reloadTimer = null;
     }
 
-    // Restore sidebar controls and expansion defaults when plugin UI closes.
+    // Restore sidebar controls and cost-specific expansion defaults when the plugin closes.
     cmd.filter.clearSidebarDisabledElements();
     cmd.view.setExpansionState({
       expandParentChild: false,
@@ -570,12 +570,9 @@ export class PluginCostComponent extends LitElement {
       },
       taskTypes: [],
       states: Array.from(sel.filter.getAvailableFeatureStates() || []),
-      expansion: ['parentChild', 'relations', 'teamAllocated'],
     };
     cmd.filter.setSidebarDisabledElements(disabled);
-    // Ensure Parent/Child expansion is enabled while plugin is active so
-    // children from selected plans are included in calculations and the
-    // Sidebar shows Parent/Child Links as checked.
+    // The cost endpoint still uses legacy expansion inputs to build its request payload.
     cmd.view.setExpansionState({
       expandParentChild: true,
       expandRelations: true,

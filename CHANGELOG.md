@@ -130,6 +130,7 @@ Template - do not change :
 - Fixed store `setAllStatesSelected(true)` to derive available feature states from canonical baseline features, removing the stale dependency on a non-existent `state.filter` slice that broke plugin lifecycle tests.
 
 ### Changed
+- Completed the UI/UX v5 presentation-scope migration and removed obsolete TeamMenu, Sidebar expansion, saved-view preview, and empty-board expansion paths while retaining the Cost request compatibility boundary.
 - Moved the Sidebar Context controls before Team Drill-down so users choose related work before narrowing its teams.
 - Group context-menu move actions are now task-relative (Move up/down across the mixed task+group stream), while nesting changes are handled in-place through the existing Update Group modal parent selector.
 - Horizontal drag on a group pill now shifts all planned tasks contained by that group (including nested groups and task descendants) by the same day delta; unplanned tasks remain unplanned.

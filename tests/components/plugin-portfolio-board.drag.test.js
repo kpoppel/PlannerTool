@@ -5,7 +5,7 @@ import { cmd, sel } from '../../www/js/application/imports.js';
 
 describe('plugin-portfolio-board drag and drop', () => {
   let seamStubs = [];
-  let getEffectiveFeaturesStub;
+  let getVisibleFeaturesStub;
 
   beforeEach(() => {
     seamStubs.push(sinon.stub(sel.selection, 'getProjects').returns([
@@ -14,8 +14,7 @@ describe('plugin-portfolio-board drag and drop', () => {
     seamStubs.push(sinon.stub(sel.selection, 'getTeams').returns([
       { id: 't1', name: 'Team One', selected: true, color: '#2563eb' },
     ]));
-    seamStubs.push(sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['p1']));
-    seamStubs.push(sinon.stub(sel.selection, 'getSelectedTeamIds').returns(['t1']));
+    seamStubs.push(sinon.stub(sel.scope, 'getTeamDrilldownIds').returns(['t1']));
     seamStubs.push(sinon.stub(sel.filter, 'getAvailableFeatureStates').returns(['New', 'Doing']));
     seamStubs.push(sinon.stub(sel.filter, 'getSelectedFeatureStateNames').returns(['New', 'Doing']));
     seamStubs.push(sinon.stub(sel.filter, 'featurePassesFilters').returns(true));
@@ -25,11 +24,9 @@ describe('plugin-portfolio-board drag and drop', () => {
     }));
     seamStubs.push(sinon.stub(sel.filter, 'compareFeatureStates').callsFake((a, b) => String(a).localeCompare(String(b))));
     seamStubs.push(sinon.stub(sel.feature, 'getAvailableTaskTypes').returns(['Feature']));
-    getEffectiveFeaturesStub = sinon.stub(sel.feature, 'getEffectiveFeatures').returns([]);
-    seamStubs.push(getEffectiveFeaturesStub);
+    getVisibleFeaturesStub = sinon.stub(sel.scope, 'getVisibleFeatures').returns([]);
+    seamStubs.push(getVisibleFeaturesStub);
     seamStubs.push(sinon.stub(sel.view, 'isTypeVisible').returns(true));
-    seamStubs.push(sinon.stub(sel.view, 'getExpansionState').returns({}));
-    seamStubs.push(sinon.stub(sel.view, 'getExpandedFeatureIds').returns(new Set()));
     seamStubs.push(sinon.stub(sel.scenario, 'getActiveScenarioId').returns('baseline'));
     seamStubs.push(sinon.stub(sel.scenario, 'getActiveScenario').returns({ id: 'baseline', overrides: {} }));
   });
@@ -49,7 +46,7 @@ describe('plugin-portfolio-board drag and drop', () => {
       project: 'p1',
       capacity: [{ team: 't1', capacity: 50 }],
     };
-    getEffectiveFeaturesStub.returns([feature]);
+    getVisibleFeaturesStub.returns([feature]);
     const updateStub = sinon.stub(cmd.feature, 'updateFeatureField').returns(true);
     seamStubs.push(updateStub);
 
@@ -79,7 +76,7 @@ describe('plugin-portfolio-board drag and drop', () => {
       project: 'p1',
       capacity: [{ team: 't1', capacity: 50 }],
     };
-    getEffectiveFeaturesStub.returns([feature]);
+    getVisibleFeaturesStub.returns([feature]);
     const updateStub = sinon.stub(cmd.feature, 'updateFeatureField').returns(false);
     seamStubs.push(updateStub);
 
@@ -109,7 +106,7 @@ describe('plugin-portfolio-board drag and drop', () => {
       project: 'p1',
       capacity: [{ team: 't1', capacity: 50 }],
     };
-    getEffectiveFeaturesStub.returns([feature]);
+    getVisibleFeaturesStub.returns([feature]);
     const updateStub = sinon.stub(cmd.feature, 'updateFeatureField').returns(true);
     seamStubs.push(updateStub);
 
@@ -138,7 +135,7 @@ describe('plugin-portfolio-board drag and drop', () => {
         { team: 't2', capacity: 30 },
       ],
     };
-    getEffectiveFeaturesStub.returns([feature]);
+    getVisibleFeaturesStub.returns([feature]);
     const updateStub = sinon.stub(cmd.feature, 'updateFeatureField').returns(true);
     seamStubs.push(updateStub);
 
@@ -190,7 +187,7 @@ describe('plugin-portfolio-board drag and drop', () => {
         capacity: [{ team: 't1', capacity: 50 }],
       },
     ];
-    getEffectiveFeaturesStub.returns(features);
+    getVisibleFeaturesStub.returns(features);
 
     const el = await fixture(html`<plugin-portfolio-board></plugin-portfolio-board>`);
     const layout = el._timelineLayout;
