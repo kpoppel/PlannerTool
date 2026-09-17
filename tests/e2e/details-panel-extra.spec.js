@@ -64,7 +64,7 @@ test.describe('Details Panel - Extra coverage', () => {
     expect(afterCount).toBeLessThan(beforeCount);
   });
 
-  test('add team flow adds a team', async ({ page }) => {
+  test('add team flow does not mutate the readonly Baseline scenario', async ({ page }) => {
     const card = await page.$('feature-card-lit');
     await card.click();
     await page.waitForFunction(
@@ -93,13 +93,20 @@ test.describe('Details Panel - Extra coverage', () => {
     const input = page.locator('details-panel .add-team-form input');
     await input.fill('10');
     await page.locator('details-panel .add-team-form button[type=submit]').click();
-    await page.waitForTimeout(400);
+    await page.locator('details-panel .details-close').click();
+    await page.locator('feature-card-lit').first().click();
+    await page.waitForFunction(
+      () => {
+        const panel = document.querySelector('details-panel');
+        return panel && panel.open === true;
+      }
+    );
 
     const newCount = await page.$$eval(
       'details-panel .capacity-bar-row',
       (els) => els.length
     );
-    expect(newCount).toBeGreaterThanOrEqual(1);
+    expect(newCount).toBe(0);
   });
 
   test('shrinkwrap epic button exists for epics and triggers date update', async ({

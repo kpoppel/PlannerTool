@@ -131,6 +131,8 @@ Template - do not change :
 - Fixed store `setAllStatesSelected(true)` to derive available feature states from canonical baseline features, removing the stale dependency on a non-existent `state.filter` slice that broke plugin lifecycle tests.
 
 ### Changed
+- Migration `0029_migrate_view_expansion_to_context.py` converts persisted saved-view expansion flags to canonical Context, and the obsolete expansion state, commands, selectors, and helper are removed from the frontend.
+- Playwright E2E fixtures and assertions now initialize the current global hierarchy/state schema, select plans explicitly, and cover Scope, Data Funnel, Sidebar, and immutable Baseline behavior.
 - Cost reporting now uses canonical selected-plan Context without legacy expansion state; Team Drill-down only selects Team-view rows, and filtered hierarchy parents cannot be re-added to financial payloads.
 - Completed the UI/UX v5 presentation-scope migration and removed obsolete TeamMenu, Sidebar expansion, saved-view preview, and empty-board expansion paths.
 - Moved the Sidebar Context controls before Team Drill-down so users choose related work before narrowing its teams.

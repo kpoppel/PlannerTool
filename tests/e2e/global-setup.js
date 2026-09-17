@@ -101,6 +101,24 @@ async function bootstrapTestData(page) {
       },
     });
 
+    await post('/admin/v1/global-settings', {
+      content: {
+        task_type_hierarchy: [
+          { level: 1, types: ['Epic'] },
+          { level: 2, types: ['Feature'] },
+          { level: 3, types: ['User Story'] },
+          { level: 4, types: ['Task'] },
+        ],
+        state_display_sequence: [
+          { types: ['New'] },
+          { types: ['Defined'] },
+          { types: ['Active'] },
+          { types: ['Resolved'] },
+          { types: ['Closed'] },
+        ],
+      },
+    });
+
     await post('/admin/v1/teams', {
       content: {
         schema_version: 2,

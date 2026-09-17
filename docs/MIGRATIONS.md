@@ -28,3 +28,8 @@ Notes
 - Keep migrations idempotent and small.
 - Backups are performed only if a migration honors the `backup` flag.
 - Add tests for any non-trivial migration.
+
+Current migrations
+- `0029_migrate_view_expansion_to_context.py` converts saved-view expansion flags
+  to canonical Context fields and removes the legacy keys. With `--backup`, the
+  original payloads are copied to the `views_expansion_backup` namespace.

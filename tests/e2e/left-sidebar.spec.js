@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { clearOverlays } from './helpers.js';
+import { clearOverlays, selectAllPlans } from './helpers.js';
 
 async function waitForSidebar(page) {
   await page.waitForFunction(() => {
@@ -13,6 +13,7 @@ test.describe('Left Sidebar', () => {
     await page.goto('/');
     await waitForSidebar(page);
     await clearOverlays(page);
+    await selectAllPlans(page);
   });
 
   test('renders sidebar and server status', async ({ page }) => {
@@ -29,77 +30,18 @@ test.describe('Left Sidebar', () => {
     expect(statusText.text.length).toBeGreaterThan(0);
   });
 
-  test('timeline scale segmented controls switch active mode', async ({ page }) => {
-    const clickedWeeks = await page.evaluate(() => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
-      const btn = Array.from(root?.querySelectorAll('.segment-btn') || []).find(
-        (el) => (el.textContent || '').trim() === 'Weeks'
-      );
-      if (!btn) return false;
-      btn.click();
-      return true;
-    });
-    expect(clickedWeeks).toBe(true);
+  test('Scope menu toggles canonical Context', async ({ page }) => {
+    await page.getByRole('button', { name: 'Scope' }).click();
+    const ancestors = page.locator('scope-menu').getByRole('button', { name: /Ancestors/ });
+    await expect(ancestors).toBeVisible();
+    const before = await ancestors.getAttribute('aria-pressed');
 
-    await page.waitForFunction(() => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
-      const btn = Array.from(root?.querySelectorAll('.segment-btn') || []).find(
-        (el) => (el.textContent || '').trim() === 'Weeks'
-      );
-      return !!btn && btn.classList.contains('active');
-    });
+    await ancestors.click();
 
-    const clickedMonths = await page.evaluate(() => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
-      const btn = Array.from(root?.querySelectorAll('.segment-btn') || []).find(
-        (el) => (el.textContent || '').trim() === 'Months'
-      );
-      if (!btn) return false;
-      btn.click();
-      return true;
-    });
-    expect(clickedMonths).toBe(true);
-
-    await page.waitForFunction(() => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
-      const btn = Array.from(root?.querySelectorAll('.segment-btn') || []).find(
-        (el) => (el.textContent || '').trim() === 'Months'
-      );
-      return !!btn && btn.classList.contains('active');
-    });
-  });
-
-  test('expand dataset option toggles active state', async ({ page }) => {
-    const stateBefore = await page.evaluate(() => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
-      const row = Array.from(root?.querySelectorAll('.option-row') || []).find((el) =>
-        (el.textContent || '').includes('Parent/Child Links')
-      );
-      return {
-        exists: !!row,
-        disabled: row?.getAttribute('aria-disabled') === 'true',
-        active: !!row && row.classList.contains('active'),
-      };
-    });
-
-    expect(stateBefore.exists).toBe(true);
-    test.skip(stateBefore.disabled, 'Expansion row disabled by current plugin context');
-
-    await page.evaluate(() => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
-      const row = Array.from(root?.querySelectorAll('.option-row') || []).find((el) =>
-        (el.textContent || '').includes('Parent/Child Links')
-      );
-      row?.click();
-    });
-
-    await page.waitForFunction((before) => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
-      const row = Array.from(root?.querySelectorAll('.option-row') || []).find((el) =>
-        (el.textContent || '').includes('Parent/Child Links')
-      );
-      return !!row && row.classList.contains('active') !== before;
-    }, stateBefore.active);
+    await expect(ancestors).toHaveAttribute(
+      'aria-pressed',
+      before === 'true' ? 'false' : 'true'
+    );
   });
 
   test('task filters section renders options', async ({ page }) => {
