@@ -26,7 +26,7 @@ Template - do not change :
 - Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
 - Stage 4.1 plugins now share canonical Team Drill-down display scope; Graph preserves organization-wide capacity inputs while Markers and Portfolio follow visible task scope.
-- Portfolio now shows per-plan team-equivalents rollups from visible allocations without changing organization-wide graph metrics.
+- Portfolio now shows per-plan contributing-team counts without presenting non-temporal allocation sums as capacity utilization.
 - Completed the Stage 4 specialized-plugin audit: Plan Health remains scope-neutral and Dependency lifecycle remains Context-owned.
 - Stage 3 groups now support cross-plan members with selected mother-plan precedence, and swimlanes are driven solely by canonical Context source-plan lanes.
 - Grouped descendant tasks now remain in their higher-level mother-plan lane when both hierarchy levels are selected.

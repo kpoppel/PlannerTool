@@ -56,7 +56,7 @@ export class PluginPortfolioComponent extends LitElement {
     _open: { type: Boolean, state: true },
     _selectedFeatureId: { type: String, state: true },
     _rows: { type: Array, state: true },
-    _planTeamEquivalents: { type: Array, state: true },
+    _planTeamSummaries: { type: Array, state: true },
     _unallocated: { type: Array, state: true },
     _columnStates: { type: Array, state: true },
     _projectById: { type: Object, state: true },
@@ -81,7 +81,7 @@ export class PluginPortfolioComponent extends LitElement {
     this._open = false;
     this._selectedFeatureId = null;
     this._rows = [];
-    this._planTeamEquivalents = [];
+    this._planTeamSummaries = [];
     this._unallocated = [];
     this._columnStates = [];
     this._projectById = {};
@@ -312,7 +312,7 @@ export class PluginPortfolioComponent extends LitElement {
       const planId = String(feature.project);
       const project = this._projectById[planId];
       if (!planRollups.has(planId)) {
-        planRollups.set(planId, { planId, planName: project ? project.name : planId, teams: new Set(), equivalent: 0 });
+        planRollups.set(planId, { planId, planName: project ? project.name : planId, teams: new Set() });
       }
       const rollup = planRollups.get(planId);
       for (const entry of feature.capacity) {
@@ -320,15 +320,15 @@ export class PluginPortfolioComponent extends LitElement {
         const teamId = String(entry.team);
         if (allocation <= 0 || !selectedTeamIds.has(teamId)) continue;
         rollup.teams.add(teamId);
-        rollup.equivalent += allocation / 100;
       }
     }
-    this._planTeamEquivalents = Array.from(planRollups.values()).map((rollup) => ({
-      planId: rollup.planId,
-      planName: rollup.planName,
-      teamCount: rollup.teams.size,
-      equivalent: Number(rollup.equivalent.toFixed(2)),
-    }));
+    this._planTeamSummaries = Array.from(planRollups.values())
+      .filter((rollup) => rollup.teams.size > 0)
+      .map((rollup) => ({
+        planId: rollup.planId,
+        planName: rollup.planName,
+        teamCount: rollup.teams.size,
+      }));
 
     this._rows = rows;
     this._unallocated = unallocatedWithDepth;
@@ -744,12 +744,11 @@ export class PluginPortfolioComponent extends LitElement {
           <span class="panel-toggle ${this._boardOpen ? 'up' : ''}">▼</span>
         </div>
         ${this._boardOpen ? html`
-      ${this._planTeamEquivalents.length ? html`
-        <div class="plan-team-rollups" aria-label="Plan team equivalents">
-          ${this._planTeamEquivalents.map((rollup) => html`
+      ${this._planTeamSummaries.length ? html`
+        <div class="plan-team-rollups" aria-label="Contributing teams by plan">
+          ${this._planTeamSummaries.map((rollup) => html`
             <span class="plan-team-rollup">
-              <strong>${rollup.planName}</strong>
-              <span>${rollup.equivalent} team equivalents</span>
+              <strong>${rollup.planName}</strong><span> · ${rollup.teamCount} contributing ${rollup.teamCount === 1 ? 'team' : 'teams'}</span>
             </span>
           `)}
         </div>

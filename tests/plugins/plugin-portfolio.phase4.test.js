@@ -61,8 +61,8 @@ describe('PluginPortfolioComponent selector seam', () => {
     expect(el._columnStates).to.deep.equal(['Doing']);
     expect(el._rows).to.have.length(1);
     expect(el._rows[0].team.id).to.equal('t1');
-    expect(el._planTeamEquivalents).to.deep.equal([
-      { planId: 'p1', planName: 'Plan 1', teamCount: 1, equivalent: 0.08 },
+    expect(el._planTeamSummaries).to.deep.equal([
+      { planId: 'p1', planName: 'Plan 1', teamCount: 1 },
     ]);
   });
 
@@ -103,9 +103,40 @@ describe('PluginPortfolioComponent selector seam', () => {
     const el = new PluginPortfolioComponent();
     el._refresh();
 
-    expect(el._planTeamEquivalents[0]).to.deep.equal({
-      planId: 'p1', planName: 'Plan 1', teamCount: 2, equivalent: 1,
+    expect(el._planTeamSummaries[0]).to.deep.equal({
+      planId: 'p1', planName: 'Plan 1', teamCount: 2,
     });
+  });
+
+  it('reports contributing teams without a non-temporal allocation total', async () => {
+    mockSel.scope.getVisibleFeatures.mockReturnValue([{
+      id: 'f3',
+      project: 'p1',
+      state: 'Doing',
+      type: 'feature',
+      capacity: [
+        { team: 't1', capacity: 40 },
+        { team: 't2', capacity: 60 },
+      ],
+    }]);
+    mockSel.selection.getTeams.mockReturnValue([
+      { id: 't1', name: 'Team 1' },
+      { id: 't2', name: 'Team 2' },
+    ]);
+    mockSel.scope.getTeamDrilldownIds.mockReturnValue(['t1', 't2']);
+
+    const el = new PluginPortfolioComponent();
+    el._refresh();
+    el.open();
+    document.body.appendChild(el);
+    await el.updateComplete;
+
+    const rollup = el.shadowRoot.querySelector('.plan-team-rollup');
+    expect(rollup.textContent.replace(/\s+/g, ' ').trim()).to.equal(
+      'Plan 1 · 2 contributing teams'
+    );
+    expect(el.shadowRoot.textContent).not.to.include('allocation total');
+    el.remove();
   });
 
   it('does not turn an empty Team Drill-down into an all-team rollup', () => {
@@ -114,7 +145,7 @@ describe('PluginPortfolioComponent selector seam', () => {
       project: 'p1',
       state: 'Doing',
       type: 'feature',
-      capacity: [{ team: 't1', capacity: 100 }],
+      capacity: [],
     }]);
     mockSel.scope.getTeamDrilldownIds.mockReturnValue([]);
 
@@ -122,7 +153,7 @@ describe('PluginPortfolioComponent selector seam', () => {
     el._refresh();
 
     expect(el._rows).to.have.length(0);
-    expect(el._planTeamEquivalents).to.deep.equal([]);
+    expect(el._planTeamSummaries).to.deep.equal([]);
   });
 
   it('keeps cross-plan visible allocations in separate rollups', () => {
@@ -155,9 +186,9 @@ describe('PluginPortfolioComponent selector seam', () => {
     const el = new PluginPortfolioComponent();
     el._refresh();
 
-    expect(el._planTeamEquivalents).to.deep.equal([
-      { planId: 'p1', planName: 'Plan 1', teamCount: 1, equivalent: 0.5 },
-      { planId: 'p2', planName: 'Plan 2', teamCount: 1, equivalent: 1 },
+    expect(el._planTeamSummaries).to.deep.equal([
+      { planId: 'p1', planName: 'Plan 1', teamCount: 1 },
+      { planId: 'p2', planName: 'Plan 2', teamCount: 1 },
     ]);
   });
 });
