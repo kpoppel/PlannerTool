@@ -112,6 +112,13 @@ describe('application/selectors/scopeSelectors', () => {
     });
   });
 
+  it('preserves an empty Team Drill-down as an empty selection', () => {
+    const state = baseState({ selection: { teamIds: [] } });
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getTeamDrilldownIds()).toEqual([]);
+  });
+
   it('matches lowercase saved task type selections to canonical task types', () => {
     const state = baseState();
     state.selection.taskTypeNames = ['feature'];

@@ -7,7 +7,7 @@ import { findInBoard } from '../components/board-utils.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { bus } from '../core/EventBus.js';
-import { TimelineEvents, ProjectEvents, TeamEvents, BoardEvents } from '../core/EventRegistry.js';
+import { TimelineEvents, ProjectEvents, TeamEvents, FilterEvents, BoardEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { sel } from '../application/imports.js';
 import { pluginManager } from '../core/PluginManager.js';
@@ -172,6 +172,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     bus.on(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
     bus.on(TeamEvents.CHANGED, this._selectionListener);
+    bus.on(FilterEvents.CHANGED, this._selectionListener);
   }
 
   _unsubscribeBusEvents() {
@@ -182,6 +183,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     if (this._selectionListener) {
       bus.off(ProjectEvents.CHANGED, this._selectionListener);
       bus.off(TeamEvents.CHANGED, this._selectionListener);
+      bus.off(FilterEvents.CHANGED, this._selectionListener);
     }
   }
 
@@ -209,10 +211,9 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     let displayCount = totalUniqueCount;
     if (this.visible && this.markers.length > 0) {
       const selectedProjects = sel.selection.getSelectedProjectIds();
-      const selectedTeams = sel.selection.getSelectedTeamIds();
+      const visibleTeamIds = sel.scope.getTeamDrilldownIds();
 
       const hasProjectSelection = selectedProjects.length > 0;
-      const hasTeamSelection = selectedTeams.length > 0;
 
       // If no project is selected, show nothing
       if (!hasProjectSelection) {
@@ -220,9 +221,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
       } else {
         const filtered = this.markers.filter((m) => {
           const projectMatch = selectedProjects.includes(m.project);
-          // When no teams are selected, treat all teams as matching;
-          // otherwise filter to selected teams (team-agnostic markers always pass)
-          const teamMatch = !hasTeamSelection || !m.team_id || selectedTeams.includes(m.team_id);
+          const teamMatch = !m.team_id || visibleTeamIds.includes(m.team_id);
           // Check plan filter
           const planMatch = this.selectedPlans[m.plan_id] !== false;
           return projectMatch && teamMatch && planMatch;
@@ -429,12 +428,12 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
 
     // Filter markers by selected projects and teams
     const selectedProjects = sel.selection.getSelectedProjectIds();
-    const selectedTeams = sel.selection.getSelectedTeamIds();
+    const visibleTeamIds = sel.scope.getTeamDrilldownIds();
 
     const filteredMarkers = this.markers.filter((markerEntry) => {
       // When no project is selected, show nothing
       const hasProjectSelection = selectedProjects.length > 0;
-      const hasTeamSelection = selectedTeams.length > 0;
+      const hasTeamSelection = visibleTeamIds.length > 0;
 
       if (!hasProjectSelection) return false;
 
@@ -442,8 +441,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
       const projectMatch = selectedProjects.includes(markerEntry.project);
       // When no teams are selected, treat all teams as matching;
       // otherwise filter to selected teams (team-agnostic markers always pass)
-      const teamMatch =
-        !hasTeamSelection || !markerEntry.team_id || selectedTeams.includes(markerEntry.team_id);
+      const teamMatch = !markerEntry.team_id || visibleTeamIds.includes(markerEntry.team_id);
       // Plan visibility toggle
       const planMatch = this.selectedPlans[markerEntry.plan_id] !== false;
 

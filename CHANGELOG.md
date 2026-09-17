@@ -22,8 +22,12 @@ Template - do not change :
 - Added the initial v5 display-scope contract separating resolved features from Context, Team Drill-down, and task-filter visibility.
 - Added a standalone scope-first UI/UX v5 wireframe beside the redesign discussion notes.
 - Added a self-contained static capture of the shared AZ Planner UI at `backup/user_interface_v5/static_v4.html`.
+- Documented proposed organization-share, project-utilization, and portfolio-allocation allowance metrics for future design.
 - Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
+- Stage 4.1 plugins now share canonical Team Drill-down display scope; Graph preserves organization-wide capacity inputs while Markers and Portfolio follow visible task scope.
+- Portfolio now shows per-plan team-equivalents rollups from visible allocations without changing organization-wide graph metrics.
+- Completed the Stage 4 specialized-plugin audit: Plan Health remains scope-neutral and Dependency lifecycle remains Context-owned.
 - Stage 3 groups now support cross-plan members with selected mother-plan precedence, and swimlanes are driven solely by canonical Context source-plan lanes.
 - Grouped descendant tasks now remain in their higher-level mother-plan lane when both hierarchy levels are selected.
 - MainGraph now normalizes Team-mode values against the full organization roster, filters only displayed team series by Team Drill-down, and renders empty when no plans are selected.

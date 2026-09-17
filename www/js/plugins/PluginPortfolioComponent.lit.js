@@ -56,6 +56,7 @@ export class PluginPortfolioComponent extends LitElement {
     _open: { type: Boolean, state: true },
     _selectedFeatureId: { type: String, state: true },
     _rows: { type: Array, state: true },
+    _planTeamEquivalents: { type: Array, state: true },
     _unallocated: { type: Array, state: true },
     _columnStates: { type: Array, state: true },
     _projectById: { type: Object, state: true },
@@ -80,6 +81,7 @@ export class PluginPortfolioComponent extends LitElement {
     this._open = false;
     this._selectedFeatureId = null;
     this._rows = [];
+    this._planTeamEquivalents = [];
     this._unallocated = [];
     this._columnStates = [];
     this._projectById = {};
@@ -177,15 +179,11 @@ export class PluginPortfolioComponent extends LitElement {
   _refresh() {
     const featureApi = /** @type {any} */ (sel.feature);
     const selectionApi = /** @type {any} */ (sel.selection);
+    const scopeApi = /** @type {any} */ (sel.scope);
     const filterApi = /** @type {any} */ (sel.filter);
     const viewApi = /** @type {any} */ (sel.view);
 
-    let features = [];
-    try {
-      features = featureApi.getEffectiveFeatures() || [];
-    } catch (_) {
-      return;
-    }
+    const features = scopeApi.getVisibleFeatures();
 
     const uniqueById = new Map();
     for (const feature of features) {
@@ -196,10 +194,8 @@ export class PluginPortfolioComponent extends LitElement {
 
     const projects = selectionApi.getProjects() || [];
     const teams = selectionApi.getTeams() || [];
-    const selectedProjectIds = selectionApi.getSelectedProjectIds();
-    const selectedProjects = new Set(selectedProjectIds.map((id) => String(id)));
-    const selectedTeamIdsArr = selectionApi.getSelectedTeamIds();
-    const selectedTeams = teams.filter((t) => selectedTeamIdsArr.includes(t?.id));
+    const visibleTeamIds = scopeApi.getTeamDrilldownIds();
+    const selectedTeams = teams.filter((team) => visibleTeamIds.includes(String(team.id)));
     const selectedTeamIds = new Set(selectedTeams.map((t) => String(t.id)));
 
     this._projectById = Object.fromEntries(projects.map((p) => [String(p.id), p]));
@@ -235,13 +231,6 @@ export class PluginPortfolioComponent extends LitElement {
       availableTypes.filter((t) => viewApi.isTypeVisible(t) !== false)
     );
 
-    const expansion = viewApi.getExpansionState() || {};
-    const hasExpansion =
-      !!expansion.expandParentChild ||
-      !!expansion.expandRelations ||
-      !!expansion.expandTeamAllocated;
-
-    const expandedIds = hasExpansion ? viewApi.getExpandedFeatureIds() : null;
     const rows = selectedTeams.map((team) => {
       const cells = {};
       for (const stateName of this._columnStates) {
@@ -255,12 +244,6 @@ export class PluginPortfolioComponent extends LitElement {
 
     const filtered = deduped.filter((feature) => {
       const featureId = String(feature.id);
-
-      if (hasExpansion) {
-        if (!expandedIds?.has(featureId)) return false;
-      } else {
-        if (!selectedProjects.has(String(feature.project))) return false;
-      }
 
       const featureStateNorm = normalizeState(feature.state);
       if (!stateMap.has(featureStateNorm)) return false;
@@ -323,6 +306,29 @@ export class PluginPortfolioComponent extends LitElement {
 
     // Apply hierarchical ordering with depth to unallocated items (roots at end)
     const unallocatedWithDepth = this._orderUnallocatedHierarchically(unallocated);
+
+    const planRollups = new Map();
+    for (const feature of filtered) {
+      const planId = String(feature.project);
+      const project = this._projectById[planId];
+      if (!planRollups.has(planId)) {
+        planRollups.set(planId, { planId, planName: project ? project.name : planId, teams: new Set(), equivalent: 0 });
+      }
+      const rollup = planRollups.get(planId);
+      for (const entry of feature.capacity) {
+        const allocation = numberOrZero(entry.capacity);
+        const teamId = String(entry.team);
+        if (allocation <= 0 || !selectedTeamIds.has(teamId)) continue;
+        rollup.teams.add(teamId);
+        rollup.equivalent += allocation / 100;
+      }
+    }
+    this._planTeamEquivalents = Array.from(planRollups.values()).map((rollup) => ({
+      planId: rollup.planId,
+      planName: rollup.planName,
+      teamCount: rollup.teams.size,
+      equivalent: Number(rollup.equivalent.toFixed(2)),
+    }));
 
     this._rows = rows;
     this._unallocated = unallocatedWithDepth;
@@ -738,6 +744,16 @@ export class PluginPortfolioComponent extends LitElement {
           <span class="panel-toggle ${this._boardOpen ? 'up' : ''}">▼</span>
         </div>
         ${this._boardOpen ? html`
+      ${this._planTeamEquivalents.length ? html`
+        <div class="plan-team-rollups" aria-label="Plan team equivalents">
+          ${this._planTeamEquivalents.map((rollup) => html`
+            <span class="plan-team-rollup">
+              <strong>${rollup.planName}</strong>
+              <span>${rollup.equivalent} team equivalents</span>
+            </span>
+          `)}
+        </div>
+      ` : ''}
       <div class="board-scroll">
         <table class="pgrid" style="--state-count:${this._columnStates.length}">
           <thead>

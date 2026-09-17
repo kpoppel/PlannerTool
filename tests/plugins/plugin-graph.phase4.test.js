@@ -13,6 +13,10 @@ const mockSel = vi.hoisted(() => ({
     getSelectedTeamIds: () => ['t1'],
     getSelectedProjectIds: () => ['p1'],
   },
+  scope: {
+    getVisibleTeams: () => ['t1'],
+    getTeamDrilldownIds: () => ['t1'],
+  },
   capacity: {
     getCapacityDates: () => ['2025-01-01'],
     getTeamDailyCapacity: () => [[12]],
@@ -63,5 +67,20 @@ describe('PluginGraph Phase 4 selector seam', () => {
     );
 
     expect(out.days).toBeGreaterThan(0);
+  });
+
+  it('uses canonical visible teams for Team-mode series', () => {
+    mockSel.filter.getSelectedFeatureStateNames = () => ['Active'];
+    mockSel.scope.getTeamDrilldownIds = () => [];
+
+    const graph = new PluginGraph();
+    const out = graph._computeDailyTotals(
+      'team',
+      new Date('2025-01-01'),
+      new Date('2025-01-01')
+    );
+
+    expect(out.days).toBe(0);
+    expect(out.totals).toEqual([]);
   });
 });

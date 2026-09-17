@@ -11,6 +11,10 @@ const mockSel = vi.hoisted(() => ({
     getSelectedProjectIds: vi.fn(() => []),
     getSelectedTeamIds: vi.fn(() => []),
   },
+  scope: {
+    getVisibleTeams: vi.fn(() => []),
+    getTeamDrilldownIds: vi.fn(() => []),
+  },
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
@@ -64,6 +68,7 @@ describe('PluginMarkersComponent marker filtering', () => {
   it('renders filtered marker counts from selector-backed project and team ids', async () => {
     mockSel.selection.getSelectedProjectIds.mockReturnValue(['proj-A']);
     mockSel.selection.getSelectedTeamIds.mockReturnValue(['team-1']);
+    mockSel.scope.getTeamDrilldownIds.mockReturnValue(['team-1']);
 
     const el = document.createElement('plugin-markers');
     el.visible = true;
@@ -98,6 +103,27 @@ describe('PluginMarkersComponent marker filtering', () => {
       '1 of 3 markers'
     );
 
+    el.remove();
+  });
+
+  it('uses canonical visible teams when filtering marker counts', async () => {
+    mockSel.selection.getSelectedProjectIds.mockReturnValue(['proj-A']);
+    mockSel.selection.getSelectedTeamIds.mockReturnValue(['team-1']);
+    mockSel.scope.getTeamDrilldownIds.mockReturnValue(['team-2']);
+
+    const el = document.createElement('plugin-markers');
+    el.visible = true;
+    el.markers = [{
+      project: 'proj-A',
+      team_id: 'team-1',
+      plan_id: 'plan-1',
+      marker: { date: '2026-01-01', label: 'M1' },
+    }];
+
+    document.body.appendChild(el);
+    await el.updateComplete;
+
+    expect(el.shadowRoot.querySelector('.marker-count').textContent).to.include('0');
     el.remove();
   });
 

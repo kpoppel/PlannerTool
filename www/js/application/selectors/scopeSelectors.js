@@ -243,12 +243,17 @@ export function createScopeSelectors(store) {
     return Array.from(teamIds);
   }
 
+  function getTeamDrilldownIds() {
+    return store.getState().selection.teamIds.map((id) => String(id));
+  }
+
   return {
     getResolvedFeatures,
     getContextFeatures,
     getVisibleFeatures,
     getVisibleTeams,
     getContextTeams,
+    getTeamDrilldownIds,
     getContextOptionCounts,
     getFunnel() {
       const visibleFeatures = getVisibleFeatures();

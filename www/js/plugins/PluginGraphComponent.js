@@ -298,15 +298,15 @@ export class PluginGraph extends LitElement {
     const effective = sel.feature?.getEffectiveFeatures?.() || [];
     const teams = sel.selection.getTeams() || [];
     const allProjects = sel.selection.getProjects() || [];
-    const selectedTeams = sel.selection.getSelectedTeamIds();
+    const visibleTeamIds = sel.scope.getTeamDrilldownIds();
     const selectedProjects = sel.selection.getSelectedProjectIds();
     const selectedStates = sel.filter.getSelectedFeatureStateNames();
     const projectSetSelected = new Set(selectedProjects);
-    const teamSetSelected = new Set(selectedTeams);
+    const teamSetVisible = new Set(visibleTeamIds.map((id) => String(id)));
     const stateSetSelected = new Set(selectedStates);
     if (mode === 'project' && projectSetSelected.size === 0)
       return { days: 0, totals: [] };
-    if (mode === 'team' && teamSetSelected.size === 0) return { days: 0, totals: [] };
+    if (mode === 'team' && teamSetVisible.size === 0) return { days: 0, totals: [] };
     if (stateSetSelected.size === 0) return { days: 0, totals: [] };
 
     const days = this._daysBetween(sDate, eDate);
@@ -327,7 +327,7 @@ export class PluginGraph extends LitElement {
         let maxTeamVal = 0;
         for (let ti = 0; ti < teams.length; ti++) {
           const tid = teams[ti].id;
-          if (!teamSetSelected.has(tid)) continue;
+          if (!teamSetVisible.has(String(tid))) continue;
           const v = Number(tTuple[ti] || 0);
           totals[i].perTeam[tid] = v;
           if (v > maxTeamVal) maxTeamVal = v;
@@ -361,11 +361,9 @@ export class PluginGraph extends LitElement {
 
     const teamDayMap = new Map();
     const projectDayMap = new Map();
-    // Only teams the user has selected count towards the org-load denominator,
-    // consistent with CapacityCalculator/MainGraph. The fast path above
-    // already benefits automatically since project daily capacity values are
-    // pre-normalized by CapacityCalculator using the same selected-team count.
-    const numTeamsGlobal = teamSetSelected.size === 0 ? 1 : teamSetSelected.size;
+    // Display-team selection controls rendered series; normalization stays at the
+    // organization roster denominator supplied by the capacity calculation.
+    const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
     function addRawTeam(dayIdx, teamId, raw) {
       if (dayIdx < 0 || dayIdx >= days) return;
       if (!teamDayMap.has(dayIdx)) teamDayMap.set(dayIdx, {});
@@ -423,7 +421,7 @@ export class PluginGraph extends LitElement {
           );
           if (coveredByChild) continue;
           for (const tl of item.capacity || []) {
-            if (!teamSetSelected.has(tl.team)) continue;
+            if (!teamSetVisible.has(String(tl.team))) continue;
             addRawTeam(d, tl.team, tl.capacity);
             addNormalizedProject(d, item.project, tl.capacity);
           }
@@ -442,7 +440,7 @@ export class PluginGraph extends LitElement {
         );
         for (let d = startIdx; d <= endIdx; d++) {
           for (const tl of item.capacity || []) {
-            if (!teamSetSelected.has(tl.team)) continue;
+            if (!teamSetVisible.has(String(tl.team))) continue;
             addRawTeam(d, tl.team, tl.capacity);
             addNormalizedProject(d, item.project, tl.capacity);
           }

@@ -614,6 +614,22 @@ export function createPortfolioStyles(
       margin-left: 2px;
     }
 
+    .plan-team-rollups {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      padding: 7px 14px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #475569;
+      font-size: 0.72rem;
+    }
+
+    .plan-team-rollup {
+      display: inline-flex;
+      gap: 5px;
+      align-items: baseline;
+    }
+
     .panel-toggle {
       margin-left: auto;
       font-size: 0.72rem;
