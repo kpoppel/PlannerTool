@@ -133,6 +133,39 @@ describe('CapacityCalculator (unit)', () => {
     expect(updated.totalOrgDaily.every((v) => v === 3)).to.be.true;
   });
 
+  it('incremental delta removes a deleted team allocation from cached results', () => {
+    const calc = new CapacityCalculator(bus);
+    const teams = [{ id: 't1' }];
+    const projects = [{ id: 'p1' }];
+    const filters = {
+      selectedProjects: ['p1'],
+      selectedTeams: ['t1'],
+      selectedStates: ['active'],
+    };
+    const allocatedFeature = {
+      id: 'f1',
+      start: '2025-02-01',
+      end: '2025-02-02',
+      project: 'p1',
+      state: 'active',
+      capacity: [{ team: 't1', capacity: 40 }],
+    };
+
+    const initial = calc.calculate([allocatedFeature], filters, teams, projects);
+    expect(initial.teamDailyCapacityMap[0].t1).to.equal(40);
+
+    const removed = calc.calculate(
+      [{ ...allocatedFeature, capacity: [] }],
+      filters,
+      teams,
+      projects,
+      ['f1']
+    );
+
+    expect(removed.teamDailyCapacityMap[0].t1).to.equal(0);
+    expect(removed.totalOrgDaily.every((value) => value === 0)).to.be.true;
+  });
+
   it('epic children rollup: children allocations roll up to epic parent project', () => {
     const calc = new CapacityCalculator(bus);
 

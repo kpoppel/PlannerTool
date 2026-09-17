@@ -200,6 +200,9 @@ export class MainGraphLit extends LitElement {
       // Use expansion-aware project IDs so the graph is consistent with the
       // feature cards shown on the board (e.g. when expand-by-allocation is on).
       const selectedProjectIds = sel.selection.getEffectiveSelectedProjectIds();
+      const contextTeamIds = new Set(sel.scope.getContextTeams().map((id) => String(id)));
+      const selectedTeamIds = sel.selection.getSelectedTeamIds()
+        .filter((id) => contextTeamIds.has(String(id)));
       return {
         months,
         teams: sel.selection.getTeams(),
@@ -211,7 +214,7 @@ export class MainGraphLit extends LitElement {
         projectDailyCapacityMap: sel.capacity.getProjectDailyCapacityMap(),
         totalOrgDailyPerTeamAvg: sel.capacity.getTotalOrgDailyPerTeamAvg(),
         capacityViewMode: sel.view.getCapacityViewMode(),
-        selectedTeamIds: sel.selection.getSelectedTeamIds(),
+        selectedTeamIds,
         selectedProjectIds,
         selectedFeatureStateFilter: sel.filter.getSelectedFeatureStateSet(),
       };
@@ -805,6 +808,7 @@ export class MainGraphLit extends LitElement {
       ctx.restore();
       for (let ti = 0; ti < teams.length; ti++) {
         const team = teams[ti];
+        if (!selectedTeamIdSet.has(String(team.id))) continue;
         const pts = teamPoints[ti];
         if (!pts.length) continue;
         ctx.beginPath();

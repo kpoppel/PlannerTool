@@ -281,6 +281,42 @@ describe('MainGraph Tests', () => {
       el.remove();
     });
 
+    it('draws only selected team series', async () => {
+      const el = document.createElement('maingraph-lit');
+      document.body.appendChild(el);
+      await el.updateComplete;
+
+      const seriesColors = [];
+      const mockCtx = {
+        clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {},
+        stroke() {
+          if (this.lineWidth === 2) seriesColors.push(this.strokeStyle);
+        },
+        save() {}, restore() {}, setLineDash() {},
+      };
+      el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
+
+      el._fullRender(mockCtx, {
+        months,
+        teams: [{ id: 't1', color: '#111111' }, { id: 't2', color: '#222222' }],
+        projects: [{ id: 'p1', color: '#333333' }],
+        capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
+        teamDailyCapacity: [],
+        teamDailyCapacityMap: [{ t1: 50, t2: 60 }, { t1: 40, t2: 70 }],
+        projectDailyCapacity: [],
+        projectDailyCapacityMap: null,
+        totalOrgDailyPerTeamAvg: [],
+        capacityViewMode: 'team',
+        selectedTeamIds: new Set(['t1']),
+        selectedProjectIds: new Set(['p1']),
+      });
+
+      expect(seriesColors).to.include('#111111');
+      expect(seriesColors).not.to.include('#222222');
+      el.remove();
+    });
+
     it('keeps project and unfunded values normalized by the full roster', async () => {
       const el = document.createElement('maingraph-lit');
       document.body.appendChild(el);

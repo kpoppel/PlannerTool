@@ -14,6 +14,9 @@ const mockSel = vi.hoisted(() => ({
     getTeams: vi.fn(() => [{ id: 't1', selected: true }]),
     getProjects: vi.fn(() => [{ id: 'p1', selected: true }]),
   },
+  scope: {
+    getContextTeams: vi.fn(() => ['t1']),
+  },
   capacity: {
     getCapacityDates: vi.fn(() => []),
     getTeamDailyCapacity: vi.fn(() => []),
@@ -63,6 +66,7 @@ describe('MainGraph Phase 4 selector seam', () => {
   beforeEach(() => {
     mockSel.selection.getEffectiveSelectedProjectIds.mockClear();
     mockSel.selection.getSelectedTeamIds.mockClear();
+    mockSel.scope.getContextTeams.mockClear();
     mockSel.filter.getSelectedFeatureStateSet.mockClear();
     mockSel.view.getCapacityViewMode.mockClear();
     mockBus.on.mockClear();
@@ -97,6 +101,7 @@ describe('MainGraph Phase 4 selector seam', () => {
 
     expect(mockSel.selection.getEffectiveSelectedProjectIds).toHaveBeenCalled();
     expect(mockSel.selection.getSelectedTeamIds).toHaveBeenCalled();
+    expect(mockSel.scope.getContextTeams).toHaveBeenCalled();
     expect(mockSel.view.getCapacityViewMode).toHaveBeenCalled();
     expect(mockSel.filter.getSelectedFeatureStateSet).toHaveBeenCalled();
 
