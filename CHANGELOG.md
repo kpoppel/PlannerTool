@@ -36,6 +36,7 @@ Template - do not change :
 - Scope inclusion now derives participating teams from selected base plans, independently of the Team Drill-down focus, and hierarchy links are excluded from dependency scope.
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
+- Azure DevOps refreshes now isolate connection state per worker thread so one completed project refresh cannot disconnect other concurrent refreshes and leave their cached task data stale.
 - Right-click group assignment now finds mother-plan groups for Child Context tasks and assigns selected parent task subtrees together.
 - Parent Context now retains unallocated ancestor tasks for unallocated work in a selected team-level plan.
 - Removed the superseded TeamMenu component and aligned timeline export dependency visibility with Scope Context.

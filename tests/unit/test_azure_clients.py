@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import threading
 import pytest
 from unittest.mock import MagicMock
 
@@ -96,6 +97,47 @@ def test_get_projects_uses_connection():
     c.conn = make_dummy_conn_for_projects()
     projs = c.get_projects()
     assert 'ProjA' in projs and 'ProjB' in projs
+
+
+def test_overlapping_connection_contexts_do_not_disconnect_each_other():
+    client = AzureClient('org', DummyStorage())
+    first_connected = threading.Event()
+    second_connected = threading.Event()
+    first_closed = threading.Event()
+    errors = []
+
+    def connect_for_test(_pat):
+        client.conn = make_dummy_conn_for_projects()
+        client._connected = True
+
+    client._connect_with_pat = connect_for_test
+
+    def first_request():
+        with client.connect('first-pat'):
+            first_connected.set()
+            second_connected.wait(timeout=1)
+        first_closed.set()
+
+    def second_request():
+        first_connected.wait(timeout=1)
+        with client.connect('second-pat') as connected_client:
+            second_connected.set()
+            first_closed.wait(timeout=1)
+            try:
+                assert connected_client.get_projects() == ['ProjA', 'ProjB']
+            except Exception as exc:
+                errors.append(exc)
+
+    first_thread = threading.Thread(target=first_request)
+    second_thread = threading.Thread(target=second_request)
+    first_thread.start()
+    second_thread.start()
+    first_thread.join(timeout=2)
+    second_thread.join(timeout=2)
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert errors == []
 
 
 def test_get_all_plans_cached_until_project_invalidation():

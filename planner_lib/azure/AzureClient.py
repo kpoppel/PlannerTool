@@ -3,6 +3,7 @@ from typing import List, Optional, Any
 from planner_lib.storage.base import StorageBackend
 import logging
 import re
+import threading
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class AzureClient:
 
     def __init__(self, organization_url: str, storage: StorageBackend, *, cache_plans: bool = True):
         self.organization_url = organization_url
+        self._connection_state = threading.local()
         self._connected = False
         self.conn: Optional[Any] = None
         # optional storage backend (may be used by caching client)
@@ -39,6 +41,22 @@ class AzureClient:
         self._work_item_ops = WorkItemOperations(self)
         self._team_plan_ops = TeamPlanOperations(self, cache_enabled=cache_plans)
         self._markers_ops = MarkersOperations(self, self._team_plan_ops)
+
+    @property
+    def _connected(self) -> bool:
+        return getattr(self._connection_state, 'connected', False)
+
+    @_connected.setter
+    def _connected(self, value: bool) -> None:
+        self._connection_state.connected = value
+
+    @property
+    def conn(self) -> Optional[Any]:
+        return getattr(self._connection_state, 'connection', None)
+
+    @conn.setter
+    def conn(self, value: Optional[Any]) -> None:
+        self._connection_state.connection = value
 
     def _connect_with_pat(self, pat: str) -> None:
         """Low-level connect using an explicit PAT.
