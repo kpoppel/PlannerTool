@@ -1429,7 +1429,7 @@ export class SidebarLit extends LitElement {
   _toggleTaskFilter(dimension, option) {
     cmd.filter.toggleTaskFilter(dimension, option);
     this.taskFilters = sel.filter.getTaskFilters();
-    this._recomputeDataFunnel && this._recomputeDataFunnel();
+    if (this._recomputeDataFunnelNow) this._recomputeDataFunnelNow();
     // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
@@ -1481,10 +1481,6 @@ export class SidebarLit extends LitElement {
       const t = this._disabledSidebar.taskTypes || [];
       return Array.isArray(t) && t.includes(key);
     }
-    if (kind === 'expansion') {
-      const e = this._disabledSidebar.expansion || [];
-      return Array.isArray(e) && e.includes(key);
-    }
     if (kind === 'state') {
       const s = this._disabledSidebar.states || [];
       return Array.isArray(s) && s.includes(key);
@@ -1496,7 +1492,7 @@ export class SidebarLit extends LitElement {
   setTaskFilterChecked(dimension, option, checked) {
     cmd.filter.setTaskFilter(dimension, option, !!checked);
     this.taskFilters = sel.filter.getTaskFilters();
-    this._recomputeDataFunnel && this._recomputeDataFunnel();
+    if (this._recomputeDataFunnelNow) this._recomputeDataFunnelNow();
     this.requestUpdate();
   }
 
@@ -1647,7 +1643,7 @@ export class SidebarLit extends LitElement {
                 @click=${() => {
                   if (!isDisabled) {
                     cmd.filter.toggleStateSelected(s);
-                    this._recomputeDataFunnel && this._recomputeDataFunnel();
+                    if (this._recomputeDataFunnelNow) this._recomputeDataFunnelNow();
                   }
                 }}
                 title=${isDisabled ? 'Not relevant in current tool context' : ''}

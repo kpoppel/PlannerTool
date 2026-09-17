@@ -1,30 +1,7 @@
-import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
-
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
 function deriveEffectiveProjectIdsFromStore(state) {
-  const rawSelected = state.selection.projectIds.map((id) => String(id));
-
-  if (!state.view.expansion.teamAllocated) {
-    return rawSelected;
-  }
-
-  const selectedTeams = state.selection.teamIds.map((id) => String(id));
-  if (!selectedTeams.length) {
-    return rawSelected;
-  }
-
-  const selectedTeamIds = new Set(selectedTeams);
-  const derived = new Set(rawSelected);
-
-  for (const feature of state.baseline.features) {
-    if (!feature.project) continue;
-    if (hasFeatureTeamAllocation(feature, selectedTeamIds)) {
-      derived.add(String(feature.project));
-    }
-  }
-
-  return Array.from(derived);
+  return state.selection.projectIds.map((id) => String(id));
 }
 
 function deriveItemsWithSelection(sourceItems, storeIds) {

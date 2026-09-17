@@ -36,10 +36,11 @@ describe('application/store', () => {
       groupOverrides: {},
       scenarioGroups: [],
     }]);
-    expect(current.view.expansion).toEqual({
-      parentChild: false,
-      relations: false,
-      teamAllocated: false,
+    expect(current.view.context).toEqual({
+      parent: false,
+      child: false,
+      dependency: false,
+      otherAllocations: false,
     });
     expect(current.groups.byPlanId).toEqual({});
     expect(current.featureDisplay.selectedId).toBeNull();

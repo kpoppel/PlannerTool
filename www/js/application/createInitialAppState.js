@@ -44,11 +44,6 @@ export function createInitialAppState() {
       activeId: null,
       saved: [],
       options: createDefaultViewOptions(),
-      expansion: {
-        parentChild: false,
-        relations: false,
-        teamAllocated: false,
-      },
       context: {
         parent: false,
         child: false,

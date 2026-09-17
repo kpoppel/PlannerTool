@@ -65,6 +65,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Added centralized keyboard shortcuts for display controls and pointer-anchored board zoom gestures, with synchronized graph x-axis rendering.
 - Added stable anonymous account IDs so admin permission and deletion URLs no longer expose email addresses; backups created before account IDs were introduced are no longer valid for restore.
 - Feature cards now show a top border in the colour of the group that directly owns them, so tasks in a nested group tree are visibly attributed to the right parent group.
 - Groups are now created at the position the board right-click points at: an insertion caret shows the target slot and sibling-scoped sparse ranks (`www/js/application/shared/ordering.js`) keep the order stable instead of always placing new groups at the top.
@@ -130,7 +131,8 @@ Template - do not change :
 - Fixed store `setAllStatesSelected(true)` to derive available feature states from canonical baseline features, removing the stale dependency on a non-existent `state.filter` slice that broke plugin lifecycle tests.
 
 ### Changed
-- Completed the UI/UX v5 presentation-scope migration and removed obsolete TeamMenu, Sidebar expansion, saved-view preview, and empty-board expansion paths while retaining the Cost request compatibility boundary.
+- Cost reporting now uses canonical selected-plan Context without legacy expansion state; Team Drill-down only selects Team-view rows, and filtered hierarchy parents cannot be re-added to financial payloads.
+- Completed the UI/UX v5 presentation-scope migration and removed obsolete TeamMenu, Sidebar expansion, saved-view preview, and empty-board expansion paths.
 - Moved the Sidebar Context controls before Team Drill-down so users choose related work before narrowing its teams.
 - Group context-menu move actions are now task-relative (Move up/down across the mixed task+group stream), while nesting changes are handled in-place through the existing Update Group modal parent selector.
 - Horizontal drag on a group pill now shifts all planned tasks contained by that group (including nested groups and task descendants) by the same day delta; unplanned tasks remain unplanned.

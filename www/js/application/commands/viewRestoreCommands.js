@@ -67,23 +67,6 @@ function toSelectedIds(selectionMap) {
     .map(([id]) => String(id));
 }
 
-function toViewExpansion(existingExpansion, options = {}) {
-  return {
-    parentChild:
-      options.expandParentChild !== undefined ?
-        Boolean(options.expandParentChild)
-      : Boolean(existingExpansion.parentChild),
-    relations:
-      options.expandRelations !== undefined ?
-        Boolean(options.expandRelations)
-      : Boolean(existingExpansion.relations),
-    teamAllocated:
-      options.expandTeamAllocated !== undefined ?
-        Boolean(options.expandTeamAllocated)
-      : Boolean(existingExpansion.teamAllocated),
-  };
-}
-
 function toViewContext(existingContext, options = {}) {
   const current = existingContext || {};
   const incoming = options.context || {};
@@ -107,9 +90,6 @@ function buildViewSnapshotOptions(snapshot, pluginState = {}) {
     selectedFeatureStates: Array.from(snapshot.selection.featureStateNames),
     selectedTaskTypes: Array.from(snapshot.selection.taskTypeNames),
     taskFilters: cloneValue(snapshot.selection.taskFilters),
-    expandParentChild: Boolean(snapshot.view.expansion.parentChild),
-    expandRelations: Boolean(snapshot.view.expansion.relations),
-    expandTeamAllocated: Boolean(snapshot.view.expansion.teamAllocated),
     context: cloneValue(snapshot.view.context),
     ...pluginState,
   };
@@ -271,7 +251,6 @@ export function createViewRestoreCommands(
           ...state.view,
           activeId: viewId,
           options: nextViewOptions,
-          expansion: toViewExpansion(state.view.expansion, nextViewOptions),
           context: toViewContext(state.view.context, nextViewOptions),
         },
       }),

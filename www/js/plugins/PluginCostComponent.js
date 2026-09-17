@@ -491,13 +491,8 @@ export class PluginCostComponent extends LitElement {
       this._reloadTimer = null;
     }
 
-    // Restore sidebar controls and cost-specific expansion defaults when the plugin closes.
+    // Restore sidebar controls when the plugin closes.
     cmd.filter.clearSidebarDisabledElements();
-    cmd.view.setExpansionState({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    });
   }
 
   _persistPluginState() {
@@ -572,12 +567,6 @@ export class PluginCostComponent extends LitElement {
       states: Array.from(sel.filter.getAvailableFeatureStates() || []),
     };
     cmd.filter.setSidebarDisabledElements(disabled);
-    // The cost endpoint still uses legacy expansion inputs to build its request payload.
-    cmd.view.setExpansionState({
-      expandParentChild: true,
-      expandRelations: true,
-      expandTeamAllocated: true,
-    });
   }
 
   connectedCallback() {
@@ -613,12 +602,6 @@ export class PluginCostComponent extends LitElement {
     }
 
     cmd.filter.clearSidebarDisabledElements();
-    // restore expansion defaults when plugin unloads
-    cmd.view.setExpansionState({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    });
     super.disconnectedCallback();
   }
 
@@ -653,15 +636,13 @@ export class PluginCostComponent extends LitElement {
         dataset_end: this.endDate,
       });
 
-      // Get effective features from state
-      const effectiveFeatures =
-        sel.feature && typeof sel.feature.getEffectiveFeatures === 'function' ?
-          sel.feature?.getEffectiveFeatures?.()
-        : [];
+      // Cost reports selected-plan scope plus explicitly enabled Context. Team
+      // Drill-down and final task visibility must not alter financial inputs.
+      const contextFeatures = sel.scope.getContextFeatures();
 
-      if (effectiveFeatures.length === 0) {
+      if (contextFeatures.length === 0) {
         throw new Error(
-          'No features available. Please ensure projects and teams are selected.'
+          'No features available. Please ensure one or more plans are selected.'
         );
       }
 
@@ -697,7 +678,7 @@ export class PluginCostComponent extends LitElement {
         }
       };
 
-      let filteredFeatures = effectiveFeatures.filter((f) => {
+      const filteredFeatures = contextFeatures.filter((f) => {
         if (!f) return false;
         if (!selectedTypes || selectedTypes.size === 0) return true;
         const ftype = String(f.type || f.feature_type || '').toLowerCase();
@@ -718,7 +699,7 @@ export class PluginCostComponent extends LitElement {
       const taskFilters = taskFilter.getTaskFilters?.() || { schedule: {} };
       if (taskFilters.schedule.unplanned === false) {
         const today = new Date().toISOString().slice(0, 10);
-        filteredFeatures = filteredFeatures.filter((f) => {
+        const plannedFeatures = filteredFeatures.filter((f) => {
           const hasStart = !!f.start;
           const hasEnd = !!f.end;
           // No dates => unplanned
@@ -735,29 +716,9 @@ export class PluginCostComponent extends LitElement {
           return true;
         });
 
-        const ff = filteredFeatures.filter((f) => taskFilter.featurePassesFilters(f));
+        const ff = plannedFeatures.filter((f) => taskFilter.featurePassesFilters(f));
         filteredFeatures.length = 0;
         Array.prototype.push.apply(filteredFeatures, ff);
-      }
-
-      // Ensure expansion (parent/child, relations, team-allocated) is respected
-      // Include any features from the expanded feature id set so the server
-      // will compute costs for those child/related features even if they
-      // are not part of the original filtered set.
-      {
-        const expandedIds = sel.view.getExpandedFeatureIds() || new Set();
-        if (expandedIds.size > 0) {
-          const present = new Set((filteredFeatures || []).map((f) => String(f && f.id)));
-          const allEffective = sel.feature?.getEffectiveFeatures?.() || [];
-          const byId = new Map(allEffective.map((f) => [String(f.id), f]));
-          for (const id of expandedIds) {
-            const sid = String(id);
-            if (!present.has(sid) && byId.has(sid)) {
-              filteredFeatures.push(byId.get(sid));
-              present.add(sid);
-            }
-          }
-        }
       }
 
       const featuresPayload = filteredFeatures.map((f) => ({

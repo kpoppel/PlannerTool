@@ -177,9 +177,12 @@ const viewDetails = {
         hierarchy: { hasParent: true, noParent: true },
         relations: { hasLinks: true, noLinks: true },
       },
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
+      context: {
+        parent: false,
+        child: false,
+        dependency: false,
+        otherAllocations: false,
+      },
     },
   },
   f13cfd50bc464598a833fc385a44d20d: {
@@ -206,9 +209,12 @@ const viewDetails = {
         hierarchy: { hasParent: true, noParent: true },
         relations: { hasLinks: true, noLinks: true },
       },
-      expandParentChild: true,
-      expandRelations: true,
-      expandTeamAllocated: true,
+      context: {
+        parent: true,
+        child: true,
+        dependency: true,
+        otherAllocations: true,
+      },
     },
   },
 };

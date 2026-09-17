@@ -8,9 +8,6 @@ const mockCmd = vi.hoisted(() => ({
     setSidebarDisabledElements: vi.fn(),
     setTaskFilter: vi.fn(),
   },
-  view: {
-    setExpansionState: vi.fn(),
-  },
 }));
 
 const mockSel = vi.hoisted(() => ({
@@ -36,10 +33,9 @@ describe('PluginCostComponent command/selector seam', () => {
     mockCmd.filter.setSelectedTaskTypes.mockReset();
     mockCmd.filter.setSidebarDisabledElements.mockReset();
     mockCmd.filter.setTaskFilter.mockReset();
-    mockCmd.view.setExpansionState.mockReset();
   });
 
-  it('routes sidebar disable flow through cmd.filter and cmd.view', () => {
+  it('routes sidebar disable flow through cmd.filter', () => {
     const plugin = new PluginCostComponent();
 
     plugin._applySidebarDisabled();
@@ -62,23 +58,13 @@ describe('PluginCostComponent command/selector seam', () => {
       taskTypes: [],
       states: ['New', 'Doing'],
     });
-    expect(mockCmd.view.setExpansionState).toHaveBeenCalledWith({
-      expandParentChild: true,
-      expandRelations: true,
-      expandTeamAllocated: true,
-    });
   });
 
-  it('routes close cleanup through cmd.filter and cmd.view', () => {
+  it('routes close cleanup through cmd.filter', () => {
     const plugin = new PluginCostComponent();
 
     plugin.close();
 
     expect(mockCmd.filter.clearSidebarDisabledElements).toHaveBeenCalled();
-    expect(mockCmd.view.setExpansionState).toHaveBeenCalledWith({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    });
   });
 });

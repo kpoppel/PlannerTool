@@ -3,6 +3,7 @@ import { featureFlags } from './config.js';
 import { pluginManager } from './core/PluginManager.js';
 import { AppEvents, SessionEvents } from './core/EventRegistry.js';
 import { mergePluginConfig } from './core/pluginConfigMerge.js';
+import { initKeyboardShortcuts } from './services/KeyboardShortcuts.js';
 
 async function init() {
   // Register typed events and optional runtime behaviors
@@ -133,29 +134,7 @@ async function init() {
       }
     });
 
-    // Register global shortcut for in-app search: Ctrl+Shift+F
-    // Prevent browser default on keydown so the find UI doesn't steal focus
-    document.addEventListener('keydown', (e) => {
-      const isCtrlShiftF = (e.key === 'F' || e.key === 'f') && e.ctrlKey && e.shiftKey;
-      if (!isCtrlShiftF) return;
-      // Only handle when document/app has focus
-      if (!document.hasFocus()) return;
-      // Prevent triggering browser find only when our app is focused
-      e.preventDefault();
-      let st = document.querySelector('search-tool');
-      if (!st) {
-        import('./components/SearchTool.lit.js')
-          .then(() => {
-            st = document.createElement('search-tool');
-            document.body.appendChild(st);
-            // schedule open so rendering/focus is not impacted by the key event
-            setTimeout(() => st.open(), 0);
-          })
-          .catch(console.warn);
-      } else {
-        st.open();
-      }
-    });
+    initKeyboardShortcuts();
   } catch (e) {
     // Something really bad happened during app initialisaition. Log and show error message to user.
     hideModal();

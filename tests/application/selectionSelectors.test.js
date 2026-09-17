@@ -14,11 +14,6 @@ describe('application/selectors/selectionSelectors', () => {
           teams: [],
           features: [],
         },
-        view: {
-          expansion: {
-            teamAllocated: false,
-          },
-        },
       }),
     };
 
@@ -28,17 +23,12 @@ describe('application/selectors/selectionSelectors', () => {
     expect(selectors.getSelectedTeamIds()).toEqual(['t10']);
   });
 
-  it('state-store effective project ids preserve team-allocation expansion semantics', () => {
+  it('state-store effective project ids remain the explicit plan selection', () => {
     const store = {
       getState: () => ({
         selection: {
           projectIds: ['p1'],
           teamIds: ['t1'],
-        },
-        view: {
-          expansion: {
-            teamAllocated: true,
-          },
         },
         baseline: {
           projects: [],
@@ -47,32 +37,6 @@ describe('application/selectors/selectionSelectors', () => {
             { id: 'f1', project: 'p1', capacity: [{ team: 't2', capacity: 4 }] },
             { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 6 }] },
             { id: 'f3', project: 'p3', capacity: [] },
-          ],
-        },
-      }),
-    };
-
-    const selectors = createSelectionSelectors(store);
-    expect(selectors.getEffectiveSelectedProjectIds()).toEqual(['p1', 'p2']);
-  });
-
-  it('state-store effective project ids fall back to selected project ids when team expansion is off', () => {
-    const store = {
-      getState: () => ({
-        selection: {
-          projectIds: ['p1'],
-          teamIds: ['t1'],
-        },
-        view: {
-          expansion: {
-            teamAllocated: false,
-          },
-        },
-        baseline: {
-          projects: [],
-          teams: [],
-          features: [
-            { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 6 }] },
           ],
         },
       }),
@@ -99,11 +63,6 @@ describe('application/selectors/selectionSelectors', () => {
             { id: 't2', selected: false },
           ],
           features: [],
-        },
-        view: {
-          expansion: {
-            teamAllocated: false,
-          },
         },
       }),
     };

@@ -61,12 +61,12 @@ export class BoardCoordinateService {
 
   /** Current horizontal scroll offset of the board container (pixels). */
   get scrollX() {
-    return this._scrollContainer?.scrollLeft ?? 0;
+    return this._scrollContainer ? this._scrollContainer.scrollLeft : 0;
   }
 
   /** Current vertical scroll offset of the board container (pixels). */
   get scrollY() {
-    return this._scrollContainer?.scrollTop ?? 0;
+    return this._scrollContainer ? this._scrollContainer.scrollTop : 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -102,7 +102,9 @@ export class BoardCoordinateService {
   boardToScreen(boardX, boardY) {
     if (!this._boardArea) return { x: boardX, y: boardY };
     const rect = this._boardArea.getBoundingClientRect();
-    return { x: rect.left + boardX, y: rect.top + boardY };
+    const scaleX = (rect.right - rect.left) / this._boardArea.offsetWidth;
+    const scaleY = (rect.bottom - rect.top) / this._boardArea.offsetHeight;
+    return { x: rect.left + boardX * scaleX, y: rect.top + boardY * scaleY };
   }
 
   /**
@@ -115,7 +117,12 @@ export class BoardCoordinateService {
   screenToBoard(screenX, screenY) {
     if (!this._boardArea) return { x: screenX, y: screenY };
     const rect = this._boardArea.getBoundingClientRect();
-    return { x: screenX - rect.left, y: screenY - rect.top };
+    const scaleX = (rect.right - rect.left) / this._boardArea.offsetWidth;
+    const scaleY = (rect.bottom - rect.top) / this._boardArea.offsetHeight;
+    return {
+      x: (screenX - rect.left) / scaleX,
+      y: (screenY - rect.top) / scaleY,
+    };
   }
 
   /**

@@ -17,6 +17,8 @@ function mockEl(rect) {
   const listeners = new Map();
   return {
     getBoundingClientRect: () => ({ ...rect }),
+    offsetWidth: 'offsetWidth' in rect ? rect.offsetWidth : rect.right - rect.left,
+    offsetHeight: 'offsetHeight' in rect ? rect.offsetHeight : rect.bottom - rect.top,
     addEventListener: (eventName, cb) => {
       listeners.set(eventName, cb);
     },
@@ -119,6 +121,26 @@ describe('BoardCoordinateService', () => {
       const back = boardCoords.screenToBoard(screen.x, screen.y);
       expect(back.x).to.equal(bx);
       expect(back.y).to.equal(by);
+    });
+
+    it('accounts for the rendered board scale in both directions', () => {
+      const sc = mockEl({ left: 0, top: 0, right: 800, bottom: 600 });
+      const ba = mockEl({
+        left: 100,
+        top: 50,
+        right: 500,
+        bottom: 350,
+        offsetWidth: 800,
+        offsetHeight: 600,
+      });
+      boardCoords.init(sc, ba);
+
+      const screen = boardCoords.boardToScreen(200, 100);
+      expect(screen).to.deep.equal({ x: 200, y: 100 });
+      expect(boardCoords.screenToBoard(screen.x, screen.y)).to.deep.equal({
+        x: 200,
+        y: 100,
+      });
     });
 
     it('screenToBoard returns identity when not initialised', () => {

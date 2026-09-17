@@ -19,7 +19,7 @@ export function renderTeamView(component) {
     return html`
       <div class="empty-state">
         <h3>No Teams Selected</h3>
-        <p>Please select one or more teams from the Top menu → Team.</p>
+        <p>Please select one or more teams from Sidebar Team Drill-down.</p>
       </div>
     `;
   }

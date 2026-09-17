@@ -23,12 +23,14 @@ import { boardCoords } from '../services/BoardCoordinateService.js';
  * @property {Object} bus - EventBus instance for emitting events
  * @property {number} width - Canvas width in pixels
  * @property {number} height - Canvas height in pixels
+ * @property {number} horizontalScale - Multiplier for timeline x-axis rendering
  */
 export class MainGraphLit extends LitElement {
   static properties = {
     bus: { type: Object },
     width: { type: Number },
     height: { type: Number },
+    horizontalScale: { type: Number },
   };
 
   constructor() {
@@ -36,6 +38,7 @@ export class MainGraphLit extends LitElement {
     this.bus = null;
     this.width = 800;
     this.height = 120;
+    this.horizontalScale = 1;
     this._canvasRef = null;
     this._renderData = null;
     this._hoverDays = [];
@@ -175,6 +178,16 @@ export class MainGraphLit extends LitElement {
     if (this._graphTooltip === null) return;
     this._graphTooltip = null;
     this.requestUpdate();
+  }
+
+  updated(changedProperties) {
+    if (
+      changedProperties.has('horizontalScale') &&
+      this._canvasRef &&
+      this._renderData
+    ) {
+      this.renderGraph(this._renderData);
+    }
   }
 
   firstUpdated() {
@@ -388,6 +401,10 @@ export class MainGraphLit extends LitElement {
     ctx.stroke();
   }
 
+  _getRenderMonthWidth() {
+    return TIMELINE_CONFIG.monthWidth * this.horizontalScale;
+  }
+
   _fullRender(ctx, stateSnapshot) {
     // _fullRender start
     // Ported rendering logic adapted from www/js/mainGraph.js
@@ -411,7 +428,7 @@ export class MainGraphLit extends LitElement {
       Array.from(selectedProjectIds).map((id) => String(id))
     );
 
-    const MONTH_WIDTH = TIMELINE_CONFIG.monthWidth;
+    const MONTH_WIDTH = this._getRenderMonthWidth();
 
     function daysInMonth(d) {
       return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();

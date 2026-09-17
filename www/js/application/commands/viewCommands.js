@@ -10,23 +10,6 @@ import { pluginManager } from '../../core/PluginManager.js';
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
 /** @typedef {import('../types.js').CommandOptions} CommandOptions */
 
-function mergedExpansion(current, incoming = {}) {
-  return {
-    parentChild:
-      incoming.expandParentChild !== undefined ?
-        Boolean(incoming.expandParentChild)
-      : Boolean(current.parentChild),
-    relations:
-      incoming.expandRelations !== undefined ?
-        Boolean(incoming.expandRelations)
-      : Boolean(current.relations),
-    teamAllocated:
-      incoming.expandTeamAllocated !== undefined ?
-        Boolean(incoming.expandTeamAllocated)
-      : Boolean(current.teamAllocated),
-  };
-}
-
 function mergedContext(current, incoming = {}) {
   return {
     parent: incoming.parent !== undefined ? Boolean(incoming.parent) : Boolean(current.parent),
@@ -97,24 +80,6 @@ export function createViewCommands(store, bus) {
         console.error('[view.setContext] Failed to update dependency overlay', error);
         throw error;
       });
-      if (!runtimeOptions.suppressEvents) {
-        bus.emit(FilterEvents.CHANGED);
-        bus.emit(FeatureEvents.UPDATED);
-      }
-    },
-
-    setExpansionState(options, runtimeOptions = {}) {
-      store.setState(
-        (state) => ({
-          ...state,
-          view: {
-            ...state.view,
-            expansion: mergedExpansion(state.view.expansion, options),
-          },
-        }),
-        false,
-        'view.setExpansionState'
-      );
       if (!runtimeOptions.suppressEvents) {
         bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);

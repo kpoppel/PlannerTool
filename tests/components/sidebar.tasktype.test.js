@@ -184,13 +184,6 @@ describe('Sidebar task-type filter', () => {
     expect(sectionTitles).to.not.include('Taskboard Options');
   });
 
-  it('does not retain obsolete expansion UI state', () => {
-    expect(sidebar._toggleExpansion).to.equal(undefined);
-    expect('expandParentChild' in sidebar).to.equal(false);
-    expect('expandRelations' in sidebar).to.equal(false);
-    expect('expandTeamAllocated' in sidebar).to.equal(false);
-  });
-
   it('renders per-type team counts for the focused teams', async () => {
     sidebar.teams = [{ id: 'team-1', name: 'Alpha', short: 'A', color: '#123456', selected: true }];
     const originalGetContextTeams = sel.scope.getContextTeams;

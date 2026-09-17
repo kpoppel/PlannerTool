@@ -38,12 +38,6 @@ const mockSel = vi.hoisted(() => ({
   },
   view: {
     isTypeVisible: vi.fn(() => true),
-    getExpansionState: vi.fn(() => ({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    })),
-    getExpandedFeatureIds: vi.fn(() => new Set(['f1'])),
   },
 }));
 

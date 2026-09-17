@@ -280,11 +280,6 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     sinon.stub(sel.view, 'getPackedMode').callsFake(() => displayMode === 'packed');
     sinon.stub(sel.view, 'getCondensedCards').callsFake(() => displayMode !== 'normal');
     sinon.stub(sel.view, 'getFeatureSortMode').returns('rank');
-    sinon.stub(sel.view, 'getExpansionState').returns({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    });
     sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
     sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
     sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);
@@ -477,11 +472,6 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
     sinon.stub(sel.view, 'getPackedMode').callsFake(() => displayMode === 'packed');
     sinon.stub(sel.view, 'getCondensedCards').callsFake(() => displayMode !== 'normal');
     sinon.stub(sel.view, 'getFeatureSortMode').returns('rank');
-    sinon.stub(sel.view, 'getExpansionState').returns({
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    });
     sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
     sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
     sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);

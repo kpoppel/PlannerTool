@@ -3,7 +3,6 @@ import {
   buildFeatureMap,
   deriveEffectiveFeatures,
 } from '../shared/featureProjection.js';
-import { computeExpandedFeatureSet } from '../shared/featureExpansion.js';
 import { deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
 import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
 
@@ -141,19 +140,6 @@ export function createFeatureSelectors(store) {
       const ids = selectors.getChildrenByParentMap().get(String(parentId));
       if (ids === undefined) return [];
       return Array.from(ids).map((id) => String(id));
-    },
-
-    computeExpandedFeatureSet(selectedFeatureIds, options = {}) {
-      return computeExpandedFeatureSet(
-        selectors.getEffectiveFeatures(),
-        selectedFeatureIds,
-        {
-          expandParentChild: options.expandParentChild,
-          expandRelations: false,
-          expandTeamAllocated: options.expandTeamAllocated,
-          selectedTeamIds: options.selectedTeamIds,
-        }
-      );
     },
 
     getAvailableTaskTypesOrdered() {

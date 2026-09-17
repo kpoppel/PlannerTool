@@ -21,9 +21,6 @@ export function createDefaultViewOptions() {
     showOnlyProjectHierarchy: false,
     highlightFeatureRelationMode: true,
     hiddenTypes: [],
-    expandParentChild: false,
-    expandRelations: false,
-    expandTeamAllocated: false,
     debugFlag: false,
   };
 }

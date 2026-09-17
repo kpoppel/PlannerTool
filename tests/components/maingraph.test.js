@@ -32,6 +32,20 @@ describe('MainGraph Tests', () => {
       expect(canvas.height).to.equal(120);
     });
 
+    it('scales only the horizontal render width', async () => {
+      const el = await fixture(
+        html`<maingraph-lit
+          .bus=${mockBus}
+          .height=${120}
+          .horizontalScale=${0.5}
+        ></maingraph-lit>`
+      );
+      const canvas = el.shadowRoot.querySelector('canvas');
+
+      expect(el._getRenderMonthWidth()).to.equal(TIMELINE_CONFIG.monthWidth * 0.5);
+      expect(canvas.height).to.equal(120);
+    });
+
     it('handles empty data gracefully', async () => {
       const el = await fixture(html`<maingraph-lit .bus=${mockBus}></maingraph-lit>`);
       const data = { months: [], teamData: [], projectData: [] };

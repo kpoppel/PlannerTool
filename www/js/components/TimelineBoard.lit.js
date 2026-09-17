@@ -26,13 +26,22 @@ import { bus } from '../core/EventBus.js';
 import { UIEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { calcTodayX } from './board-utils.js';
 
-class TimelineBoard extends LitElement {
+const BOARD_ZOOM_STEP = 0.1;
+const MIN_BOARD_ZOOM = 0.5;
+const MAX_BOARD_ZOOM = 2;
+
+export class TimelineBoard extends LitElement {
+  static properties = {
+    boardZoom: { state: true },
+  };
+
   // LitElement already uses an open shadow root by default — no need to
   // override createRenderRoot(). The static styles getter below is injected
   // automatically via Lit's adoptedStyleSheets mechanism.
 
   constructor() {
     super();
+    this.boardZoom = 1;
     this._isPanning = false;
     this._panStart = null;
     this._onMouseDown = this._onMouseDown.bind(this);
@@ -79,7 +88,8 @@ class TimelineBoard extends LitElement {
   }
 
   disconnectedCallback() {
-    const scroll = this.shadowRoot?.querySelector('#scroll-container');
+    const scroll = this.shadowRoot.querySelector('#scroll-container');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (scroll) scroll.removeEventListener('mousedown', this._onMouseDown);
     if (scroll && this._onBoardContextMenu) scroll.removeEventListener('contextmenu', this._onBoardContextMenu);
     if (this._boardArea && this._onGroupContextMenu) this._boardArea.removeEventListener('group-context-menu', this._onGroupContextMenu);
@@ -89,9 +99,9 @@ class TimelineBoard extends LitElement {
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mouseup', this._onMouseUp);
     document.removeEventListener('mousemove', this._onProximityMove);
-    if (this._onDetailsShow) bus.off?.(UIEvents.DETAILS_SHOW, this._onDetailsShow);
-    if (this._onDetailsHide) bus.off?.(UIEvents.DETAILS_HIDE, this._onDetailsHide);
-    if (this._onMonthsUpdated) bus.off?.(TimelineEvents.MONTHS, this._onMonthsUpdated);
+    if (this._onDetailsShow) bus.off(UIEvents.DETAILS_SHOW, this._onDetailsShow);
+    if (this._onDetailsHide) bus.off(UIEvents.DETAILS_HIDE, this._onDetailsHide);
+    if (this._onMonthsUpdated) bus.off(TimelineEvents.MONTHS, this._onMonthsUpdated);
     super.disconnectedCallback();
   }
 
@@ -100,8 +110,8 @@ class TimelineBoard extends LitElement {
   // ---------------------------------------------------------------------------
 
   _initGroupContextMenu(GroupContextMenu) {
-    const scroll = this.shadowRoot?.querySelector('#scroll-container');
-    const boardArea = this.shadowRoot?.querySelector('#board-area');
+    const scroll = this.shadowRoot.querySelector('#scroll-container');
+    const boardArea = this.shadowRoot.querySelector('#board-area');
     this._boardArea = boardArea;
 
     // Right-click on the board background (not on a feature card or group pill)
@@ -167,7 +177,9 @@ class TimelineBoard extends LitElement {
     if (boardArea) boardArea.addEventListener('feature-context-menu', this._onFeatureContextMenu);
   }
 
-  _positionTodayLine(months) {    const line = this.shadowRoot?.querySelector('#today-line');
+  _positionTodayLine(months) {
+    const line = this.shadowRoot.querySelector('#today-line');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (!line) return;
     const x = calcTodayX(months);
     if (x === null) {
@@ -214,7 +226,8 @@ class TimelineBoard extends LitElement {
 
   _onMouseMove(e) {
     if (!this._isPanning || !this._panStart) return;
-    const scroll = this.shadowRoot?.querySelector('#scroll-container');
+    const scroll = this.shadowRoot.querySelector('#scroll-container');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (!scroll) return;
     const dx = e.clientX - this._panStart.x;
     const dy = e.clientY - this._panStart.y;
@@ -225,8 +238,9 @@ class TimelineBoard extends LitElement {
   _onMouseUp() {
     this._isPanning = false;
     this._panStart = null;
-    const scroll = this.shadowRoot?.querySelector('#scroll-container');
-    scroll?.classList.remove('panning');
+    const scroll = this.shadowRoot.querySelector('#scroll-container');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+    if (scroll) scroll.classList.remove('panning');
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mouseup', this._onMouseUp);
   }
@@ -242,11 +256,11 @@ class TimelineBoard extends LitElement {
 
     if (btnTop)
       btnTop.addEventListener('click', () =>
-        scroll?.scrollTo({ top: 0, behavior: 'smooth' })
+        scroll.scrollTo({ top: 0, behavior: 'smooth' })
       );
     if (btnBottom)
       btnBottom.addEventListener('click', () =>
-        scroll?.scrollTo({ top: scroll.scrollHeight, behavior: 'smooth' })
+        scroll.scrollTo({ top: scroll.scrollHeight, behavior: 'smooth' })
       );
 
     const scrollButtons = this.shadowRoot.querySelector('#scroll-buttons');
@@ -257,7 +271,8 @@ class TimelineBoard extends LitElement {
   }
 
   _onProximityMove(e) {
-    const scrollButtons = this.shadowRoot?.querySelector('#scroll-buttons');
+    const scrollButtons = this.shadowRoot.querySelector('#scroll-buttons');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (!scrollButtons) return;
     const nearEdge = window.innerWidth - e.clientX <= 60;
     scrollButtons.classList.toggle('visible', nearEdge);
@@ -268,8 +283,63 @@ class TimelineBoard extends LitElement {
   // ---------------------------------------------------------------------------
 
   scrollTo(x, y) {
-    const scroll = this.shadowRoot?.querySelector('#scroll-container');
+    const scroll = this.shadowRoot.querySelector('#scroll-container');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (scroll) scroll.scrollTo(x, y);
+  }
+
+  adjustBoardZoom(direction, anchorClientX, anchorClientY) {
+    const nextZoom = this.boardZoom + direction * BOARD_ZOOM_STEP;
+    const boundedZoom = Math.max(MIN_BOARD_ZOOM, Math.min(MAX_BOARD_ZOOM, nextZoom));
+    this._setBoardZoom(
+      Math.round(boundedZoom * 10) / 10,
+      anchorClientX,
+      anchorClientY
+    );
+  }
+
+  resetBoardZoom() {
+    this._setBoardZoom(1);
+  }
+
+  _setBoardZoom(nextZoom, anchorClientX, anchorClientY) {
+    if (nextZoom === this.boardZoom) return;
+    if (!this.shadowRoot) {
+      this.boardZoom = nextZoom;
+      return;
+    }
+
+    const scrollContainer = this.shadowRoot.querySelector('#scroll-container');
+    if (!scrollContainer) {
+      this.boardZoom = nextZoom;
+      return;
+    }
+
+    const previousZoom = this.boardZoom;
+    const scrollRect = scrollContainer.getBoundingClientRect();
+    let pointerOffset = scrollContainer.clientWidth / 2;
+    if (Number.isFinite(anchorClientX)) {
+      pointerOffset = Math.max(
+        0,
+        Math.min(scrollContainer.clientWidth, anchorClientX - scrollRect.left)
+      );
+    }
+    let pointerOffsetY = scrollContainer.clientHeight / 2;
+    if (Number.isFinite(anchorClientY)) {
+      pointerOffsetY = Math.max(
+        0,
+        Math.min(scrollContainer.clientHeight, anchorClientY - scrollRect.top)
+      );
+    }
+    const anchoredContentX = (scrollContainer.scrollLeft + pointerOffset) / previousZoom;
+    const anchoredContentY =
+      (scrollContainer.scrollTop + pointerOffsetY) / previousZoom;
+
+    this.boardZoom = nextZoom;
+    this.updateComplete.then(() => {
+      scrollContainer.scrollLeft = anchoredContentX * nextZoom - pointerOffset;
+      scrollContainer.scrollTop = anchoredContentY * nextZoom - pointerOffsetY;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -306,6 +376,10 @@ class TimelineBoard extends LitElement {
 
       #scroll-container.panning {
         cursor: grabbing;
+      }
+
+      #board-zoom-surface {
+        min-width: 100%;
       }
 
       #scroll-container::-webkit-scrollbar {
@@ -437,21 +511,23 @@ class TimelineBoard extends LitElement {
   render() {
     return html`
       <section id="maingraph-section" aria-label="Organisational Load Graph">
-        <maingraph-lit></maingraph-lit>
+        <maingraph-lit .horizontalScale=${this.boardZoom}></maingraph-lit>
       </section>
 
       <div id="scroll-container">
-        <timeline-lit></timeline-lit>
-        <div id="board-area" role="region" aria-label="Timeline and Features">
-          <feature-board></feature-board>
-          <!-- Vertical marker for today's date -->
-          <div id="today-line" aria-hidden="true"></div>
-          <!--
-            Plugin overlays (annotation-overlay, link-editor-overlay, etc.) are
-            appended here by their plugins.  As position:absolute siblings inside
-            a position:relative ancestor they share board-space coordinates with
-            feature-board — no coordinate conversion required.
-          -->
+        <div id="board-zoom-surface" style="zoom: ${this.boardZoom}">
+          <timeline-lit></timeline-lit>
+          <div id="board-area" role="region" aria-label="Timeline and Features">
+            <feature-board></feature-board>
+            <!-- Vertical marker for today's date -->
+            <div id="today-line" aria-hidden="true"></div>
+            <!--
+              Plugin overlays (annotation-overlay, link-editor-overlay, etc.) are
+              appended here by their plugins.  As position:absolute siblings inside
+              a position:relative ancestor they share board-space coordinates with
+              feature-board — no coordinate conversion required.
+            -->
+          </div>
         </div>
       </div>
 

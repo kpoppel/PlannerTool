@@ -43,7 +43,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(dataService.saveView).toHaveBeenCalled();
   });
 
-  it('saveCurrentView captures full state from store (projects, teams, filters, expansion)', async () => {
+  it('saveCurrentView captures full state from store including Context', async () => {
     store.setState(
       (state) => ({
         ...state,
@@ -58,7 +58,7 @@ describe('application/commands/viewRestoreCommands', () => {
         view: {
           ...state.view,
           options: { timelineScale: 'weeks', displayMode: 'compact' },
-          expansion: { parentChild: true, relations: false, teamAllocated: true },
+          context: { parent: true, child: false, dependency: false, otherAllocations: true },
         },
       }),
       false,
@@ -83,9 +83,12 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(captured.viewOptions.selectedFeatureStates).toEqual(['Doing', 'Done']);
     expect(captured.viewOptions.selectedTaskTypes).toEqual(['feature', 'epic']);
     expect(captured.viewOptions.taskFilters).toMatchObject({ schedule: { planned: true, unplanned: false } });
-    expect(captured.viewOptions.expandParentChild).toBe(true);
-    expect(captured.viewOptions.expandRelations).toBe(false);
-    expect(captured.viewOptions.expandTeamAllocated).toBe(true);
+    expect(captured.viewOptions.context).toEqual({
+      parent: true,
+      child: false,
+      dependency: false,
+      otherAllocations: true,
+    });
   });
 
   it('loadAndApplyView applies stored view payload (selection/filter/options)', async () => {
@@ -104,9 +107,12 @@ describe('application/commands/viewRestoreCommands', () => {
           selectedTaskTypes: ['feature'],
           taskFilters: { schedule: { planned: false, unplanned: true }, relations: { hasLinks: true, noLinks: false } },
           capacityViewMode: 'project',
-          expandParentChild: true,
-          expandRelations: false,
-          expandTeamAllocated: true,
+          context: {
+            parent: true,
+            child: true,
+            dependency: false,
+            otherAllocations: true,
+          },
           pluginState: { 'plugin-cost': { mode: 'team' } },
         },
       })),
@@ -131,10 +137,11 @@ describe('application/commands/viewRestoreCommands', () => {
     });
     expect(snapshot.view.options.timelineScale).toBe('weeks');
     expect(snapshot.view.options.capacityViewMode).toBe('project');
-    expect(snapshot.view.expansion).toEqual({
-      parentChild: true,
-      relations: false,
-      teamAllocated: true,
+    expect(snapshot.view.context).toEqual({
+      parent: true,
+      child: true,
+      dependency: false,
+      otherAllocations: true,
     });
     expect(pluginStateCommands.restoreFromView).toHaveBeenCalledWith({
       'plugin-cost': { mode: 'team' },
@@ -357,14 +364,12 @@ describe('application/commands/viewRestoreCommands', () => {
             showUnplannedWork: false,
             showOnlyProjectHierarchy: true,
             hiddenTypes: ['epic'],
-            expandParentChild: true,
-            expandRelations: true,
-            expandTeamAllocated: true,
-          },
-          expansion: {
-            parentChild: true,
-            relations: true,
-            teamAllocated: true,
+            context: {
+              parent: true,
+              child: true,
+              dependency: true,
+              otherAllocations: true,
+            },
           },
         },
       }),
@@ -419,18 +424,16 @@ describe('application/commands/viewRestoreCommands', () => {
       showUnplannedWork: true,
       showOnlyProjectHierarchy: false,
       hiddenTypes: [],
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
     });
-    expect(snapshot.view.expansion).toEqual({
-      parentChild: false,
-      relations: false,
-      teamAllocated: false,
+    expect(snapshot.view.context).toEqual({
+      parent: false,
+      child: false,
+      dependency: false,
+      otherAllocations: false,
     });
   });
 
-  it('restores expansion state from payload in store without relying on legacy expanded ids', async () => {
+  it('restores canonical Context from a saved view', async () => {
     const pluginStateCommands = {
       restoreFromView: vi.fn(async () => {}),
     };
@@ -445,9 +448,12 @@ describe('application/commands/viewRestoreCommands', () => {
         selectedProjects: {},
         selectedTeams: { 'team-signal-processing': true },
         viewOptions: {
-          expandParentChild: false,
-          expandRelations: false,
-          expandTeamAllocated: false,
+          context: {
+            parent: true,
+            child: false,
+            dependency: true,
+            otherAllocations: false,
+          },
           taskFilters: {
             schedule: { planned: true, unplanned: true },
             allocation: { allocated: true, unallocated: true },
@@ -462,10 +468,11 @@ describe('application/commands/viewRestoreCommands', () => {
     const cmd = createViewRestoreCommands(store, dataService, pluginStateCommands, vi.fn());
     await cmd.loadAndApplyView('v1');
 
-    expect(store.getState().view.expansion).toEqual({
-      parentChild: false,
-      relations: false,
-      teamAllocated: false,
+    expect(store.getState().view.context).toEqual({
+      parent: true,
+      child: false,
+      dependency: true,
+      otherAllocations: false,
     });
     expect(pluginStateCommands.restoreFromView).toHaveBeenCalledWith({});
   });

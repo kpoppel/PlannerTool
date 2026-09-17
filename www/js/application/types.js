@@ -49,14 +49,6 @@
 
 /**
  * @typedef {{
- *   parentChild: boolean,
- *   relations: boolean,
- *   teamAllocated: boolean
- * }} ViewExpansionState
- */
-
-/**
- * @typedef {{
  *   parent: boolean,
  *   child: boolean,
  *   dependency: boolean,
@@ -77,7 +69,6 @@
  *   activeId: string|null,
  *   saved: any[],
  *   options: ViewOptionsState,
- *   expansion: ViewExpansionState,
  *   context: ViewContextState
  * }} ViewState
  */
