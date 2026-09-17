@@ -1,6 +1,7 @@
 import {
   applyGroupOverrides,
   deriveEffectiveGroupsForPlan,
+  deriveDisplayGroupsForSelectedPlans,
   derivePendingGroupChanges,
 } from '../shared/groupProjection.js';
 import { getActiveScenario } from '../shared/scenarioMutations.js';
@@ -24,6 +25,16 @@ export function createGroupSelectors(store) {
       const baselineGroups = getBaselineGroupsForPlan(state, planId);
       const scenario = getActiveScenario(state);
       return deriveEffectiveGroupsForPlan(planId, baselineGroups, scenario);
+    },
+
+    getDisplayGroupsForSelectedPlans(planIds, resolvedFeatures) {
+      const state = store.getState();
+      return deriveDisplayGroupsForSelectedPlans(
+        planIds,
+        state.groups.byPlanId,
+        getActiveScenario(state),
+        resolvedFeatures
+      );
     },
 
     getPendingGroupChanges() {

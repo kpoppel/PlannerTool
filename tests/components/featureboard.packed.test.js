@@ -291,7 +291,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     sinon.stub(sel.view, 'isTypeVisible').returns(true);
     sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['Active']));
     sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
-    sinon.stub(sel.group, 'getEffectiveGroups').returns([]);
+    sinon.stub(sel.group, 'getDisplayGroupsForSelectedPlans').returns([]);
 
     // Keep the test on the real board-utils behavior so it exercises the
     // actual packed-mode layout logic without mutating the imported module.
@@ -437,7 +437,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     expect(taskRows.map((item) => item.slotRank)).to.deep.equal([1024, 2048]);
     expect(appendSlot.rank).to.equal(3072);
 
-    sel.group.getEffectiveGroups.returns([{
+    sel.group.getDisplayGroupsForSelectedPlans.returns([{
       id: 'new-group', plan_id: 'p1', name: 'New group', members: [], rank: appendSlot.rank,
     }]);
     await board.renderFeatures();
@@ -488,7 +488,7 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
     sinon.stub(sel.view, 'isTypeVisible').returns(true);
     sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['Active']));
     sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
-    sinon.stub(sel.group, 'getEffectiveGroups').returns([]);
+    sinon.stub(sel.group, 'getDisplayGroupsForSelectedPlans').returns([]);
   });
 
   afterEach(() => {

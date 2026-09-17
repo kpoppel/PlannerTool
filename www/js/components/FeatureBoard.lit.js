@@ -20,6 +20,10 @@ import { laneHeight, computePosition } from './board-utils.js';
 import { findInBoard } from './board-utils.js';
 import { addDays, formatDate, parseDate } from './util.js';
 import {
+  deriveDisplayGroupsForFeatures,
+  getDisplayGroupOwnerPlanByFeatureId,
+} from '../application/shared/groupProjection.js';
+import {
   isSwimlaneMode,
   buildSwimlaneList,
   assignFeatureToSwimlane,
@@ -618,20 +622,22 @@ class FeatureBoard extends LitElement {
     const visibleFeatures = sel.scope.getVisibleFeatures();
     const months = getTimelineMonths();
     const isPacked = sel.view.getPackedMode();
-    const expansionState = sel.view.getExpansionState();
     const context = sel.view.getContext();
     const selectedProjects = sel.selection.getProjects();
     const selectedTeams = sel.selection.getTeams();
+    const selectedPlanIds = selectedProjects.filter((project) => project.selected).map((project) => project.id);
+    const displayGroups = sel.group.getDisplayGroupsForSelectedPlans(
+      selectedPlanIds,
+      sourceFeatures
+    );
+    const groupedOwnerPlanByFeatureId = getDisplayGroupOwnerPlanByFeatureId(displayGroups);
     const candidateSwimlanes = buildSwimlaneList(
       selectedProjects,
-      selectedTeams,
-      expansionState,
       visibleFeatures,
       context
     );
     const swimlaneActive = isSwimlaneMode(
       selectedProjects,
-      expansionState,
       candidateSwimlanes
     );
 
@@ -650,13 +656,6 @@ class FeatureBoard extends LitElement {
 
       const swimlanes = candidateSwimlanes;
 
-      const selectedProjectIds = new Set(
-        selectedProjects.filter((p) => p.selected).map((p) => p.id)
-      );
-      const selectedTeamIds = new Set(
-        selectedTeams.filter((t) => t.selected).map((t) => t.id)
-      );
-
       // Group visible features into per-swimlane buckets
       const buckets = new Map(swimlanes.map((s) => [s.id, []]));
       for (const feature of visibleFeatures) {
@@ -664,10 +663,8 @@ class FeatureBoard extends LitElement {
           feature,
           swimlanes,
           allFeaturesById,
-          expansionState,
-          selectedProjectIds,
-          selectedTeamIds,
-          context
+          context,
+          groupedOwnerPlanByFeatureId.get(String(feature.id)) || null
         );
         const bucket = buckets.get(sid) ?? buckets.get(swimlanes[0]?.id);
         if (bucket) bucket.push(feature);
@@ -762,7 +759,7 @@ class FeatureBoard extends LitElement {
 
         // Use group layout for plan/expanded-plan swimlanes that have groups.
         const planGroups = (swimlane.type === 'plan' || swimlane.type === 'expanded-plan')
-          ? sel.group.getEffectiveGroups(String(swimlane.id))
+          ? deriveDisplayGroupsForFeatures(displayGroups, bucket, swimlane.id)
           : [];
 
         if (planGroups.length > 0) {
@@ -861,8 +858,7 @@ class FeatureBoard extends LitElement {
       // Scope groups to the currently-selected plans only.  getAllGroups()
       // returns groups from ALL cached plans (including stale entries from plans
       // no longer selected), which would show empty group pills from other plans.
-      const selectedPlanIds = selectedProjects.filter((p) => p.selected).map((p) => p.id);
-      const allGroups = selectedPlanIds.flatMap((id) => sel.group.getEffectiveGroups(id));
+      const allGroups = displayGroups;
 
       // Always go through the group band layout, even with zero groups: it is
       // what stamps the shared ordering keys onto every row, which the group

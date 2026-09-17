@@ -1,610 +1,106 @@
-/**
- * Tests for SwimlaneService — pure swimlane grouping logic.
- * No DOM or Lit dependencies; runs cleanly in Vitest/jsdom.
- */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  isSwimlaneMode,
-  buildSwimlaneList,
   assignFeatureToSwimlane,
+  buildSwimlaneList,
+  isSwimlaneMode,
 } from '../www/js/services/SwimlaneService.js';
 
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
+const mkProject = (id, selected, color = '#aaa') => ({ id, name: id, color, selected });
+const mkFeature = (id, project, parentId = null) => ({ id, project, parentId, capacity: [] });
 
-const mkProject = (id, name, selected, color = '#aaa', type = 'project') => ({
-  id,
-  name,
-  color,
-  selected,
-  type,
-});
+describe('SwimlaneService', () => {
+  const projects = [mkProject('p1', true), mkProject('p2', false), mkProject('p3', false)];
+  const noContext = { parent: false, child: false, dependency: false, otherAllocations: false };
 
-const mkTeam = (id, name, selected, color = '#bbb') => ({ id, name, color, selected });
-
-/**
- * @param {string} id
- * @param {string} projectId
- * @param {string|null} parentId
- * @param {Array<[string, number]>} teamCapacities  [[teamId, capacity], ...]
- */
-const mkFeature = (id, projectId, parentId = null, teamCapacities = []) => ({
-  id,
-  project: projectId,
-  parentId,
-  capacity: teamCapacities.map(([team, capacity]) => ({ team, capacity })),
-});
-
-const noExpansion = {
-  expandParentChild: false,
-  expandRelations: false,
-  expandTeamAllocated: false,
-};
-
-// ---------------------------------------------------------------------------
-// isSwimlaneMode
-// ---------------------------------------------------------------------------
-
-describe('isSwimlaneMode', () => {
-  it('returns false with 0 selected projects and no expansion', () => {
-    const projects = [mkProject('a', 'A', false), mkProject('b', 'B', false)];
-    expect(isSwimlaneMode(projects, noExpansion)).toBe(false);
+  it('does not activate without selected plans or Context source-plan lanes', () => {
+    expect(isSwimlaneMode([mkProject('p1', false)], [])).toBe(false);
   });
 
-  it('returns false with 1 selected project and no expansion', () => {
-    const projects = [mkProject('a', 'A', true), mkProject('b', 'B', false)];
-    expect(isSwimlaneMode(projects, noExpansion)).toBe(false);
+  it('activates for multiple selected plans or contextual source-plan lanes', () => {
+    expect(isSwimlaneMode([mkProject('p1', true), mkProject('p2', true)], [])).toBe(true);
+    expect(isSwimlaneMode(projects, [
+      { id: 'p1', type: 'plan' },
+      { id: 'p2', type: 'expanded-plan' },
+    ])).toBe(true);
   });
 
-  it('returns true with exactly 2 selected projects', () => {
-    const projects = [mkProject('a', 'A', true), mkProject('b', 'B', true)];
-    expect(isSwimlaneMode(projects, noExpansion)).toBe(true);
+  it('creates lanes only for selected plans while Context is off', () => {
+    const lanes = buildSwimlaneList(projects, [mkFeature('f1', 'p1'), mkFeature('f2', 'p2')], noContext);
+    expect(lanes).toEqual([{ id: 'p1', name: 'p1', color: '#aaa', type: 'plan' }]);
   });
 
-  it('returns true with 3+ selected projects', () => {
-    const projects = [
-      mkProject('a', 'A', true),
-      mkProject('b', 'B', true),
-      mkProject('c', 'C', true),
+  it('orders selected ancestor plan lanes before their selected descendants', () => {
+    const features = [mkFeature('parent', 'p1'), mkFeature('child', 'p2', 'parent')];
+    const lanes = buildSwimlaneList(
+      [mkProject('p2', true), mkProject('p1', true)], features, noContext
+    );
+
+    expect(lanes.map((lane) => lane.id)).toEqual(['p1', 'p2']);
+  });
+
+  it('adds visible cross-plan lanes when Parent or Child Context is enabled', () => {
+    const visible = [mkFeature('f1', 'p1'), mkFeature('f2', 'p2')];
+    expect(buildSwimlaneList(projects, visible, { ...noContext, parent: true })[1])
+      .toMatchObject({ id: 'p2', type: 'expanded-plan' });
+    expect(buildSwimlaneList(projects, visible, { ...noContext, child: true })[1])
+      .toMatchObject({ id: 'p2', type: 'expanded-plan' });
+  });
+
+  it('adds an Other allocation source-plan lane without creating team lanes', () => {
+    const lanes = buildSwimlaneList(
+      projects,
+      [mkFeature('base', 'p1'), mkFeature('other', 'p3')],
+      { ...noContext, otherAllocations: true }
+    );
+
+    expect(lanes).toEqual([
+      { id: 'p1', name: 'p1', color: '#aaa', type: 'plan' },
+      { id: 'p3', name: 'p3', color: '#aaa', type: 'expanded-plan' },
+    ]);
+  });
+
+  it('keeps selected-plan work in its own lane', () => {
+    const lanes = [{ id: 'p1', type: 'plan' }, { id: 'p2', type: 'expanded-plan' }];
+    const features = [mkFeature('parent', 'p2'), mkFeature('child', 'p1', 'parent')];
+    expect(assignFeatureToSwimlane(
+      features[1], lanes, new Map(features.map((feature) => [feature.id, feature])),
+      { ...noContext, child: true }
+    )).toBe('p1');
+  });
+
+  it('gives an owning higher-level group precedence over a selected descendant lane', () => {
+    const lanes = [{ id: 'p1', type: 'plan' }, { id: 'p2', type: 'plan' }];
+    const feature = mkFeature('child', 'p2');
+    expect(assignFeatureToSwimlane(feature, lanes, new Map(), noContext, 'p1')).toBe('p1');
+  });
+
+  it('walks arbitrary parent depth into the selected plan lane under hierarchy Context', () => {
+    const lanes = [{ id: 'p1', type: 'plan' }, { id: 'p3', type: 'expanded-plan' }];
+    const features = [
+      mkFeature('root', 'p1'),
+      mkFeature('middle', 'p3', 'root'),
+      mkFeature('leaf', 'p3', 'middle'),
     ];
-    expect(isSwimlaneMode(projects, noExpansion)).toBe(true);
+    expect(assignFeatureToSwimlane(
+      features[2], lanes, new Map(features.map((feature) => [feature.id, feature])),
+      { ...noContext, parent: true }
+    )).toBe('p1');
   });
 
-  it('returns true with expandTeamAllocated and 0 projects', () => {
-    expect(isSwimlaneMode([], { ...noExpansion, expandTeamAllocated: true })).toBe(true);
+  it('uses an expanded source-plan lane for Other allocations', () => {
+    const lanes = [{ id: 'p1', type: 'plan' }, { id: 'p3', type: 'expanded-plan' }];
+    expect(assignFeatureToSwimlane(
+      mkFeature('other', 'p3'), lanes, new Map(),
+      { ...noContext, otherAllocations: true }
+    )).toBe('p3');
   });
 
-  it('returns true with expandTeamAllocated and 1 selected project', () => {
-    const projects = [mkProject('a', 'A', true)];
-    expect(isSwimlaneMode(projects, { ...noExpansion, expandTeamAllocated: true })).toBe(
-      true
-    );
-  });
-
-  it('returns false when expandTeamAllocated is false, even with 1 project', () => {
-    const projects = [mkProject('a', 'A', true)];
-    expect(isSwimlaneMode(projects, noExpansion)).toBe(false);
-  });
-
-  it('returns true when displayed swimlanes include 2 plans via expansion', () => {
-    const projects = [mkProject('a', 'A', true), mkProject('b', 'B', false)];
-    const swimlanes = [
-      { id: 'a', type: 'plan' },
-      { id: 'b', type: 'expanded-plan' },
-    ];
-    expect(isSwimlaneMode(projects, { ...noExpansion, expandParentChild: true }, swimlanes)).toBe(true);
-  });
-
-  it('returns false with one selected plan and no extra displayed plans', () => {
-    const projects = [mkProject('a', 'A', true), mkProject('b', 'B', false)];
-    const swimlanes = [{ id: 'a', type: 'plan' }];
-    expect(isSwimlaneMode(projects, noExpansion, swimlanes)).toBe(false);
-  });
-
-  it('handles null/undefined gracefully', () => {
-    expect(isSwimlaneMode(null, null)).toBe(false);
-    expect(isSwimlaneMode(undefined, undefined)).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildSwimlaneList
-// ---------------------------------------------------------------------------
-
-describe('buildSwimlaneList', () => {
-  const projects = [
-    mkProject('p1', 'Alpha', true, '#ff0000'),
-    mkProject('p2', 'Beta', true, '#00ff00'),
-    mkProject('p3', 'Gamma', false, '#0000ff'),
-  ];
-  const teams = [
-    mkTeam('t1', 'Team One', true, '#111111'),
-    mkTeam('t2', 'Team Two', false, '#222222'),
-    mkTeam('t3', 'Team Three', true, '#333333'),
-  ];
-
-  it('returns plan swimlanes for selected projects only', () => {
-    const list = buildSwimlaneList(projects, teams, noExpansion, []);
-    expect(list).toHaveLength(2);
-    expect(list[0]).toMatchObject({ id: 'p1', name: 'Alpha', type: 'plan' });
-    expect(list[1]).toMatchObject({ id: 'p2', name: 'Beta', type: 'plan' });
-  });
-
-  it('preserves project order', () => {
-    const list = buildSwimlaneList(projects, teams, noExpansion, []);
-    expect(list.map((s) => s.id)).toEqual(['p1', 'p2']);
-  });
-
-  it('includes plan color in swimlane descriptor', () => {
-    const list = buildSwimlaneList(projects, teams, noExpansion, []);
-    expect(list[0].color).toBe('#ff0000');
-    expect(list[1].color).toBe('#00ff00');
-  });
-
-  it('adds expanded-plan swimlane for unselected project when expandParentChild on', () => {
-    const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p3')];
-    const list = buildSwimlaneList(
-      projects,
-      teams,
-      { ...noExpansion, expandParentChild: true },
-      visibleFeatures
-    );
-    const p3Lane = list.find((s) => s.id === 'p3');
-    expect(p3Lane).toBeTruthy();
-    expect(p3Lane.type).toBe('expanded-plan');
-  });
-
-  it('adds expanded-plan swimlane for unselected project when expandRelations on', () => {
-    const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p3')];
-    const list = buildSwimlaneList(
-      projects,
-      teams,
-      { ...noExpansion, expandRelations: true },
-      visibleFeatures
-    );
-    expect(list.find((s) => s.id === 'p3')).toBeTruthy();
-  });
-
-  it('does not add expanded-plan when no expansion flag is active', () => {
-    const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p3')];
-    const list = buildSwimlaneList(projects, teams, noExpansion, visibleFeatures);
-    expect(list.find((s) => s.id === 'p3')).toBeFalsy();
-  });
-
-  it('adds expanded plans for canonical visible-scope lanes', () => {
-    const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p3')];
-    const list = buildSwimlaneList(
-      projects,
-      teams,
-      noExpansion,
-      visibleFeatures,
-      { includeExpandedPlans: true }
-    );
-    expect(list.find((s) => s.id === 'p3').type).toBe('expanded-plan');
-  });
-
-  it('adds a source-plan swimlane for Other allocations Context', () => {
-    const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p3', null, [['t1', 1]])];
-    const list = buildSwimlaneList(
-      projects,
-      teams,
-      noExpansion,
-      visibleFeatures,
-      { otherAllocations: true }
-    );
-
-    expect(list.find((swimlane) => swimlane.id === 'p3').type).toBe('expanded-plan');
-  });
-
-  it('does not duplicate a selected project as expanded-plan', () => {
-    const visibleFeatures = [mkFeature('f1', 'p1'), mkFeature('f2', 'p2')];
-    const list = buildSwimlaneList(
-      projects,
-      teams,
-      { ...noExpansion, expandParentChild: true },
-      visibleFeatures
-    );
-    // p1 and p2 are selected → plan type; should not appear twice
-    const p1Lanes = list.filter((s) => s.id === 'p1');
-    const p2Lanes = list.filter((s) => s.id === 'p2');
-    expect(p1Lanes).toHaveLength(1);
-    expect(p2Lanes).toHaveLength(1);
-    expect(p1Lanes[0].type).toBe('plan');
-    expect(p2Lanes[0].type).toBe('plan');
-  });
-
-  it('adds team swimlanes for selected teams when expandTeamAllocated on', () => {
-    const list = buildSwimlaneList(
-      projects,
-      teams,
-      { ...noExpansion, expandTeamAllocated: true },
-      []
-    );
-    const teamLanes = list.filter((s) => s.type === 'team');
-    expect(teamLanes).toHaveLength(2); // t1 and t3 are selected
-    expect(teamLanes.map((s) => s.id)).toContain('t1');
-    expect(teamLanes.map((s) => s.id)).toContain('t3');
-    expect(teamLanes.map((s) => s.id)).not.toContain('t2');
-  });
-
-  it('places team swimlanes after plan swimlanes', () => {
-    const list = buildSwimlaneList(
-      projects,
-      teams,
-      { ...noExpansion, expandTeamAllocated: true },
-      []
-    );
-    const lastPlanIdx = list.map((s) => s.type).lastIndexOf('plan');
-    const firstTeamIdx = list.map((s) => s.type).indexOf('team');
-    expect(firstTeamIdx).toBeGreaterThan(lastPlanIdx);
-  });
-
-  it('returns only team swimlanes when no projects selected and expandTeamAllocated on', () => {
-    const noProjects = [];
-    const list = buildSwimlaneList(
-      noProjects,
-      teams,
-      { ...noExpansion, expandTeamAllocated: true },
-      []
-    );
-    expect(list.length).toBeGreaterThan(0);
-    expect(list.every((s) => s.type === 'team')).toBe(true);
-  });
-
-  it('returns empty list when nothing selected and no expansion', () => {
-    const list = buildSwimlaneList(
-      [mkProject('p1', 'Alpha', false)],
-      [mkTeam('t1', 'Team', false)],
-      noExpansion,
-      []
-    );
-    expect(list).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// assignFeatureToSwimlane
-// ---------------------------------------------------------------------------
-
-describe('assignFeatureToSwimlane', () => {
-  const swimlanes = [
-    { id: 'p1', name: 'Alpha', color: '#f00', type: 'plan' },
-    { id: 'p2', name: 'Beta', color: '#0f0', type: 'plan' },
-    { id: 'p3', name: 'Gamma', color: '#00f', type: 'expanded-plan' },
-    { id: 't1', name: 'Team One', color: '#111', type: 'team' },
-  ];
-
-  const selectedProjectIds = new Set(['p1', 'p2']);
-  const selectedTeamIds = new Set(['t1']);
-
-  it('assigns feature to its own plan swimlane (p1)', () => {
-    const feature = mkFeature('f1', 'p1');
-    expect(
-      assignFeatureToSwimlane(
-        feature,
-        swimlanes,
-        new Map(),
-        noExpansion,
-        selectedProjectIds,
-        selectedTeamIds
-      )
-    ).toBe('p1');
-  });
-
-  it('assigns feature to its own plan swimlane (p2)', () => {
-    const feature = mkFeature('f2', 'p2');
-    expect(
-      assignFeatureToSwimlane(
-        feature,
-        swimlanes,
-        new Map(),
-        noExpansion,
-        selectedProjectIds,
-        selectedTeamIds
-      )
-    ).toBe('p2');
-  });
-
-  describe('parent chain walking (expandParentChild)', () => {
-    it('keeps selected-plan work in its own lane before Parent Context placement', () => {
-      const features = [
-        mkFeature('epic1', 'p3'),
-        mkFeature('task1', 'p1', 'epic1'),
-      ];
-      const allFeaturesById = new Map(features.map((feature) => [String(feature.id), feature]));
-
-      expect(
-        assignFeatureToSwimlane(
-          features[1],
-          swimlanes,
-          allFeaturesById,
-          noExpansion,
-          selectedProjectIds,
-          selectedTeamIds,
-          { parent: true }
-        )
-      ).toBe('p1');
-    });
-
-    it('follows a parent into its selected-plan lane when Parent Context is active', () => {
-      const features = [
-        mkFeature('epic1', 'p1'),
-        mkFeature('task1', 'p3', 'epic1'),
-      ];
-      const allFeaturesById = new Map(features.map((feature) => [String(feature.id), feature]));
-
-      expect(
-        assignFeatureToSwimlane(
-          features[1],
-          swimlanes,
-          allFeaturesById,
-          noExpansion,
-          selectedProjectIds,
-          selectedTeamIds,
-          { parent: true }
-        )
-      ).toBe('p1');
-    });
-
-    it('keeps a selected child plan in its own swimlane when its parent is also selected', () => {
-      const features = [
-        mkFeature('epic1', 'p1'),           // A-plan parent (plan swimlane)
-        mkFeature('task1', 'p2', 'epic1'),  // B-plan child, parent is A-plan epic
-      ];
-      const allFeaturesById = new Map(features.map((f) => [String(f.id), f]));
-
-      expect(
-        assignFeatureToSwimlane(
-          features[1],
-          swimlanes,
-          allFeaturesById,
-          { ...noExpansion, expandParentChild: true },
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBe('p2');
-    });
-
-    it('does not follow parent when expandParentChild is off', () => {
-      const features = [
-        mkFeature('epic1', 'p1'),
-        mkFeature('task1', 'p2', 'epic1'),
-      ];
-      const allFeaturesById = new Map(features.map((f) => [String(f.id), f]));
-
-      expect(
-        assignFeatureToSwimlane(
-          features[1],
-          swimlanes,
-          allFeaturesById,
-          noExpansion,
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBe('p2'); // stays in own plan swimlane
-    });
-
-    it('handles multi-level parent chains (grandchild follows root ancestor)', () => {
-      const features = [
-        mkFeature('root', 'p1'),             // A-plan root
-        mkFeature('mid', 'p3', 'root'),      // expanded plan child of root
-        mkFeature('leaf', 'p3', 'mid'),      // expanded plan grandchild
-      ];
-      const allFeaturesById = new Map(features.map((f) => [String(f.id), f]));
-
-      expect(
-        assignFeatureToSwimlane(
-          features[2], // leaf (p3)
-          swimlanes,
-          allFeaturesById,
-          { ...noExpansion, expandParentChild: true },
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBe('p1'); // walks up mid→root, finds p1 plan swimlane
-    });
-
-    it('follows parent into expanded-plan swimlane when parent and child share that swimlane', () => {
-      // Both task3 and its parent epic3 are in p3 (expanded-plan).
-      // The parent walk finds p3 as an expanded-plan ancestor → returns p3,
-      // which is the same result as the feature's own project — the key point is
-      // that features DO follow their parent into expanded-plan swimlanes.
-      const features = [
-        mkFeature('epic3', 'p3'),            // expanded-plan parent
-        mkFeature('task3', 'p3', 'epic3'),   // child in same expanded-plan
-      ];
-      const allFeaturesById = new Map(features.map((f) => [String(f.id), f]));
-
-      expect(
-        assignFeatureToSwimlane(
-          features[1],
-          swimlanes,
-          allFeaturesById,
-          { ...noExpansion, expandParentChild: true },
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBe('p3');
-    });
-
-    it('keeps selected-plan work in its own lane when its parent is in an expanded plan', () => {
-      // A selected plan owns its tasks even when Parent or Child Context adds
-      // an ancestor from another plan as an expanded-plan lane.
-      const swimlanesTeamBase = [
-        { id: 'p1', name: 'Team Plan', color: '#f00', type: 'plan' },
-        { id: 'p3', name: 'Project Plan', color: '#00f', type: 'expanded-plan' },
-      ];
-      const features = [
-        mkFeature('epic3', 'p3'),           // parent epic in expanded project plan
-        mkFeature('feat1', 'p1', 'epic3'),  // team-plan feature linked to epic
-      ];
-      const allFeaturesById = new Map(features.map((f) => [String(f.id), f]));
-
-      expect(
-        assignFeatureToSwimlane(
-          features[1], // feat1 in team plan p1
-          swimlanesTeamBase,
-          allFeaturesById,
-          { ...noExpansion, expandParentChild: true },
-          new Set(['p1']),
-          new Set()
-        )
-      ).toBe('p1');
-    });
-
-    it('keeps team-plan feature in its own swimlane when it has no parent', () => {
-      // An unlinked team-plan feature (no parentId) should remain in the
-      // team plan swimlane even when expandParentChild is on.
-      const swimlanesTeamBase = [
-        { id: 'p1', name: 'Team Plan', color: '#f00', type: 'plan' },
-        { id: 'p3', name: 'Project Plan', color: '#00f', type: 'expanded-plan' },
-      ];
-      const feature = mkFeature('feat2', 'p1', null); // no parentId
-
-      expect(
-        assignFeatureToSwimlane(
-          feature,
-          swimlanesTeamBase,
-          new Map(),
-          { ...noExpansion, expandParentChild: true },
-          new Set(['p1']),
-          new Set()
-        )
-      ).toBe('p1'); // stays in team plan swimlane
-    });
-
-    it('handles cycle in parent chain without infinite loop', () => {
-      // Artificial cycle: f1.parentId = f2, f2.parentId = f1
-      const features = [
-        { id: 'f1', project: 'p3', parentId: 'f2', capacity: [] },
-        { id: 'f2', project: 'p3', parentId: 'f1', capacity: [] },
-      ];
-      const allFeaturesById = new Map(features.map((f) => [String(f.id), f]));
-
-      // Should not throw or loop; falls back to expanded-plan swimlane
-      expect(() =>
-        assignFeatureToSwimlane(
-          features[0],
-          swimlanes,
-          allFeaturesById,
-          { ...noExpansion, expandParentChild: true },
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).not.toThrow();
-    });
-  });
-
-  describe('team swimlane assignment (expandTeamAllocated)', () => {
-    it('assigns expanded-plan feature to team lane based on capacity', () => {
-      const feature = mkFeature('f3', 'p3', null, [['t1', 2]]);
-      expect(
-        assignFeatureToSwimlane(
-          feature,
-          swimlanes,
-          new Map(),
-          { ...noExpansion, expandTeamAllocated: true },
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBe('t1'); // p3 not selected → goes to team lane
-    });
-
-    it('keeps selected-plan feature in plan lane even when team allocation exists', () => {
-      const feature = mkFeature('f1', 'p1', null, [['t1', 2]]);
-      expect(
-        assignFeatureToSwimlane(
-          feature,
-          swimlanes,
-          new Map(),
-          { ...noExpansion, expandTeamAllocated: true },
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBe('p1'); // p1 is selected → stays in plan swimlane
-    });
-
-    it('ignores zero-capacity allocations for team lane assignment', () => {
-      // Feature allocated to t1 with capacity=0 should not go to team lane
-      const feature = mkFeature('f3', 'p3', null, [['t1', 0]]);
-      // Falls through to expanded-plan swimlane since no positive team capacity
-      const result = assignFeatureToSwimlane(
-        feature,
-        swimlanes,
-        new Map(),
-        { ...noExpansion, expandTeamAllocated: true },
-        selectedProjectIds,
-        selectedTeamIds
-      );
-      // Ends up in expanded-plan or first swimlane, NOT team lane
-      expect(result).not.toBe('t1');
-    });
-
-    it('uses first matching team when feature allocated to multiple teams', () => {
-      // Feature allocated to both t1 and another team (t1 appears first in capacity)
-      const swimlanesWithT2 = [
-        ...swimlanes,
-        { id: 't2', name: 'Team Two', color: '#222', type: 'team' },
-      ];
-      const selectedTeamIdsWithT2 = new Set(['t1', 't2']);
-      const feature = mkFeature('f3', 'p3', null, [
-        ['t1', 1],
-        ['t2', 2],
-      ]);
-      const result = assignFeatureToSwimlane(
-        feature,
-        swimlanesWithT2,
-        new Map(),
-        { ...noExpansion, expandTeamAllocated: true },
-        selectedProjectIds,
-        selectedTeamIdsWithT2
-      );
-      expect(result).toBe('t1'); // first matching team
-    });
-  });
-
-  describe('fallbacks', () => {
-    it('assigns expanded-plan feature to its own expanded-plan swimlane', () => {
-      const feature = mkFeature('f3', 'p3');
-      expect(
-        assignFeatureToSwimlane(
-          feature,
-          swimlanes,
-          new Map(),
-          noExpansion,
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBe('p3');
-    });
-
-    it('falls back to first swimlane for unknown project', () => {
-      const feature = mkFeature('f_unk', 'p_unknown');
-      expect(
-        assignFeatureToSwimlane(
-          feature,
-          swimlanes,
-          new Map(),
-          noExpansion,
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBe('p1'); // first swimlane
-    });
-
-    it('returns null for empty swimlane list', () => {
-      const feature = mkFeature('f1', 'p1');
-      expect(
-        assignFeatureToSwimlane(
-          feature,
-          [],
-          new Map(),
-          noExpansion,
-          selectedProjectIds,
-          selectedTeamIds
-        )
-      ).toBeNull();
-    });
+  it('terminates deterministically for a cyclic parent chain', () => {
+    const lanes = [{ id: 'p1', type: 'plan' }, { id: 'p3', type: 'expanded-plan' }];
+    const features = [mkFeature('one', 'p3', 'two'), mkFeature('two', 'p3', 'one')];
+    expect(assignFeatureToSwimlane(
+      features[0], lanes, new Map(features.map((feature) => [feature.id, feature])),
+      { ...noContext, parent: true }
+    )).toBe('p3');
   });
 });

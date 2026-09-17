@@ -7,8 +7,9 @@ const {
   mockMoveGroup,
   mockAddMember,
   mockRemoveMember,
-  mockEffectiveGroups,
+  mockDisplayGroups,
   mockEffectiveFeatures,
+  mockProjects,
 } = vi.hoisted(() => ({
   mockCreateGroup: vi.fn(),
   mockUpdateGroup: vi.fn(),
@@ -16,8 +17,9 @@ const {
   mockMoveGroup: vi.fn(),
   mockAddMember: vi.fn(),
   mockRemoveMember: vi.fn(),
-  mockEffectiveGroups: vi.fn(() => []),
+  mockDisplayGroups: vi.fn(() => []),
   mockEffectiveFeatures: vi.fn(() => []),
+  mockProjects: vi.fn(() => [{ id: 'p1', selected: true }]),
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
@@ -33,10 +35,13 @@ vi.mock('../../www/js/application/imports.js', () => ({
   },
   sel: {
     group: {
-      getEffectiveGroups: mockEffectiveGroups,
+      getDisplayGroupsForSelectedPlans: mockDisplayGroups,
     },
     feature: {
       getEffectiveFeatures: mockEffectiveFeatures,
+    },
+    selection: {
+      getProjects: mockProjects,
     },
   },
 }));
@@ -77,7 +82,7 @@ describe('GroupContextMenu phase 5 seam migration', () => {
 
   it('reassigns feature membership via sel.group + cmd.group calls', () => {
     mockEffectiveFeatures.mockReturnValue([{ id: 'f1', project: 'p1' }]);
-    mockEffectiveGroups.mockReturnValue([
+    mockDisplayGroups.mockReturnValue([
       { id: 'g1', members: ['f1'] },
       { id: 'g2', members: [] },
     ]);
@@ -88,7 +93,7 @@ describe('GroupContextMenu phase 5 seam migration', () => {
 
     menu._assignToGroup('g2');
 
-    expect(mockEffectiveGroups).toHaveBeenCalledWith('p1');
+    expect(mockDisplayGroups).toHaveBeenCalledWith(['p1'], [{ id: 'f1', project: 'p1' }]);
     expect(mockRemoveMember).toHaveBeenCalledWith('g1', 'f1');
     expect(mockAddMember).toHaveBeenCalledWith('g2', 'f1');
   });
@@ -98,16 +103,13 @@ describe('GroupContextMenu phase 5 seam migration', () => {
       { id: 'parent', project: 'p1' },
       { id: 'child', project: 'p2', parentId: 'parent' },
     ]);
-    mockEffectiveGroups.mockImplementation((planId) => (
-      planId === 'p1' ? [{ id: 'g1', members: [] }] : []
-    ));
+    mockDisplayGroups.mockReturnValue([{ id: 'g1', members: [] }]);
 
     const menu = new GroupContextMenu();
     const groups = menu._getFeaturePlanGroups({ id: 'child', project: 'p2', parentId: 'parent' });
 
     expect(groups.map((group) => group.id)).toEqual(['g1']);
-    expect(mockEffectiveGroups).toHaveBeenCalledWith('p2');
-    expect(mockEffectiveGroups).toHaveBeenCalledWith('p1');
+    expect(mockDisplayGroups).toHaveBeenCalledWith(['p1'], expect.any(Array));
   });
 
   it('assigns a parent and all descendants to the selected group', () => {
@@ -116,7 +118,7 @@ describe('GroupContextMenu phase 5 seam migration', () => {
       { id: 'child', project: 'p2', parentId: 'parent' },
       { id: 'grandchild', project: 'p2', parentId: 'child' },
     ]);
-    mockEffectiveGroups.mockReturnValue([{ id: 'g1', members: [] }]);
+    mockDisplayGroups.mockReturnValue([{ id: 'g1', members: [] }]);
 
     const menu = new GroupContextMenu();
     menu._config = { feature: { id: 'parent', project: 'p1' } };

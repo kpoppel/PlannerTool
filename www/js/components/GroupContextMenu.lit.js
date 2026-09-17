@@ -273,17 +273,10 @@ class GroupContextMenu extends LitElement {
 
   _getFeaturePlanGroups(feature) {
     const features = sel.feature.getEffectiveFeatures();
-    const featuresById = new Map(features.map((item) => [String(item.id), item]));
-    let current = feature;
-    const visited = new Set();
-
-    while (current && !visited.has(String(current.id))) {
-      visited.add(String(current.id));
-      const planGroups = sel.group.getEffectiveGroups(current.project);
-      if (planGroups.length > 0) return planGroups;
-      current = current.parentId ? featuresById.get(String(current.parentId)) : null;
-    }
-    return [];
+    const selectedPlanIds = sel.selection.getProjects()
+      .filter((plan) => plan.selected)
+      .map((plan) => String(plan.id));
+    return sel.group.getDisplayGroupsForSelectedPlans(selectedPlanIds, features);
   }
 
   _getFeatureAndDescendants(feature) {
