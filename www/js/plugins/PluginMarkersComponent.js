@@ -168,7 +168,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
       this.requestUpdate(); // also refresh toolbar counts
     };
 
-    bus.on(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
+    bus.on(TimelineEvents.MONTHS, this._timelineListener);
     bus.on(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
     bus.on(TeamEvents.CHANGED, this._selectionListener);
@@ -176,7 +176,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
 
   _unsubscribeBusEvents() {
     if (this._timelineListener) {
-      bus.off(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
+      bus.off(TimelineEvents.MONTHS, this._timelineListener);
       bus.off(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     }
     if (this._selectionListener) {

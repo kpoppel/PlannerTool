@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import PluginMarkers from '../../www/js/plugins/PluginMarkers.js';
 import { PluginMarkersComponent } from '../../www/js/plugins/PluginMarkersComponent.js';
 import { bus } from '../../www/js/core/EventBus.js';
-import { PluginEvents } from '../../www/js/core/EventRegistry.js';
+import { PluginEvents, TimelineEvents } from '../../www/js/core/EventRegistry.js';
 
 const mockSel = vi.hoisted(() => ({
   selection: {
@@ -99,5 +99,16 @@ describe('PluginMarkersComponent marker filtering', () => {
     );
 
     el.remove();
+  });
+
+  it('refreshes when the canonical timeline-month event is emitted', () => {
+    const el = new PluginMarkersComponent();
+    const scheduleRender = stub(el, '_scheduleRender');
+
+    el.connectedCallback();
+    bus.emit(TimelineEvents.MONTHS);
+
+    expect(scheduleRender.called).to.be.true;
+    el.disconnectedCallback();
   });
 });

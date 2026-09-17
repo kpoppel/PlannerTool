@@ -454,7 +454,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     // Re-render SVG when markers plugin activates/deactivates (affects Y offset)
     this._pluginStateListener = () => this._scheduleRender();
 
-    bus.on(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
+    bus.on(TimelineEvents.MONTHS, this._timelineListener);
     bus.on(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
     bus.on(DataEvents.PLAN_EVENTS_CHANGED, this._eventsChangedListener);
@@ -464,7 +464,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
   _unsubscribeBusEvents() {
     if (this._timelineListener) {
-      bus.off(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
+      bus.off(TimelineEvents.MONTHS, this._timelineListener);
       bus.off(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     }
     if (this._selectionListener) bus.off(ProjectEvents.CHANGED, this._selectionListener);

@@ -9,6 +9,7 @@ import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.j
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents, ViewEvents } from '../core/EventRegistry.js';
 import { findInBoard } from '../components/board-utils.js';
+import { boardCoords } from '../services/BoardCoordinateService.js';
 import { sel } from '../application/imports.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { dataService } from '../services/dataService.js';
@@ -236,7 +237,7 @@ export class PluginHistoryComponent extends LitElement {
       }
     };
 
-    bus.on(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
+    bus.on(TimelineEvents.MONTHS, this._timelineListener);
     bus.on(TimelineEvents.SCALE_CHANGED, this._timelineListener);
 
     // Re-render when condensed/compact mode changes (card layout changes)
@@ -267,28 +268,15 @@ export class PluginHistoryComponent extends LitElement {
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
     bus.on(TeamEvents.CHANGED, this._selectionListener);
 
-    const board = findInBoard('feature-board');
-    if (board) {
-      this._scrollListener = () => {
-        if (this.visible && !this._scrollScheduled) {
-          this._scrollScheduled = true;
-          requestAnimationFrame(() => {
-            this._scrollScheduled = false;
-            this._ensureVisibleProjectsLoaded()
-              .then(() => this._updateHistory())
-              .catch(() => this._updateHistory());
-          });
-        }
-      };
-      board.addEventListener('scroll', this._scrollListener, { passive: true });
-    }
+    this._scrollListener = this._timelineListener;
+    this._scrollUnsubscribe = boardCoords.subscribe(this._scrollListener);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
 
     if (this._timelineListener) {
-      bus.off(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
+      bus.off(TimelineEvents.MONTHS, this._timelineListener);
       bus.off(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     }
 
@@ -301,14 +289,9 @@ export class PluginHistoryComponent extends LitElement {
       bus.off(ViewEvents.CONDENSED, this._condensedListener);
     }
 
-    if (this._scrollListener) {
-      const board = findInBoard('feature-board');
-      board?.removeEventListener('scroll', this._scrollListener);
-    }
-
-    if (this._syncOverlayScroll) {
-      const board = findInBoard('feature-board');
-      board?.removeEventListener('scroll', this._syncOverlayScroll);
+    if (this._scrollUnsubscribe) {
+      this._scrollUnsubscribe();
+      this._scrollUnsubscribe = null;
     }
 
     this._overlay?.remove();
