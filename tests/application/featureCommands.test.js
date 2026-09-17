@@ -141,6 +141,30 @@ describe('application/commands/featureCommands', () => {
     expect(scenario.overrides.f0.start).toBe('2025-12-30');
   });
 
+  it('does not shift children when a parent bounds-only update opts out', () => {
+    store.setState(
+      buildState({
+        scenarios: {
+          activeId: 's1',
+          changedIds: [],
+          items: [{ id: 's1', name: 'Scenario 1', overrides: {} }],
+        },
+      }),
+      true,
+      'test.resetStore.boundsOnlyUpdate'
+    );
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn());
+
+    commands.updateFeatureDates([{
+      id: 'f0', start: '2026-01-05', end: '2026-02-01', shiftChildren: false,
+    }]);
+
+    const scenario = store.getState().scenarios.items[0];
+    expect(scenario.overrides.f0.start).toBe('2026-01-05');
+    expect(scenario.overrides.f1).toBeUndefined();
+    expect(scenario.overrides.f2).toBeUndefined();
+  });
+
   it('epic move does not shift child dates when child has non-date override only', () => {
     store.setState(
       buildState({

@@ -1110,7 +1110,12 @@ export class DetailsPanelLit extends LitElement {
     const newEnd = toIsoDate(maxEndMs);
 
     // Use state.updateFeatureDates to update both start and end together
-    cmd.feature.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
+    cmd.feature.updateFeatureDates([{
+      id: f.id,
+      start: newStart,
+      end: newEnd,
+      shiftChildren: false,
+    }]);
   }
 
   /**
@@ -1132,7 +1137,12 @@ export class DetailsPanelLit extends LitElement {
     if (minStartMs === null) return;
     const newStart = new Date(minStartMs).toISOString().slice(0, 10);
     const currentEnd = f.end || null;
-    cmd.feature.updateFeatureDates([{ id: f.id, start: newStart, end: currentEnd }]);
+    cmd.feature.updateFeatureDates([{
+      id: f.id,
+      start: newStart,
+      end: currentEnd,
+      shiftChildren: false,
+    }]);
   }
 
   /**
@@ -1154,7 +1164,12 @@ export class DetailsPanelLit extends LitElement {
     if (maxEndMs === null) return;
     const newEnd = new Date(maxEndMs).toISOString().slice(0, 10);
     const currentStart = f.start || null;
-    cmd.feature.updateFeatureDates([{ id: f.id, start: currentStart, end: newEnd }]);
+    cmd.feature.updateFeatureDates([{
+      id: f.id,
+      start: currentStart,
+      end: newEnd,
+      shiftChildren: false,
+    }]);
   }
 
   /**

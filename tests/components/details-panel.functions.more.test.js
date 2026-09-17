@@ -70,6 +70,7 @@ describe('DetailsPanel additional function coverage', () => {
     expect(arg.id).to.equal('e1');
     expect(arg.start).to.equal('2025-01-01');
     expect(arg.end).to.equal('2025-01-12');
+    expect(arg.shiftChildren).to.equal(false);
 
     stubGet.restore();
     stubUpdate.restore();
@@ -394,6 +395,7 @@ describe('DetailsPanel additional function coverage', () => {
     expect(arg.id).to.equal('ep1');
     expect(arg.start).to.equal('2025-01-10');
     expect(arg.end).to.equal('2025-03-01'); // unchanged
+    expect(arg.shiftChildren).to.equal(false);
 
     childrenStub.restore();
     getStub.restore();
@@ -419,6 +421,7 @@ describe('DetailsPanel additional function coverage', () => {
     expect(arg.id).to.equal('ep2');
     expect(arg.start).to.equal('2025-01-01'); // unchanged
     expect(arg.end).to.equal('2025-03-15');
+    expect(arg.shiftChildren).to.equal(false);
 
     childrenStub.restore();
     getStub.restore();

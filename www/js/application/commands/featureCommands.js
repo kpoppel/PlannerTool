@@ -123,7 +123,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
           let requestedEnd = entry.end !== undefined ? entry.end : currentEnd;
 
           const childIds = childrenByParent.get(id);
-          if (childIds !== undefined && childIds.length > 0) {
+          if (entry.shiftChildren !== false && childIds !== undefined && childIds.length > 0) {
             let maxChildEnd = null;
             for (const childId of childIds) {
               const childBase = baselineById.get(String(childId));
@@ -158,7 +158,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
             end: requestedEnd,
           };
 
-          if (childIds !== undefined && childIds.length > 0) {
+          if (entry.shiftChildren !== false && childIds !== undefined && childIds.length > 0) {
             const priorStart = currentStart;
             const newStart = requestedStart;
             const deltaMs = Date.parse(newStart) - Date.parse(priorStart);
