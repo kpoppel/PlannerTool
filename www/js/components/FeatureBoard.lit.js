@@ -959,11 +959,22 @@ class FeatureBoard extends LitElement {
     const scrollContainer = findInBoard('#scroll-container');
     if (!scrollContainer) return;
 
+    // Card positions (item.left/top) are board-space (unscaled) pixels, but the
+    // scroll container itself sits outside the zoomed subtree, so its scroll
+    // offsets/dimensions are in real screen pixels. Convert the visible screen
+    // rect to board space via boardCoords so the window stays correct at any
+    // board zoom level, instead of comparing mismatched coordinate spaces.
+    const rect = scrollContainer.getBoundingClientRect();
+    const topLeft = boardCoords.screenToBoard(rect.left, rect.top);
+    const bottomRight = boardCoords.screenToBoard(
+      rect.left + scrollContainer.clientWidth,
+      rect.top + scrollContainer.clientHeight
+    );
     const viewport = {
-      left: boardCoords.scrollX,
-      right: boardCoords.scrollX + scrollContainer.clientWidth,
-      top: boardCoords.scrollY,
-      bottom: boardCoords.scrollY + scrollContainer.clientHeight,
+      left: topLeft.x,
+      right: bottomRight.x,
+      top: topLeft.y,
+      bottom: bottomRight.y,
       overscanX: FeatureBoard.VIRTUALIZE_OVERSCAN_X,
       overscanY: FeatureBoard.VIRTUALIZE_OVERSCAN_Y,
     };

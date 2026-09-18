@@ -29,7 +29,7 @@ describe('TimelineBoard board zoom', () => {
 
     expect(graphSection.hasAttribute('style')).to.equal(false);
     expect(graph.horizontalScale).to.equal(0.9);
-    expect(boardSurface.getAttribute('style')).to.equal('zoom: 0.9');
+    expect(boardSurface.getAttribute('style')).to.equal('transform: scale(0.9)');
   });
 
   it('keeps the content beneath the mouse fixed while zooming', async () => {

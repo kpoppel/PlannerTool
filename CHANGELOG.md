@@ -10,6 +10,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 Template - do not change :
 ## [v] - unreleased
 ### Added
+- Added an interactive plan-reconciliation wireframe and documented the bottom-up publication, top-down consent workflow.
 - Added a hover tooltip to MainGraph with the selected day and displayed capacity values.
 - Added Stage 2 regressions for full-organization capacity invariance under presentation filters and normalized unfunded graph buckets.
 - Added icon-led top-bar status metrics for tasks and teams in scope plus tasks currently displayed, with explanatory tooltips.

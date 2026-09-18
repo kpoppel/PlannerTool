@@ -380,6 +380,9 @@ export class TimelineBoard extends LitElement {
 
       #board-zoom-surface {
         min-width: 100%;
+        /* Origin at top-left so the scaled box grows/shrinks from the same
+           corner the scroll-anchoring math in _setBoardZoom() assumes. */
+        transform-origin: top left;
       }
 
       #scroll-container::-webkit-scrollbar {
@@ -394,7 +397,12 @@ export class TimelineBoard extends LitElement {
 
       /* Timeline header sticks vertically, scrolls horizontally with content.
          z-index must exceed feature-card ghost titles (z-index: 120) so cards
-         scrolling past the header clip beneath it rather than overlapping. */
+         scrolling past the header clip beneath it rather than overlapping.
+         Kept as a sibling of (not nested inside) #board-zoom-surface: a
+         transform on an ancestor breaks position:sticky, so it is scaled
+         with CSS zoom instead — zoom resizes the flow layout box in step
+         with its visual size, keeping the reserved header height correct at
+         any board zoom level. */
       timeline-lit {
         position: sticky;
         top: 0;
@@ -515,8 +523,8 @@ export class TimelineBoard extends LitElement {
       </section>
 
       <div id="scroll-container">
-        <div id="board-zoom-surface" style="zoom: ${this.boardZoom}">
-          <timeline-lit></timeline-lit>
+        <timeline-lit style="zoom: ${this.boardZoom}"></timeline-lit>
+        <div id="board-zoom-surface" style="transform: scale(${this.boardZoom})">
           <div id="board-area" role="region" aria-label="Timeline and Features">
             <feature-board></feature-board>
             <!-- Vertical marker for today's date -->
