@@ -99,9 +99,28 @@ export function assignFeatureToSwimlane(
     : swimlaneById.get(String(groupedOwnerPlanId));
   if (groupedOwnerLane && groupedOwnerLane.type === 'plan') return groupedOwnerLane.id;
   const ownSwimlane = swimlaneById.get(String(feature.project));
+
+  if (context.parent) {
+    let current = feature;
+    let expandedPlanId = null;
+    const visited = new Set([String(feature.id)]);
+    while (current.parentId) {
+      const parentId = String(current.parentId);
+      if (visited.has(parentId)) break;
+      visited.add(parentId);
+      current = allFeaturesById.get(parentId);
+      if (!current) break;
+      const lane = swimlaneById.get(String(current.project));
+      if (!lane) continue;
+      if (lane.type === 'plan') return lane.id;
+      if (expandedPlanId === null) expandedPlanId = lane.id;
+    }
+    if (expandedPlanId !== null) return expandedPlanId;
+  }
+
   if (ownSwimlane && ownSwimlane.type === 'plan') return ownSwimlane.id;
 
-  if (context.parent || context.child) {
+  if (context.child) {
     let current = feature;
     let expandedPlanId = null;
     const visited = new Set([String(feature.id)]);

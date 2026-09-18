@@ -68,6 +68,15 @@ describe('SwimlaneService', () => {
     )).toBe('p1');
   });
 
+  it('moves selected child-plan work into an available ancestor lane in Parent Context', () => {
+    const lanes = [{ id: 'p2', type: 'plan' }, { id: 'p1', type: 'expanded-plan' }];
+    const features = [mkFeature('parent', 'p1'), mkFeature('child', 'p2', 'parent')];
+    expect(assignFeatureToSwimlane(
+      features[1], lanes, new Map(features.map((feature) => [feature.id, feature])),
+      { ...noContext, parent: true }
+    )).toBe('p1');
+  });
+
   it('gives an owning higher-level group precedence over a selected descendant lane', () => {
     const lanes = [{ id: 'p1', type: 'plan' }, { id: 'p2', type: 'plan' }];
     const feature = mkFeature('child', 'p2');

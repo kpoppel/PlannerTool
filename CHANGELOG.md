@@ -42,6 +42,7 @@ Template - do not change :
 - Scope inclusion now derives participating teams from selected base plans, independently of the Team Drill-down focus, and hierarchy links are excluded from dependency scope.
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
+- Parent Context now renders selected child-plan work with its visible ancestor lane instead of leaving it split in the selected plan lane.
 - Group date-shift drops now clear the visual drag transform and do not animate it after dates commit, preventing a brief overshoot on release.
 - Details-panel snap and shrink actions now resize only the parent item instead of shifting its children.
 - Timeline overlay plugins now refresh through the canonical timeline and board scroll events after the UI refactor.
