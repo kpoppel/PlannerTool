@@ -16,8 +16,8 @@ import {
 } from './AnnotationState.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
 import { bus } from '../../core/EventBus.js';
-import { TimelineEvents } from '../../core/EventRegistry.js';
-import { findInBoard } from '../../components/board-utils.js';
+import { TimelineEvents, BoardEvents } from '../../core/EventRegistry.js';
+import { getBoardZoom } from '../../components/board-utils.js';
 import { boardCoords } from '../../services/BoardCoordinateService.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -52,6 +52,7 @@ export class AnnotationOverlay extends LitElement {
     this._globalUp = null;
     this._lastMonthWidth =
       TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
+    this._lastBoardZoom = getBoardZoom();
 
     // Track clicks for double-click detection
     this._lastClickTime = 0;
@@ -204,6 +205,35 @@ export class AnnotationOverlay extends LitElement {
       }
     };
     bus.on(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
+
+    // Board zoom (ctrl +/-) only scales row height/font-size (a real layout
+    // change, not a CSS transform), so annotation Y coordinates must be
+    // rescaled in lockstep or they drift away from the row they annotate.
+    this._onZoomChanged = () => {
+      const newZoom = getBoardZoom();
+      const old = this._lastBoardZoom;
+      if (newZoom !== old) {
+        const scale = newZoom / old;
+        const anns = this._state.annotations || [];
+        for (const ann of anns) {
+          if (ann.type === 'line') {
+            this._state.update(ann.id, {
+              y1: Math.round(ann.y1 * scale),
+              y2: Math.round(ann.y2 * scale),
+            });
+          } else {
+            const updates = { y: Math.round(ann.y * scale) };
+            if (ann.type === 'note' || ann.type === 'rect') {
+              updates.height = Math.max(1, Math.round(ann.height * scale));
+            }
+            this._state.update(ann.id, updates);
+          }
+        }
+        this._lastBoardZoom = newZoom;
+        this._updateSvg();
+      }
+    };
+    bus.on(BoardEvents.ZOOM_CHANGED, this._onZoomChanged);
   }
 
   _attachGlobalPointerHandlers() {
@@ -318,6 +348,7 @@ export class AnnotationOverlay extends LitElement {
     this._scrollUnsubscribe?.();
     this._scrollUnsubscribe = null;
     bus.off(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
+    bus.off(BoardEvents.ZOOM_CHANGED, this._onZoomChanged);
   }
 
   // @ts-expect-error Bundled lit typings expose an incompatible render() base signature.
@@ -363,6 +394,7 @@ export class AnnotationOverlay extends LitElement {
         @mouseup="${this._onMouseUp}"
         @dblclick="${this._onDoubleClick}"
         @keydown="${this._onKeyDown}"
+        @contextmenu="${this._onContextMenu}"
         tabindex="0"
       >
         <svg class="annotation-svg" id="annotationSvg"></svg>
@@ -775,7 +807,22 @@ export class AnnotationOverlay extends LitElement {
     return { x: Math.round(x), y: Math.round(y) };
   }
 
+  // The overlay only takes pointer-events while a drawing tool is active
+  // (see the .interactive class in render()); while it does, a right-click
+  // here belongs to the annotation tool, not the board/group context menu.
+  // Board/group context menu handlers check e.defaultPrevented to detect a
+  // claimed event (see TimelineBoard._onBoardContextMenu), so preventDefault()
+  // is the whole contract — no extra plugin-exclusivity flag is needed.
+  _onContextMenu(e) {
+    e.preventDefault();
+  }
+
   _onMouseDown(e) {
+    // Ignore non-primary buttons so a right-click doesn't also open the icon
+    // picker (right-click is reserved for the board/group context menu unless
+    // claimed above by _onContextMenu).
+    if (e.button !== 0) return;
+
     // Debugging: trace clicks and tool state
     console.debug(
       '[AnnotationOverlay] _onMouseDown target:',
@@ -861,10 +908,10 @@ export class AnnotationOverlay extends LitElement {
       // setTimeout(() => {
       //   marker.remove();
       // }, 400);
-      this._showIconPicker(e.clientX, e.clientY, contentX);
+      this._showIconPicker(e.clientX, e.clientY, contentX, y);
     }
   }
-  _showIconPicker(clientX, clientY, contentX) {
+  _showIconPicker(clientX, clientY, contentX, contentY) {
     this._hideIconPicker();
 
     // Icons ordered by priority (most likely first)
@@ -900,11 +947,6 @@ export class AnnotationOverlay extends LitElement {
     container.style.boxShadow = '0 8px 24px rgba(0,0,0,0.16)';
     container.style.zIndex = '10000';
     container.style.pointerEvents = 'auto';
-
-    // Compute board coordinates for annotation creation
-    const featureBoard = findInBoard('feature-board');
-    const rect = featureBoard.getBoundingClientRect();
-    const contentY = clientY - rect.top + boardCoords.scrollY;
 
     ICONS.forEach((ic, idx) => {
       const btn = document.createElement('button');

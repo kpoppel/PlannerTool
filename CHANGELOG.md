@@ -42,6 +42,7 @@ Template - do not change :
 - Scope inclusion now derives participating teams from selected base plans, independently of the Team Drill-down focus, and hierarchy links are excluded from dependency scope.
 - Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
+- Group date-shift drops now clear the visual drag transform and do not animate it after dates commit, preventing a brief overshoot on release.
 - Details-panel snap and shrink actions now resize only the parent item instead of shifting its children.
 - Timeline overlay plugins now refresh through the canonical timeline and board scroll events after the UI refactor.
 - MainGraph now removes team series that leave the selected plan Context after allocation deletion or PlanMenu changes.
@@ -92,6 +93,7 @@ Template - do not change :
 - Board zoom (ctrl +/-) no longer scales the timeline header, graph, or card horizontal axis at all; it is now a feature-board-only, shrink-only (capped at natural size) vertical zoom that scales card row height and font/legibility to fit more cards on screen, while horizontal density stays solely owned by the timeline-scale (weeks/months/quarters/years) control. All fixed-pixel card dimensions (icons, badges, margins, ghost-title overflow labels, and the child-allocation info icon) now scale with it too, so shrunk cards no longer overflow their row and overlap the next one. Fixed the board/swimlane background stripes being clipped to whatever subset of cards virtualization currently has in the DOM instead of the full timeline width, including a "3mo" scale-specific case where the board width used a static per-scale lookup instead of the live, viewport-fit month width that scale actually renders with.
 
 ### Fixed
+- Annotation plugin: right-click no longer also opens the board/group context menu while a drawing tool is active, the icon picker no longer opens on right-click, the icon popup now places the placed icon at the correct board-space Y at any board zoom level, and annotation Y positions now rescale with board zoom so they keep tracking their row.
 - FeatureBoard now renders Context and Team Drill-down scope results without reapplying legacy project/team visibility checks.
 - Team Drill-down now filters every allocated visible task consistently, while clear drill-downs retain Other-allocation source-plan discovery from selected-plan teams.
 - The store started with an incomplete `view.options` branch, so any read of `hiddenTypes` before a view was applied threw `TypeError: items is undefined`; the initial state is now seeded from a single canonical `createDefaultViewOptions()` shared with the Default View restore path.

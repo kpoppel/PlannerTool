@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import '../../www/js/components/FeatureGroup.lit.js';
+import { FeatureGroup } from '../../www/js/components/FeatureGroup.lit.js';
 
 describe('FeatureGroup drag interactions', () => {
   function pointerEventLike(overrides = {}) {
@@ -75,6 +75,33 @@ describe('FeatureGroup drag interactions', () => {
     expect(el._dragDeltaDays).toBe(2);
     expect(el._previewStart).toBe('2025-01-12');
     expect(el._previewEnd).toBe('2025-01-22');
+  });
+
+  it('clears the visual preview before notifying group drag-end listeners', async () => {
+    await customElements.whenDefined('feature-group');
+    const el = document.createElement('feature-group');
+    el.group = { id: 'g1', name: 'G1' };
+    const endSpy = vi.fn(() => ({
+      dragDx: el._dragDx,
+      dragDy: el._dragDy,
+      dragDeltaDays: el._dragDeltaDays,
+    }));
+    el.addEventListener('group-drag-end', endSpy);
+
+    el._onPointerDown(pointerEventLike({ clientX: 10, clientY: 10 }));
+    el._onPointerMove(pointerEventLike({ clientX: 24, clientY: 10 }));
+    el._onPointerUp(pointerEventLike({ clientX: 24, clientY: 10 }));
+
+    expect(endSpy).toHaveBeenCalledOnce();
+    expect(endSpy.mock.results[0].value).toEqual({
+      dragDx: 0,
+      dragDy: 0,
+      dragDeltaDays: 0,
+    });
+  });
+
+  it('does not animate the drag transform after drop', () => {
+    expect(FeatureGroup.styles.cssText).not.toContain('transform 80ms ease');
   });
 
   it('locks drag to one axis after direction is detected', async () => {

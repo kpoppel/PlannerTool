@@ -94,7 +94,7 @@ export class FeatureGroup extends LitElement {
       --drag-dx: 0px;
       --drag-dy: 0px;
       --drag-scale: 1;
-      transition: filter 120ms ease, transform 80ms ease;
+      transition: filter 120ms ease;
       box-shadow: 0 4px 10px rgba(0,0,0,0.08);
       padding: 6px 10px; /* give the pill some horizontal breathing room */
       transform: translate(var(--drag-dx), var(--drag-dy)) scaleY(var(--drag-scale));
@@ -360,6 +360,12 @@ export class FeatureGroup extends LitElement {
       const dy = e.clientY - this._dragStart.y;
       const lockedDx = this._dragAxis === 'vertical' ? 0 : dx;
       const lockedDy = this._dragAxis === 'horizontal' ? 0 : dy;
+      const axis = this._dragAxis;
+      this._dragging = false;
+      this.toggleAttribute('dragging', false);
+      this._dragStart = null;
+      this._activePointerId = null;
+      this._clearDragPreview();
       this.dispatchEvent(new CustomEvent('group-drag-end', {
         detail: {
           group: this.group,
@@ -367,16 +373,11 @@ export class FeatureGroup extends LitElement {
           clientY: e.clientY,
           deltaX: lockedDx,
           deltaY: lockedDy,
-          axis: this._dragAxis,
+          axis,
         },
         bubbles: true,
         composed: true,
       }));
-      this._dragging = false;
-      this.toggleAttribute('dragging', false);
-      this._dragStart = null;
-      this._activePointerId = null;
-      this._clearDragPreview();
       return;
     }
 
