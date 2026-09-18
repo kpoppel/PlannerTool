@@ -104,6 +104,10 @@ Template - do not change :
 - Fixed double-click reset leaving a FeatureCard at its scenario position and size by routing reverts through the board's incremental geometry update contract.
 - Creating a new scenario no longer breaks group projection: cloned scenarios now carry the `groupOverrides` and `scenarioGroups` branches required by the canonical store.
 - Publishing a scenario no longer leaves the published group pending: the save path mutated scenario state in place instead of going through the store, so every later save re-created the same group and duplicates accumulated on the plan across scenarios. Sub-group parents are now published too, with temp ids remapped to the created ids.
+- Board zoom (ctrl +/-) changes font size without changing card width, so a title's overflow state could go stale until some other change (width/title) forced a re-check; ghost-title overflow is now re-evaluated on every zoom change.
+- Ghost-title left/right placement is relative to the scroll container's visible viewport, not the card's absolute position in the full timeline. Cards could compute this before the page's initial scroll-to-today jump settled, leaving many ghost titles stuck on the wrong side; it's now re-checked once after each board render completes.
+- Removed the unused `GhostTitle.lit.js` component (`ghost-title-lit`), which had no importers; `FeatureCard.lit.js`'s inline `.ghost-title` is the only active implementation.
+- Updated the stale `keyboard-shortcuts.test.js` wheel-zoom expectations left over from the board-zoom-goes-vertical-only refactor: `adjustBoardZoom` takes `(direction, anchorClientY)`, not `(direction, anchorClientX, anchorClientY)`.
 - Removed unused legacy ViewManagementService, ViewService, and ConfigService modules and their orphaned tests now that store-backed view and configuration flows are active.
 - Preserved the exact groups payload in the GroupService cache instead of coercing invalid values to empty arrays during loading.
 - Removed remaining sidebar and feature-board fallback reads so store-backed selectors now fail fast on invalid state instead of silently defaulting to stale compatible values.

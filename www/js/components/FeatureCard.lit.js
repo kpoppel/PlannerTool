@@ -2,11 +2,16 @@
 // Lit 3.3.1 web component for feature cards
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { FeatureEvents, DragEvents, UIEvents } from '../core/EventRegistry.js';
+import { FeatureEvents, DragEvents, UIEvents, BoardEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { cmd, sel } from '../application/imports.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { getIconTemplate } from '../services/IconService.js';
+import { getBoardZoom, findInBoard } from './board-utils.js';
+
+// Minimum visible gap (px) required to the left of a card, within the
+// scroll container's viewport, before its ghost title flips to the right.
+const GHOST_RIGHT_THRESHOLD = 200;
 
 /**
  * FeatureCardLit - Lit-based feature card component.
@@ -523,6 +528,11 @@ export class FeatureCardLit extends LitElement {
       const cards = Array.from(FeatureCardLit._pendingCards);
       FeatureCardLit._pendingCards.clear();
 
+      // Ghost-title placement needs the viewport-relative position, since
+      // card.style.left is absolute within the full scrollable timeline.
+      const scrollContainer = findInBoard('#scroll-container');
+      const scrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
+
       // --- Read phase (one forced reflow, then all reads are cached) ---
       const results = [];
       for (const card of cards) {
@@ -557,13 +567,7 @@ export class FeatureCardLit extends LitElement {
         r.card.classList.toggle('title-overflow', r.titleOverflows);
 
         if (r.titleOverflows) {
-          if (!r.card._ghostEl)
-            r.card._ghostEl = r.card.shadowRoot?.querySelector('.ghost-title');
-          const g = r.card._ghostEl;
-          if (g) {
-            // Use style.left (set by board) instead of offsetLeft to avoid forced reflow
-            g.classList.toggle('right', (parseFloat(r.card.style.left) || 0) < 200);
-          }
+          r.card.refreshGhostPlacement(scrollLeft);
         }
 
         r.card._lastLayoutKey = r.card._computeLayoutKey();
@@ -586,15 +590,16 @@ export class FeatureCardLit extends LitElement {
       Math.round(this._width || 0),
       this.condensed ? '1' : '0',
       this.hideGhostTitle ? '1' : '0',
+      String(getBoardZoom()),
     ].join('|');
   }
 
-  _requestLayout() {
+  _requestLayout(force = false) {
     if (!this._width) this._width = this._getCurrentWidth();
     // Prevent running layout before this card has a real width.
     if (this._width === 0) return;
     const key = this._computeLayoutKey();
-    if (key === this._lastLayoutKey) return;
+    if (!force && key === this._lastLayoutKey) return;
     FeatureCardLit._pendingCards.add(this);
     FeatureCardLit._scheduleBatch();
   }
@@ -653,6 +658,11 @@ export class FeatureCardLit extends LitElement {
       }
     };
     bus.on(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
+    // Board zoom scales font-size only (not card width), so the title's
+    // scrollWidth-vs-clientWidth overflow state can flip without a width
+    // change; force a re-check so ghost titles stay in sync with zoom.
+    this._boundOnZoomChanged = () => this._requestLayout(true);
+    bus.on(BoardEvents.ZOOM_CHANGED, this._boundOnZoomChanged);
   }
 
   firstUpdated() {
@@ -692,6 +702,8 @@ export class FeatureCardLit extends LitElement {
       bus.off(FeatureEvents.CONNECTED_SET_UPDATED, this._boundOnConnectedSet);
     if (this._boundOnDetailsHide)
       bus.off(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
+    if (this._boundOnZoomChanged)
+      bus.off(BoardEvents.ZOOM_CHANGED, this._boundOnZoomChanged);
     if (this._boundOnPreMove) {
       window.removeEventListener('mousemove', this._boundOnPreMove);
       window.removeEventListener('pointermove', this._boundOnPreMove);
@@ -717,9 +729,7 @@ export class FeatureCardLit extends LitElement {
     if (project !== undefined) this.project = project;
 
     if (left !== undefined) {
-      if (!this._ghostEl) this._ghostEl = this.shadowRoot?.querySelector('.ghost-title');
-      if (this._ghostEl)
-        this._ghostEl.classList.toggle('right', (parseFloat(this.style.left) || 0) < 200);
+      this.refreshGhostPlacement();
     }
     if (width !== undefined) {
       const widthNow = this._getCurrentWidth();
@@ -731,6 +741,26 @@ export class FeatureCardLit extends LitElement {
 
     this.classList.toggle('dirty', !!dirty);
     this.requestUpdate();
+  }
+
+  /**
+   * Re-evaluate ghost-title left/right placement against the scroll
+   * container's current viewport. Cheap (no forced reflow) so it can run on
+   * every scroll tick; pass a known scrollLeft to skip the container lookup.
+   */
+  refreshGhostPlacement(scrollLeft) {
+    if (!this._ghostEl && this.shadowRoot) {
+      this._ghostEl = this.shadowRoot.querySelector('.ghost-title');
+    }
+    if (!this._ghostEl) return;
+    let left = scrollLeft;
+    if (left === undefined) {
+      const scrollContainer = findInBoard('#scroll-container');
+      left = scrollContainer ? scrollContainer.scrollLeft : 0;
+    }
+    const parsedLeft = parseFloat(this.style.left);
+    const visibleLeft = (Number.isNaN(parsedLeft) ? 0 : parsedLeft) - left;
+    this._ghostEl.classList.toggle('right', visibleLeft < GHOST_RIGHT_THRESHOLD);
   }
 
   // Transient live-dates used during drag/resize

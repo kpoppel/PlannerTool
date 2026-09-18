@@ -495,15 +495,15 @@ export class TimelineExportRenderer {
 
   /**
    * Render ghost titles for overflowing feature card titles
-   * Matches styling from GhostTitle.lit.js
+   * Matches the `.ghost-title` styling in FeatureCard.lit.js
    */
   _renderGhostTitles(yOffset, viewport) {
     if (!this._cardData || this._cardData.length === 0) return;
 
-    // Match GhostTitle.lit.js styling
+    // Match the .ghost-title styling in FeatureCard.lit.js
     const GHOST_PADDING_VERTICAL = 2;
     const GHOST_PADDING_HORIZONTAL = 6;
-    const GHOST_GAP = 12; // Match the gap in GhostTitle.lit.js
+    const GHOST_GAP = 12; // Match the gap in FeatureCard.lit.js's .ghost-title
     const GHOST_FONT_SIZE = CARD_TITLE_FONT_SIZE * 0.9; // 0.9em
     const GHOST_LINE_HEIGHT = GHOST_FONT_SIZE * 1.1; // line-height: 1.1
     const ARROW_SIZE = 10;
@@ -512,7 +512,7 @@ export class TimelineExportRenderer {
       const { feature, project, title, left, cardX, cardY, width, height, scrollLeft } =
         cardData;
 
-      // Split title like GhostTitle.lit.js does
+      // Split title like FeatureCard.lit.js's _renderGhostTitleText() does
       const words = title.split(/\s+/);
       let lines = [];
 
@@ -539,7 +539,7 @@ export class TimelineExportRenderer {
       const ghostWidth = maxLineLength * charWidth + GHOST_PADDING_HORIZONTAL * 2 + 30;
       const ghostHeight = GHOST_PADDING_VERTICAL * 2 + lines.length * GHOST_LINE_HEIGHT;
 
-      // Calculate ghost position using the same logic as GhostTitle.lit.js
+      // Calculate ghost position using the same logic as FeatureCard.lit.js
       // cardLeft is the absolute position on the board
       const cardLeft = left;
       const cardInViewportX = cardLeft - scrollLeft;

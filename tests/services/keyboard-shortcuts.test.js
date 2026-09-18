@@ -47,8 +47,7 @@ describe('KeyboardShortcutManager', () => {
       selectors: displaySelectors(),
       openSearch() {},
       getTimelineBoard: () => ({
-        adjustBoardZoom: (direction, anchorClientX, anchorClientY) =>
-          zoomCalls.push([direction, anchorClientX, anchorClientY]),
+        adjustBoardZoom: (direction, anchorClientY) => zoomCalls.push([direction, anchorClientY]),
         resetBoardZoom: () => zoomCalls.push([0]),
       }),
     });
@@ -78,11 +77,11 @@ describe('KeyboardShortcutManager', () => {
     manager.handleWheel(wheelOut);
 
     expect(zoomCalls).to.deep.equal([
-      [1, undefined, undefined],
-      [-1, undefined, undefined],
+      [1, undefined],
+      [-1, undefined],
       [0],
-      [1, 320, 450],
-      [-1, 320, 450],
+      [1, 450],
+      [-1, 450],
     ]);
     expect(zoomIn.defaultPrevented).to.equal(true);
     expect(zoomOut.defaultPrevented).to.equal(true);

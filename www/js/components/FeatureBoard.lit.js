@@ -99,6 +99,20 @@ class FeatureBoard extends LitElement {
     });
   }
 
+  // Ghost-title left/right placement is viewport-relative (see FeatureCardLit).
+  // Cards compute it themselves on layout, but the page's initial scroll-to-today
+  // jump can settle after a card's first layout ran, so re-check once per render.
+  _refreshGhostPlacement() {
+    const scrollContainer = findInBoard('#scroll-container');
+    const scrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
+    if (!this.shadowRoot) return;
+    this.shadowRoot.querySelectorAll('feature-card-lit').forEach((card) => {
+      if (typeof card.refreshGhostPlacement === 'function') {
+        card.refreshGhostPlacement(scrollLeft);
+      }
+    });
+  }
+
   _updateSwimlaneLabelStickyTop() {
     const scrollContainer = findInBoard('#scroll-container');
     const stickyTop =
@@ -901,6 +915,11 @@ class FeatureBoard extends LitElement {
     // and only TIMELINE_CONFIG.monthWidth tracks that, for every scale.
     this.style.width = months.length * TIMELINE_CONFIG.monthWidth + 'px';
     this.requestUpdate();
+    // Cards compute their own initial ghost-title placement against whatever
+    // scrollLeft exists at that moment, which can predate the page's initial
+    // scroll-to-today jump. Re-check once cards are actually in the DOM so
+    // that race doesn't leave ghosts stuck on the wrong side.
+    this.updateComplete.then(() => this._refreshGhostPlacement());
 
     if (renderList.length === 0) {
       const mh = await import('./modalHelpers.js');
