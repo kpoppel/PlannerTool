@@ -341,15 +341,36 @@ class GroupContextMenu extends LitElement {
   // Render
   // ---------------------------------------------------------------------------
 
+  /**
+   * After every render, re-measure the actual menu element and clamp its
+   * position so it never overflows past the right or bottom edge of the
+   * viewport (content height varies with submenus / inline forms, so the
+   * clamp can't be computed from static estimates in `render()`).
+   */
+  updated() {
+    if (!this._open) return;
+    const menuEl = this.shadowRoot && this.shadowRoot.querySelector('.menu');
+    if (!menuEl) return;
+    const rect = menuEl.getBoundingClientRect();
+    const margin = 8;
+    const maxLeft = window.innerWidth - rect.width - margin;
+    const maxTop = window.innerHeight - rect.height - margin;
+    const clampedLeft = Math.max(margin, Math.min(this._x, maxLeft));
+    const clampedTop = Math.max(margin, Math.min(this._y, maxTop));
+    menuEl.style.left = `${clampedLeft}px`;
+    menuEl.style.top = `${clampedTop}px`;
+  }
+
   render() {
     if (!this._open) return html``;
 
     const cfg = this._config || {};
     const type = cfg.type;
 
-    // Clamp menu to viewport
-    const menuW = 200;
-    const x = Math.min(this._x, window.innerWidth - menuW - 8);
+    // Initial position at cursor; `updated()` clamps to the viewport once
+    // the menu's real dimensions are known (avoids relying on a fixed
+    // estimated width/height that doesn't match variable content).
+    const x = this._x;
     const y = this._y;
 
     if (!sel.scenario.isActiveScenarioMutable()) {

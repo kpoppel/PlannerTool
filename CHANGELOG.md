@@ -98,6 +98,7 @@ Template - do not change :
 - Feature cards and the details panel showed an organisational allocation of 0% because `orgLoad` was never derived in the store architecture; it is now computed from the live team selection in `deriveEffectiveFeatures`.
 - Added explicit project and global invalidation for Azure plan/team discovery caches so admin area-mapping refreshes persist current Azure data to the shared authoritative configuration store without removing API-level caching.
 - Dependencies plugin now stays active across other plugin switches, including full-screen plugins.
+- The group right-click context menu is now clamped to the viewport using its actual rendered size, so right-clicking near the bottom or right edge of the feature board no longer opens the menu partially or fully offscreen.
 - The iteration selector now labels current and future iterations separately from past iterations.
 - Aligned scenario-store unit coverage with the canonical normalized scenario payload contract.
 - Separated credential updates from admin authorization changes so saving account configuration cannot silently revoke permissions; admin user management now uses per-account commands.
