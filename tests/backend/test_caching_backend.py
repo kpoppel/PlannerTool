@@ -242,7 +242,7 @@ def test_invalid_query_configuration_serves_stale_tasks_with_specific_warning(st
     assert warnings[-1]['message'] == (
         f'Azure DevOps rejected the configured work-item query for area path "{AREA}", so '
         'cached work items could not be refreshed. An administrator should verify the project, '
-        'area-path, and iteration-path configuration and the PAT permissions.'
+        'area-path, and iteration-path configuration.'
     )
 
 
@@ -365,7 +365,7 @@ def test_empty_refresh_keeps_existing_task_content(storage):
     assert warnings[-1]['code'] == 'tasks_stale_no_data'
     assert warnings[-1]['message'] == (
         'Azure DevOps returned no work items while refreshing the cached work items. '
-        'The displayed work items may be out of date; contact an administrator to check Azure DevOps connectivity.'
+        'Latest cached results will be used instead.'
     )
 
 

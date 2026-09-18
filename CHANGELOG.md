@@ -10,215 +10,66 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 Template - do not change :
 ## [v] - unreleased
 ### Added
-- Added an interactive plan-reconciliation wireframe and documented the bottom-up publication, top-down consent workflow.
-- Added a hover tooltip to MainGraph with the selected day and displayed capacity values.
-- Added Stage 2 regressions for full-organization capacity invariance under presentation filters and normalized unfunded graph buckets.
-- Added icon-led top-bar status metrics for tasks and teams in scope plus tasks currently displayed, with explanatory tooltips.
-- Added a Scope menu for related-work inclusion, with per-option task counts and an informative base-versus-related task summary in the top bar.
-- Completed Phase 1 presentation-scope migration across Sidebar, TopMenu, FeatureBoard, swimlanes, and dependency overlay lifecycle.
-- Dependency overlay visibility is now owned by the Sidebar Context dependency flag.
-- Added the canonical Data Funnel summary to the top bar in place of the Team trigger.
-- Added Context-scoped Team Drill-down controls with select-all/select-none behavior.
-- Added the first v5 Context control with Parent, Child, Dependency, and Other allocations segments in the Sidebar.
-- Added the initial v5 display-scope contract separating resolved features from Context, Team Drill-down, and task-filter visibility.
-- Added a standalone scope-first UI/UX v5 wireframe beside the redesign discussion notes.
-- Added a self-contained static capture of the shared AZ Planner UI at `backup/user_interface_v5/static_v4.html`.
-- Documented proposed organization-share, project-utilization, and portfolio-allocation allowance metrics for future design.
-- Group pills now support direct drag-to-reorder on the board: dragging vertically shows the insertion caret and drops the group using the same mixed task+group rank model.
 ### Changed
-- Stage 4.1 plugins now share canonical Team Drill-down display scope; Graph preserves organization-wide capacity inputs while Markers and Portfolio follow visible task scope.
-- Portfolio now shows per-plan contributing-team counts without presenting non-temporal allocation sums as capacity utilization.
-- Completed the Stage 4 specialized-plugin audit: Plan Health remains scope-neutral and Dependency lifecycle remains Context-owned.
-- Stage 3 groups now support cross-plan members with selected mother-plan precedence, and swimlanes are driven solely by canonical Context source-plan lanes.
-- Grouped descendant tasks now remain in their higher-level mother-plan lane when both hierarchy levels are selected.
-- MainGraph now normalizes Team-mode values against the full organization roster, filters only displayed team series by Team Drill-down, and renders empty when no plans are selected.
-- Grouped contextual tasks now resolve their selected mother-plan ownership when board date changes refresh group spans.
-- New groups now retain cursor-based placement in Child Context swimlanes instead of defaulting to the board top.
-- Group layout now preserves resolved parent-child ordering instead of re-sorting Context descendants by raw rank.
-- Canonical scope selection now owns visible-task filtering, Scope Context is the only dependency visibility setting, and display filters no longer recompute capacity.
-- Documented the accepted v5 prototype: top-bar Scope derives the candidate display set and Sidebar Team Drill-down applies the selected-team display filter.
-- View menu headings now use visually distinct tinted label bands to separate section names from selectable options.
-- Restyled View menu display choices to match saved-view menu rows while retaining the primary save-view action.
-- Scope inclusion now derives participating teams from selected base plans, independently of the Team Drill-down focus, and hierarchy links are excluded from dependency scope.
-- Reworked the backend architecture documentation around the C4 System Context, Container, Component, and Code model.
 ### Fixed
-- Parent Context now renders selected child-plan work with its visible ancestor lane instead of leaving it split in the selected plan lane.
-- Group date-shift drops now clear the visual drag transform and do not animate it after dates commit, preventing a brief overshoot on release.
-- Details-panel snap and shrink actions now resize only the parent item instead of shifting its children.
-- Timeline overlay plugins now refresh through the canonical timeline and board scroll events after the UI refactor.
-- MainGraph now removes team series that leave the selected plan Context after allocation deletion or PlanMenu changes.
-- Azure DevOps refreshes now isolate connection state per worker thread so one completed project refresh cannot disconnect other concurrent refreshes and leave their cached task data stale.
-- Right-click group assignment now finds mother-plan groups for Child Context tasks and assigns selected parent task subtrees together.
-- Parent Context now retains unallocated ancestor tasks for unallocated work in a selected team-level plan.
-- Removed the superseded TeamMenu component and aligned timeline export dependency visibility with Scope Context.
-- Sidebar task filters now hide all tasks when neither option in a filter dimension is selected.
-- Backend diagnostics now use a backend-neutral contract from server to browser; reload warnings identify stale cached Azure DevOps work items and failed area paths, and distinguish denied or invalid configured queries from service outages; server log-level changes made in Admin take effect immediately.
-- Scope-derived tasks now leave the board when their last selected allocation team is deselected.
-- MainGraph no longer throws when a Years-scale viewport extends beyond the timeline end.
-- Packed cards now immediately suppress overflow ghost titles when switching display mode.
-- Saved views now match task-type filters case-insensitively, so legacy values such as `epic` and `feature` continue to refresh the FeatureBoard.
-- View menu controls now refresh their active selection styling after timeline, card, sort, or graph display events.
-- Clearing Team Drill-down now excludes Child Context tasks while retaining selected-plan tasks.
-- Team Drill-down now dims deselected allocation badges without removing them, and organizational capacity remains calculated from the full team roster.
-- Removed a duplicate `TimelineEvents.MONTHS` subscription in `TimelineBoard` that could trigger duplicate today-line updates and leave one listener untracked on teardown.
-- Context Parent filtering now updates visible task counts, and the Context-owned dependency plugin is removed from the Tools menu.
-- Team Drill-down now shows selected-team allocations, unallocated base-plan tasks, and required ancestor context while hiding unrelated allocated work.
 
 ---
 
 ## [v5.0.0] - unreleased
+
+This release combines a major frontend architecture migration with a new scope-first planning experience, expanded planning capabilities, and substantial reliability work. It also changes several established 4.x behaviors around task visibility, grouping, zoom, plugin state, caching, and saved data. The detailed entries below retain the implementation history and regression fixes for cross-reference.
+
+As a user you will experience:
+- a cleaned-up left sidebar with relevant filters for the context
+- a revised top menu bar where views and dispaly options moved in together in the View menu
+- a new "Scope" menu where selected plans can be extended with scope for ancestors, decendants, dependencies or allocations not made via linked tasks.
+- a new status ares in the top bar
+- groups working across plans with drag functions
+- new keyboard shortcuts
+- board zooming afecting the feature board, not scaling the entire user interface
+- plans can be associated with iteration sets relevant to the individual plan
+- stable capacity calculations independent on what is viewed
+- Baseline scenario made read-only, supporting the use of scenarios for planning changes and looking at the current state in the baseline
+- admin interface will apply loglevel changes immediately, and several interface improvements in support of the new user faced functions.
+
+*Before upgrading**, run all pending migrations:
+```
+python3 scripts/migrate.py --apply
+```
+
 ### Added
-- Added centralized keyboard shortcuts for display controls and pointer-anchored board zoom gestures, with synchronized graph x-axis rendering.
+- Added scope-first planning workflow: a Scope menu for including related work, Context controls for Parent, Child, Dependency, and Other allocations, and Team Drill-down controls with select-all/select-none behavior.
+- Added top-bar Data Funnel and status metrics showing the task and team population in scope versus the tasks currently displayed, with task counts for scope options and capacity tooltips in MainGraph.
+- Added groups feature v2.  Groups can be added at the mouse pointer, dragged to rank them differently, dragger horizontally to move its content, nested with other groups, can contain tasks from any plan, lives with the scenario it was created in until committed. Groups containing the same task supports hierarchical groups. Tasks in a group has a top border color matching the group it belongs to.
+- Added centralized keyboard shortcuts for display controls and pointer-anchored board zoom gestures, with synchronized graph x-axis behavior.
+- Added scenario-scoped annotation storage for notes, shapes, lines, and icons, while retaining view-scoped plugin state through a generic application contract.
+- Added cross-project iteration associations for projects whose teams span Azure DevOps projects, versioned server-configuration snapshots, stable anonymous account IDs, and a scenario-cleanup utility.
+- Added frontend audit and migration tooling, strict hydration/parity coverage, and a pre-commit guard for non-canonical JavaScript fallback patterns.
+- Added a hover tooltip to MainGraph with the selected day and displayed capacity values.
 - Added stable anonymous account IDs so admin permission and deletion URLs no longer expose email addresses; backups created before account IDs were introduced are no longer valid for restore.
-- Feature cards now show a top border in the colour of the group that directly owns them, so tasks in a nested group tree are visibly attributed to the right parent group.
-- Groups are now created at the position the board right-click points at: an insertion caret shows the target slot and sibling-scoped sparse ranks (`www/js/application/shared/ordering.js`) keep the order stable instead of always placing new groups at the top.
-- Group bands and tasks share one ordering scale, so a group can be inserted anywhere among the tasks instead of always above them; the separate "Ungrouped" band is gone and ungrouped tasks are ordinary board rows.
-- Tightened store-backed command contracts for filter, view, feature, group, and view-restore flows by removing dead legacy compatibility adapters and keeping the canonical store boundary strict.
-- Removed the pre-store service layer left over from the store migration (`DataInitService`, `FeatureService`, `ProjectTeamService`, `FeatureStateService`, `TaskFilterService`, `PluginStateService`, `ScenarioEventService`) and their orphaned unit tests; all behaviour is covered by `www/js/application` commands and selectors.
-- Removed the `SHOW_UNPLANNED_WORK` feature flag and its disabled branches; showing unplanned tasks as ghosted cards at today's date is now the only behaviour, controlled by the view's "show unplanned work" option.
-- `FeatureEvents.SELECTED` is now store-backed: `cmd.feature.setSelectedFeature(feature)` writes `featureDisplay.selectedId` to the store and emits a bare signal; subscribers read `sel.feature.getSelectedFeature()` / `sel.feature.getSelectedFeatureId()` instead of consuming the event payload.
-- Added `scripts/clear_scenarios.py` one-time maintenance utility to remove a single corrupted scenario entry (or all scenarios for a user) directly from local scenario storage and register metadata.
-- Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`; removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
-- Phase 1 migration scaffold landed: added Zustand vendor bundling (`src/vendor-entry-zustand.js` -> `www/js/vendor/zustand.js`), introduced `www/js/application/` + `core/StoreController.js` with initial command/selector seam, and removed dead `core/Container.js`/`core/ServiceRegistry.js` wiring.
-- Phase 3 completed: finalized strict-Result hydration commands (`hydrateBaseline`, `hydrateScenarioData`) and command coverage, added blocking legacy-parity integration coverage (`tests/application/hydrateBaseline.shadowParity.integration.test.js`), retired the temporary shadow harness (`SHADOW_HYDRATE_STORE`, `application/legacyBridge.js`, app shadow wiring), and confirmed regressions green (`npm test`, `npm run test:coverage`, `pytest`, Playwright smoke).
-- Server configuration snapshots: the admin interface can capture a versioned backup of the full server
-  configuration. Disabled by default; existing installations may already have snapshots in storage —
-  enable, review and clean up, then disable if not needed.
-- Iteration-sets: a configured project can now be associated with iterations from multiple ADO projects,
-  enabling cross-project planning where teams span organisational ADO boundaries. Associations are managed
-  from the admin iterations page and are respected at runtime when resolving iteration data.
-- Migration `0026_migrate_ttl_cache.py`: moves any leftover remote-backend cache entries from `data/cache`
-  into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
-- Annotations (notes, shapes, lines, icons) are now stored per-scenario instead of a single global browser `localStorage` set, so switching scenarios switches the annotation overlay with it. Consolidated plugin storage into one discoverable pair of commands in `www/js/application/commands/`: `cmd.pluginState` (existing, view-scoped) and the new `cmd.pluginScenarioData` (scenario-scoped, `application/commands/pluginScenarioDataCommands.js`), both storing an opaque per-plugin-key bag without the application layer depending on any specific plugin; the annotations plugin is just one consumer of the latter. Named scenarios persist `pluginData` via the existing Save Scenario flow; the read-only Baseline scenario (which has no server-side scenario record) has its `pluginData` transparently persisted to a generic local fallback store (`application/shared/localScenarioPluginData.js`), so the annotations plugin itself carries no storage-specific code at all.
-
-### Changed
-- Board zoom (ctrl +/-) no longer scales the timeline header, graph, or card horizontal axis at all; it is now a feature-board-only, shrink-only (capped at natural size) vertical zoom that scales card row height and font/legibility to fit more cards on screen, while horizontal density stays solely owned by the timeline-scale (weeks/months/quarters/years) control. All fixed-pixel card dimensions (icons, badges, margins, ghost-title overflow labels, and the child-allocation info icon) now scale with it too, so shrunk cards no longer overflow their row and overlap the next one. Fixed the board/swimlane background stripes being clipped to whatever subset of cards virtualization currently has in the DOM instead of the full timeline width, including a "3mo" scale-specific case where the board width used a static per-scale lookup instead of the live, viewport-fit month width that scale actually renders with.
-
-### Fixed
-- Annotation plugin: right-click no longer also opens the board/group context menu while a drawing tool is active, the icon picker no longer opens on right-click, the icon popup now places the placed icon at the correct board-space Y at any board zoom level, and annotation Y positions now rescale with board zoom so they keep tracking their row.
-- FeatureBoard now renders Context and Team Drill-down scope results without reapplying legacy project/team visibility checks.
-- Team Drill-down now filters every allocated visible task consistently, while clear drill-downs retain Other-allocation source-plan discovery from selected-plan teams.
-- The store started with an incomplete `view.options` branch, so any read of `hiddenTypes` before a view was applied threw `TypeError: items is undefined`; the initial state is now seeded from a single canonical `createDefaultViewOptions()` shared with the Default View restore path.
-- Feature cards and the details panel showed an organisational allocation of 0% because `orgLoad` was never derived in the store architecture; it is now computed from the live team selection in `deriveEffectiveFeatures`.
-- Added explicit project and global invalidation for Azure plan/team discovery caches so admin area-mapping refreshes persist current Azure data to the shared authoritative configuration store without removing API-level caching.
-- Dependencies plugin now stays active across other plugin switches, including full-screen plugins.
-- The group right-click context menu is now clamped to the viewport using its actual rendered size, so right-clicking near the bottom or right edge of the feature board no longer opens the menu partially or fully offscreen.
-- The iteration selector now labels current and future iterations separately from past iterations.
-- Aligned scenario-store unit coverage with the canonical normalized scenario payload contract.
-- Separated credential updates from admin authorization changes so saving account configuration cannot silently revoke permissions; admin user management now uses per-account commands.
-- Fixed double-click reset leaving a FeatureCard at its scenario position and size by routing reverts through the board's incremental geometry update contract.
-- Creating a new scenario no longer breaks group projection: cloned scenarios now carry the `groupOverrides` and `scenarioGroups` branches required by the canonical store.
-- Publishing a scenario no longer leaves the published group pending: the save path mutated scenario state in place instead of going through the store, so every later save re-created the same group and duplicates accumulated on the plan across scenarios. Sub-group parents are now published too, with temp ids remapped to the created ids.
-- Board zoom (ctrl +/-) changes font size without changing card width, so a title's overflow state could go stale until some other change (width/title) forced a re-check; ghost-title overflow is now re-evaluated on every zoom change.
-- Ghost-title left/right placement is relative to the scroll container's visible viewport, not the card's absolute position in the full timeline. Cards could compute this before the page's initial scroll-to-today jump settled, leaving many ghost titles stuck on the wrong side; it's now re-checked once after each board render completes.
-- Removed the unused `GhostTitle.lit.js` component (`ghost-title-lit`), which had no importers; `FeatureCard.lit.js`'s inline `.ghost-title` is the only active implementation.
-- Updated the stale `keyboard-shortcuts.test.js` wheel-zoom expectations left over from the board-zoom-goes-vertical-only refactor: `adjustBoardZoom` takes `(direction, anchorClientY)`, not `(direction, anchorClientX, anchorClientY)`.
-- Removed unused legacy ViewManagementService, ViewService, and ConfigService modules and their orphaned tests now that store-backed view and configuration flows are active.
-- Preserved the exact groups payload in the GroupService cache instead of coercing invalid values to empty arrays during loading.
-- Removed remaining sidebar and feature-board fallback reads so store-backed selectors now fail fast on invalid state instead of silently defaulting to stale compatible values.
-- Fixed saved-view activation so Sidebar task filters and the graph-type toggle refresh immediately when a view is applied.
-- Fixed `MainGraph` not reflecting team-selection changes made by applying a saved view: `loadAndApplyView` now recomputes capacity before signalling listeners, instead of leaving stale capacity data (computed against the previous team selection) in the store.
-- Fixed team allocation lookups reading a non-existent `teamId` capacity field, which made TeamMenu task counts and the "Team Allocated" expansion always report zero.
-- Fixed parent/child expansion state changes to emit the board refresh signals required for the featureboard to re-render with the newly computed expanded set.
-- Aligned store-backed filter command callers with the array-based interface so task/state selections are written from canonical arrays instead of relying on coercion at the command boundary.
-- Tightened Phase 5 seam contracts so required internal `recomputeCapacity`, `hydrateBaseline`, and `invalidateCache` hooks fail loudly instead of silently proceeding.
-- Fixed group bands not recalculating when a grouped task is dragged or resized beyond the group's current bounds: `updateCardsById` now falls back to a full `renderFeatures()` for tasks that belong to a group.
-- Fixed `renameScenario` marking a scenario as having unsaved changes even though the rename is persisted immediately.
-- Fixed `setTimelineScale` re-triggering a timeline refresh when the already-active scale button is pressed again.
-- Fixed group create/update/delete/member-change commands not marking the active scenario as having unsaved changes.
-- Fixed scenario rename persisting only `id`/`name` to the backend, which wiped out previously saved group assignments, overrides, filters, and view options; rename now persists the full scenario.
-- Removed the now-dead `dataService.renameScenario` and its `providerREST`/`providerLocalStorage`/`providerMock` implementations, superseded by persisting the full scenario on rename.
-- Fixed group task ordering so tasks within a group respect the active Task Sort toggle instead of preserving insertion order when rendered.
-- Restored the valuable autosave and feature-state regression coverage in the active ConfigService/FeatureStateService layers without reintroducing legacy State.js dependencies.
-- Fixed scenario menu activation regressions where scenario metadata sync events could overwrite full scenario payloads and drop overrides/group overrides, causing scenario clicks to render baseline data instead of scenario-applied values.
-- Fixed store-mode scenario save/refresh flows to persist and rehydrate through the store-backed data layer rather than silently no-oping, removing the last runtime legacy-state dependency from that path without breaking baseline refresh behavior.
-- Removed the final remaining legacy-state compatibility bridges from the store-mode command and selector path so `USE_STATE_STORE=true` no longer reads or writes legacy scenario/capacity state during normal runtime mutation flows.
-- Removed legacy `taskFilterService` reads from the store-mode selector/command path so startup no longer touches the legacy TaskFilterService while booting in `USE_STATE_STORE=true` mode.
-- Removed legacy `ViewManagementService` delegation from `createViewRestoreCommands`; view saves now capture project/team selection, task filters, feature states, expansion state, and task types directly from the store, fixing stale data on save in `USE_STATE_STORE=true` mode.
-- Completed view-apply bridge migration to store-first behavior by removing legacy `_viewService`/task-filter/state-sync restore calls while preserving Project/Team/Feature/View activation event emissions.
-- Eliminated remaining `legacyState` dependencies inside store-mode view restore commands by deriving default state/type selections from store baseline data and routing plugin view-state capture/restore through store-backed plugin-state commands.
-- State-store startup now explicitly runs store `viewRestore.restoreLastView()` after bootstrap so the last view from localStorage is fully re-applied (including expansion filters) via store events.
-- Store-backed view restore commands now always include a synthetic readonly `Default View` in the saved-views list so View menus consistently display the default option.
-- Selecting the store-backed `Default View` now performs a full reset equivalent to legacy defaults: baseline scenario active, all projects/teams/states/task-types selected, all task filters enabled, and default view options restored.
-- Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
-- Fixed store `setAllStatesSelected(true)` to derive available feature states from canonical baseline features, removing the stale dependency on a non-existent `state.filter` slice that broke plugin lifecycle tests.
-
-### Changed
-- Migration `0029_migrate_view_expansion_to_context.py` converts persisted saved-view expansion flags to canonical Context, and the obsolete expansion state, commands, selectors, and helper are removed from the frontend.
-- Playwright E2E fixtures and assertions now initialize the current global hierarchy/state schema, select plans explicitly, and cover Scope, Data Funnel, Sidebar, and immutable Baseline behavior.
-- Cost reporting now uses canonical selected-plan Context without legacy expansion state; Team Drill-down only selects Team-view rows, and filtered hierarchy parents cannot be re-added to financial payloads.
-- Completed the UI/UX v5 presentation-scope migration and removed obsolete TeamMenu, Sidebar expansion, saved-view preview, and empty-board expansion paths.
-- Moved the Sidebar Context controls before Team Drill-down so users choose related work before narrowing its teams.
-- Group context-menu move actions are now task-relative (Move up/down across the mixed task+group stream), while nesting changes are handled in-place through the existing Update Group modal parent selector.
-- Horizontal drag on a group pill now shifts all planned tasks contained by that group (including nested groups and task descendants) by the same day delta; unplanned tasks remain unplanned.
-- Group-pill dragging now gives live visual feedback: the pill itself follows the drag and shows a preview date range with a signed day delta (`+/-Nd`) while dragging.
-- Simplified annotation overlay pointer handling and made annotation dates the sole persisted position source so annotations remain aligned across timeline scaling.
-- Continued plugin checkJs cleanup in `PluginPortfolioComponent.lit.js`, `annotations/AnnotationOverlay.js`, and `export/TimelineExportRenderer.js` by tightening null guards and selector API typing without changing runtime behavior.
-- Vendor bundling now injects `// @ts-nocheck` in generated `www/js/vendor/*` files via Rollup, so `build:vendor` outputs remain excluded from checkJs diagnostics after rebuilds.
-- Tightened canonical store checkJs contracts by removing untyped `this` selector/command self-calls, hardening nullable command dependencies, and aligning store command wiring/typing so `npx tsc --noEmit` passes for the application-layer model surface.
-- Added shared JSDoc typedefs for the store-backed command/selector surface in `www/js/application` and annotated command/store/selector factories to improve `tsc --noEmit` type clarity.
-- Continued JSDoc service-layer documentation in view/config/data init/provider base modules, clarifying bus/state/result contracts and dynamic sidebar/browser interactions for checkJs consumers.
-- Tightened application team-allocation helpers to the canonical feature capacity contract by using only `capacity[].teamId` and removing legacy nullable/fallback field normalization.
-- Tightened shared task-filter, scenario-mutation, group-projection, and feature-projection helpers to the canonical store contract by removing optional/nullish/fallback shape guards from those internal paths.
-- Tightened the current application changeset to strict canonical contracts across state derivations, group/feature/filter/view/data command-selector paths, and their targeted tests by removing optional/nullish/fallback guard patterns from those internal flows.
+- Iterations can be configured in interation sets and a set can be associated with a project. This enables tasks from different projects to have different iteration lists configured.
 - Added an automated pre-commit guard for staged JS/test additions that blocks `?.`, `??`, `Array.isArray(`, and fallback-style `||` defaults by default, plus AGENTS policy requiring explicit user-confirmed necessity before any bypass.
-- Documented git-hook setup and strict-pattern pre-commit enforcement in `README.md` for contributor onboarding.
-- Phase 6 consolidation slice: centralized task-filter normalization, active-scenario mutation wrappers, and effective-feature/hierarchy derivations into shared application helpers, then wired filter/feature/group/data/view-restore modules to the single-owner implementations with focused shared-helper tests.
-- Phase 6 consolidation continued: unified team-allocation id matching and effective-group projection into shared helpers, and removed duplicated selector/service derivations by wiring selection/view/feature/group selectors plus GroupService to the same owners.
-- Phase 6 consolidation follow-up: introduced shared state-derivation owners for available task types and configured feature-state ordering, removed duplicate active-scenario lookup wrappers in feature/group seams, and aligned view-restore/group-projection defaults with those shared contracts.
-- Phase 6/7 slice: centralized expanded-feature derivation (parent/child, relations, team-allocation) into a single shared owner used by both view and feature selectors, with focused shared-contract tests.
-- Updated `backup/architecture_v5/ARCHITECTURE_v2.md` to match the live runtime topology (imports.js wiring, command/store/event flow, plugin lifecycle, and admin bootstrap/service paths).
-- Removed the legacy `bootstrapFromLegacyState` compatibility path and its direct test coverage; store-mode startup now relies on the active hydration commands instead of legacy state bridge logic.
-- Removed dead `BoardEvents.READY` and `BoardEvents.SCROLL` contracts (no emit/listen clients); kept `BoardEvents.OVERLAY_OFFSET_CHANGED` as the active board overlay signal with payload.
-- Phase 7 follow-up: removed unused `ColorEvents.CHANGED` event wiring; retained payload-bearing contracts for `PluginEvents.*`, `SessionEvents.EXPIRED`, `BoardEvents.OVERLAY_OFFSET_CHANGED`, `DragEvents.*`, and `ConfigEvents.AUTOSAVE` where payload is the intentional transport contract or state-store parity surface.
-- Phase 7 lifecycle follow-up: migrated `ScenarioEvents.LIST`/`ACTIVATED`/`UPDATED`, `GroupEvents.LOADED`, and `DataEvents.LOADED` to signal-only emissions; receivers now read current scenario/group/data state via `sel`/`cmd` on receipt, while `DataEvents.SCENARIOS_CHANGED` and `DataEvents.SCENARIOS_DATA` remain data-bearing as backend ingress feeds.
-- Phase 7 continued: `ProjectEvents.CHANGED` and `TeamEvents.CHANGED` now emit as signal-only events (no project/team array payloads), and menu/sidebar receivers now re-read project/team selection via `sel.selection` on receipt.
-- Phase 7 continued: `FilterEvents.CHANGED`, `ViewEvents.*` view-state toggles, and `TimelineEvents.SCALE_CHANGED`/`TimelineEvents.MONTHS` now emit as signal-only events; listeners now read current state through `sel`/`cmd` at receipt time instead of consuming live payload objects.
-- Tightened `CapacityEvents.UPDATED` to a signal-only emission so capacity recomputation no longer sends full capacity snapshots on the event bus.
-- Restored deleted plugin test coverage and updated it to the store-backed selector/command interface for cost, export, markers, portfolio, and plugin-state flows.
-- Removed the legacy `State.js` singleton, its one-off helper services, and the legacy-only tests that only exercised the old bridge layer.
-- Tightened `GroupEvents.CHANGED` payloads to ids and compact hints only, removing embedded group objects from the event bus.
-- Consolidated plan-event notifications into `DataEvents.PLAN_EVENTS_CHANGED` and removed the standalone `PlanEventEvents` registry group.
-- Retired the `USE_STATE_STORE` bootstrap flag and made the store-backed command/selector path unconditional at app startup.
-- Phase 2 shared data-access migration completed: both `ProviderREST` and `AdminProviderREST` now share `RestProviderBase` + `result.js` Result helpers, provider/admin endpoint methods return normalized Result contracts, `dataService`/admin call sites were updated for compatibility handling, and provider/admin regression suites were rewritten to assert the new contract.
-- Phase 2 follow-up completed: removed admin constructor-time Result wrappers, moved app/admin endpoint execution onto the shared `RestProviderBase` JSON/result path, and normalized failure envelopes to `{ ok: false, error: { message, ... } }` across both providers.
-- Phase 4 started: aligned the Selection/Filter/View migration plan to the current consumer audit, introduced a `sel.view` seam in `application/imports.js` (legacy + store-backed selectors), and migrated `PluginDependenciesComponent` plus its component tests away from direct view-service state reads.
-- Phase 4 progress: added `selection` command/selector groups to `application/imports.js` (legacy + store-backed branches), migrated `Timeline.lit.js` and `board-utils.js` to `sel.view`, and migrated `TeamMenu.lit.js`/`PlanMenu.lit.js` selection mutations to `cmd.selection` with focused component and application seam tests.
-- Phase 4 guardrail and migration follow-up: fixed selection parity for expansion-aware effective projects, honored `suppressEvents` in store-backed selection commands, added direct selector contract coverage for `viewSelectors.js`, removed stale imports from touched files, and migrated `EmptyBoardModal`, `FeatureCard`, `MainGraph`, `TimelineExportRenderer`, `PluginExportTimelineComponent`, `PluginGraphComponent`, and `PluginPortfolioComponent` to in-scope `cmd/sel` seams with focused seam-mocked tests.
-- Phase 4 continued: added `filter` and `view` command groups (legacy + store-backed) to the imports seam, migrated `PluginCostComponent` command/selector usage and `PluginCostV1Component` filter-state reads to `cmd/sel`, and added focused command and plugin seam tests.
-- Phase 4 continued: migrated `FeatureBoard` in-scope selection/filter/view reads to selector seams, expanded view selector contracts for packed/sort/unassigned options, and added focused FeatureBoard seam tests.
-- Phase 4 continued: migrated `Sidebar` in-scope selection/filter/view interactions to `cmd/sel` (task-type visibility, state toggles, expansion and taskboard options), expanded view command contracts accordingly, and validated with focused seam tests; `DetailsPanel` was audited and required no in-scope seam changes.
-- Phase 4 review follow-up: completed remaining View/Filter seam parity by routing `PluginDependencies` show-dependency toggles through `cmd.view`, adding `setShowDependencies` to view commands, moving remaining `availableFeatureStates` reads in `Sidebar`/`DetailsPanel` to `sel.filter`, and fixing store-mode `setAllStatesSelected(true)` to derive unique states from baseline features when no explicit filter list exists.
-- Phase 5 progress: migrated remaining feature read consumers (`Timeline`, `EmptyBoardModal`, `SearchTool`, `Sidebar`, `PluginDependencies`, `PluginGraph`, `PluginCost`, `PluginCostV1`, `PluginPlanHealth`, `PluginXYBoard`, `TimelineExportRenderer`) from direct state effective-feature reads to `sel.feature` seams, with compatibility fallbacks for seam-mocked tests.
-- Phase 5 progress: added `cmd.group`/`sel.group` seam surfaces (`groupCommands.js`, `groupSelectors.js`), wired them in `application/imports.js`, migrated `GroupContextMenu` group lifecycle/member operations to command/selector seams, and moved `ScenarioMenu` pending-group reads/create-confirm wiring onto the same seam.
-- Phase 5 progress: completed migration away from direct `GroupService.getEffectiveGroups` reads in runtime code by switching `FeatureBoard` and legacy group selector paths to `sel.group`-based effective-group derivation.
-- Phase 5 completed: finalized Scenario/Feature/Group/Plugin-state/View-restore seam rollout across runtime consumers (`cmd.*` / `sel.*`), split `DetailsPanel` into section render modules, and validated the end-to-end gate matrix (`npm test`, `npm run test:coverage`, `pytest`, Playwright chromium).
-- Closed Phase 5 store-mode parity gaps: view restore now applies full saved payloads (including plugin state), scenario/feature mutations emit legacy-equivalent capacity side effects, plugin clear preserves subscriber lifecycle, and group lookup is scenario-override aware.
-- Phase 6 started (dev-only): flipped `USE_STATE_STORE` default on, removed migrated-concern selector/state fallback reads to avoid masked regressions, and added an explicit flag-on Vitest variant (`test:state-store`) for repeatable cutover validation.
-- Phase 6 continued: migrated remaining packed-board/empty-board/sidebar/dependency/portfolio/plan-health/cost test seams to `cmd.*`/`sel.*` (removing legacy `state`-service coupling in updated suites) and validated under `test:state-store`.
-- Phase 6 stabilization: fixed a `DetailsPanel` selector shadowing bug in iteration loading, completed missing Phase 4 selector-seam mocks (FeatureBoard/FeatureCard/Portfolio tests), and hardened `findInBoard` for DOM-less teardown paths to eliminate full-suite unhandled rejections.
-- Phase 6 validation evidence completed in `dev`: flag-on regression gates (`npm test`, `npm run test:state-store`, `npm run test:coverage`, `pytest`, Playwright smoke + chromium suite) are green, and OFF-vs-ON performance measurements were recorded in `backup/architecture_v5/plan/phase6-performance-results.json`.
-- Phase 6 follow-up hardening: scenario consumers in Sidebar/TopMenu/FeatureBoard-init/ScenarioMenu now read via `sel.scenario` to prevent store-mode drift, and store-mode scenario commands mirror scenario list/active-id into legacy state as a temporary safety bridge until Phase 7 decommissioning.
-- Legacy state removal readiness: migrated app bootstrap sync path, ScenarioMenu actions, Sidebar task-filter/expansion reads, Plan/Team counters, board/group selected-plan flows, MainGraph, and cost/graph/history/markers plugin surfaces to `cmd.*`/`sel.*` seams, removing direct runtime `state` access in those Phase-7 blocker files.
-- Main graph parity fix: normalized project/team selection id matching so store selectors returning string ids still render capacity lines/bars when source project/team ids are numeric, preventing blank graph output after seam migration.
-- Phase 6 seam cleanup: removed remaining direct `State.js` runtime imports/usages in TopMenu/ViewSaveModal/ColorPopover/groupBandLayout/events-export-xy/portfolio renderers and unused imports in SearchTool/Timeline/ViewMenu/Dependencies; color updates now flow through `cmd.selection` and selector-backed data snapshots.
-- Phase 6 follow-up: migrated `dragManager` and `EventsPanel` fully to `sel/cmd`, retired `plugin-cost-v1` registration/config loading paths, and restored baseline/edit parity by falling back to legacy feature mutations when no mutable scenario is active so details-panel capacity/date edits and drag-resize propagate refresh + capacity events.
-- Filter-event stabilization: fixed a `FilterEvents.CHANGED` recursion path by honoring `suppressEvents` through `setSelectedTaskTypes` legacy bridging, and treated retired `plugin-cost-v1` runtime entries as deprecated so plugin config merge no longer logs noisy unknown-id warnings.
-- View/scenario menu parity: store-mode view restore now delegates to legacy view management and syncs selectors from legacy state, restoring responsive View selection clicks and scenario/menu population when store slices are temporarily empty.
-- Scenario activation hardening: fixed state-store scenario sync to avoid assigning getter-only legacy `state.scenarios` properties, preventing click-time `TypeError` crashes when selecting a scenario from the menu.
-- Main graph update parity: feature mutation commands now sync legacy scenario snapshots before capacity recomputation and normalize changed-id types for incremental recompute, restoring graph refresh on drag/resize and details-panel capacity edits.
-- Drag/resize persistence fix: feature-command fallback paths now sync legacy scenario changes back into store state, preventing cards from snapping back when edits occur in readonly/baseline scenario contexts.
-- Baseline parity fix: store feature selectors now apply overrides for the active baseline entry, so baseline card rendering stays in sync with drag/resize overrides and no longer snaps back.
+
+### Changed
+- Replaced the monolithic frontend state and pre-store service layer with a canonical Zustand-backed application store, explicit command/selector seams, strict hydration contracts, and signal-oriented event handling. Runtime consumers, views, scenarios, groups, filters, capacity, and plugins now use these canonical boundaries.
+- Separated resolved task data from presentation scope: Scope determines the candidate task set, Context and Team Drill-down determine what is displayed, and display filters no longer alter organization-wide capacity inputs.
+- Changed plan and team presentation behavior so contextual descendants use canonical source-plan swimlanes, grouped tasks preserve mother-plan placement, and specialized plugins apply the appropriate visible-task or organization-wide scope.
+- Changed board zoom from a horizontal timeline/graph/card scale to a vertical, shrink-only card zoom. Timeline scale now independently controls horizontal density across weeks, months, quarters, and years. The browser scaling no longer scales the entire user interface.
+- Unified plugin lifecycle APIs and persistence contracts, distinguishing view-scoped plugin state from scenario-scoped plugin data; dependency overlays are now owned by Context rather than a separate plugin control.
+- Tightened backend-neutral diagnostics and repository boundaries, and added explicit project and global cache invalidation for configuration changes without removing API-level caching for remote data.
+- Changed team and project capacity calculation to be stable across view filters. No more dependency on which teams are displaying, creating confusion on what the number means.
+- Adding dependency to scope automatically adds the dependency overlay. The tool is removed frmo the Tools menu.
+- Server admin can be configured to save configuration snapshots allowing audit and reversal of configuration changes.
+- Dependencies plugin now stays active across other plugin switches, including full-screen plugins.
+- Admin UI now persists default field values (including feature flags) when saving configuration;
+  previously, fields that were never explicitly changed were silently omitted from the saved payload.
+- Stale cached data is now served when the ADO backend is unreachable at the moment of cache expiry for
+  history, teams, plans, markers, and iterations — matching the resilience already present for tasks.
+  Previously, a TTL lapse during an outage caused a hard failure for these domains.
 - Plugin development unified: all plugins now share a common base class, eliminating three generations of
   incompatible plugin APIs. New plugins require significantly less boilerplate.
 - Plugins are now categorised as either toolbox-mounted or full-screen; each category has a purpose-built
   base class that handles the corresponding lifecycle automatically.
-- Removed two obsolete feature flags that guarded transitions now complete; the Lit component system and
-  plugin system are unconditionally active.
-- Removed legacy iteration fallback logic; iteration resolution is now fully driven by project
-  iteration-set associations, making behaviour explicit and eliminating a hidden code path.
-- Removed completed migrations from the codebase; they have been applied on all supported installations
-  and no longer need to ship with the server.
 - Server configuration is now fully stored in diskcache; the `server_config.yaml` file is no longer read
   or required at runtime.
 - Consolidated to a single storage instance for all server data. Previously separate storage setups for
@@ -232,31 +83,32 @@ Template - do not change :
   — stale data is served instead of an error.
 - Admin UI source merged into the main Vite build: a single `npm run build` now produces both the main
   app and admin assets, sharing vendor chunks and requiring no separate build step or static file mount.
-- Removed the separate production-mode app factory; the single `make_app()` entry point now serves the
-  built frontend by default, eliminating a source of configuration drift between development and production.
-- Static assets are served at their natural paths so the browser's preload scanner can resolve them
-  without waiting for JavaScript, improving load time especially on first visit.
 
 ### Fixed
-- View rename now preserves the original view id in the rename modal flow by passing a dedicated `viewId` property, preventing `id: null` save payloads that previously created duplicate views instead of renaming.
-- Fixed dependency expansion counts to ignore Parent/Child links so only genuine dependency edges contribute to the sidebar bubble and expanded-card counts.
-- User-scoped scenario/view payloads now keep storage ids in `_meta.id` on load, and save routes accept `_meta.id` on round-trip updates, ensuring `/api/view?id=...` returns a complete payload without polluting stored data with internal ids.
-- Hardened Phase 3 hydration strictness: `hydrateBaseline`/`hydrateScenarioData` now reject invalid `ok` payload shapes with explicit `HYDRATION_FAILED` errors and no state mutation, and `application/imports.js` no longer exposes state-store data commands when `USE_STATE_STORE` is false.
-- Fixed admin config screens that were reading provider Result envelopes as raw payloads; groups/system/iterations/users/people/cost/area-mappings now consume `.data` correctly and display returned records, and Azure project browsing now reuses the saved ADO organization URL when calling `/api/azure/projects`.
-- Admin follow-up hardening for Phase 2 Result envelopes: utilities backup/restore and cache status flows now consume `result.data` and `error.message` correctly, plan-events datasource handles object-shaped errors safely, and admin global/plugins/iterations/base-config paths now use normalized Result unwrapping; added targeted component tests for these failure/success boundaries.
-- Eliminated a redundant JSON parse/stringify round-trip when cloning internal state; `structuredClone`
-  is faster and avoids unnecessary serialisation overhead.
-- Playwright e2e runs now start an isolated server with a test-only `PLANNER_SECRET_KEY`, bootstrap required admin/mock config via REST, and use dedicated `tests/e2e/.tmp-data` storage, preventing accidental writes to the repository `data/` directory.
-- Playwright setup now runs in explicit baseline-only mode to avoid hidden inactive-scenario dependencies, search-tool e2e verifies typed input plus activation behavior, and timeline panning coverage is split between user interaction and programmatic scroll behavior for clearer failure signals.
-- Admin UI now persists default field values (including feature flags) when saving configuration;
-  previously, fields that were never explicitly changed were silently omitted from the saved payload.
-- Stale cached data is now served when the ADO backend is unreachable at the moment of cache expiry for
-  history, teams, plans, markers, and iterations — matching the resilience already present for tasks.
-  Previously, a TTL lapse during an outage caused a hard failure for these domains.
-- Plugins now load correctly in production Docker bundles where Vite produces content-hashed asset
-  filenames; previously, mounted plugins failed silently at runtime because hashed chunk names were not
-  resolvable.
-- Fixed a stale import in the cost plugin that prevented the Docker frontend build from completing.
+- Fixed store migration parity across startup, Default View and saved-view restore, scenario hydration and rename/save flows, baseline overrides, group projection, filters, capacity, graph rendering, and plugin aggregates.
+- Fixed Context, Team Drill-down, dependency visibility, parent/child expansion, swimlane assignment, unallocated work, task counts, and deselection behavior across the board and specialized plugins.
+- Fixed group creation, nesting, membership, date shifting, mixed ordering, drag placement, cross-plan assignment, and scenario publishing so pending changes remain consistent and do not duplicate.
+- Fixed board zoom, timeline overlays, annotations, ghost titles, virtualization, background stripes, years-scale rendering, and context-menu positioning, including initialization and teardown races.
+- Fixed Azure DevOps refresh isolation, stale-cache handling, project/team discovery invalidation, backend diagnostics, failed area-path reporting, and concurrent worker behavior.
+- Fixed admin Result-envelope handling, account credential versus permission updates, configuration persistence, iteration display, and saved-view compatibility with legacy task-type casing.
+- Reworked browser fixtures and integration coverage to validate store parity, isolated test storage and secrets, migration behavior, and end-to-end Scope, Context, Data Funnel, and Baseline workflows.
+- Backend diagnostics now use a backend-neutral contract from server to browser; reload warnings identify stale cached Azure DevOps work items and failed area paths, and distinguish denied or invalid configured queries from service outages; server log-level changes made in Admin take effect immediately.
+- Annotation plugin: right-click no longer also opens the board/group context menu while a drawing tool is active, the icon picker no longer opens on right-click, the icon popup now places the placed icon at the correct board-space Y at any board zoom level, and annotation Y positions now rescale with board zoom so they keep tracking their row.
+- Separated credential updates from admin authorization changes so saving account configuration cannot silently revoke permissions; admin user management now uses per-account commands.
+
+### Removed
+- Removed the legacy state-store compatibility bridges, retired bootstrap flags, superseded pre-store services, and their orphaned tests now that commands and selectors own the behavior.
+- Removed the obsolete TeamMenu, saved-view expansion and preview paths, dead plugin files, unused dependency-injection wiring, and replaced event contracts that carried mutable state payloads.
+- Removed the `SHOW_UNPLANNED_WORK` feature flag; unplanned work is now handled by the view option and ghost-card behavior.
+- The groups v1 "ungrouped" default group is removed.
+- Removed completed migrations from the codebase; they have been applied on all supported installations
+  and no longer need to ship with the server.
+- Removed the separate production-mode app factory; the single `make_app()` entry point now serves the
+  built frontend by default, eliminating a source of configuration drift between development and production.
+
+Upgrade-related migrations and compatibility limitations, including remote-cache migration, saved-view Context migration, and pre-account-ID backup handling, are documented in the detailed entries below.
+
+---
 
 ## [v4.2.1] - 2026-07-19
 
@@ -409,7 +261,7 @@ Template - do not change :
 
 This release is a major backend architecture overhaul. The changes modernise the server internals to make the codebase easier to extend, test, and operate. The server was made async in several places, allowing multiple users to get responsiveness when accessing the tool concurrently.
 
-On the user side, several new features are added: packed view which oacks cards on the same line (on cost of reducing title view), plan swimlanes makes it easier to identify the cards belonging to a specific plan. This feature changes the dynamic of sorting by rank and date as this happens per plan now.
+On the user side, several new features are added: packed view which packs cards on the same line (on cost of reducing title view), plan swimlanes makes it easier to identify the cards belonging to a specific plan. This feature changes the dynamic of sorting by rank and date as this happens per plan now.
 
 **Before upgrading**, run all pending migrations:
 ```
@@ -450,6 +302,8 @@ After the migration, the data/config/*.yml files can be removed.
 - **People data fully in diskcache** — `people.yml` and any external `database_file` are merged and stored in diskcache by migration 0022. The server no longer reads from `people.yml` at runtime.
 - **Cost engine accuracy** — team cost calculation was computing `sum(rates) × sum(hours)` instead of `sum(rate × hours per person)`, overstating costs by a factor equal to team size for multi-person teams. Now fixed and regression-tested.
 - Migration 0023 cleans up the server configuration.
+
+---
 
 ## [v3.5.2] - 2026-04-29
 
@@ -638,6 +492,8 @@ After installing this release, restore backups on a clean data directory.
 
 - enable_brotli_middleware feature flag was newer actually used due to wrong flag check.
 
+---
+
 ## [v2.2.0] - 2026-03-27
 
 NOTE: This is the last v2.x release. BACKUP YOUR DATA! From v3.0.0 onwards the pickled files
@@ -793,6 +649,8 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 - Fix MIME error loding modules file in an unsupported way for newer browsers.
 - Fixed timeline not centering on current month on initial load - timeline now centers on current month instead of left-aligning it,
   which was causing viewport to show months 5-6 months ahead
+
+---
 
 ## [v1.15.1] - 2026-03-13
 
