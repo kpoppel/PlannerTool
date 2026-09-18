@@ -88,6 +88,9 @@ Template - do not change :
 - Migration `0026_migrate_ttl_cache.py`: moves any leftover remote-backend cache entries from `data/cache`
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
+### Changed
+- Board zoom (ctrl +/-) no longer scales the timeline header, graph, or card horizontal axis at all; it is now a feature-board-only, shrink-only (capped at natural size) vertical zoom that scales card row height and font/legibility to fit more cards on screen, while horizontal density stays solely owned by the timeline-scale (weeks/months/quarters/years) control. All fixed-pixel card dimensions (icons, badges, margins, ghost-title overflow labels, and the child-allocation info icon) now scale with it too, so shrunk cards no longer overflow their row and overlap the next one. Fixed the board/swimlane background stripes being clipped to whatever subset of cards virtualization currently has in the DOM instead of the full timeline width, including a "3mo" scale-specific case where the board width used a static per-scale lookup instead of the live, viewport-fit month width that scale actually renders with.
+
 ### Fixed
 - FeatureBoard now renders Context and Team Drill-down scope results without reapplying legacy project/team visibility checks.
 - Team Drill-down now filters every allocated visible task consistently, while clear drill-downs retain Other-allocation source-plan discovery from selected-plan teams.

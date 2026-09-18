@@ -64,7 +64,15 @@ const findMonthIndexFor = (msVal) => {
   return -1;
 };
 
-export const laneHeight = () => (sel.view.getCondensedCards() ? 28 : 64);
+export const laneHeight = () => (sel.view.getCondensedCards() ? 28 : 64) * getBoardZoom();
+
+// Board zoom (ctrl +/-) is TimelineBoard-local UI state; exposed here so layout
+// helpers (laneHeight) can scale row height without importing the component.
+let _boardZoom = 1;
+export const getBoardZoom = () => _boardZoom;
+export const setBoardZoom = (zoom) => {
+  _boardZoom = zoom;
+};
 
 export const computePosition = (feature, monthsArg) => {
   const months = monthsArg || getTimelineMonths();

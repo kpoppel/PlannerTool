@@ -147,6 +147,8 @@ export const BoardEvents = {
    * Payload: { offset: number }  (0 when the plugin is inactive or shows nothing)
    */
   OVERLAY_OFFSET_CHANGED: Symbol('board:overlay-offset-changed'),
+  /** Board zoom (ctrl +/-) changed; row heights derived from laneHeight() must be recomputed. */
+  ZOOM_CHANGED: Symbol('board:zoom-changed'),
 };
 
 // Group events — fired by GroupService

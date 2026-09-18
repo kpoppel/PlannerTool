@@ -43,11 +43,11 @@ export class KeyboardShortcutManager {
 
 export function createApplicationShortcutDefinitions(dependencies) {
   const { commands, selectors, openSearch, getTimelineBoard } = dependencies;
-  const adjustBoardZoom = (direction, anchorClientX, anchorClientY) => {
+  const adjustBoardZoom = (direction, anchorClientY) => {
     const board = getTimelineBoard();
     // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (!board) return;
-    board.adjustBoardZoom(direction, anchorClientX, anchorClientY);
+    board.adjustBoardZoom(direction, anchorClientY);
   };
   const resetBoardZoom = () => {
     const board = getTimelineBoard();
@@ -77,7 +77,7 @@ export function createApplicationShortcutDefinitions(dependencies) {
       id: 'board-zoom-wheel',
       wheel: true,
       run: (event) =>
-        adjustBoardZoom(event.deltaY < 0 ? 1 : -1, event.clientX, event.clientY),
+        adjustBoardZoom(event.deltaY < 0 ? 1 : -1, event.clientY),
     },
   ];
 }

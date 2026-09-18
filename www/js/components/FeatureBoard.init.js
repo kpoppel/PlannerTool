@@ -23,6 +23,7 @@ import {
   AppEvents,
   UIEvents,
   GroupEvents,
+  BoardEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { cmd, sel } from '../application/imports.js';
@@ -77,6 +78,8 @@ export async function initBoard() {
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);
   bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
+  // Board zoom changes row height (laneHeight()); relayout to avoid overlapping cards.
+  bus.on(BoardEvents.ZOOM_CHANGED, renderFeatures);
   // Re-render whenever groups are loaded or mutated
   bus.on(GroupEvents.LOADED, renderFeatures);
   bus.on(GroupEvents.CHANGED, renderFeatures);

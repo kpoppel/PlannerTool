@@ -23,12 +23,14 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { bus } from '../core/EventBus.js';
-import { UIEvents, TimelineEvents } from '../core/EventRegistry.js';
-import { calcTodayX } from './board-utils.js';
+import { UIEvents, TimelineEvents, BoardEvents } from '../core/EventRegistry.js';
+import { calcTodayX, setBoardZoom } from './board-utils.js';
 
 const BOARD_ZOOM_STEP = 0.1;
 const MIN_BOARD_ZOOM = 0.5;
-const MAX_BOARD_ZOOM = 2;
+// Capped at natural size: board zoom only ever shrinks feature-board rows to
+// fit more cards vertically, it never enlarges cards past their default size.
+const MAX_BOARD_ZOOM = 1;
 
 export class TimelineBoard extends LitElement {
   static properties = {
@@ -44,12 +46,6 @@ export class TimelineBoard extends LitElement {
     this.boardZoom = 1;
     this._isPanning = false;
     this._panStart = null;
-    // Natural (unscaled) size of #board-area, tracked so the unscaled
-    // #board-zoom-sizer can reserve exactly naturalSize * boardZoom of
-    // scrollable space — the transformed #board-zoom-surface itself keeps
-    // reporting its untransformed size to layout, which otherwise leaves the
-    // vertical scroll range stuck at the zoom=1 height.
-    this._naturalContentSize = { width: 0, height: 0 };
     this._onMouseDown = this._onMouseDown.bind(this);
     this._onMouseMove = this._onMouseMove.bind(this);
     this._onMouseUp = this._onMouseUp.bind(this);
@@ -65,21 +61,6 @@ export class TimelineBoard extends LitElement {
 
       if (scrollContainer && boardArea) {
         boardCoords.init(scrollContainer, boardArea);
-      }
-
-      if (boardArea && 'ResizeObserver' in window) {
-        // ResizeObserver reports the observed element's own untransformed box,
-        // so this always yields board-area's true content size regardless of
-        // the ancestor #board-zoom-surface's transform:scale().
-        this._contentResizeObserver = new ResizeObserver((entries) => {
-          const entry = entries[entries.length - 1];
-          this._naturalContentSize = {
-            width: entry.contentRect.width,
-            height: entry.contentRect.height,
-          };
-          this.requestUpdate();
-        });
-        this._contentResizeObserver.observe(boardArea);
       }
 
       await import('./MainGraph.lit.js');
@@ -112,7 +93,6 @@ export class TimelineBoard extends LitElement {
     const scroll = this.shadowRoot.querySelector('#scroll-container');
     // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (scroll) scroll.removeEventListener('mousedown', this._onMouseDown);
-    if (this._contentResizeObserver) this._contentResizeObserver.disconnect();
     if (scroll && this._onBoardContextMenu) scroll.removeEventListener('contextmenu', this._onBoardContextMenu);
     if (this._boardArea && this._onGroupContextMenu) this._boardArea.removeEventListener('group-context-menu', this._onGroupContextMenu);
     if (this._boardArea && this._onFeatureContextMenu) this._boardArea.removeEventListener('feature-context-menu', this._onFeatureContextMenu);
@@ -310,12 +290,11 @@ export class TimelineBoard extends LitElement {
     if (scroll) scroll.scrollTo(x, y);
   }
 
-  adjustBoardZoom(direction, anchorClientX, anchorClientY) {
+  adjustBoardZoom(direction, anchorClientY) {
     const nextZoom = this.boardZoom + direction * BOARD_ZOOM_STEP;
     const boundedZoom = Math.max(MIN_BOARD_ZOOM, Math.min(MAX_BOARD_ZOOM, nextZoom));
     this._setBoardZoom(
       Math.round(boundedZoom * 10) / 10,
-      anchorClientX,
       anchorClientY
     );
   }
@@ -324,28 +303,26 @@ export class TimelineBoard extends LitElement {
     this._setBoardZoom(1);
   }
 
-  _setBoardZoom(nextZoom, anchorClientX, anchorClientY) {
+  _setBoardZoom(nextZoom, anchorClientY) {
     if (nextZoom === this.boardZoom) return;
     if (!this.shadowRoot) {
+      setBoardZoom(nextZoom);
+      bus.emit(BoardEvents.ZOOM_CHANGED);
       this.boardZoom = nextZoom;
       return;
     }
 
     const scrollContainer = this.shadowRoot.querySelector('#scroll-container');
     if (!scrollContainer) {
+      setBoardZoom(nextZoom);
+      bus.emit(BoardEvents.ZOOM_CHANGED);
       this.boardZoom = nextZoom;
       return;
     }
 
     const previousZoom = this.boardZoom;
     const scrollRect = scrollContainer.getBoundingClientRect();
-    let pointerOffset = scrollContainer.clientWidth / 2;
-    if (Number.isFinite(anchorClientX)) {
-      pointerOffset = Math.max(
-        0,
-        Math.min(scrollContainer.clientWidth, anchorClientX - scrollRect.left)
-      );
-    }
+    // Board zoom only affects the vertical axis now, so only the Y anchor needs preserving.
     let pointerOffsetY = scrollContainer.clientHeight / 2;
     if (Number.isFinite(anchorClientY)) {
       pointerOffsetY = Math.max(
@@ -353,13 +330,15 @@ export class TimelineBoard extends LitElement {
         Math.min(scrollContainer.clientHeight, anchorClientY - scrollRect.top)
       );
     }
-    const anchoredContentX = (scrollContainer.scrollLeft + pointerOffset) / previousZoom;
     const anchoredContentY =
       (scrollContainer.scrollTop + pointerOffsetY) / previousZoom;
 
+    // Row heights (laneHeight()) live outside this component so FeatureBoard's
+    // absolute-positioned layout can read them without a prop-drilled dependency.
+    setBoardZoom(nextZoom);
+    bus.emit(BoardEvents.ZOOM_CHANGED);
     this.boardZoom = nextZoom;
     this.updateComplete.then(() => {
-      scrollContainer.scrollLeft = anchoredContentX * nextZoom - pointerOffset;
       scrollContainer.scrollTop = anchoredContentY * nextZoom - pointerOffsetY;
     });
   }
@@ -400,29 +379,6 @@ export class TimelineBoard extends LitElement {
         cursor: grabbing;
       }
 
-      /* Establishes the positioning context for the sizer + surface pair below. */
-      #board-zoom-wrapper {
-        position: relative;
-      }
-
-      /* Plain, untransformed element whose size is set in JS to
-         naturalContentSize * boardZoom. A transformed element still reports
-         its own untransformed size to its containing block, so without this
-         sizer #scroll-container's vertical scroll range stays stuck at the
-         zoom=1 height regardless of boardZoom (see _setBoardZoom docs). */
-      #board-zoom-sizer {
-        pointer-events: none;
-      }
-
-      #board-zoom-surface {
-        position: absolute;
-        top: 0;
-        left: 0;
-        /* Origin at top-left so the scaled box grows/shrinks from the same
-           corner the scroll-anchoring math in _setBoardZoom() assumes. */
-        transform-origin: top left;
-      }
-
       #scroll-container::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -436,11 +392,8 @@ export class TimelineBoard extends LitElement {
       /* Timeline header sticks vertically, scrolls horizontally with content.
          z-index must exceed feature-card ghost titles (z-index: 120) so cards
          scrolling past the header clip beneath it rather than overlapping.
-         Kept as a sibling of (not nested inside) #board-zoom-surface: a
-         transform on an ancestor breaks position:sticky, so it is scaled
-         with CSS zoom instead — zoom resizes the flow layout box in step
-         with its visual size, keeping the reserved header height correct at
-         any board zoom level. */
+         Timeline never reacts to board zoom (X-axis only, like the graph);
+         only #board-area (feature-board's cards) receives --board-zoom. */
       timeline-lit {
         position: sticky;
         top: 0;
@@ -452,12 +405,21 @@ export class TimelineBoard extends LitElement {
        * Board area — positioned so overlays can use position:absolute with inset:0.
        * Background stripes are on this element because its width == content width,
        * keeping stripe alignment locked to month positions regardless of scroll.
+       * --board-zoom scales feature-card row height (via laneHeight()) and font
+       * size only; it never touches width, which stays owned by the timeline scale.
        */
       #board-area {
         position: relative;
         /* Ensure the board background (stripes) fills the visible viewport
            even when there are few or no feature cards. */
         min-height: 100vh;
+        /* feature-board sets an explicit width matching the full logical
+           timeline extent (see FeatureBoard.renderFeatures); grow to fit it
+           instead of shrinking to the virtualized (viewport-only) subset of
+           cards actually in the DOM, which would clip the stripe/swimlane
+           backgrounds at the edge of the virtualization window. */
+        width: fit-content;
+        min-width: 100%;
         background: repeating-linear-gradient(
           to right,
           var(--color-bg, #f7f7f7) 0,
@@ -557,29 +519,21 @@ export class TimelineBoard extends LitElement {
   render() {
     return html`
       <section id="maingraph-section" aria-label="Organisational Load Graph">
-        <maingraph-lit .horizontalScale=${this.boardZoom}></maingraph-lit>
+        <maingraph-lit></maingraph-lit>
       </section>
 
       <div id="scroll-container">
-        <timeline-lit style="zoom: ${this.boardZoom}"></timeline-lit>
-        <div id="board-zoom-wrapper">
-          <div
-            id="board-zoom-sizer"
-            style="width: ${this._naturalContentSize.width * this.boardZoom}px; height: ${this._naturalContentSize.height * this.boardZoom}px;"
-          ></div>
-          <div id="board-zoom-surface" style="transform: scale(${this.boardZoom})">
-            <div id="board-area" role="region" aria-label="Timeline and Features">
-              <feature-board></feature-board>
-              <!-- Vertical marker for today's date -->
-              <div id="today-line" aria-hidden="true"></div>
-              <!--
-                Plugin overlays (annotation-overlay, link-editor-overlay, etc.) are
-                appended here by their plugins.  As position:absolute siblings inside
-                a position:relative ancestor they share board-space coordinates with
-                feature-board — no coordinate conversion required.
-              -->
-            </div>
-          </div>
+        <timeline-lit></timeline-lit>
+        <div id="board-area" style="--board-zoom: ${this.boardZoom}" role="region" aria-label="Timeline and Features">
+          <feature-board></feature-board>
+          <!-- Vertical marker for today's date -->
+          <div id="today-line" aria-hidden="true"></div>
+          <!--
+            Plugin overlays (annotation-overlay, link-editor-overlay, etc.) are
+            appended here by their plugins.  As position:absolute siblings inside
+            a position:relative ancestor they share board-space coordinates with
+            feature-board.
+          -->
         </div>
       </div>
 

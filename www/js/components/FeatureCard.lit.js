@@ -32,6 +32,10 @@ export class FeatureCardLit extends LitElement {
     :host {
       display: block;
       position: absolute;
+      /* --board-zoom (inherited from #board-area) scales
+         legibility only; width/left come from explicit inline styles set by
+         FeatureBoard and are never touched by board zoom. */
+      font-size: calc(1em * var(--board-zoom, 1));
     }
 
     .feature-card {
@@ -41,12 +45,12 @@ export class FeatureCardLit extends LitElement {
       border-left: 4px solid var(--project-color, #ccc);
       border-radius: 6px;
       /* unified vertical padding so narrow and regular cards compute the same height */
-      padding: 4px 8px;
+      padding: calc(4px * var(--board-zoom, 1)) 8px;
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
       box-sizing: border-box;
-      min-height: 40px;
+      min-height: calc(40px * var(--board-zoom, 1));
       line-height: 1;
       transition: box-shadow 0.2s;
     }
@@ -178,9 +182,9 @@ export class FeatureCardLit extends LitElement {
     }
 
     .feature-card.condensed {
-      height: 28px;
-      min-height: 28px;
-      padding: 2px 8px;
+      height: calc(28px * var(--board-zoom, 1));
+      min-height: calc(28px * var(--board-zoom, 1));
+      padding: calc(2px * var(--board-zoom, 1)) 8px;
     }
 
     /* Remove title-row bottom margin in condensed mode — nothing follows it */
@@ -198,14 +202,14 @@ export class FeatureCardLit extends LitElement {
        to avoid layout shifts between narrow and regular cards. */
     .feature-card.narrow {
       /* Do not change height here — keep the same height as regular cards. */
-      padding: 4px 8px;
+      padding: calc(4px * var(--board-zoom, 1)) 8px;
       overflow: hidden;
       line-height: 1;
     }
 
     /* Keep team-load and dates visible; reduce vertical gaps */
     .feature-card .title-row {
-      margin-bottom: 2px;
+      margin-bottom: calc(2px * var(--board-zoom, 1));
       align-items: center;
     }
 
@@ -224,7 +228,7 @@ export class FeatureCardLit extends LitElement {
 
     /* lightweight dates styling (keeps vertical gaps small) */
     .feature-dates {
-      margin-top: 4px;
+      margin-top: calc(4px * var(--board-zoom, 1));
       margin-bottom: 0;
       font-size: 0.75em;
       line-height: 1;
@@ -242,7 +246,7 @@ export class FeatureCardLit extends LitElement {
     .team-load-row {
       display: flex;
       gap: 4px;
-      margin-bottom: 2px;
+      margin-bottom: calc(2px * var(--board-zoom, 1));
       font-size: 0.75em;
       /* Always constrain to card width to prevent overflow */
     .team-load-box--dimmed {
@@ -268,7 +272,9 @@ export class FeatureCardLit extends LitElement {
       align-items: center;
       justify-content: center;
       margin-left: 6px;
-      font-size: 0.85em;
+      /* 1em, not a further fraction: matches .team-load-box's height, which
+         inherits .team-load-row's 0.75em context with no override of its own. */
+      font-size: 1em;
       color: rgba(0, 0, 0, 0.6);
       cursor: default;
       user-select: none;
@@ -278,7 +284,7 @@ export class FeatureCardLit extends LitElement {
     }
 
     .team-load-box {
-      padding: 2px 4px;
+      padding: calc(2px * var(--board-zoom, 1)) 4px;
       border-radius: 2px;
       color: white;
       font-weight: bold;
@@ -306,8 +312,8 @@ export class FeatureCardLit extends LitElement {
       min-width: 8px !important;
       /* Make small features visually compact while preserving alignment
          Use a smaller min-height and reduced vertical padding (~28px total) */
-      min-height: 28px;
-      padding: 2px 6px;
+      min-height: calc(28px * var(--board-zoom, 1));
+      padding: calc(2px * var(--board-zoom, 1)) 6px;
       overflow: hidden;
       cursor: pointer;
     }
@@ -337,7 +343,7 @@ export class FeatureCardLit extends LitElement {
       height: 100%;
       align-items: center;
       justify-content: center;
-      min-height: 24px;
+      min-height: calc(24px * var(--board-zoom, 1));
     }
 
     .feature-card.small-feature .small-feature-indicator {
@@ -356,7 +362,7 @@ export class FeatureCardLit extends LitElement {
       display: flex;
       align-items: center;
       gap: 4px;
-      margin-bottom: 2px;
+      margin-bottom: calc(2px * var(--board-zoom, 1));
     }
 
     .feature-card-icon {
@@ -365,13 +371,13 @@ export class FeatureCardLit extends LitElement {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 20px;
-      height: 20px;
+      width: calc(20px * var(--board-zoom, 1));
+      height: calc(20px * var(--board-zoom, 1));
     }
 
     .feature-card-icon svg {
-      width: 16px;
-      height: 16px;
+      width: calc(16px * var(--board-zoom, 1));
+      height: calc(16px * var(--board-zoom, 1));
     }
 
     .feature-title {
@@ -437,7 +443,7 @@ export class FeatureCardLit extends LitElement {
       transform: translateY(-50%);
       background: transparent;
       border: 1px dashed rgba(0, 0, 0, 0.25);
-      padding: 2px 6px;
+      padding: calc(2px * var(--board-zoom, 1)) 6px;
       border-radius: 4px;
       font-size: 0.9em;
       color: rgba(0, 0, 0, 0.75);
@@ -879,7 +885,7 @@ export class FeatureCardLit extends LitElement {
         : ''}
       >
         ${hasChildren ?
-          html`<span class="dim-info" role="img" style="font-size: 16px">ℹ️</span>`
+          html`<span class="dim-info" role="img">ℹ️</span>`
         : ''}
         ${orgBox} ${teamBoxes}
       </div>

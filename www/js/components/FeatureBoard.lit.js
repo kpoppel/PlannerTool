@@ -892,6 +892,14 @@ class FeatureBoard extends LitElement {
       this._boardHeight = totalHeight;
       this.style.height = totalHeight + 'px';
     }
+    // Width must reflect the full logical timeline extent, not just the
+    // virtualized (viewport + overscan) subset of cards actually in the DOM —
+    // otherwise #board-area's swimlane/stripe backgrounds (sized to this host's
+    // own box) get clipped to that narrow virtualization window.
+    // Use the live TIMELINE_CONFIG.monthWidth (not getMonthWidthForScale):
+    // the 'threeMonths' scale computes its width dynamically from the viewport
+    // and only TIMELINE_CONFIG.monthWidth tracks that, for every scale.
+    this.style.width = months.length * TIMELINE_CONFIG.monthWidth + 'px';
     this.requestUpdate();
 
     if (renderList.length === 0) {
@@ -959,11 +967,8 @@ class FeatureBoard extends LitElement {
     const scrollContainer = findInBoard('#scroll-container');
     if (!scrollContainer) return;
 
-    // Card positions (item.left/top) are board-space (unscaled) pixels, but the
-    // scroll container itself sits outside the zoomed subtree, so its scroll
-    // offsets/dimensions are in real screen pixels. Convert the visible screen
-    // rect to board space via boardCoords so the window stays correct at any
-    // board zoom level, instead of comparing mismatched coordinate spaces.
+    // Convert the visible screen rect to board space. This accounts for the
+    // sticky timeline header's offset from the board-area origin.
     const rect = scrollContainer.getBoundingClientRect();
     const topLeft = boardCoords.screenToBoard(rect.left, rect.top);
     const bottomRight = boardCoords.screenToBoard(

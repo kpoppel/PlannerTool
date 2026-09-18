@@ -32,18 +32,23 @@ describe('MainGraph Tests', () => {
       expect(canvas.height).to.equal(120);
     });
 
-    it('scales only the horizontal render width', async () => {
+    it('derives render month width from the live TIMELINE_CONFIG, not a zoom multiplier', async () => {
       const el = await fixture(
-        html`<maingraph-lit
-          .bus=${mockBus}
-          .height=${120}
-          .horizontalScale=${0.5}
-        ></maingraph-lit>`
+        html`<maingraph-lit .bus=${mockBus} .height=${120}></maingraph-lit>`
       );
       const canvas = el.shadowRoot.querySelector('canvas');
 
-      expect(el._getRenderMonthWidth()).to.equal(TIMELINE_CONFIG.monthWidth * 0.5);
-      expect(canvas.height).to.equal(120);
+      const previousWidth = TIMELINE_CONFIG.monthWidth;
+      try {
+        // 'threeMonths' computes its width dynamically from the viewport, so only
+        // TIMELINE_CONFIG.monthWidth (not getMonthWidthForScale) tracks it correctly.
+        TIMELINE_CONFIG.monthWidth = 45;
+        expect(el._getRenderMonthWidth()).to.equal(45);
+        expect(el.horizontalScale).to.equal(undefined);
+        expect(canvas.height).to.equal(120);
+      } finally {
+        TIMELINE_CONFIG.monthWidth = previousWidth;
+      }
     });
 
     it('handles empty data gracefully', async () => {
@@ -470,12 +475,12 @@ describe('MainGraph Tests', () => {
         projectDailyCapacityMap: null, totalOrgDailyPerTeamAvg: [], capacityViewMode: 'team',
         selectedTeamIds: new Set(['t1']), selectedProjectIds: new Set(),
       };
-      const originalMonthWidth = TIMELINE_CONFIG.monthWidth;
-      TIMELINE_CONFIG.monthWidth = 30;
+      const previousWidth = TIMELINE_CONFIG.monthWidth;
+      TIMELINE_CONFIG.monthWidth = 30; // matches the clamped viewport below
 
       expect(() => el._fullRender(mockCtx, snapshot)).not.to.throw();
 
-      TIMELINE_CONFIG.monthWidth = originalMonthWidth;
+      TIMELINE_CONFIG.monthWidth = previousWidth;
       timelineBoard.remove();
       el.remove();
     });
