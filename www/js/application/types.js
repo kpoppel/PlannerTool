@@ -7,7 +7,8 @@
  *   filters?: Record<string, any>,
  *   view?: Record<string, any>,
  *   groupOverrides?: Record<string, any>,
- *   scenarioGroups?: any[]
+ *   scenarioGroups?: any[],
+ *   pluginData?: Record<string, any>
  * }} ScenarioItem
  */
 

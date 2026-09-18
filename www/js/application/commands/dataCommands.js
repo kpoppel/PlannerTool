@@ -344,6 +344,7 @@ export function createDataCommands(store, bus, dataService) {
           view: scenario.view === undefined ? {} : scenario.view,
           groupOverrides: scenario.groupOverrides === undefined ? {} : scenario.groupOverrides,
           scenarioGroups: scenario.scenarioGroups instanceof Array ? scenario.scenarioGroups : [],
+          pluginData: isPlainObject(scenario.pluginData) ? scenario.pluginData : {},
         }));
 
       const baseline = {
@@ -353,6 +354,7 @@ export function createDataCommands(store, bus, dataService) {
         overrides: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       };
 
       store.setState(

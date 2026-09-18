@@ -14,6 +14,7 @@ SCENARIO_DEFAULTS = {
     'view': {},
     'groupOverrides': {},
     'scenarioGroups': [],
+    'pluginData': {},
 }
 
 

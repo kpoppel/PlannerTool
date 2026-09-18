@@ -32,6 +32,7 @@ def _validate_scenario_payload(data: dict | None) -> None:
     data.setdefault('view', {})
     data.setdefault('groupOverrides', {})
     data.setdefault('scenarioGroups', [])
+    data.setdefault('pluginData', {})
 
     for key in ('id', 'name'):
         value = data.get(key)
@@ -59,6 +60,11 @@ def _validate_scenario_payload(data: dict | None) -> None:
             raise HTTPException(status_code=400, detail='Scenario group id cannot be empty')
         if group_name is None or str(group_name).strip() == '':
             raise HTTPException(status_code=400, detail='Scenario group name cannot be empty')
+
+    # pluginData is an opaque, per-plugin-key bag (e.g. {'plugin-annotations': [...]});
+    # the scenario layer only enforces that it is a dict and does not interpret its contents.
+    if not isinstance(data.get('pluginData'), dict):
+        raise HTTPException(status_code=400, detail='Scenario pluginData must be an object')
 
 
 @router.get('/scenario')

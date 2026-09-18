@@ -21,9 +21,10 @@ def _normalize_scenario_data(data: Any) -> Any:
         'view': {},
         'groupOverrides': {},
         'scenarioGroups': [],
+        'pluginData': {},
     }.items():
         value = normalized.get(field)
-        if field in ('overrides', 'filters', 'view', 'groupOverrides'):
+        if field in ('overrides', 'filters', 'view', 'groupOverrides', 'pluginData'):
             if not isinstance(value, dict):
                 normalized[field] = {} if default == {} else default
         elif field == 'scenarioGroups':

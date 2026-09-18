@@ -1,5 +1,6 @@
 import { getAllTaskFiltersEnabled } from './shared/taskFilters.js';
 import { createDefaultViewOptions } from './shared/viewDefaults.js';
+import { loadLocalPluginData } from './shared/localScenarioPluginData.js';
 
 /** @typedef {import('./types.js').AppState} AppState */
 
@@ -30,6 +31,9 @@ export function createInitialAppState() {
         overrides: {},
         groupOverrides: {},
         scenarioGroups: [],
+        // Baseline has no server-side scenario record, so its pluginData bag
+        // is restored from the local fallback store instead of the server.
+        pluginData: loadLocalPluginData('baseline'),
       }],
     },
     selection: {

@@ -268,6 +268,7 @@ class DataService {
       view: scenario.view,
       scenarioGroups: scenario.scenarioGroups,
       groupOverrides: scenario.groupOverrides,
+      pluginData: scenario.pluginData,
     };
 
     const result = await this.providers['rest'].saveScenario(payload);

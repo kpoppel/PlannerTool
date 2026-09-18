@@ -35,6 +35,7 @@ describe('application/store', () => {
       overrides: {},
       groupOverrides: {},
       scenarioGroups: [],
+      pluginData: {},
     }]);
     expect(current.view.context).toEqual({
       parent: false,

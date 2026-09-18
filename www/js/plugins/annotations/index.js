@@ -6,12 +6,7 @@
 export { ANNOTATION_COLORS, getRandomColor } from './AnnotationColors.js';
 
 // Storage
-export {
-  saveAnnotations,
-  loadAnnotations,
-  clearAnnotations,
-  generateId,
-} from './AnnotationStorage.js';
+export { generateId } from './AnnotationStorage.js';
 
 // State and tools
 export {

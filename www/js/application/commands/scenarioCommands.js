@@ -152,6 +152,9 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
         // Group branches must always exist: group projection reads them without guards.
         groupOverrides: sourceScenario ? cloneValue(sourceScenario.groupOverrides) : {},
         scenarioGroups: sourceScenario ? cloneList(sourceScenario.scenarioGroups) : [],
+        // Opaque per-plugin extension bag (e.g. { 'plugin-annotations': [...] }); the
+        // scenario layer clones it without knowing what any plugin key contains.
+        pluginData: sourceScenario ? cloneValue(sourceScenario.pluginData) : {},
       };
 
       const nextScenarios = [...existingScenarios, scenario];

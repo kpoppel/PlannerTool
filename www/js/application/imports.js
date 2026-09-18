@@ -6,6 +6,7 @@ import { createSelectionCommands } from './commands/selectionCommands.js';
 import { createFilterCommands } from './commands/filterCommands.js';
 import { createViewCommands } from './commands/viewCommands.js';
 import { createPluginStateCommands } from './commands/pluginStateCommands.js';
+import { createPluginScenarioDataCommands } from './commands/pluginScenarioDataCommands.js';
 import { createViewRestoreCommands } from './commands/viewRestoreCommands.js';
 import { createFeatureCommands } from './commands/featureCommands.js';
 import { createScenarioCommands } from './commands/scenarioCommands.js';
@@ -78,6 +79,7 @@ function syncScenariosFromServer(payload) {
         overrides: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       };
 
       const normalizedBaseline = {
@@ -88,6 +90,9 @@ function syncScenariosFromServer(payload) {
         overrides: baseline.overrides ?? {},
         groupOverrides: baseline.groupOverrides ?? {},
         scenarioGroups: Array.isArray(baseline.scenarioGroups) ? baseline.scenarioGroups : [],
+        // Every scenario item in the store always carries a pluginData bag
+        // (createInitialAppState / cloneScenario / hydrate all default it).
+        pluginData: baseline.pluginData,
       };
 
       const mergedServerScenarios = scenarios
@@ -105,6 +110,10 @@ function syncScenariosFromServer(payload) {
               : Array.isArray(existing?.scenarioGroups)
                 ? existing.scenarioGroups
                 : [],
+            // The server normalizes every full scenario record (see
+            // planner_lib/scenarios/scenario_store.py _normalize_scenario_data)
+            // before returning it, so scenario.pluginData is always an object.
+            pluginData: scenario.pluginData,
           };
 
           return normalized;
@@ -142,6 +151,7 @@ const stateStoreCommands = {
   filter: null,
   view: createViewCommands(store, bus),
   pluginState: pluginStateCommands,
+  pluginScenarioData: createPluginScenarioDataCommands(store, bus),
   viewRestore: createViewRestoreCommands(
     store,
     dataService,

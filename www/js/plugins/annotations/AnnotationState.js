@@ -5,7 +5,42 @@
 
 import { ANNOTATION_COLORS, getRandomColor } from './AnnotationColors.js';
 import { boardCoords } from '../../services/BoardCoordinateService.js';
-import { generateId, saveAnnotations, loadAnnotations } from './AnnotationStorage.js';
+import { generateId } from './AnnotationStorage.js';
+import { store } from '../../application/store.js';
+import { bus } from '../../core/EventBus.js';
+import { ScenarioEvents } from '../../core/EventRegistry.js';
+import { cmd } from '../../application/imports.js';
+
+// ============================================================================
+// Scenario-scoped persistence
+// ============================================================================
+// Annotations follow the active scenario so a user can build up a scenario,
+// add notes/shapes for it, switch to another scenario, and see that
+// scenario's own annotation set. `cmd.pluginScenarioData` is the generic,
+// plugin-agnostic storage seam for this (see
+// application/commands/pluginScenarioDataCommands.js) which this plugin uses
+// for every scenario, including the synthetic 'baseline' scenario — the
+// scenario layer itself owns the fallback storage for scenarios with no
+// server-side record, so this plugin has no storage knowledge of its own.
+const PLUGIN_DATA_KEY = 'plugin-annotations';
+
+function getActiveScenarioId() {
+  return store.getState().scenarios.activeId;
+}
+
+function readAnnotationsForActiveScenario() {
+  const activeId = getActiveScenarioId();
+  const data = cmd.pluginScenarioData.get(activeId, PLUGIN_DATA_KEY);
+  // Only this plugin ever writes PLUGIN_DATA_KEY, and always as an array;
+  // it is simply absent until the first annotation is added.
+  return data === undefined ? [] : data;
+}
+
+function persistAnnotationsForActiveScenario(annotations) {
+  const activeId = getActiveScenarioId();
+  cmd.pluginScenarioData.set(activeId, PLUGIN_DATA_KEY, annotations);
+}
+
 
 // ============================================================================
 // Tool Definitions
@@ -165,9 +200,18 @@ export class AnnotationState {
     this._currentIcon = '⭐';
     this._listeners = new Set();
     this._enabled = false;
+    this._activeScenarioId = getActiveScenarioId();
 
-    // Load persisted annotations
-    this._annotations = loadAnnotations();
+    // Load persisted annotations for whichever scenario is currently active
+    this._annotations = readAnnotationsForActiveScenario();
+
+    // Reload the annotation set whenever the active scenario changes
+    bus.on(ScenarioEvents.ACTIVATED, () => {
+      this._activeScenarioId = getActiveScenarioId();
+      this._selectedId = null;
+      this._annotations = readAnnotationsForActiveScenario();
+      this._notify();
+    });
   }
 
   // ---------------------------
@@ -346,11 +390,11 @@ export class AnnotationState {
   // ---------------------------
 
   _persist() {
-    saveAnnotations(this._annotations);
+    persistAnnotationsForActiveScenario(this._annotations);
   }
 
   reload() {
-    this._annotations = loadAnnotations();
+    this._annotations = readAnnotationsForActiveScenario();
     this._notify();
   }
 

@@ -311,6 +311,7 @@ describe('application/commands/dataCommands', () => {
         overrides: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       },
       {
         id: 's1',
@@ -320,6 +321,7 @@ describe('application/commands/dataCommands', () => {
         view: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       },
       {
         id: 's2',
@@ -329,6 +331,7 @@ describe('application/commands/dataCommands', () => {
         view: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       },
     ]);
     expect(store.getState().scenarios.changedIds).toEqual([]);
@@ -448,6 +451,7 @@ describe('application/commands/dataCommands', () => {
         overrides: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       },
       {
         id: 's10',
@@ -457,6 +461,7 @@ describe('application/commands/dataCommands', () => {
         view: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       },
     ]);
     expect(store.getState().scenarios.activeId).toBe('s10');
@@ -539,6 +544,7 @@ describe('application/commands/dataCommands', () => {
         overrides: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       },
       {
         id: 's10',
@@ -548,6 +554,7 @@ describe('application/commands/dataCommands', () => {
         view: {},
         groupOverrides: {},
         scenarioGroups: [],
+        pluginData: {},
       },
     ]);
     expect(store.getState().scenarios.changedIds).toEqual([]);
