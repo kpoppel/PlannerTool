@@ -32,8 +32,8 @@ Interactions
 Recommended Workflows
 
 1. Baseline review and dataset preparation
-  - Open the Sidebar and enable the filters and expansions you need (e.g., show only Features, enable Parent/Child Links for context).
-  - Use the Data Funnel counters to ensure the dataset size is appropriate for the review.
+  - Use the Top Menu's Scope menu to include the related work you need for context (e.g., Ancestors, Descendant work), and the Sidebar's Task Filters to narrow to what you want to review (e.g., show only Features).
+  - Use the Scope menu's Selected → Related → Shown summary to ensure the dataset size is appropriate for the review.
 
 2. Load balancing across teams
   - With a view showing relevant projects, inspect allocation bars on cards.
@@ -54,5 +54,5 @@ Recommended Workflows
 Troubleshooting common card issues
 
 - Card not movable: check the active view's permissions and whether the item is locked by server settings.
-- Allocations not visible: ensure `Team Allocated` expansion is enabled and that allocations exist in the item description.
-- Dependency lines hidden: enable `Dependencies` in View Options.
+- Allocations not visible: confirm the owning team is selected in the Sidebar's Team Drill-down and that allocations exist in the item description.
+- Dependency lines hidden: enable `Dependencies` in the Top Menu's Scope menu.

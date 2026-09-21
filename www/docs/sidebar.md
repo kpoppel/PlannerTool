@@ -1,37 +1,31 @@
-# Sidebar — Filters & Options
+# Sidebar — Team Drill-down & Task Filters
 
-The Sidebar controls which items appear on the timeline and how they are presented. It groups filters, dataset expansion, view options, plans/projects, teams/allocations, scenarios and plugin controls.
+The Sidebar no longer hosts view options, plan/project selection, scenarios or plugin controls — those now live in the Top Menu (see [Top Menu & View Options](topmenu.md)). The Sidebar itself has two focused sections: a context-sensitive list of teams involved in the plans you've selected, and the task filters that narrow down what is displayed on the board.
 
-Data Funnel
-- Selected → Expanded → Displayed counters show the current dataset scope.
+## Team Drill-down
 
-Expand Dataset
-- Parent/Child Links: include parents or children of selected items for context.
-- Dependencies: include items linked by dependencies.
-- Team Allocated: include items that contain team allocation data.
+- Lists only the teams that are actually allocated to work in your currently selected plans (from the Plan menu) — the list updates automatically as your plan selection changes.
+- Each team row shows a color dot (click to open the color popover), the team name, and a per-task-type count badge showing how many tasks of that type the team has.
+- Click a team row to select or deselect it; deselecting a team removes its tasks from the board and, on the [Graph Area](graph.md), also removes it from the organisational capacity calculation.
+- Use the "All" / "None" toggle above the list to quickly select or deselect every team at once.
+- If the selected plan(s) have no teams assigned, the section shows a short message instead of an empty list.
 
-Task Filters
+## Task Filters
+
+Task Filters narrow down which tasks are displayed, independent of which plans and teams are selected:
+
 - Schedule: Planned / Unplanned.
 - Allocation: Allocated / Unallocated.
 - Hierarchy: Has Parent / No Parent.
 - Relations: Has Links / No Links.
-- States: dynamic list populated from loaded features (click the colored dot to toggle a state).
-- Task Types: dynamic list (Epic, Feature, etc.).
+- State: dynamic list populated from the loaded features — click a state to toggle it, the colored dot matches its configured state color.
+- Task Types: dynamic list (Epic, Feature, etc.), ordered per the task type hierarchy configured by your administrator.
 
-View Options (Taskboard Options)
-- Timeline Scale: select Weeks / 3 Months / Months / Quarters / Years.
-- Compact Cards: toggle condensed card view.
-- Task Sort: Rank or Date ordering.
-- Graph Type: Capacity or Allocation charts.
+A filter option is greyed out and disabled when it is "not relevant in current tool context" (for example while a full-screen tool such as Portfolio Board or XY Board is active).
 
-Projects & Teams
-- Projects: check/uncheck project chips to include/exclude them from the dataset.
-- Teams: select teams to filter items involving those teams. Color dots and badges indicate counts.
+## Related controls
 
-Scenarios & Plugins
-- Clone the baseline to create scenarios; rename, clone or delete via the scenario menu.
-- Plugin buttons appear if plugins are registered — toggle them on/off.
-
-Tips
-- Click a chip's color dot to open the color popover; click the chip body to toggle selection.
-- Master toggles help select/deselect all projects or teams quickly.
+- Plan/project selection: [Top Menu & View Options](topmenu.md) — Plan menu.
+- Scope (include ancestors, descendants, dependencies, other team work) and the Selected/Related/Shown task funnel: [Top Menu & View Options](topmenu.md) — Scope menu.
+- Timeline scale, card display mode, task sort and graph type: [Top Menu & View Options](topmenu.md) — View menu.
+- Scenarios and Tools (plugins): [Scenarios & Saving](scenarios.md) and [Tools Overview](tools_overview.md).

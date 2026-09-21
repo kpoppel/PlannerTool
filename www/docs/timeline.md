@@ -14,11 +14,12 @@ Common interactions
 - Drag the background to pan the view; use the zoom shortcuts to change scale.
 
 Dependencies
-- Enable Dependencies in View Options to draw links between related cards.
+- Enable Dependencies in the Top Menu → Scope menu to draw links between related cards.
 
 Zoom & Scale
-- Use buttons on the timeline Scale control in the Sidebar to switch zoom levels.
+- Use the Timeline Scale control in the Top Menu → View menu to switch zoom levels.
+- `Ctrl` + mouse wheel, or `Ctrl` `+`/`Ctrl` `-`/`Ctrl` `0`, zoom the board directly — see [Keyboard Shortcuts](keyboard_shortcuts.md).
 
 Best practices
-- Use Compact Cards for overviews and expand when you need details.
-- Combine timeline scale with filters to focus on a specific time window and team.
+- Use Compact or Packed card mode (Top Menu → View menu) for overviews and switch back to Normal when you need details.
+- Combine timeline scale with Task Filters (Sidebar) to focus on a specific time window and team.

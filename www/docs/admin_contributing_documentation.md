@@ -11,6 +11,7 @@ The documentation is served from the `www/docs/` folder and rendered inside the 
 - Headings (H1..H6)
 - Paragraphs
 - Lists (bulleted and numbered)
+- Tables (GitHub-style pipe tables with a header separator row)
 - Code blocks (fenced with ```)
 - Inline code using backticks
 - Images and asset references (relative to `/static/docs/`)
@@ -70,6 +71,23 @@ This is a short paragraph introducing the page. Leave blank lines between paragr
 1. First numbered item
 2. Second numbered item with `inline code`
 ```
+
+### Table
+```
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+Shift+F` | Open search |
+| `Ctrl+Shift+T` | Cycle timeline scale |
+```
+
+Renders as:
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+Shift+F` | Open search |
+| `Ctrl+Shift+T` | Cycle timeline scale |
+
+The header separator row (the `| --- | --- |` line) is required — it is what tells the renderer the preceding row is a table header. Cell text supports the same inline formatting as elsewhere (links, `inline code`, **bold**, *italic*).
 
 ### Code block (fenced)
 ```

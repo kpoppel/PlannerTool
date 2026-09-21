@@ -1,18 +1,63 @@
-# Cost Estimates & Teams (deprecated)
+# Cost Analysis
 
-PlannerTool provides cost estimation features and a teams summary API to help evaluate resource and external costs.
+## Overview
 
-Cost estimation
-- Use the Export/Cost tools from the Top Menu or plugins to run cost calculations for the active scenario.
-- Cost calculations use per-item `capacity` allocations and the configured `cost_config` on the server.
+The cost analysis provides month-by-month reporting of Internal and External cost and hours across projects, tasks, and teams. The interface highlights allocation discrepancies and enables quick inspection at project, task, and team levels.
 
-Teams endpoint
-- The UI uses an internal `/api/cost/teams` endpoint to retrieve team membership, internal/external flags, and hourly rates.
-- Team totals are built from the `people` configuration and `cost_config` (working hours and external rates).
+## Purpose of this guide
 
-Scenario overrides
-- When estimating cost for a scenario, PlannerTool applies any scenario overrides (start/end/capacity) before computing costs.
+This user guide explains what each view displays and how to interpret the figures.
 
-Notes
-- Admins can configure `cost_config` (working hours, internal/external rates) via the Admin UI.
-- If cost data seems incorrect, check the `people` configuration and `cost_config` values on the server.
+### Controls
+
+- Plans: select projects from Top menu → Plan. Only selected projects are reported.
+- Context: the top-bar Scope controls which parent, child, dependency, and other-allocation work is included with the selected plans.
+- Teams: Team Drill-down in the Sidebar chooses which rows appear in Team view. It does not remove allocations from Project or Task report calculations.
+- Date range: choose From and To to set the displayed months.
+- View mode: toggle between Cost and Hours to change the displayed units where relevant.
+- Task types are selectable in the sidebar. The default task type selection is all types selected.
+- Including unplanned tasks in the calculation. Default is unselected as unplanned work is assigned dates by the tool to becoe visible in the user interface.
+
+The report payload contains the selected plans and their enabled Context from the canonical resolved dataset. Final board visibility and Team Drill-down do not filter financial inputs. Scenario changes, Context changes, task-type selection, and the Cost date range trigger recalculation.
+
+## Reading the tables
+
+- Each table shows monthly Internal and External values for the selected plan and Context scope. Use the date controls to adjust the months shown.
+- The Cost/Hours toggle switches the units used in the tables; it does not alter project or team selections.
+- Allocations that span multiple teams are shown per team according to the allocation data.
+- Parent and child allocations use hierarchy-aware per-team rollups. Children replace a parent's allocation only for teams they cover; uncovered parent-team allocations remain. Root rollups are summed once to prevent double counting.
+
+## Project view
+
+What it shows
+- One table per selected plan in the top menu is displayed. The table displays summary data with a monthly breakdown of internal and external cost, and by site.  Both hours and moneytary cost are shown.
+- The buttons below the summary table allows you to drill down into individual teams and tasks, listing teams that have allocations for that project and per-month Internal/External values.
+
+When to use
+- To answer questions about a plan, typically a project plan with the tree of tasks from participating teams included.
+
+## Task view
+
+What it shows
+- A list of tasks for each selected plan inthe top menu and the cost per task along with planned dates andparticipating teams.
+
+When to use
+- To get an overview of the per-task cost and participating teams as a table, this data can help determine if a task is worth the spending compared to other tasks.
+
+## Team view
+
+What it shows
+- A list of tasks for each team selected in Sidebar Team Drill-down
+- Sums per month and per task is calculated to determine both tem burn, but also total cost for a single team on some task.
+
+When to use
+- To review which features a team is working on and the monthly cost or hours impact.
+
+## Empty states and errors
+
+The tool will report reasons why no data is calculated.
+
+- No Projects Selected: select one or more plans from the top menu.
+- No Teams Selected: select Team Drill-down rows in the Sidebar to populate Team view; Project and Task calculations remain complete.
+- No features available: there are no features with dates and allocations for the selected scope.
+- Failed to load cost data: a network or server error prevented data retrieval. If this persists, contact your administrator.

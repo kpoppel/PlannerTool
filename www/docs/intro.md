@@ -27,8 +27,11 @@ For detailed, topic-specific instructions see the manual pages in this Help inde
 - Timeline & Board: [Timeline & Board](timeline.md)
 - Details panel and editing: [Details Panel](details.md)
 - Scenarios & saving: [Scenarios & Saving](scenarios.md)
-- Configuration and PAT setup: [Configuration](configuration.md)
+- Configuration and PAT setup: [Getting Started](getting_started.md)
 - Review modal: [Review Modal (Save to Azure)](review_modal.md)
+- Tools (plugins) available in the Tools menu: [Tools Overview](tools_overview.md)
+- Administering the server (projects, teams, people, cost, users): [Admin Overview](admin_overview.md)
+- Keyboard shortcuts: [Keyboard Shortcuts](keyboard_shortcuts.md)
+- Worked examples for Product Owners and Project Managers: [Example - Product Owner Workflow](example_po_workflow.md), [Example - Project Manager Workflow](example_pm_workflow.md)
 
 The sections above cover how to prepare datasets, adjust allocations, and save or push changes. For advanced topics, see the Best Practices page.
-![alt text](image.png)
