@@ -1,155 +1,129 @@
-# PlannerTool Web Architecture (v2)
+# PlannerTool Architecture (v5.0.0)
 
-> Status: current architecture reference for the PlannerTool web system.
+> Status: current architecture reference for the PlannerTool web application and backend runtime.
 
 ## 1. Purpose
 
-This document describes the current architecture of the PlannerTool web system.
-It defines system boundaries, runtime composition, module responsibilities, state and event contracts,
-and quality-focused constraints used for implementation and review.
+This document describes the architecture of PlannerTool as implemented in the v5.0.0 codebase. The design is centered on a single canonical runtime state store, explicit command/selector seams, and a plugin runtime that loads feature modules from configuration rather than hard-wired UI code.
+
+This document covers:
+
+- the browser application under `www/js/`
+- the admin application under `www/admin/js/`
+- the backend service built from `planner_lib/` and `planner.py`
+- the runtime boundaries between state, events, services, plugins, and persistence
+
+It deliberately excludes deployment specifics, which are covered in `docs/DEPLOYMENT.md`.
 
 ## 2. Scope
 
 In scope:
 
-- Main web application under `www/js/`
-- Admin web application under `www/admin/js/`
-- Frontend-to-backend interaction with `planner.py` REST endpoints
-- Runtime state, eventing, plugin composition, and UI architecture
+- Main frontend runtime and state model
+- Admin configuration UI and backend schema flow
+- REST API and service composition in the Python server
+- Data storage, caching, and provider selection
+- Plugin lifecycle and full-screen/toolbox mounts
 
 Out of scope:
 
-- Backend internals and persistence implementation details
-- Deployment infrastructure details (covered by deployment documentation)
+- exact low-level Azure SDK behavior
+- infrastructure and cluster deployment
+- browser-specific performance tuning beyond the V5 application model
 
 ## 3. System Context
 
 ```mermaid
 flowchart LR
-    User[User in Browser]
-    MainApp[Main App\nwww/js]
-    AdminApp[Admin App\nwww/admin/js]
-    API[Planner REST API\nplanner.py]
-    Data[(Server Data Stores)]
+    User[Planner user]
+    Browser[Browser application\nwww/js]
+    Admin[Admin console\nwww/admin/js]
+    API[Planner REST API\nplanner.py + planner_lib]
+    Backend[(Persistent storage\nconfig + accounts + scenarios + views)]
+    Cache[(Remote cache\nADO/static/mock data)]
+    ADO[Azure DevOps]
 
-    User --> MainApp
-    User --> AdminApp
-    MainApp --> API
-    AdminApp --> API
-    API --> Data
+    User --> Browser
+    User --> Admin
+    Browser --> API
+    Admin --> API
+    API --> Backend
+    API --> Cache
+    API --> ADO
 ```
 
 ## 4. Technology Profile
 
-| Concern | Technology |
+| Concern | Current implementation |
 |---|---|
-| Component model | Lit 3 web components |
+| UI framework | Lit 3 custom elements |
 | Module system | Native ES modules |
-| Frontend state | Zustand vanilla (`createStore`, `subscribeWithSelector`) |
-| Build pipeline | Vite (`npm run build`) |
-| Vendor bundling | Rollup (`npm run build:vendor`) |
-| Testing | Vitest, Playwright, pytest |
-| Linting | ESLint |
+| Runtime state | Zustand store with `subscribeWithSelector` |
+| Write path | command modules in `www/js/application/commands` |
+| Read path | selector modules in `www/js/application/selectors` |
+| Events | symbol-based `EventBus` and `EventRegistry` |
+| Plugin runtime | `PluginManager` + `modules.config.json` |
+| Server | FastAPI + Uvicorn |
+| Persistence | Diskcache-backed storage with separate remote cache |
+| Build | Vite + Rollup |
+| Test stack | Vitest, Playwright, pytest |
 
-## 5. Top-Level Structure
-
-Generated from the current frontend audit.
-
-| Area | Files | LOC | Role |
-|---|---:|---:|---|
-| `www/js/application` | 21 | 4,850 | Store composition, commands, selectors, runtime wiring |
-| `www/js/core` | 8 | 1,040 | Event bus, plugin manager, store controller |
-| `www/js/services` | 22 | 7,115 | Domain services and REST provider |
-| `www/js/components` | 48 | 17,093 | Main UI components and UI helpers |
-| `www/js/plugins` | 52 | 18,817 | Feature plugins and plugin UI components |
-| `www/admin/js` | 27 | 11,349 | Admin SPA components and services |
-
-### 5.1 Code Navigation Map
-
-Primary entry points and composition seams:
-
-- Main app bootstrap: `www/js/app.js`
-- Main app command/selector composition: `www/js/application/imports.js`
-- Store definition: `www/js/application/store.js`
-- Command modules: `www/js/application/commands/*.js`
-- Selector modules: `www/js/application/selectors/*.js`
-- Event system: `www/js/core/EventBus.js`, `www/js/core/EventRegistry.js`
-- Plugin lifecycle manager: `www/js/core/PluginManager.js`
-- Lit store subscription controller: `www/js/core/StoreController.js`
-- Shared data facade: `www/js/services/dataService.js`
-- Admin app bootstrap: `www/admin/js/admin.js`
-- Admin backend adapter: `www/admin/js/services/providerREST.js`
-
-## 6. Architectural Principles
-
-- Single canonical runtime state store.
-- Explicit write path through command modules.
-- Pure read path through selector modules.
-- UI components do not mutate store directly.
-- Runtime composition is centralized in `www/js/application/imports.js`.
-- Domain services are explicit modules; some are constructor-injected, others are singleton exports.
-- Event bus carries signals and routing hints, not state snapshots.
-- Plugin lifecycle is explicit (`init`, `activate`, `deactivate`, `destroy`).
-
-## 7. Runtime Architecture
+## 5. Frontend Runtime Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Presentation[Presentation Layer]
-        Comp[Components\nwww/js/components]
-        Plugins[Plugins\nwww/js/plugins]
+    subgraph Presentation
+        Comp[Lit components\nwww/js/components]
+        Plugins[Runtime plugins\nwww/js/plugins]
     end
 
-    subgraph AppLayer[Application Layer]
+    subgraph Application
         Cmd[Commands\nwww/js/application/commands]
         Sel[Selectors\nwww/js/application/selectors]
-        Store[(Zustand Store\nwww/js/application/store.js)]
-        Runtime[Runtime Wiring\nwww/js/application/imports.js]
+        Store[(Zustand store\nwww/js/application/store.js)]
+        Boot[Bootstrap\nwww/js/app.js]
     end
 
-    subgraph Core[Core Layer]
-        Bus[EventBus + EventRegistry\nwww/js/core]
-        PM[PluginManager\nwww/js/core]
-        SC[StoreController\nwww/js/core/StoreController.js]
+    subgraph Core
+        Bus[EventBus\nwww/js/core/EventBus.js]
+        Registry[EventRegistry\nwww/js/core/EventRegistry.js]
+        PM[PluginManager\nwww/js/core/PluginManager.js]
     end
 
-    subgraph Services[Service Layer]
-        DomainSvc[Domain Services\nwww/js/services]
+    subgraph Services
         DataSvc[dataService.js]
-        REST[providerREST.js]
+        DomainSvc[Domain services and providers\nwww/js/services]
     end
 
-    API[(Backend REST API)]
-    AppBoot[Bootstrap\nwww/js/app.js]
+    API[(REST API)]
 
-    Comp --> SC --> Store
-    Plugins --> SC
+    Boot --> Cmd
+    Boot --> PM
+    Boot --> DataSvc
     Comp --> Cmd
     Plugins --> Cmd
     Comp --> Sel
     Plugins --> Sel
-    Sel --> Store
     Cmd --> Store
+    Sel --> Store
     Cmd --> Bus
-    Runtime --> Cmd
-    Runtime --> Sel
-    Runtime --> Bus
-    Runtime --> PM
-    AppBoot --> Runtime
-    AppBoot --> PM
-    AppBoot --> DataSvc
-    Cmd -. uses .-> DomainSvc
-    DomainSvc --> DataSvc --> REST --> API
+    Bus -.->|"bus.on() -> requestUpdate()"| Comp
+    Bus -.->|"bus.on() -> requestUpdate()"| Plugins
+    Bus --> Registry
     PM --> Plugins
+    DataSvc --> API
+    DomainSvc --> DataSvc
 ```
 
-## 8. State Architecture
+Note the dashed edges: components and plugins do **not** subscribe to the Zustand store directly. Reactivity flows Cmd → Store (write) and, separately, Cmd → Bus → listener → `requestUpdate()` (repaint signal), after which the repainted component re-reads the store via `Sel`. This two-step (write, then signal) is why every store-mutating command must also emit an event — see §14 Known Sharp Edges.
 
-### 8.1 Store
+## 6. State Architecture
 
-Canonical runtime state lives in `www/js/application/store.js`.
+### 6.1 Canonical store
 
-Primary slices:
+The runtime state is defined in `www/js/application/store.js`. It is the single source of truth for UI state, selection, filter state, scenarios, plugin state, and capacity data.
+
+Primary slices include:
 
 - `lifecycle`
 - `baseline`
@@ -159,104 +133,151 @@ Primary slices:
 - `groups`
 - `pluginState`
 - `capacity`
+- `scope`
 
-### 8.2 Write Path
+### 6.2 Write path
 
-- Components and plugins call command functions from `www/js/application/imports.js` (`cmd.*`).
-- Commands mutate state via `store.setState(...)`.
-- Commands emit signal events for cross-module coordination (for example scenario, plugin, capacity, and UI synchronization events).
-- Startup hydration is command-driven from `www/js/app.js` (`cmd.data.hydrateBaseline()`, `cmd.data.hydrateScenarioData()`, `cmd.viewRestore.restoreLastView()`).
+The write path is command-driven:
 
-### 8.3 Read Path
+- components and plugins call functions from `www/js/application/imports.js`
+- commands mutate the store using `store.setState(...)`
+- commands emit typed events for cross-module coordination
+- initial hydration is done from `app.js` using `cmd.data.hydrateBaseline()`, `cmd.data.hydrateScenarioData()`, and `cmd.viewRestore.restoreLastView()`
 
-- Selectors compute derived data from `store.getState()` and are exposed via `sel.*`.
-- Components and plugins read via `sel.*` and subscribe with `StoreController` where reactive updates are needed.
-- Re-render occurs from store subscription notifications.
+### 6.3 Read path
 
-### 8.4 Invariants
+The read path is selector-driven:
 
-- No direct store mutation outside command modules.
-- Selectors are pure and deterministic for a given state snapshot.
-- Services do not own canonical frontend state.
+- selectors compute derived values from the current store snapshot
+- components read from `sel.*`, typically re-calling the selector inside `render()`
+- reactivity is driven by `EventBus` subscriptions, not store subscriptions: commands mutate the store *and* emit a typed event; components listen for that event (`bus.on(...)`) and call `this.requestUpdate()`, which triggers Lit to re-render and re-read the latest selector output
 
-## 9. Event Architecture
+### 6.4 Invariants
 
-`www/js/core/EventBus.js` provides symbol-based pub/sub with namespace listeners.
+- Store mutations happen only through command modules.
+- Selectors are pure and deterministic for a given snapshot.
+- Services do not own canonical UI state.
+- UI components represent presentation, not state ownership.
 
-Event usage rules:
+## 7. Event and Signal Model
 
-- Event payloads contain IDs or compact routing hints.
-- State collections and derived snapshots are not sent on event payloads.
-- UI update propagation uses store subscriptions, not event payload transport.
+`www/js/core/EventBus.js` is the cross-cutting signal bus. Events are symbol-based identifiers defined in `EventRegistry.js`.
 
-## 10. Startup Architecture
+The design intentionally avoids sending mutable state payloads through events. Instead:
+
+- events carry small IDs, routing hints, or lifecycle markers
+- UI updates happen when a component's own `bus.on(...)` listener fires and calls `this.requestUpdate()`, causing Lit to re-render and pull fresh values from selectors on the next `render()` pass (see §6.3)
+- state synchronization is explicit and command-driven
+
+Examples include:
+
+- `FeatureEvents.*`
+- `ScenarioEvents.*`
+- `CapacityEvents.*`
+- `PluginEvents.*`
+- `GroupEvents.*`
+- `AppEvents.READY`
+
+## 8. Startup Sequence
 
 ```mermaid
 sequenceDiagram
-    participant Browser as Browser
+    participant Browser
     participant App as app.js
-    participant DS as dataService
-    participant Cmd as cmd.* (imports.js)
-    participant Store as application/store.js
-    participant Bus as EventBus
+    participant Data as dataService
+    participant Cmd as cmd.*
+    participant Store as Zustand store
     participant PM as PluginManager
-    participant API as Backend API
+    participant API as Planner API
 
     Browser->>App: DOMContentLoaded
-    App->>App: Show spinner
-    App->>DS: Initialize session
-    DS->>API: POST /api/session
+    App->>App: show loading spinner
+    App->>Data: init session
+    Data->>API: POST /api/session
     App->>Cmd: hydrateBaseline + hydrateScenarioData
-    Cmd->>DS: Fetch baseline/scenario data
-    DS->>API: GET/POST REST calls
-    Cmd->>Store: setState(hydrated slices)
-    Cmd->>Bus: emit hydration/capacity signals
+    Cmd->>Data: fetch baseline + scenario payloads
+    Data->>API: REST data loads
+    Cmd->>Store: hydrate state slices
     App->>Cmd: restoreLastView
-    Cmd->>Store: setState(view/selection)
-    App->>DS: getPluginsConfig/getPluginsSchemas
-    App->>PM: Load plugin config and register modules
-    PM->>PM: Activate configured plugins
-    PM->>Bus: emit PluginEvents.*
-    App->>App: Hide spinner
-    App->>Bus: Emit AppEvents.READY
-    App->>Bus: Register SessionEvents listeners
+    Cmd->>Store: restore view/selection/filter state
+    App->>Data: fetch plugin config and schemas
+    App->>PM: load plugin definitions from modules.config.json
+    PM->>PM: register + activate configured plugins
+    App->>App: hide spinner
+    App->>App: emit AppEvents.READY
 ```
 
-## 11. Interaction Flow (Example)
+## 9. Plugin Architecture
 
-Example: feature drag date update.
+Plugins are first-class runtime modules loaded by `PluginManager` and the JSON config in `www/js/modules.config.json`.
+
+A plugin has a lifecycle of:
+
+- `init()`
+- `activate()`
+- `deactivate()`
+- `destroy()`
+
+The V5 plugin model distinguishes:
+
+- toolbox plugins mounted in the app surface
+- full-screen plugins mounted at the app level
+- persistent overlays that remain active across other plugin switches
+- exclusive plugins that deactivate competing activations when needed
+
+This is the current source of truth for plugin behavior and runtime configuration.
+
+## 10. Admin Application Architecture
+
+The admin application is a separate Lit SPA under `www/admin/js`, bootstrapped by `www/admin/js/admin.js`. It follows the same module/build conventions as the main app but is a distinct UI composition (no shared Zustand store, commands, or selectors with `www/js`).
 
 ```mermaid
-sequenceDiagram
-    participant Card as FeatureCard
-    participant Drag as dragManager
-    participant Cmd as cmd.feature.updateFeatureDates
-    participant Store as Zustand Store
-    participant DataCmd as cmd.data.recomputeCapacity
-    participant Bus as EventBus
-    participant Board as FeatureBoard
-
-    Card->>Drag: pointer interaction
-    Drag->>Cmd: update payload
-    Cmd->>Store: setState(scenario overrides)
-    Cmd->>DataCmd: recomputeCapacity()
-    DataCmd->>Store: setState(capacity slice)
-    DataCmd->>Bus: emit CapacityEvents.UPDATED
-    Cmd->>Bus: emit FeatureEvents.UPDATED/ScenarioEvents.UPDATED
-    Store-->>Board: selector subscription update
-    Board->>Board: re-render
+flowchart TD
+    AdminBoot[admin.js] --> Check[GET /admin/check]
+    Check -->|200 ok| AdminShell[AdminApp.lit.js]
+    Check -->|401| LoginRedirect[Redirect to /admin/login]
+    AdminShell --> Sections[Admin section components\nwww/admin/js/components/admin/*]
+    AdminBoot --> SharedData[dataService.init]
+    Sections --> AdminREST[providerREST.js\nwww/admin/js/services]
+    AdminREST --> API[Backend /admin/v1/*]
 ```
 
-## 12. Plugin Architecture
+The admin surface is responsible for:
 
-Plugins are runtime modules loaded through `PluginManager` and `modules.config.json`.
+- project and team configuration
+- Azure settings and feature flags
+- server configuration and backup/reload behavior
+- user and permissions management
+- schema-driven admin forms (see `docs/SCHEMA_UI_SYSTEM.md` for the schema/data contract in detail)
 
-Plugin contracts:
+Each config domain (Teams, Projects, System, Cost, ...) is a thin subclass of `BaseConfigComponent`, which fetches `GET /admin/v1/schema/{type}` and `GET /admin/v1/{type}` in parallel and renders a generic `SchemaForm` component from the returned JSON Schema — new config domains are added by declaring a schema entry and a subclass, not by hand-building a form.
 
-- Lifecycle: `init`, `activate`, `deactivate`, `destroy`
-- Mounting through configured mount points
-- Optional exclusivity and fullscreen behavior
-- Access to state through `cmd`/`sel` seams and store controller subscriptions
+## 11. Backend Architecture Summary
+
+The Python backend is built from `planner_lib` and assembled in `planner_lib/main.py` via `create_app(config)`. It uses FastAPI, per-request dependency resolution, and a diskcache-backed storage model.
+
+The important backend boundaries are:
+
+- authoritative storage for server config, accounts, sessions, and user data
+- a separate `remote_cache_storage` directory for TTL-governed backend reads
+- a `BackendRegistry` that selects an active backend implementation
+- `CachingBackend` as a transparent soft-freshness proxy around remote data backends
+- repositories that depend on focused protocols rather than concrete backend classes
+
+This creates a clear split between durable server state and volatile remote-data cache state.
+
+## 12. Quality Constraints
+
+The architecture is designed around a few non-negotiable rules:
+
+- canonical state lives in one place
+- writes are explicit and command-driven
+- selectors stay side-effect free
+- plugin lifecycle is explicit and inspectable
+- backend config and user data are durable, cache is not
+- the browser UI is a client to the server, not the system of record for configuration
+
+These rules are enforced in code and are the basis for valid V5 changes.
 
 Runtime behavior notes:
 
@@ -264,24 +285,7 @@ Runtime behavior notes:
 - `loadFromConfig` resolves dependencies and can reorder activation for dependency safety.
 - Plugin UI components typically subscribe to EventBus signals and read state via `sel.*`.
 
-## 13. Admin Application Architecture
-
-The admin application is a separate Lit SPA under `www/admin/js`.
-
-```mermaid
-flowchart TD
-    AdminBoot[admin.js] --> Check[Auth Check]
-    Check -->|authorized| AdminShell[AdminApp.lit.js]
-    Check -->|unauthorized| LoginRedirect[Login Redirect]
-    AdminShell --> Sections[Admin Sections]
-    AdminBoot --> SharedData[dataService.init]
-    Sections --> AdminREST[www/admin/js/services/providerREST.js]
-    AdminREST --> API[Backend /admin/v1/*]
-```
-
-Admin and main applications share backend APIs and build pipeline conventions but remain separate UI compositions.
-
-## 14. Testing Architecture
+## 13. Testing Architecture
 
 Test layers:
 
@@ -297,6 +301,16 @@ Contract-testing rules:
 - Tests avoid private-field coupling.
 - Tests isolate state per test case.
 
+## 14. Known Sharp Edges
+
+- **Store writes go through `writeState`, which makes the notification mandatory.** Commands no longer call `store.setState(...)` and `bus.emit(...)` as two independent statements. `www/js/application/storeWrite.js` exports `writeState(store, bus, { updater, events, actionName, ids, data })`, which commits the state change and emits every listed event in one call; `events` is required and non-empty, so it is structurally impossible to write to the store without signaling at least one event. Non-transition signals that are not paired with a store commit (e.g. a hydration failure where nothing was written) use the sibling `emitOperationStatus(bus, event, data)` instead, keeping "write succeeded" and "write didn't happen" from being conflated under one helper.
+- **Store-derived event payloads follow one contract: `{ ids, data }`.** `ids` is always `string[]` or `null` and is domain knowledge the command computes itself (e.g. which feature ids were touched) — `writeState` does not attempt to reverse-engineer it via generic state diffing. `data` carries bespoke per-event fields (e.g. `revision`, `scenarioId`, `debugFlag`) plus an auto-injected `actionName` (the devtools action name) that commands never author themselves. Before this, the same event (`FeatureEvents.UPDATED`) was observed with at least four different ad hoc shapes depending on call site (`{ids}`, `{id, field}`, `{id, fields}`, `{ids, type}`), and one caller (the Link Editor plugin) emitted a singular `{id}` that a consumer (`DetailsPanel`) silently mishandled by falling into its "unknown feature, refresh everything" branch instead of matching the specific feature.
+- **`LinkEditorState` used to mutate the live store reference directly.** The Link Editor plugin read the active scenario via `sel.scenario.getActiveScenario()` and mutated `scenario.overrides[...].relations` in place on that returned object, bypassing `store.setState` entirely; it then manually emitted an event to paper over the missing store notification. Any code relying on store-reference equality (devtools time-travel, future `store.subscribe`-based reactivity) would have missed the change even though a manual event happened to fire. This has been fixed: relation edits now go through `cmd.feature.updateFeatureField(...)`, the same canonical command path other feature mutations use.
+- **Selectors are not memoized/scoped.** `sel.*` functions recompute against the full store snapshot on every call; there is no `subscribeWithSelector`-based fine-grained diffing in use for UI updates (that middleware is only exercised by the Redux DevTools integration). Expensive derived computations should memoize internally if called from hot render paths.
+- **Two reactivity models coexist.** The canonical Zustand store (via commands/selectors/events) governs most application state, but several plugins maintain their own small local pub-sub stores (`boardCoords`, per-plugin `_state`/`_annotationState`/`_linkEditorState`, `cmd.pluginState.subscribe(pluginId, ...)`) for high-frequency updates like scroll/viewport sync. New plugin code touching scroll or drag interactions should follow the existing local-store pattern rather than routing high-frequency updates through the global `EventBus`.
+- **`CachingBackend` never hard-expires entries on error.** A stale cache entry is served indefinitely if the live ADO backend keeps failing (expired PAT, outage) — there is no forced-refresh ceiling. Diagnosing "why is this data old" requires checking the `taskmeta__*` freshness sidecar and the `/cache/refresh` endpoint, not just the cache TTL config.
+- **Config vs. cache storage split is directory-based, not type-based.** Authoritative config/accounts/sessions/scenarios live in `data/cache` (via the `storage` singleton) while the TTL-governed remote backend cache lives in the separate `data/remote_cache` directory (via `remote_cache_storage`). Deleting the wrong directory has very different blast radii — deleting `remote_cache` is safe (forces refetch), deleting `cache` destroys user/config data.
+
 ## 15. Quality Attributes
 
 ### 15.1 Modifiability
@@ -307,12 +321,12 @@ Contract-testing rules:
 ### 15.2 Testability
 
 - Deterministic selectors and explicit command APIs.
-- Store subscriptions make UI update behavior observable.
+- Event-driven UI updates (`bus.on(...)` → `requestUpdate()`) make update behavior observable and easy to trigger from tests without mounting the full store.
 
 ### 15.3 Performance
 
-- Selector-scoped subscriptions reduce unnecessary rerenders.
-- Event bus is used for targeted side-effect signaling.
+- Components re-render on explicit event signals rather than on every store write, limiting rerenders to interested listeners.
+- High-frequency interactions (scroll/viewport sync) bypass the canonical store and EventBus entirely, using small local pub-sub stores (e.g. `boardCoords.subscribe(...)` in `www/js/plugins`, `cmd.pluginState.subscribe(pluginId, ...)`) to avoid the cost of full command/selector/event round-trips on every frame.
 
 ### 15.4 Reliability
 

@@ -1,51 +1,86 @@
 # Product Overview
 
 ## Purpose
-This product provides a unified, extensible platform for planning and managing Azure DevOps work items, projects, and teams, with a focus on usability, modularity, and offline capability. It is designed for organizations and teams seeking a streamlined, customizable interface for DevOps planning and workload visualization.
 
-## Key Features
+PlannerTool is a planning and portfolio-visibility product for Azure DevOps teams scoped with optional support for other backends. It combines a task board, scenario-based planning, capacity views, dependency overlays, and admin configuration into one system designed for teams that need to reason about delivery capacity before committing work. It provides support for arbitrary depth of task handling across multiple plans, enabling for example a hierarchy of project control through teams, projects, programs, and strategic projects to be interconnected and handled in one coherent user interface.
 
-### 1. Azure DevOps Integration
-- **Authentication:** Secure SSO and PAT-based access to Azure DevOps.
-- **Project & Team Management:** Automatically discovers and organizes area paths as projects and teams, allowing users to select, filter, and color-code them for clarity.
-- **Work Item Retrieval:** Fetches and displays work items (Features, Epics, etc.) with essential details (title, type, state, dates, description, links).
+The v.5 release centers the product around a scope-first planning model:
 
-### 2. Interactive Planning UI
-- **Sidebar:** Fixed-width panel for project/team selection, filtering, and color assignment. Always visible for quick access.
-- **Timeline & Load Graph:** Visualizes organizational and team workload over time, with adjustable resolution (weeks, months, years). Stacked step diagram aligns with feature cards and timeline.
-- **Feature Cards:** Drag-and-drop cards represent work items, showing team loads, project color, and sync status. Cards can be moved to simulate planning scenarios, updating backend data and UI color cues.
-- **Details Panel:** Collapsible panel displays full work item details and links to Azure DevOps.
-- **Responsive & Scrollable:** Main area supports horizontal/vertical scrolling and dynamic timeline scaling.
+- a canonical application store drives the UI
+- selected scope determines which work is considered
+- context and team drill-down shape what is displayed
+- scenarios keep planning experiments separate from the baseline
+- plugins extend the experience without replacing the core planning model
 
-### 3. Offline & Development Modes
-- **Offline Access:** Caches work items in `work_items.json` for use when API access is unavailable or in development mode.
-- **Development Mode:** Enables test endpoints, cached data, and JavaScript unit test page for rapid prototyping and testing.
+## What the product does
 
-### 4. Extensible Web Service
-- **API Endpoints:** RESTful endpoints for configuration, area paths, work items, and test/debug data. Easily extended for new features.
-- **Frontend-Backend Communication:** Uses HTTP requests (fetch/AJAX) for seamless data exchange.
+### Planning work in context
 
-### 5. Automated Testing
-- **Python Tests:** Each backend module has its own test file in the `tests` directory, using the standard unittest framework.
-- **JavaScript Tests:** Served via a dedicated test page for frontend code.
+PlannerTool helps users:
 
-## User Scenarios
-- **Project Managers:** Visualize and balance team workloads, simulate planning scenarios, and access detailed work item data.
-- **Developers:** Track features, update timelines, and use offline mode during travel or outages.
-- **Teams:** Customize project/team views, filter and color-code elements, and extend UI for specific workflows.
+- load plans and teams from Azure DevOps
+- view the work in hierarchical and scoped contexts
+- include parent/child/dependency/other allocations as needed
+- filter by project, team, task type, state, and relationship
+- evaluate organization-level and team-level capacity in the same planning session
+- allows logical grouping of tasks without breaking the intent of tasks representing an actual delivery more than a bucket to keep tasks in.
 
-## Benefits
-- **Efficiency:** Reduces manual navigation and improves planning productivity.
-- **Customizability:** Modular design allows users to tailor configuration, UI, and API endpoints.
-- **Reliability:** Offline mode ensures uninterrupted access to planning data.
-- **Extensibility:** Easily add new features, endpoints, or UI components.
-- **Testability:** Automated tests maintain product quality and support safe evolution.
+### Scenario-based experimentation
 
-## Future Directions
-- Add authentication and user management for web service endpoints.
-- Enable editing and creation of work items from the frontend.
-- Integrate notifications and real-time updates.
-- Expand support for additional DevOps entities (iterations, teams, tags).
+The application supports:
 
----
-This product empowers organizations to plan, visualize, and manage Azure DevOps projects with flexibility, reliability, and ease, supporting both current needs and future growth.
+- baseline read-only state from Azure DevOps
+- scenario clones for local planning experiments
+- saved views for stable team/project filter combinations
+- drag-based date and allocation adjustments
+- review before pushing changes back to Azure
+
+### Visual planning surfaces
+
+The product includes:
+
+- a feature timeline and board view
+- a capacity graph for team and organization planning
+- dependency overlays and planning annotations
+- grouping and nested task grouping across plans
+- full-screen plugins for portfolio analysis and export workflows
+- board zooming
+
+### Admin and configuration
+
+The server and admin interface support:
+
+- project and team configuration
+- Azure organization and feature-flag setup
+- user account and permission management
+- cache invalidation and server reload workflows
+- schema-driven configuration editing
+
+## Core user value
+
+PlannerTool is designed to reduce the cost of planning conversations by making hidden assumptions visible:
+
+- what work is in scope
+- which teams carry the load
+- how much capacity is available and allocated
+- which dependencies affect the plan
+- what changes are still only in a scenario and not yet committed
+
+## Product principles
+
+- A single canonical state model keeps the UI consistent.
+- Scope is explicit: the selected tasks and context are separate from display filters.
+- Plugins extend the product without replacing the planning core.
+- Server data is durable; remote cache is disposable and safe to invalidate.
+- Scenario and view state are first-class user artifacts.
+
+## Target users
+
+- delivery leads and project managers
+- team leads balancing capacity across multiple plans
+- planners who need to compare scenarios before committing changes
+- administrators managing shared planning configuration
+
+## Current product posture
+
+PlannerTool is not a generic TODO board. It is a scoped planning tool for delivery capacity and portfolio reasoning across Azure-backed work, designed to support teams that need a richer, data-aware planning workflow than raw backlog tracking. The tool provides functionality Azure DevOps does not provide any reasonable way to achieve since Azure DevOps is inherently a large database with the primary purpose to log work tasks.

@@ -1,529 +1,393 @@
-# Backend Data Architecture
+# System Architecture & Design: Backend Data
 
-This document describes the layered data architecture from the REST API endpoints
-and application services down to the data backends.  It covers each layer's
-purpose, the data shapes passed across boundaries, and the concrete classes
-involved.
+This document describes how PlannerTool moves data from the browser and REST
+routes through repositories, backend protocols, providers, and storage. It is
+the contributor mental model for changing backend data behavior safely.
 
----
+## 1. Executive Summary & Mental Model
 
-## Design principles
+### High-Level Purpose
 
-The architecture follows Interface Segregation and Open/Closed principles
-throughout.
+The backend data layer gives planning features one stable domain-facing API while
+supporting live Azure DevOps data, deterministic fixtures, generated mock data,
+local configuration, and user-owned scenarios and views. It also separates data
+that can be re-fetched from data that must survive a cache purge.
 
-**Focused protocols** — each data domain is defined by its own
-`@runtime_checkable` Protocol in `planner_lib/backend/port.py`.  Backends only
-implement the protocols for the domains they own — no empty stubs required.
+### The Core Metaphor
 
-**Repository per domain** — each repository depends on exactly the focused
-protocol(s) it needs.  No repository holds a reference to a concrete backend
-class.
+Treat the subsystem as a **port-and-adapter pipeline with two ledgers**:
 
-**CachingBackend is a transparent soft-freshness proxy** — it wraps any backend,
-intercepts every `fetch_*` method via `__getattribute__`, and routes reads through
-its own dedicated diskcache instance.  Every cached entry is persisted *without*
-a hard diskcache TTL; a small `taskmeta__*` sidecar tracks a per-key `fresh_until`
-timestamp instead, so a lapsed TTL never lets diskcache physically delete the
-row.  For the live ADO backend, a failed or empty refresh past `fresh_until`
-keeps serving the existing entry and queues a warning rather than propagating
-the error.  The same protocol appears on both sides of the proxy; callers never
-need to know whether a cache is present.
+- repositories and protocols are the ports; concrete Azure, static, and mock
+  implementations are replaceable adapters
+- the authoritative ledger stores configuration, accounts, sessions, scenarios,
+  views, events, and groups
+- the remote ledger is a disposable read-through cache for provider data
 
-**ConfigBackend is diskcache-backed** — after migrations 0021 and 0022, `ConfigBackend`
-reads and writes all config keys (projects, teams, people, cost_config, iterations,
-area_plan_map, global_settings, ado_config) directly to diskcache.  It is a
-peer of `UserDataBackend` — not wrapped in `CachingBackend`.  `server_config`
-(generic server settings) is stored as the `config::server_config` diskcache key.
+The pipeline normalizes provider-specific records into domain objects before the
+rest of the application sees them. The cache can return stale remote data during
+an outage, but it must never be used as the system of record for user changes.
 
-**UserDataBackend is never cached** — user mutations (scenarios, views) are
-written directly to `diskcache`.  Wrapping in `CachingBackend` would cause reads
-to serve stale data after a write.
+## 2. System Components & Boundary Map
 
-| Protocol | Owner | Methods |
-|----------|-------|---------|
-| `TaskBackend` | ADO-family, `StaticBackend` | `fetch_tasks`, `write_task`, `invalidate_cache` |
-| `HistoryBackend` | ADO-family, `StaticBackend` | `fetch_history` |
-| `TeamsBackend` | ADO-family, `StaticBackend` | `fetch_teams` |
-| `PlansBackend` | ADO-family, `StaticBackend` | `fetch_plans`, `fetch_markers` |
-| `IterationsBackend` | ADO-family, `StaticBackend` | `fetch_iterations` |
-| `BackendPort` | ADO-family, `StaticBackend` | Composite of the five remote-data protocols |
-| `PeopleBackend` | `ConfigBackend` | `fetch_people` |
-| `ProjectConfigBackend` | `ConfigBackend` | `fetch_projects`, `fetch_project_map` |
-| `TeamConfigBackend` | `ConfigBackend` | `fetch_config_teams` |
-| `IterationConfigBackend` | `ConfigBackend` | `fetch_iterations_config` |
-| `PlanConfigBackend` | `ConfigBackend` | `fetch_area_plan_map` |
-| `AdoConfigBackend` | `ConfigBackend` | `fetch_ado_config`, `save_ado_config` |
-| `ScenarioBackend` | `UserDataBackend` | `fetch_scenarios`, `fetch_scenario`, `save_scenario`, `delete_scenario` |
-| `ViewBackend` | `UserDataBackend` | `fetch_views`, `fetch_view`, `save_view`, `delete_view` |
+### Directory & File Layout
+
+```text
+planner_lib/
+  main.py                         dependency injection and app composition
+  */api.py                        FastAPI routes and request/session boundary
+  */service.py                    application orchestration and calculations
+  repository/                     one repository per data domain
+  backend/
+    port.py                       focused runtime-checkable protocols
+    registry.py                   active provider selection
+    caching.py                    soft-freshness cache proxy
+    adapter.py                    Azure-shaped data to domain translation
+    azure.py                      live Azure DevOps adapter
+    static.py                     read-only YAML/JSON domain-data adapter
+    mock.py                       fixture and generated-data adapters
+    config.py                     durable local configuration backend
+    user_data.py                  durable scenarios, views, events, and groups
+  domain/                         TypedDict domain contracts
+  storage/                        StorageBackend and diskcache implementation
+  services/container.py           DI keys and service container
+  admin/reload_orchestrator.py    config reload and cache invalidation side effects
+```
+
+### Key Abstractions
+
+| Component | Responsibility |
+|---|---|
+| `TaskRepository`, `HistoryRepository`, `PlanRepository`, `IterationRepository` | Translate application requests into remote protocol calls and return domain data. |
+| `ProjectRepository`, `TeamRepository`, `PeopleRepository` | Read durable project, team, and people configuration. |
+| `ScenarioRepository`, `ViewRepository` | Persist user-owned scenario and view data without a cache layer. |
+| `TaskBackend`, `HistoryBackend`, `TeamsBackend`, `PlansBackend`, `IterationsBackend` | Focused remote-data ports. `BackendPort` composes these remote contracts. |
+| `ConfigBackend` | Reads and writes configuration keys in authoritative diskcache storage. |
+| `UserDataBackend` | Reads and writes scenarios, views, events, and groups in authoritative storage. |
+| `BackendRegistry` | Selects one remote provider from ordered feature flags. |
+| `CachingBackend` | Transparently caches `fetch_*` calls, tracks soft freshness, and patches cached task lists after writes. |
+| `AzureAdapter` | Converts raw Azure-shaped work items into canonical `DomainTask` values. |
+| `DiskCacheStorage` | Implements the `StorageBackend` abstraction over diskcache/SQLite. |
+| `ReloadOrchestrator` | Applies admin configuration changes, rebuilds affected services, and invalidates remote data when required. |
+
+The focused protocol inventory is:
+
+| Protocol | Owner | Main operations |
+|---|---|---|
+| `TaskBackend` | Remote provider | `fetch_tasks`, `write_task`, `invalidate_cache` |
+| `HistoryBackend` | Remote provider | `fetch_history` |
+| `TeamsBackend` | Remote provider | `fetch_teams` |
+| `PlansBackend` | Remote provider | `fetch_plans`, `fetch_markers` |
+| `IterationsBackend` | Remote provider | `fetch_iterations` |
+| `PeopleBackend`, `ProjectConfigBackend`, `TeamConfigBackend` | `ConfigBackend` | Local people, project, and team configuration reads |
+| `IterationConfigBackend`, `PlanConfigBackend`, `AdoConfigBackend` | `ConfigBackend` | Iteration, area-plan, and ADO configuration reads/writes |
+| `EventConfigBackend` | `ConfigBackend` | Event configuration reads/writes |
+| `ScenarioBackend`, `ViewBackend`, `EventBackend` | `UserDataBackend` | Scenario, view, and event persistence |
+
+`BackendPort` is the composite remote contract. `DiagnosticBackend` is an
+optional capability implemented by backends that publish user-facing
+diagnostics; it is not part of the remote data contract itself.
+
+### Dependency-Injection Keys
+
+`planner_lib/main.py` wires these names through the service container:
+
+| Key | Implementation | Boundary |
+|---|---|---|
+| `backend` | Selected provider, optionally wrapped by `CachingBackend` | Remote work-item, history, team, plan, and iteration data |
+| `config_backend` | `ConfigBackend` | Durable local configuration |
+| `user_data_backend` | `UserDataBackend` | Durable scenarios, views, events, and groups |
+| `storage` | `DiskCacheStorage` | Authoritative diskcache instance |
+| `remote_cache_storage` | Lazily-created `DiskCacheStorage` | Disposable cache, created only when caching is enabled |
+
+### Layer Map
+
+```mermaid
+flowchart TD
+    Browser[Browser / API client] --> Routes[FastAPI routes]
+    Routes --> Services[Application services]
+    Services --> Repos[Domain repositories]
+    Repos --> Ports[Focused backend protocols]
+    Ports --> Registry[BackendRegistry]
+    Registry --> Cache[CachingBackend when enabled]
+    Cache --> Remote[Azure / static / mock provider]
+    Ports --> Config[ConfigBackend]
+    Ports --> UserData[UserDataBackend]
+    Config --> Durable[(Authoritative diskcache)]
+    UserData --> Durable
+    Cache --> RemoteCache[(Disposable remote cache)]
+    Remote --> Adapter[AzureAdapter for ADO-family providers]
+    Adapter --> Cache
+```
+
+The diagram shows logical ownership rather than every Python call. In
+particular, `ConfigBackend` and `UserDataBackend` do not pass through
+`CachingBackend`, while the selected remote provider does.
+
+## 3. Data Flow & Integration Patterns
+
+### Primary Execution Path: Read
+
+1. The browser calls a domain REST route. The route validates session context,
+   parses request parameters, and creates a credential when remote access needs
+   one.
+2. The route or application service asks a repository for a domain operation.
+3. The repository depends on a protocol, never on a concrete provider class.
+4. For remote data, the injected `backend` is either the selected provider or a
+   `CachingBackend` wrapper. A fresh cache hit returns immediately.
+5. On a cache miss, the provider fetches data. Azure-family providers normalize
+   provider records and call `AzureAdapter.to_domain()` before returning;
+   `StaticBackend` already contains domain records and skips the adapter.
+6. The repository applies domain-level filtering or composition and returns
+   `DomainTask`, history, team, plan, or iteration values to the service.
+7. FastAPI serializes the result for the browser.
+
+### Primary Execution Path: Writes and Reloads
+
+| Data | Write path | Consistency behavior |
+|---|---|---|
+| Azure work items | `TaskRepository` -> `TaskBackend.write_task()` -> provider | `CachingBackend` delegates the write, then patches matching task entries in every cached task list. |
+| Configuration | Admin route/service -> `ConfigBackend` | Diskcache is authoritative; reads observe the saved value immediately. |
+| ADO configuration | Admin ADO save -> `ConfigBackend` -> `ReloadOrchestrator` | The orchestrator rebuilds the Azure service/provider and invalidates affected remote cache entries. |
+| Generic server configuration | Admin system save -> authoritative `config::server_config` key -> reload | The saved diskcache value is the source for subsequent service construction. |
+| Scenarios and views | Repository -> `UserDataBackend` | Direct durable reads and writes; no stale cache layer is inserted. |
+
+### Provider Selection
+
+`BackendRegistry` evaluates feature flags in this order; the first enabled
+flag wins. `AzureDevOpsBackend` is the default when no mock/static flag is set.
+
+| Priority | Provider | Flag | Data representation |
+|---|---|---|---|
+| 1 | `StaticBackend` | `use_static_backend` | Domain data loaded from YAML or JSON. |
+| 2 | `MockGeneratorBackend` | `use_azure_mock_generator` | ADO-shaped/generated data translated by `AzureAdapter`. |
+| 3 | `MockFixtureBackend` | `use_azure_mock` | ADO-shaped fixture data translated by `AzureAdapter`. |
+| 4 | `AzureDevOpsBackend` | none | Live Azure DevOps data translated by `AzureAdapter`. |
+
+### Cache Read Path
+
+```text
+CachingBackend.fetch_*
+        |
+        +-- fresh entry ----------------------> return cached domain data
+        |
+        +-- soft-expired entry --> remote refresh
+        |                            |
+        |                            +-- success/non-empty -> replace entry
+        |                            +-- remote failure/empty -> keep stale entry
+        |                                                       + queue diagnostic
+        |
+        +-- missing entry ----------> provider fetch -> store data + freshness sidecar
+```
+
+`CachingBackend` intercepts `fetch_*` methods through `__getattribute__`. Cache
+keys combine the method name with a hash of arguments; credentials are excluded
+from the key so the same remote result can be reused while authorization is
+still required for a cold fetch. Data entries are saved without a hard
+diskcache expiry. A `taskmeta__*` sidecar records `fresh_until` instead.
+
+For the live remote backend, a failed or empty refresh preserves stale data and
+queues a diagnostic. Local/static/mock providers do not receive the same outage
+classification because they are not remote. An in-flight key guard prevents
+duplicate refresh work for the same cache entry.
+
+### State Management & Storage
+
+`planner_lib.main._build_storages()` creates the authoritative `storage`
+instance, normally backed by `data/cache`. When caching is enabled,
+`_build_services()` lazily creates a separate `remote_cache_storage` instance
+under `data/remote_cache`.
+
+| Store | Contents | Operational meaning |
+|---|---|---|
+| `storage` | Accounts, sessions, server config, projects, teams, people, cost and iteration config, ADO config, scenarios, views, events, groups | Durable system of record. Never delete as a cache cleanup operation. |
+| `remote_cache_storage` | Cached remote `fetch_*` results and freshness sidecars | Disposable. Clearing it forces provider reads but does not delete user work or configuration. |
+
+Default cache freshness windows are configured by `cache.ttls` in
+`config::server_config` and are measured in minutes. The current defaults are:
+
+| Method | Default | Reason |
+|---|---:|---|
+| `fetch_tasks` | 30 minutes | Work-item state changes frequently. |
+| `fetch_history` | 24 hours | History is comparatively stable/append-oriented. |
+| `fetch_teams` | 4 hours | Membership changes less frequently than tasks. |
+| `fetch_plans` | 4 hours | Plan metadata and markers are slower-moving. |
+| `fetch_markers` | 2 hours | Sprint marker data needs a shorter window. |
+| `fetch_iterations` | 8 hours | Iteration definitions are stable. |
+
+`0` means no soft expiry until explicit invalidation. These are freshness
+windows, not deletion deadlines: preserving stale rows is what allows an
+outage-safe refresh.
+
+### Side Effects
+
+- A remote refresh failure queues backend diagnostics consumed by the API layer.
+- A successful task write mutates the remote provider and patches matching
+  cached task lists.
+- Admin changes can trigger `ReloadOrchestrator` to rebuild the Azure service,
+  update the active provider, and invalidate remote cache data.
+- Explicit cache refresh/invalidation removes remote-cache entries; it must not
+  touch authoritative storage.
+
+## 4. Architectural Decisions & Trade-offs
+
+### Observed Design Patterns
+
+- **Hexagonal architecture / ports and adapters:** repositories depend on small
+  protocols, allowing Azure, static, and mock providers to be swapped without
+  changing application code.
+- **Interface segregation:** each domain has a focused protocol rather than one
+  broad backend interface. `PlanRepository` and `IterationRepository` may
+  combine remote and local configuration ports when that is the domain contract.
+- **Strategy plus registry:** `BackendRegistry` selects the provider strategy at
+  startup/reload from feature flags.
+- **Decorator/proxy:** `CachingBackend` preserves the inner backend protocol and
+  adds caching without changing repository call sites. Runtime-checkable
+  protocol checks continue to work for the protocols implemented by the inner
+  backend.
+- **Repository pattern:** repositories contain domain-facing orchestration and
+  keep storage/provider details out of routes and services.
+- **Soft-expiry cache:** freshness metadata is separate from physical storage
+  expiry so remote outages do not turn useful stale data into a hard failure.
+
+### Technical Debt & Trade-offs
+
+- `CachingBackend` uses dynamic attribute interception, which reduces repeated
+  wrapper code but makes new `fetch_*` methods implicitly cacheable. A new fetch
+  method must therefore have sensible cache-key inputs and TTL behavior.
+- Cache keys intentionally omit credentials. This improves reuse, but provider
+  authorization must still be enforced on cold misses and writes; cached data
+  must not be treated as proof that a credential is valid.
+- Remote refresh can return stale data rather than an error. Callers must expose
+  diagnostics where appropriate so users understand that the displayed data may
+  be older than the configured freshness window.
+- Diskcache/SQLite gives simple durable local storage and WAL/mmap performance,
+  but it is a local-server storage choice, not a multi-node coordination system.
+- Static data is already canonical while Azure-family providers need an adapter;
+  contributors adding a provider must decide explicitly which representation it
+  owns rather than applying the adapter twice.
+
+## 5. Contributor Guide & Operational Hazards
+
+### Extension Points
 
 To add a new data domain:
-1. Define a new focused Protocol in `port.py` (e.g. `BudgetBackend`).
-2. Implement it in the backend(s) that own that data.
-3. Create a repository that depends only on the new protocol.
-4. Register a new DI key and wire the repository in `main.py`.
-5. No changes needed to any other backend or repository.
 
----
+1. Define a focused protocol in `planner_lib/backend/port.py`.
+2. Implement that protocol in each provider/backend that owns the data.
+3. Add a repository in `planner_lib/repository/` that depends only on the new
+   protocol and any genuinely required companion protocol.
+4. Register the dependency key/factory in `planner_lib/main.py` and expose it to
+   the owning route or service.
+5. Add focused tests for the repository, provider behavior, and DI wiring.
 
-## Layer map
+For a new remote provider, register it in `BackendRegistry`, define its feature
+flag precedence, and return canonical domain objects. For an ADO-shaped source,
+reuse `AzureAdapter`; for a source that already emits domain data, follow
+`StaticBackend` and do not translate a second time.
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  HTTP Client (Browser / Frontend JS)                                     │
-│  Sends / receives JSON over REST                                         │
-└────────────────────────────┬─────────────────────────────────────────────┘
-                             │  HTTP  JSON
-┌────────────────────────────▼─────────────────────────────────────────────┐
-│  Consumers                                                               │
-│                                                                          │
-│  REST API layer  planner_lib/projects/api.py (and other api.py modules)  │
-│  FastAPI router — session auth, query-param parsing, credential          │
-│  construction.  Returns domain types (auto-serialised to JSON).          │
-│                                                                          │
-│  CostService     planner_lib/cost/service.py                             │
-│  AdminService    planner_lib/admin/service.py                            │
-│  … (other application services that compute over domain data)            │
-└────────────────────────────┬─────────────────────────────────────────────┘
-                             │  domain types
-┌────────────────────────────▼─────────────────────────────────────────────┐
-│  Repository layer  planner_lib/repository/                               │
-│                                                                          │
-│  Each repository depends on exactly the focused protocol it needs.       │
-│  No repository imports a concrete backend class.                         │
-│                                                                          │
-│  TaskRepository(TaskBackend)           ← DI key: "backend"               │
-│  HistoryRepository(HistoryBackend)     ← DI key: "backend"               │
-│  PlanRepository(PlansBackend,          ← DI keys: "backend",             │
-│                 plan_config:PlanConfigBackend)          "config_backend" │
-│  IterationRepository(IterationsBackend,← DI keys: "backend",             │
-│                 iteration_config:IterationConfigBackend)"config_backend" │
-│  PeopleRepository(PeopleBackend)       ← DI key: "config_backend"        │
-│  TeamRepository(TeamConfigBackend)     ← DI key: "config_backend"        │
-│  ProjectRepository(ProjectConfigBackend)← DI key: "config_backend"       │
-│  ScenarioRepository(ScenarioBackend)   ← DI key: "user_data_backend"     │
-│  ViewRepository(ViewBackend)           ← DI key: "user_data_backend"     │
-└────────────────────────────────────────────────────────────────────────┬─┘
-                                                                         │
-                                                     domain types from any backend
-┌────────────────────────────────────────────────────▼─────────────────────┐
-│  Two diskcache instances (deliberately separate SQLite files)            │
-│  planner_lib/storage/diskcache_backend.py                                │
-│                                                                          │
-│  "storage" (data/cache) — authoritative, never time-expired: config,     │
-│  accounts, sessions, user data (scenarios/views).  Safe to treat as      │
-│  permanent; nothing here is safe to delete as "just a cache".            │
-│                                                                          │
-│  "remote_cache_storage" (data/remote_cache) — CachingBackend's own       │
-│  instance, holding only the volatile fetch_* cache for the active        │
-│  ADO/static/mock backend.  A true, disposable cache: deleting this       │
-│  directory only forces re-fetches, never any data loss.                  │
-│                                                                          │
-│  CachingBackend(inner, storage=remote_cache_storage) wraps any read-only │
-│  source:                                                                │
-│  – On fetch_* miss: call inner, store result (no hard TTL) plus a        │
-│                     taskmeta__* sidecar recording fresh_until, return.   │
-│  – On fetch_* hit (fresh): return from diskcache without touching inner. │
-│  – On fetch_* hit (soft-expired): refresh live; on remote failure/empty  │
-│                     result, keep serving the existing entry and queue a  │
-│                     warning instead of deleting it or raising.           │
-│  – On write_task:   delegate to inner, patch task in every cached list   │
-│                     (diskcache is immediately consistent).               │
-│  – On invalidate:   delete all keys in the remote_cache_storage.         │
-└──────┬───────────────────────────────────────────────────────────┬───────┘
-       │ cache miss / explicit write                               │ user data
-┌──────▼───────────────────────────────────────────────────┐ ┌─────▼──────────┐
-│  Backing stores (fetched on cache miss only)             │ │ UserDataBackend│
-│                                                          │ │ (no cache wrap)│
-│  BackendRegistry selects one remote source:              │ │                │
-│    AzureDevOpsBackend — live ADO via HTTPS               │ │ Reads/writes   │
-│    StaticBackend      — static YAML/JSON file            │ │ directly to    │
-│    MockFixtureBackend — ADO-shaped fixture files         │ │ diskcache.     │
-│    MockGeneratorBackend — in-process data generator      │ │ No separate    │
-│                                                          │ │ TTL layer:     │
-│  ConfigBackend — reads/writes diskcache directly         │ │ diskcache IS   │
-│    (people, projects, teams, cost_config, iterations,    │ │ the store.     │
-│     area_plan_map, global_settings, ado_config)          │ │                │
-│    people migrated to diskcache by migration 0022        │ └────────────────┘
-│  server_config stored in diskcache (config::server_config) │
-└──────────────────────────────────────────────────────────┘
+### Known Sharp Edges
+
+- Never put scenarios, views, configuration, accounts, or sessions in
+  `remote_cache_storage`. It is intentionally disposable.
+- Do not add a hard diskcache TTL to remote data. Physical expiry would remove
+  the stale value needed for outage resilience.
+- `write_task` always requires a credential even when a read can use warm cache
+  data. Do not weaken this boundary.
+- A cached task write patches cached lists but does not make every provider-side
+  read globally transactional. Treat the provider write result as authoritative.
+- Configuration changes are not complete until reload/invalidation side effects
+  have run. Use `ReloadOrchestrator` rather than mutating an in-memory service
+  alone.
+- Iteration root paths are configuration-level values. The Azure backend owns
+  construction of the project-prefixed ADO path; repositories must not duplicate
+  that provider knowledge.
+- `DomainTask` is the canonical contract above the backend adapter. Preserve its
+  frontend-facing field names (`start`, `end`, `iterationPath`, `parentId`) when
+  changing provider mappings.
+- Warm cache reads are not a substitute for authorization. Cold remote reads and
+  all remote writes still follow credential rules in `planner_lib/backend/port.py`.
+
+### Testing Strategy
+
+Run the backend-focused Python tests with the repository virtual environment
+active:
+
+```bash
+source .venv/bin/activate
+pytest
 ```
 
-### ADO-family and StaticBackend
+Useful focused coverage includes:
 
-All ADO-family backends (`AzureDevOpsBackend`, `MockFixtureBackend`,
-`MockGeneratorBackend`) return raw ADO-shaped dicts internally and use
-`AzureAdapter.to_domain()` to translate to `DomainTask` before returning.
-`StaticBackend` stores data already in domain format and serves it as-is —
-no adapter step.
+- repository tests using protocol fakes to verify calls and domain shaping
+- adapter tests for raw ADO fields, inferred dates, relations, and capacity
+- cache tests for miss, fresh hit, soft expiry, stale-on-failure, diagnostics,
+  invalidation, and task-write patching
+- provider tests for registry precedence and static/mock fixture formats
+- integration tests for admin config save followed by reload and cache
+  invalidation
 
-`BackendRegistry` selects the active backend at startup from `feature_flags` in
-`ado_config` (diskcache key populated by migration 0021 from `server_config.yml`).
-Priority order (first flag wins):
+The canonical domain contracts live in `planner_lib/domain/`; update or add
+tests there when a public data shape changes. Avoid live Azure calls in unit
+tests; use protocol fakes, static data, or mock providers.
 
-| Priority | Class | `feature_flag` | Adapter |
-|----------|-------|----------------|---------|
-| 1 | `StaticBackend` | `use_static_backend` | None — file already in domain format |
-| 2 | `MockGeneratorBackend` | `use_azure_mock_generator` | `AzureAdapter` |
-| 3 | `MockFixtureBackend` | `use_azure_mock` | `AzureAdapter` |
-| 4 (default) | `AzureDevOpsBackend` | *(none required)* | `AzureAdapter` |
+## Data Schemas
 
----
+### Raw ADO Dict
 
-## CachingBackend and write semantics
+`AzureNativeClient` normalizes Azure field names before
+`AzureAdapter.to_domain()` consumes them:
 
-`planner_lib/backend/caching.py` — transparent soft-freshness proxy for any backend.
-
-In production `CachingBackend` wraps only the active remote/static/mock data
-backend (the `backend` DI key), using its own dedicated `remote_cache_storage`
-diskcache instance — `ConfigBackend` reads/writes `storage` directly and is not
-wrapped.  Cache keys use `<method>__<key-hash>` composite keys.
-
-```
-CachingBackend.__getattribute__(fetch_*)
-       │
-       ├── cache HIT (fresh)        → return domain objects from diskcache
-       │
-       ├── cache HIT (soft-expired) → serve stale data immediately; refresh
-       │                              live (in the background for the remote
-       │                              ADO backend).  A failed/empty refresh
-       │                              keeps the existing entry + queues a
-       │                              warning instead of deleting it.
-       │
-       └── cache MISS → call inner.fetch_*()
-                            → store result with no hard TTL
-                            → record fresh_until in a taskmeta__* sidecar
-                            → return result
-
-CachingBackend.write_task(id, updates, credential)
-       │
-       ├── delegate to inner backend (persistence)
-       └── patch task in every cached fetch_tasks__* list in-place
-               → diskcache immediately consistent
-```
-
-### Write semantics
-
-| Data type | Write path | Cache effect |
-|-----------|-----------|-------------|
-| ADO work items | `write_task(id, updates, cred)` → delegates to inner backend → patches the task in every cached `fetch_tasks__*` list in-place, preserving the existing TTL | diskcache is immediately consistent; no re-fetch from ADO. TTL-driven expiry and explicit `/cache/refresh` are the only paths that re-fetch from ADO. |
-| Config (projects, teams, cost_config, …) | Admin API writes directly to diskcache via `ConfigBackend.save_config()` | Immediately consistent — diskcache IS the authoritative store. `ReloadOrchestrator.reload()` rebuilds the AzureService client from the updated `ado_config`. |
-| ADO config (org URL, backend flags) | Admin `POST /admin/v1/ado` → writes `ado_config` to diskcache → `ReloadOrchestrator` reads it back and rebuilds `AzureService` | Immediately consistent. Next request uses the updated org URL and flags. |
-| Server config | Admin `POST /admin/v1/system` → writes `config::server_config` to diskcache → `ReloadOrchestrator.reload()` | Diskcache is the authoritative store for generic server settings.
-| User data (scenarios, views) | `save_scenario` / `save_view` → writes directly to diskcache | No separate cache layer: diskcache IS the authoritative store — reads are always consistent |
-
-### TTLs are soft-freshness windows, not hard diskcache expiry
-
-Each TTL controls how long a cached entry is served without attempting a live
-refresh — it is **not** passed to diskcache's `expire=` argument.  The data key
-is always persisted with no hard TTL; a `taskmeta__*` sidecar records the
-absolute `fresh_until` timestamp instead.  This is deliberate: a hard `expire=`
-would let diskcache physically delete the row the moment the TTL lapses, so if
-the remote backend happened to be unreachable at that exact moment the next
-read would hard-fail instead of serving the still-useful stale data.
-
-| Method | Default freshness window | Rationale |
-|--------|-------------|-----------|
-| `fetch_tasks` | 30 min | ADO state changes frequently |
-| `fetch_history` | 24 h | History is append-only; rarely stale |
-| `fetch_teams` | 4 h | ADO team membership |
-| `fetch_plans` | 4 h | Plan markers |
-| `fetch_markers` | 2 h | Sprint markers |
-| `fetch_iterations` | 8 h | Sprint definitions |
-
-All of the above are configurable via `cache.ttls` in `config::server_config`
-(values in minutes; `0` = no expiry, i.e. cache forever until `invalidate_cache()`).
-
-diskcache handles the in-memory tier automatically via SQLite's memory-mapped
-pages (`sqlite_mmap_size`, default 64 MB) and WAL journal mode.  No separate
-in-process cache manager or warmup service is needed.
-
-`CachingBackend` mirrors the protocol of its inner backend exactly —
-`isinstance` checks work without any explicit registration:
-
-```python
-isinstance(CachingBackend(AzureDevOpsBackend(…)), BackendPort)  # True
-isinstance(CachingBackend(ConfigBackend(…)), PeopleBackend)      # True
-isinstance(CachingBackend(ConfigBackend(…)), BackendPort)        # False
-```
-
----
-
-## DI keys
-
-| DI key | Protocol | Backend class | Notes |
-|--------|----------|---------------|-------|
-| `backend` | `BackendPort` | Selected by `BackendRegistry` | Wrapped in `CachingBackend` when `enable_cache: true` |
-| `config_backend` | `PeopleBackend` + config protocols + `AdoConfigBackend` | `ConfigBackend` | Reads/writes `storage` directly — **not** wrapped in `CachingBackend` |
-| `user_data_backend` | `ScenarioBackend` + `ViewBackend` | `UserDataBackend` | Reads/writes `storage` directly — **never** cached |
-| `storage` | `StorageBackend` | `DiskCacheStorage` (`data/cache`) | Authoritative, never time-expired: config, accounts, sessions, user data |
-| `remote_cache_storage` | `StorageBackend` | `DiskCacheStorage` (`data/remote_cache`) | Lazily built; only instantiated when `enable_cache: true`. A disposable cache for `CachingBackend` — safe to delete without any data loss |
-
-DI wiring lives in `planner_lib/main.py` `_build_services()`.
-
----
-
-## Data schemas
-
-### 1. Raw ADO dict (AzureNativeClient output)
-
-`AzureNativeClient` normalises Azure DevOps field names to planner-friendly
-keys before returning.  This is the shape consumed by `AzureAdapter.to_domain()`.
-
-```
+```text
 {
-  "id":            int           # ADO work item ID
-  "title":         str
-  "type":          str           # e.g. "Feature", "User Story"
-  "state":         str           # ADO workflow state string
-  "startDate":     str | None    # ISO date "YYYY-MM-DD"
-  "finishDate":    str | None    # ISO date "YYYY-MM-DD"
-  "iterationPath": str | None    # e.g. "MyProject\\Iteration\\Sprint 1"
-  "parentId":      str | None    # string-coerced ADO parent ID
-  "relations":     List[{type, id, url}]
-  "description":   str | None    # HTML body
-  "assignee":      str | None    # display name
-  "tags":          str | None    # semicolon-separated
-  "areaPath":      str | None    # e.g. "MyProject\\Team\\SubArea"
-  "url":           str | None    # ADO web link
+  "id": int,
+  "title": str,
+  "type": str,
+  "state": str,
+  "startDate": str | None,
+  "finishDate": str | None,
+  "iterationPath": str | None,
+  "parentId": str | None,
+  "relations": List[{type, id, url}],
+  "description": str | None,
+  "assignee": str | None,
+  "tags": str | None,
+  "areaPath": str | None,
+  "url": str | None
 }
 ```
 
-### 2. DomainTask (canonical internal representation)
+### DomainTask
 
-`planner_lib/domain/tasks.py` — `TypedDict` used by all layers above
-`AzureAdapter`.  Field names match what the frontend JavaScript `State` service
-expects.
+`planner_lib/domain/tasks.py` defines the canonical `TypedDict` returned above
+the adapter. Its required core fields are `id`, `title`, `type`, `state`, and
+`project`; optional fields include `start`, `end`, `iterationPath`, `parentId`,
+`relations`, `capacity`, `description`, `assignee`, `tags`, `areaPath`, and
+`url`. `_inferred_start` and `_inferred_end` record dates inferred from an
+iteration when explicit dates are absent.
 
-```
-DomainTask = TypedDict {
-  "id":              str           # string-coerced work item ID
-  "title":           str
-  "type":            str           # canonical casing from task_type_hierarchy
-  "state":           str
-  "project":         str           # project slug e.g. "project-my-team"
-  "start":           str | None    # ISO date YYYY-MM-DD  (NotRequired)
-  "end":             str | None    # ISO date YYYY-MM-DD  (NotRequired)
-  "iterationPath":   str | None    # (NotRequired)
-  "parentId":        str | None    # (NotRequired)
-  "relations":       List[DomainRelation]  # (NotRequired)
-  "capacity":        List[DomainCapacity]  # (NotRequired)
-  "description":     str | None    # (NotRequired)
-  "assignee":        str | None    # (NotRequired)
-  "tags":            str | None    # (NotRequired)
-  "areaPath":        str | None    # (NotRequired)
-  "url":             str | None    # (NotRequired)
-  "_inferred_start": bool
-  "_inferred_end":   bool
-}
+`DomainRelation` contains `type`, `id`, and optional `url`.
+`DomainCapacity` contains a team identifier and fractional `capacity` from 0 to
+1. `WriteResult` contains `ok`, `updated`, and `errors`.
 
-DomainRelation = TypedDict {
-  "type":  str    # "Parent" | "Child" | "Successor" | "Predecessor" | "Related"
-  "id":    str
-  "url":   str    # (NotRequired)
-}
+### History Contracts
 
-DomainCapacity = TypedDict {
-  "team":     str    # team slug / ID
-  "capacity": float  # fractional allocation 0–1
-}
-```
+`DomainHistoryEntry` contains `field`, `value`, `changed_at`, `changed_by`, and
+optional `pair_id`. `DomainTaskHistory` contains `task_id`, `title`, `plan_id`,
+and a list of history entries. See `planner_lib/domain/history.py` for the
+single source of truth when fields change.
 
-### 3. WriteResult
+### Static Backend File Format
 
-```
-WriteResult = TypedDict {
-  "ok":      bool
-  "updated": int
-  "errors":  List[str]
-}
-```
+For `use_static_backend: true`, the YAML/JSON file maps `area_path` to a list of
+canonical `DomainTask` values. Optional top-level keys provide `_teams`,
+`_plans`, `_markers`, `_iterations`, `_history`, and `_people`. Static files are
+served as-is, so malformed or provider-shaped records are a data/configuration
+error rather than an adapter input.
 
-### 4. DomainHistoryEntry / DomainTaskHistory
+### Credential Rules
 
-```
-DomainHistoryEntry = TypedDict {
-  "field":      str           # "start" | "end" | "iteration"
-  "value":      str | None
-  "changed_at": str           # ISO 8601 timestamp
-  "changed_by": str
-  "pair_id":    int           # (NotRequired)
-}
-
-DomainTaskHistory = TypedDict {
-  "task_id":  int
-  "title":    str
-  "plan_id":  str
-  "history":  List[DomainHistoryEntry]
-}
-```
-
-### 5. BackendCredential
-
-```
-BackendCredential = TypedDict {
-  "token":   str    # PAT or other auth token; never logged
-  "user_id": str    # session / user identifier (audit only)
-}
-```
-
----
-
-## Backend protocols (`planner_lib/backend/port.py`)
-
-```python
-# Remote work-item data ─────────────────────────────────────────────────
-
-class TaskBackend(Protocol):
-    def fetch_tasks(area_path, task_types, include_states, credential): ...
-    def write_task(task_id, updates, credential): ...
-    def invalidate_cache(): ...
-
-class HistoryBackend(Protocol):
-    def fetch_history(work_item_id, credential): ...
-
-class TeamsBackend(Protocol):
-    def fetch_teams(project, credential): ...
-
-class PlansBackend(Protocol):
-    def fetch_plans(project, credential): ...
-    def fetch_markers(area_path, credential): ...
-
-class IterationsBackend(Protocol):
-    def fetch_iterations(project, root_paths, credential): ...
-
-class BackendPort(TaskBackend, HistoryBackend, TeamsBackend,
-                  PlansBackend, IterationsBackend, Protocol): ...
-
-# Local config data (diskcache-backed) ─────────────────────────────────
-
-class PeopleBackend(Protocol):
-    def fetch_people(credential): ...
-
-class ProjectConfigBackend(Protocol):
-    def fetch_projects(credential): ...
-    def fetch_project_map(credential): ...
-
-class TeamConfigBackend(Protocol):
-    def fetch_config_teams(credential): ...
-
-class IterationConfigBackend(Protocol):
-    def fetch_iterations_config(credential): ...
-
-class PlanConfigBackend(Protocol):
-    def fetch_area_plan_map(credential): ...
-
-class AdoConfigBackend(Protocol):
-    def fetch_ado_config(): ...          # organization_url + ADO feature flags
-    def save_ado_config(content): ...
-
-# Mutable user data ──────────────────────────────────────────────────────
-
-class ScenarioBackend(Protocol):
-    def fetch_scenarios(user_id): ...
-    def fetch_scenario(user_id, scenario_id): ...
-    def save_scenario(user_id, scenario_id, data): ...
-    def delete_scenario(user_id, scenario_id): ...
-
-class ViewBackend(Protocol):
-    def fetch_views(user_id): ...
-    def fetch_view(user_id, view_id): ...
-    def save_view(user_id, view_id, data): ...
-    def delete_view(user_id, view_id): ...
-```
-
-**Credential rules:**
-- `fetch_*` on remote backends: credential is *optional* when cache is warm.
-  Cold cache with no credential raises `PermissionError`.
-- `write_task`: credential is *always required*.
-- Config and user-data backends: credential never required.
-
----
-
-## AzureAdapter translation (ADO-family backends only)
-
-`planner_lib/backend/adapter.py` — used internally by `AzureDevOpsBackend`,
-`MockFixtureBackend`, and `MockGeneratorBackend`.  `StaticBackend` and
-`ConfigBackend` do not use it.
-
-The adapter is invoked **inside the backend**, not at the repository layer.
-`project_slug` is derived from the `area_path` (first path segment, slugified).
-
-```
-  Raw ADO dict                        DomainTask
-  id (int)           →                id (str)
-  title              →                title
-  type               →                type (canonical casing)
-  state              →                state
-  area_path          →                project (slugified first segment)
-  startDate          →                start  (or from iteration if absent → _inferred_start)
-  finishDate         →                end    (or from iteration if absent → _inferred_end)
-  iterationPath      →                iterationPath
-  parentId           →                parentId
-  relations          →                relations (List[DomainRelation])
-  description        →                capacity (parsed) + description
-  assignee           →                assignee
-  tags               →                tags
-  areaPath           →                areaPath
-  url                →                url
-```
-
----
-
-## Static data file format (StaticBackend)
-
-For offline / demo deployments (`use_static_backend: true`), the data file is a
-YAML or JSON mapping of `area_path → List[DomainTask]`:
-
-```yaml
-"MyOrg\\TeamA":
-  - id: "42"
-    title: "Implement feature X"
-    # … full DomainTask fields …
-
-# Optional top-level keys
-_teams:      {}   # project → list of team dicts
-_plans:      {}   # project → list of plan dicts
-_markers:    {}   # area_path → list of marker dicts
-_iterations: {}   # project → iteration_path → {startDate, finishDate, name}
-_history:    {}   # work_item_id → list of revision entries
-_people:     []   # flat list of DomainPerson dicts (optional)
-```
-
-`StaticBackend` serves all domain objects **as-is** — no adapter step.
-
----
-
-## Iterations path construction
-
-`IterationRepository.list_iterations()` reads `raw_roots` from
-`iterations.yml` (via `IterationConfigBackend`) and passes them to
-`backend.fetch_iterations(project, root_paths=raw_roots)`.
-`AzureDevOpsBackend.fetch_iterations()` prepends `"<project>\\Iteration\\"` to
-each root before calling the ADO SDK — ADO path knowledge stays in the backend.
-
----
-
-## Key files reference
-
-| File | Purpose |
-|------|---------|
-| `planner_lib/domain/tasks.py` | `DomainTask`, `WriteResult`, `DomainRelation`, `DomainCapacity` |
-| `planner_lib/domain/history.py` | `DomainHistoryEntry`, `DomainTaskHistory` |
-| `planner_lib/domain/people.py` | `DomainPerson` |
-| `planner_lib/domain/plans.py` | `DomainMarker` |
-| `planner_lib/domain/iterations.py` | `DomainIteration` |
-| `planner_lib/domain/teams.py` | `DomainTeam` |
-| `planner_lib/domain/projects.py` | `DomainProject` |
-| `planner_lib/backend/port.py` | All focused protocols + `BackendPort` + `BackendCredential` |
-| `planner_lib/backend/adapter.py` | `AzureAdapter` — raw ADO ↔ `DomainTask` |
-| `planner_lib/backend/registry.py` | `BackendRegistry` — selects active remote backend |
-| `planner_lib/backend/azure.py` | `AzureDevOpsBackend` — live ADO |
-| `planner_lib/backend/static.py` | `StaticBackend` — read-only file backend |
-| `planner_lib/backend/mock.py` | `MockFixtureBackend`, `MockGeneratorBackend` |
-| `planner_lib/backend/config.py` | `ConfigBackend` — read-only YAML config domains |
-| `planner_lib/backend/user_data.py` | `UserDataBackend` — mutable user scenarios/views |
-| `planner_lib/backend/caching.py` | `CachingBackend` — diskcache TTL proxy |
-| `planner_lib/repository/` | One repository per domain |
-| `planner_lib/main.py` | DI wiring (`_build_services`) |
-| `planner_lib/storage/diskcache_backend.py` | `DiskCacheStorage` — diskcache `StorageBackend` |
+- Remote `fetch_*` calls may omit credentials when a warm cache entry exists;
+  a cold miss without credentials raises `PermissionError`.
+- `write_task` always requires a credential.
+- Configuration and user-data backends do not require credentials.
