@@ -49,6 +49,7 @@ python3 scripts/migrate.py --apply
 - Added stable anonymous account IDs so admin permission and deletion URLs no longer expose email addresses; backups created before account IDs were introduced are no longer valid for restore.
 - Iterations can be configured in interation sets and a set can be associated with a project. This enables tasks from different projects to have different iteration lists configured.
 - Added an automated pre-commit guard for staged JS/test additions that blocks `?.`, `??`, `Array.isArray(`, and fallback-style `||` defaults by default, plus AGENTS policy requiring explicit user-confirmed necessity before any bypass.
+- Added a translucent background box behind each group spanning its full extent (pill plus members), so nested sub-groups are visually distinguishable as a darker overlapping shade.
 
 ### Changed
 - Replaced the monolithic frontend state and pre-store service layer with a canonical Zustand-backed application store, explicit command/selector seams, strict hydration contracts, and signal-oriented event handling. Runtime consumers, views, scenarios, groups, filters, capacity, and plugins now use these canonical boundaries.

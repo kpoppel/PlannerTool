@@ -83,6 +83,21 @@ export class HelpModal extends LitElement {
       padding: 2px 4px;
       border-radius: 3px;
     }
+    .help-panel table {
+      border-collapse: collapse;
+      margin: 8px 0;
+      width: 100%;
+    }
+    .help-panel th,
+    .help-panel td {
+      border: 1px solid #ddd;
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .help-panel th {
+      background: #f6f6f6;
+      font-weight: 600;
+    }
 
     .modal-footer {
       display: flex;
@@ -205,7 +220,8 @@ export class HelpModal extends LitElement {
     let codeLang = '';
     let listOpen = false;
     let listType = '';
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (line.startsWith('```')) {
         if (!inCode) {
           inCode = true;
@@ -219,6 +235,30 @@ export class HelpModal extends LitElement {
       }
       if (inCode) {
         html += this._escapeHtml(line) + '\n';
+        continue;
+      }
+      // tables: a header row immediately followed by a |---|---| separator row
+      if (this._isTableRow(line) && this._isTableSeparatorRow(lines[i + 1])) {
+        if (listOpen) {
+          html += `</${listType}>`;
+          listOpen = false;
+          listType = '';
+        }
+        const headerCells = this._splitTableRow(line);
+        let j = i + 2;
+        const bodyRows = [];
+        while (j < lines.length && this._isTableRow(lines[j])) {
+          bodyRows.push(this._splitTableRow(lines[j]));
+          j++;
+        }
+        html += '<table><thead><tr>';
+        html += headerCells.map((c) => `<th>${this._inline(c)}</th>`).join('');
+        html += '</tr></thead><tbody>';
+        for (const row of bodyRows) {
+          html += '<tr>' + row.map((c) => `<td>${this._inline(c)}</td>`).join('') + '</tr>';
+        }
+        html += '</tbody></table>';
+        i = j - 1;
         continue;
       }
       // headings
@@ -259,6 +299,26 @@ export class HelpModal extends LitElement {
     if (listOpen) html += `</${listType}>`;
     return html;
   }
+
+  /** Matches a pipe-delimited table row, e.g. "| a | b |" or "a | b". */
+  _isTableRow(line) {
+    return typeof line === 'string' && line.trim() !== '' && line.includes('|');
+  }
+
+  /** Matches a GFM header separator row, e.g. "| --- | :---: |". */
+  _isTableSeparatorRow(line) {
+    if (typeof line !== 'string') return false;
+    return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line) && line.includes('-');
+  }
+
+  /** Splits a table row into trimmed cell strings, dropping bounding pipes. */
+  _splitTableRow(line) {
+    let trimmed = line.trim();
+    if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+    if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
+    return trimmed.split('|').map((cell) => cell.trim());
+  }
+
 
   _inline(text) {
     if (!text) return '';

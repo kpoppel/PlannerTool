@@ -35,6 +35,16 @@ export const featureBoardStyles = css`
     border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
 
+  /* Group background span — translucent box behind a group's pill + members.
+     Nested groups stack their own box on top, so overlapping regions read
+     visibly darker, making the nesting obvious at a glance. */
+  .group-band {
+    position: absolute;
+    border-radius: 10px;
+    pointer-events: none;
+    box-sizing: border-box;
+  }
+
   /* Shows where a new group will be inserted while the group context menu is open */
   .group-insertion-caret {
     position: absolute;

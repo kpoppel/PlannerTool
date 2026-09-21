@@ -136,7 +136,7 @@ class GroupContextMenu extends LitElement {
     this._createSlot = slot;
     this._parentId = slot.parentId;
     this._showCreate = true;
-    if (Number.isInteger(slot.caretTop)) this._moveCaret(slot.caretTop);
+    if (Number.isInteger(slot.caretTop)) this._moveCaret(slot.caretTop, slot.parentId);
   }
 
   /** Slot for a new first child of `parentGroupId`, ranked ahead of its contents. */
@@ -150,8 +150,8 @@ class GroupContextMenu extends LitElement {
   }
 
   /** Ask TimelineBoard to move the board insertion caret. */
-  _moveCaret(caretTop) {
-    document.dispatchEvent(new CustomEvent('group-menu-caret', { detail: { caretTop } }));
+  _moveCaret(caretTop, nestGroupId = null) {
+    document.dispatchEvent(new CustomEvent('group-menu-caret', { detail: { caretTop, nestGroupId } }));
   }
 
   async _saveNewGroup() {
@@ -447,7 +447,7 @@ class GroupContextMenu extends LitElement {
     return html`
       <button
         class="menu-item"
-        @mouseenter=${() => this._moveCaret(insertion.caretTop)}
+        @mouseenter=${() => this._moveCaret(insertion.caretTop, insertion.parentId)}
         @click=${() => this._startCreateGroup(insertion)}
       >
         ➕ ${siblingLabel}
@@ -455,7 +455,7 @@ class GroupContextMenu extends LitElement {
       ${showNested ? html`
         <button
           class="menu-item"
-          @mouseenter=${() => this._moveCaret(container.caretTop)}
+          @mouseenter=${() => this._moveCaret(container.caretTop, container.id)}
           @click=${() => this._startCreateGroup(this._subGroupSlot(container.id, container.caretTop))}
         >
           ➕ New sub-group in "${container.name}"

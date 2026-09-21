@@ -61,6 +61,9 @@ class FeatureBoard extends LitElement {
     // Swimlane geometry — populated by renderFeatures() when swimlane mode is active.
     // Each entry: { id, name, color, type, topPx, heightPx }
     this._swimlanes = [];
+    // Group background spans — one per group, covering its pill plus all
+    // descendant rows. Each entry: { id, color, left, width, top, height, depth }
+    this._groupBands = [];
     // Set of group IDs the user has collapsed.
     this._collapsedGroups = new Set();
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
@@ -243,6 +246,15 @@ class FeatureBoard extends LitElement {
               )}
             </div>
           `
+        : ''}
+      ${this._groupBands.length
+        ? html`${[...this._groupBands].sort((a, b) => a.depth - b.depth).map(
+            (band) => html`<div
+              class="group-band"
+              style="left:${band.left}px; top:${band.top}px; width:${band.width}px; height:${band.height}px; background:${this._hexToRgba(band.color ? band.color : '#78909c', 0.08)};"
+              aria-hidden="true"
+            ></div>`
+          )}`
         : ''}
       ${repeat(
         this.features,
@@ -704,6 +716,7 @@ class FeatureBoard extends LitElement {
 
       // Render each swimlane band independently and accumulate vertical offsets
       renderList = [];
+      const groupBands = [];
       let currentTop = this._overlayOffset;
       const swimlaneGeometry = [];
 
@@ -782,12 +795,13 @@ class FeatureBoard extends LitElement {
             bucket,
             sel.view.getFeatureSortMode()
           );
-          const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
+          const { items: groupItems, totalHeight: gHeight, bands: groupBandItems } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
             sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
             { preserveFeatureOrder: true }
           );
           renderList.push(...groupItems);
+          groupBands.push(...groupBandItems);
           swimlaneHeight = Math.max(gHeight, laneHeight());
         } else if (isPacked) {
           // Per-swimlane greedy packing (no groups)
@@ -857,6 +871,7 @@ class FeatureBoard extends LitElement {
       }
 
       this._swimlanes = swimlaneGeometry;
+      this._groupBands = groupBands;
       totalHeight = currentTop;
     } else {
       // -----------------------------------------------------------------------
@@ -881,12 +896,13 @@ class FeatureBoard extends LitElement {
         visibleFeatures,
         sel.view.getFeatureSortMode()
       );
-      const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
+      const { items: groupItems, totalHeight: gHeight, bands: groupBandItems } = buildGroupBandItems(
         visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,
         sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
         { preserveFeatureOrder: true }
       );
       renderList = groupItems;
+      this._groupBands = groupBandItems;
       totalHeight = allGroups.length > 0 ? gHeight : gHeight + this._overlayOffset;
     }
 

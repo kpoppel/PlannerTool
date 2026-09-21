@@ -129,7 +129,7 @@ export class TimelineBoard extends LitElement {
       const planId = selectedPlans.length === 1 ? selectedPlans[0].id : null;
       const board = this.shadowRoot.querySelector('feature-board');
       const insertion = board.getInsertionSlotAt(e.clientY);
-      board.showInsertionCaret(insertion.caretTop);
+      board.showInsertionCaret(insertion.caretTop, insertion.parentId);
       GroupContextMenu.show({
         type: 'board',
         planId,
@@ -150,7 +150,7 @@ export class TimelineBoard extends LitElement {
     // Menu entries move the caret so the user sees where each placement lands.
     this._onGroupMenuCaret = (e) => {
       const board = this.shadowRoot.querySelector('feature-board');
-      if (board) board.showInsertionCaret(e.detail.caretTop);
+      if (board) board.showInsertionCaret(e.detail.caretTop, e.detail.nestGroupId);
     };
     document.addEventListener('group-menu-caret', this._onGroupMenuCaret);
 

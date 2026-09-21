@@ -268,13 +268,17 @@ export function resolveGroupDropSlot(items, groupId, y, bottomY) {
  * @param {boolean} packed           Pack consecutive task rows horizontally
  * @param {Set<string>} collapsedGroups  Set of collapsed group IDs
  * @param {{preserveFeatureOrder?: boolean}} options  Layout options
- * @returns {{ items: Array, totalHeight: number }}
+ * @returns {{ items: Array, totalHeight: number, bands: Array }}
  */
 export function buildGroupBandItems(
   orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups,
   options = {}
 ) {
   const items = [];
+  // One entry per group spanning from its pill down to the bottom of its last
+  // descendant row — rendered as a translucent background box so a group's
+  // full extent (and any nested sub-group inside it) is visible at a glance.
+  const bands = [];
   const planGroupIds = new Set(planGroups.map((g) => String(g.id)));
   const featureSortMode = sel.view.getFeatureSortMode();
 
@@ -472,6 +476,7 @@ export function buildGroupBandItems(
     const pillEnd = ends.length === 0 ? null : ends[ends.length - 1];
     const pos = pillPosition(pillStart, pillEnd);
     const groupFeatures = featuresByGroup.get(String(group.id));
+    const bandTop = rowTop;
 
     items.push({
       isGroup: true,
@@ -491,16 +496,27 @@ export function buildGroupBandItems(
     });
     rowTop += GROUP_PILL_HEIGHT;
 
-    if (collapsedGroups.has(String(group.id))) return;
-    renderLevel(
-      childGroupsByParent.get(String(group.id)),
-      groupFeatures,
-      String(group.id),
-      depth + 1
-    );
+    if (!collapsedGroups.has(String(group.id))) {
+      renderLevel(
+        childGroupsByParent.get(String(group.id)),
+        groupFeatures,
+        String(group.id),
+        depth + 1
+      );
+    }
+
+    bands.push({
+      id: group.id,
+      color: group.color ? group.color : null,
+      left: pos ? pos.left : 0,
+      width: pos ? pos.width : 0,
+      top: bandTop,
+      height: rowTop - bandTop,
+      depth,
+    });
   };
 
   renderLevel(rootGroups, rootFeatures, null, 0);
 
-  return { items, totalHeight: rowTop - topOffset };
+  return { items, totalHeight: rowTop - topOffset, bands };
 }
