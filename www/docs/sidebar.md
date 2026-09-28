@@ -8,6 +8,7 @@ The Sidebar no longer hosts view options, plan/project selection, scenarios or p
 - Each team row shows a color dot (click to open the color popover), the team name, and a per-task-type count badge showing how many tasks of that type the team has.
 - Click a team row to select or deselect it; deselecting a team removes its tasks from the board and, on the [Graph Area](graph.md), also removes it from the organisational capacity calculation.
 - Use the "All" / "None" toggle above the list to quickly select or deselect every team at once.
+- Task view below the list offers **Plan overview** (default), which keeps unallocated tasks in the selected plans, and **Team focus**, which shows only tasks allocated to selected teams plus their parent tasks for context. With no teams selected, Team focus shows no tasks.
 - If the selected plan(s) have no teams assigned, the section shows a short message instead of an empty list.
 
 ## Task Filters

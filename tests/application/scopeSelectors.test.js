@@ -266,6 +266,38 @@ describe('application/selectors/scopeSelectors', () => {
     ]);
   });
 
+  it('focuses on selected team work and its parents without unrelated plan tasks', () => {
+    const state = baseState({
+      selection: { teamIds: ['team-a'], taskTypeNames: [] },
+      view: { options: { taskViewMode: 'plan' } },
+    });
+    state.baseline.features.push(
+      { id: 'relevant-parent', project: 'selected', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [] },
+      { id: 'team-leaf', project: 'selected', parentId: 'relevant-parent', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
+      { id: 'unrelated-parent', project: 'selected', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [] },
+      { id: 'unrelated-leaf', project: 'selected', parentId: 'unrelated-parent', type: 'Feature', state: 'Active', relations: [], capacity: [] },
+      { id: 'team-b-leaf', project: 'selected', parentId: 'relevant-parent', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
+    );
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own', 'hidden-type', 'relevant-parent', 'team-leaf', 'unrelated-parent', 'unrelated-leaf',
+    ]);
+
+    state.view.options = { ...state.view.options, taskViewMode: 'team' };
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own', 'relevant-parent', 'team-leaf',
+    ]);
+
+    state.selection.teamIds = ['team-a', 'team-b'];
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own', 'relevant-parent', 'team-leaf', 'team-b-leaf',
+    ]);
+
+    state.selection.teamIds = [];
+    expect(selectors.getVisibleFeatures()).toEqual([]);
+  });
+
   it('keeps ancestor context for matching team work while hiding unrelated allocations', () => {
     const state = baseState({
       view: { context: { parent: true, child: false, dependency: false, otherAllocations: false } },

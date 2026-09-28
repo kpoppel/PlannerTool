@@ -38,6 +38,7 @@ python3 scripts/migrate.py --apply
 ```
 
 ### Added
+- Added a Plan overview / Team focus task view control under Team Drill-down to hide unrelated plan tasks while retaining parents of selected-team work.
 - Added scope-first planning workflow: a Scope menu for including related work, Context controls for Parent, Child, Dependency, and Other allocations, and Team Drill-down controls with select-all/select-none behavior.
 - Added top-bar Data Funnel and status metrics showing the task and team population in scope versus the tasks currently displayed, with task counts for scope options and capacity tooltips in MainGraph.
 - Added groups feature v2.  Groups can be added at the mouse pointer, dragged to rank them differently, dragger horizontally to move its content, nested with other groups, can contain tasks from any plan, lives with the scenario it was created in until committed. Groups containing the same task supports hierarchical groups. Tasks in a group has a top border color matching the group it belongs to.

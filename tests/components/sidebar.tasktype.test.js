@@ -28,7 +28,26 @@ describe('Sidebar task-type filter', () => {
   });
 
   afterEach(() => {
+    cmd.view.setTaskViewMode('plan');
     if (sidebar && sidebar.isConnected) sidebar.remove();
+  });
+
+  it('switches the team drill-down task view from Plan overview to Team focus', async () => {
+    cmd.view.setTaskViewMode('plan');
+    sidebar._getTeamDrilldownTeams = () => [{ id: 'team-a', name: 'Team A', selected: true }];
+    sidebar.requestUpdate();
+    await sidebar.updateComplete;
+
+    const buttons = sidebar.shadowRoot.querySelectorAll('.team-view-mode button');
+    expect(Array.from(buttons, (button) => button.textContent.trim())).to.deep.equal([
+      'Plan overview', 'Team focus',
+    ]);
+    expect(buttons[0].getAttribute('aria-pressed')).to.equal('true');
+
+    buttons[1].click();
+    await sidebar.updateComplete;
+    expect(sel.view.getTaskViewMode()).to.equal('team');
+    expect(buttons[1].getAttribute('aria-pressed')).to.equal('true');
   });
 
   // -------------------------------------------------------------------------

@@ -217,6 +217,7 @@ export function createViewRestoreCommands(
       createDefaultViewOptions()
     : {
         ...snapshot.view.options,
+        taskViewMode: createDefaultViewOptions().taskViewMode,
         ...viewOptions,
       };
 

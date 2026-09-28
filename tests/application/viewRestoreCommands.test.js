@@ -57,7 +57,7 @@ describe('application/commands/viewRestoreCommands', () => {
         },
         view: {
           ...state.view,
-          options: { timelineScale: 'weeks', displayMode: 'compact' },
+          options: { ...state.view.options, timelineScale: 'weeks', displayMode: 'compact', taskViewMode: 'team' },
           context: { parent: true, child: false, dependency: false, otherAllocations: true },
         },
       }),
@@ -80,6 +80,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(captured.selectedProjects).toEqual({ p1: true, p3: true });
     expect(captured.selectedTeams).toEqual({ t2: true });
     expect(captured.viewOptions.timelineScale).toBe('weeks');
+    expect(captured.viewOptions.taskViewMode).toBe('team');
     expect(captured.viewOptions.selectedFeatureStates).toEqual(['Doing', 'Done']);
     expect(captured.viewOptions.selectedTaskTypes).toEqual(['feature', 'epic']);
     expect(captured.viewOptions.taskFilters).toMatchObject({ schedule: { planned: true, unplanned: false } });
@@ -103,6 +104,7 @@ describe('application/commands/viewRestoreCommands', () => {
         selectedTeams: { t1: false, t2: true },
         viewOptions: {
           timelineScale: 'weeks',
+          taskViewMode: 'team',
           selectedFeatureStates: ['Doing', 'Done'],
           selectedTaskTypes: ['feature'],
           taskFilters: { schedule: { planned: false, unplanned: true }, relations: { hasLinks: true, noLinks: false } },
@@ -136,6 +138,7 @@ describe('application/commands/viewRestoreCommands', () => {
       relations: { hasLinks: true, noLinks: false },
     });
     expect(snapshot.view.options.timelineScale).toBe('weeks');
+    expect(snapshot.view.options.taskViewMode).toBe('team');
     expect(snapshot.view.options.capacityViewMode).toBe('project');
     expect(snapshot.view.context).toEqual({
       parent: true,
@@ -168,9 +171,14 @@ describe('application/commands/viewRestoreCommands', () => {
     const recomputeCapacity = vi.fn();
 
     const cmd = createViewRestoreCommands(store, dataService, null, recomputeCapacity);
+    store.setState((state) => ({
+      ...state,
+      view: { ...state.view, options: { ...state.view.options, taskViewMode: 'team' } },
+    }));
     await cmd.loadAndApplyView('v1');
 
     expect(recomputeCapacity).toHaveBeenCalledTimes(1);
+    expect(store.getState().view.options.taskViewMode).toBe('plan');
   });
 
   it('does not delegate to legacy view services when loading or applying store views', async () => {

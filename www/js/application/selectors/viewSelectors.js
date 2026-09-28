@@ -90,6 +90,10 @@ export function createViewSelectors(store) {
       return Boolean(store.getState().view.options.showOnlyProjectHierarchy);
     },
 
+    getTaskViewMode() {
+      return store.getState().view.options.taskViewMode;
+    },
+
     getContext() {
       const context = store.getState().view.context;
       return {

@@ -63,6 +63,18 @@ describe('application/commands/viewCommands', () => {
     expect(bus.emit).not.toHaveBeenCalled();
   });
 
+  it('switches task view mode and notifies task visibility subscribers', () => {
+    const bus = { emit: vi.fn() };
+    const commands = createViewCommands(store, bus);
+
+    expect(store.getState().view.options.taskViewMode).toBe('plan');
+    commands.setTaskViewMode('team');
+
+    expect(store.getState().view.options.taskViewMode).toBe('team');
+    expect(bus.emit).toHaveBeenCalledWith(FilterEvents.CHANGED);
+    expect(bus.emit).toHaveBeenCalledWith(FeatureEvents.UPDATED);
+  });
+
   it('store branch maps displayMode to condensedCards and packedMode', () => {
     const bus = { emit: vi.fn() };
     const commands = createViewCommands(store, bus);

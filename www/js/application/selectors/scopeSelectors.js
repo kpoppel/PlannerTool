@@ -135,19 +135,23 @@ export function createScopeSelectors(store) {
         .filter((feature) => hasFeatureTeamAllocation(feature, selectedTeamIds))
         .map((feature) => String(feature.id))
     );
-    for (const feature of contextFeatures) {
-      if (selectedProjectIds.has(String(feature.project))) {
-        focusedFeatureIds.add(String(feature.id));
+    const teamFocus = state.view.options.taskViewMode === 'team';
+    if (!teamFocus) {
+      for (const feature of contextFeatures) {
+        if (selectedProjectIds.has(String(feature.project))) {
+          focusedFeatureIds.add(String(feature.id));
+        }
       }
     }
     visibleCache = contextFeatures.filter((feature) => {
       const isSelectedPlan = selectedProjectIds.has(String(feature.project));
       const hasSelectedTeam = hasFeatureTeamAllocation(feature, selectedTeamIds);
       const isFocusedAncestor = isAncestorOf(feature, featuresById, focusedFeatureIds);
+      if (teamFocus && selectedTeamIds.size === 0) return false;
       if (selectedTeamIds.size === 0 && !isSelectedPlan) return false;
       if (selectedTeamIds.size > 0
         && !hasSelectedTeam
-        && !(isSelectedPlan && feature.capacity.length === 0)
+        && !(isSelectedPlan && feature.capacity.length === 0 && !teamFocus)
         && !isFocusedAncestor) return false;
       if (selectedTaskTypeNames.size > 0
         && !selectedTaskTypeNames.has(String(feature.type).toLowerCase())) return false;

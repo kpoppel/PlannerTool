@@ -587,6 +587,9 @@ export class SidebarLit extends LitElement {
       white-space: normal;
       overflow-wrap: anywhere;
     }
+    .team-view-mode-group {
+      margin-top: 12px;
+    }
 
     /* Sidebar-specific chips and lists */
     .sidebar-chip {
@@ -1837,6 +1840,24 @@ export class SidebarLit extends LitElement {
                         </button>
                       </div>
                     `)}
+                  </div>
+                  <div class="team-view-mode-group">
+                    <div class="group-label" id="task-view-label">Task view</div>
+                    <div class="segmented-group context-group team-view-mode" role="group" aria-labelledby="task-view-label">
+                      <button
+                        type="button"
+                        class="segment-btn ${sel.view.getTaskViewMode() === 'plan' ? 'active' : ''}"
+                        aria-pressed=${sel.view.getTaskViewMode() === 'plan'}
+                        @click=${() => cmd.view.setTaskViewMode('plan')}
+                      >Plan overview</button>
+                      <button
+                        type="button"
+                        class="segment-btn ${sel.view.getTaskViewMode() === 'team' ? 'active' : ''}"
+                        aria-pressed=${sel.view.getTaskViewMode() === 'team'}
+                        title="Show work for selected teams and its parents"
+                        @click=${() => cmd.view.setTaskViewMode('team')}
+                      >Team focus</button>
+                    </div>
                   </div>
                 `;
               })()}

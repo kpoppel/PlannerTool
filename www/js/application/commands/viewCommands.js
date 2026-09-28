@@ -147,6 +147,19 @@ export function createViewCommands(store, bus) {
       }
     },
 
+    setTaskViewMode(mode, runtimeOptions = {}) {
+      if (mode !== 'plan' && mode !== 'team') throw new Error(`Unknown task view mode: ${mode}`);
+      if (store.getState().view.options.taskViewMode === mode) return;
+      setViewOptions(
+        (options) => ({ ...options, taskViewMode: mode }),
+        'view.setTaskViewMode'
+      );
+      if (!runtimeOptions.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
+      }
+    },
+
     setDisplayMode(mode, runtimeOptions = {}) {
       const packedMode = mode === 'packed';
       const condensedCards = mode !== 'normal';

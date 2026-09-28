@@ -19,6 +19,7 @@ export function createDefaultViewOptions() {
     showUnassignedCards: true,
     showUnplannedWork: true,
     showOnlyProjectHierarchy: false,
+    taskViewMode: 'plan',
     highlightFeatureRelationMode: true,
     hiddenTypes: [],
     debugFlag: false,
