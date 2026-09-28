@@ -38,6 +38,7 @@ python3 scripts/migrate.py --apply
 ```
 
 ### Added
+- Added keyboard shortcut pills to the View menu display section headings and moved Timeline Scale to Ctrl+Shift+1 to avoid the browser's restore-tab shortcut.
 - Added task hierarchy folding with chevrons embedded in widened plan-color card borders and sidebar fold/unfold controls that preserve timeline dates and group spans.
 - Added a Plan overview / Team focus task view control under Team Drill-down to hide unrelated plan tasks while retaining parents of selected-team work.
 - Added scope-first planning workflow: a Scope menu for including related work, Context controls for Parent, Child, Dependency, and Other allocations, and Team Drill-down controls with select-all/select-none behavior.

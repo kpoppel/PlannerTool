@@ -58,7 +58,7 @@ export function createApplicationShortcutDefinitions(dependencies) {
 
   return [
     shortcut('search', 'f', () => openSearch()),
-    shortcut('timeline-scale', 't', () => {
+    shortcut('timeline-scale', '1', () => {
       commands.setTimelineScale(nextOption(TIMELINE_SCALES, selectors.getTimelineScale()));
     }),
     shortcut('card-display', 'c', () => {
@@ -102,7 +102,9 @@ function matchesKeydown(definition, event) {
   if (!definition.keys) return false;
   if (definition.ctrlKey !== event.ctrlKey) return false;
   if ('shiftKey' in definition && definition.shiftKey !== event.shiftKey) return false;
-  return definition.keys.includes(event.key.toLowerCase());
+  return definition.keys.some((key) =>
+    key === event.key.toLowerCase() || event.code === `Digit${key}`
+  );
 }
 
 function nextOption(options, current) {

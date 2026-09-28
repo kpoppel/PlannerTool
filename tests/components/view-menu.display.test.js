@@ -77,4 +77,24 @@ describe('ViewMenu display controls', () => {
     expect(styles).to.include('text-transform: uppercase');
     menu.remove();
   });
+
+  it('shows the display shortcuts beside their section headings', async () => {
+    const menu = document.createElement('view-menu');
+    document.body.appendChild(menu);
+    await menu.updateComplete;
+
+    const headings = [...menu.shadowRoot.querySelectorAll('.display-title')];
+    expect(headings.map((heading) => heading.textContent.trim())).to.deep.equal([
+      'Timeline Scale Ctrl+Shift+1',
+      'Cards Ctrl+Shift+C',
+      'Task Sort Ctrl+Shift+S',
+      'Graph Type Ctrl+Shift+G',
+      'Saved Views',
+    ]);
+    for (const heading of headings.slice(0, 4)) {
+      expect(heading.querySelector('.shortcut-pill').tagName).to.equal('KBD');
+    }
+    expect(headings[4].querySelector('.shortcut-pill')).to.equal(null);
+    menu.remove();
+  });
 });

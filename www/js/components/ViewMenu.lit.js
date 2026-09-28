@@ -141,15 +141,30 @@ export class ViewMenuLit extends LitElement {
     }
 
     .display-title {
+      align-items: center;
       background: rgba(255, 255, 255, 0.08);
       border-radius: 4px;
       color: rgba(255, 255, 255, 0.78);
+      display: flex;
       font-size: 11px;
       font-weight: 600;
+      justify-content: space-between;
       line-height: 20px;
       margin: 0 0 4px;
       padding: 0 8px;
       text-transform: uppercase;
+    }
+
+    .shortcut-pill {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      color: var(--color-sidebar-text);
+      font: inherit;
+      line-height: 16px;
+      padding: 0 5px;
+      text-transform: none;
+      white-space: nowrap;
     }
 
     .segment-group {
@@ -303,25 +318,25 @@ export class ViewMenuLit extends LitElement {
     return html`
       <div class="menu-popover">
         <div class="display-section">
-          <div class="display-title" role="heading" aria-level="2">Timeline Scale</div>
+          <div class="display-title" role="heading" aria-level="2">Timeline Scale <kbd class="shortcut-pill">Ctrl+Shift+1</kbd></div>
           <div class="segment-group">
             ${[['threeMonths', '3mo'], ['weeks', 'Weeks'], ['months', 'Months'], ['quarters', 'Quarters'], ['years', 'Years']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getTimelineScale() === value ? 'active' : ''}" @click=${() => this._setTimelineScale(value)}>${label}</button>`)}
           </div>
         </div>
         <div class="display-section">
-          <div class="display-title" role="heading" aria-level="2">Cards</div>
+          <div class="display-title" role="heading" aria-level="2">Cards <kbd class="shortcut-pill">Ctrl+Shift+C</kbd></div>
           <div class="segment-group">
             ${[['normal', 'Normal'], ['compact', 'Compact'], ['packed', 'Packed']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getDisplayMode() === value ? 'active' : ''}" @click=${() => this._setDisplayMode(value)}>${label}</button>`)}
           </div>
         </div>
         <div class="display-section">
-          <div class="display-title" role="heading" aria-level="2">Task Sort</div>
+          <div class="display-title" role="heading" aria-level="2">Task Sort <kbd class="shortcut-pill">Ctrl+Shift+S</kbd></div>
           <div class="segment-group">
             ${[['rank', 'Rank'], ['date', 'Date']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getFeatureSortMode() === value && !sel.view.getPackedMode() ? 'active' : ''}" ?disabled=${sel.view.getPackedMode()} @click=${() => this._setFeatureSortMode(value)}>${label}</button>`)}
           </div>
         </div>
         <div class="display-section">
-          <div class="display-title" role="heading" aria-level="2">Graph Type</div>
+          <div class="display-title" role="heading" aria-level="2">Graph Type <kbd class="shortcut-pill">Ctrl+Shift+G</kbd></div>
           <div class="segment-group">
             ${[['team', 'Team'], ['project', 'Project']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getCapacityViewMode() === value ? 'active' : ''}" @click=${() => this._setGraphType(value)}>${label}</button>`)}
           </div>

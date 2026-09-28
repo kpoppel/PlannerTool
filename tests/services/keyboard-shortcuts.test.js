@@ -25,7 +25,14 @@ describe('KeyboardShortcutManager', () => {
     });
     const manager = new KeyboardShortcutManager(document, definitions);
 
-    manager.handleKeydown(keyEvent('t'));
+    const timelineKey = new KeyboardEvent('keydown', {
+      key: '!',
+      code: 'Digit1',
+      ctrlKey: true,
+      shiftKey: true,
+      cancelable: true,
+    });
+    manager.handleKeydown(timelineKey);
     manager.handleKeydown(keyEvent('c'));
     manager.handleKeydown(keyEvent('s'));
     manager.handleKeydown(keyEvent('g'));
@@ -38,6 +45,11 @@ describe('KeyboardShortcutManager', () => {
       ['graph', 'project'],
       ['search'],
     ]);
+    expect(timelineKey.defaultPrevented).to.equal(true);
+
+    const restoreTab = keyEvent('t');
+    manager.handleKeydown(restoreTab);
+    expect(restoreTab.defaultPrevented).to.equal(false);
   });
 
   it('prevents browser zoom and adjusts only the timeline board', () => {
