@@ -14,6 +14,7 @@ import {
   StateFilterEvents,
   TimelineEvents,
   FeatureEvents,
+  BoardEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { getIconTemplate } from '../services/IconService.js';
@@ -32,6 +33,10 @@ export class SidebarLit extends LitElement {
     activeViewData: { type: Object },
     serverStatus: { type: String },
     serverName: { type: String },
+    foldActive: { state: true },
+    foldedCount: { state: true },
+    foldableCount: { state: true },
+    canCollapse: { state: true },
   };
 
   static styles = css`
@@ -591,6 +596,19 @@ export class SidebarLit extends LitElement {
       margin-top: 12px;
     }
 
+    .hierarchy-fold-group { margin-top: 12px; }
+    .hierarchy-fold-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .hierarchy-fold-status { font-size: 11px; opacity: 0.7; text-align: right; }
+    .hierarchy-fold-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 5px; }
+    .hierarchy-fold-actions .segment-btn {
+      min-width: 0;
+      min-height: 36px;
+      padding: 4px 2px;
+      font-size: 11px;
+      line-height: 1.15;
+      white-space: normal;
+    }
+
     /* Sidebar-specific chips and lists */
     .sidebar-chip {
       padding: 0 8px 0 0;
@@ -1033,6 +1051,10 @@ export class SidebarLit extends LitElement {
     this.open = true;
     this.serverStatus = 'loading';
     this.serverName = null;
+    this.foldActive = false;
+    this.foldedCount = 0;
+    this.foldableCount = 0;
+    this.canCollapse = false;
     // Global popover styles are provided by TopMenu; no sidebar-specific injection needed
     this._didRestoreSidebarState = false;
 
@@ -1068,6 +1090,13 @@ export class SidebarLit extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._onFoldState = ({ active, foldedCount, foldableCount, canCollapse }) => {
+      this.foldActive = active;
+      this.foldedCount = foldedCount;
+      this.foldableCount = foldableCount;
+      this.canCollapse = canCollapse;
+    };
+    bus.on(BoardEvents.FOLD_STATE, this._onFoldState);
     this._scheduleDataFunnelRecompute = () => {
       if (this._recomputeDataFunnelScheduled) return;
       this._recomputeDataFunnelScheduled = true;
@@ -1336,6 +1365,7 @@ export class SidebarLit extends LitElement {
 
   disconnectedCallback() {
     // Remove reactive property handlers
+    bus.off(BoardEvents.FOLD_STATE, this._onFoldState);
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
     if (this._onTeamsChanged) bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
     if (this._onScenariosList) bus.off(ScenarioEvents.LIST, this._onScenariosList);
@@ -1734,6 +1764,33 @@ export class SidebarLit extends LitElement {
     this.requestUpdate();
   }
 
+  _renderHierarchyFold() {
+    if (!this.foldActive) return '';
+    const status = this.foldedCount === 0 ? 'All expanded'
+      : this.foldedCount === this.foldableCount ? 'All folded'
+      : `${this.foldedCount} of ${this.foldableCount} branches folded`;
+    return html`<div class="hierarchy-fold-group">
+      <div class="hierarchy-fold-heading">
+        <span class="group-label" id="hierarchy-fold-label">Task hierarchy</span>
+        <span class="hierarchy-fold-status" role="status">${status}</span>
+      </div>
+      <div class="segmented-group hierarchy-fold-actions" role="group" aria-labelledby="hierarchy-fold-label">
+        <button type="button" class="segment-btn" title="Collapse every task hierarchy"
+          ?disabled=${this.foldedCount === this.foldableCount}
+          @click=${() => bus.emit(BoardEvents.FOLD_ACTION, { action: 'collapse-all' })}>Fold all</button>
+        <button type="button" class="segment-btn" title="Collapse one visible level"
+          ?disabled=${!this.canCollapse}
+          @click=${() => bus.emit(BoardEvents.FOLD_ACTION, { action: 'collapse-one' })}>Fold one level</button>
+        <button type="button" class="segment-btn" title="Expand one hidden level"
+          ?disabled=${this.foldedCount === 0}
+          @click=${() => bus.emit(BoardEvents.FOLD_ACTION, { action: 'expand-one' })}>Expand one level</button>
+        <button type="button" class="segment-btn" title="Expand every task hierarchy"
+          ?disabled=${this.foldedCount === 0}
+          @click=${() => bus.emit(BoardEvents.FOLD_ACTION, { action: 'expand-all' })}>Expand all</button>
+      </div>
+    </div>`;
+  }
+
   _setGraphType(type) {
     this._graphType = type;
     try {
@@ -1861,6 +1918,7 @@ export class SidebarLit extends LitElement {
                   </div>
                 `;
               })()}
+              ${this._renderHierarchyFold()}
             </div>
           </section>
 

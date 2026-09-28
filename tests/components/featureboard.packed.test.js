@@ -10,8 +10,43 @@ import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import { initTimeline, _resetTimelineState } from '../../www/js/components/Timeline.lit.js';
 import { packIntoRows, buildGroupBandItems } from '../../www/js/components/groupBandLayout.js';
+import { buildFoldModel, applyFoldAction } from '../../www/js/components/hierarchyFold.js';
 import '../../www/js/components/FeatureBoard.lit.js';
 import { sel } from '../../www/js/application/imports.js';
+
+describe('Task hierarchy folding', () => {
+  const features = [
+    { id: 'root' },
+    { id: 'child', parentId: 'root' },
+    { id: 'grandchild', parentId: 'child' },
+    { id: 'sibling', parentId: 'root' },
+    { id: 'other', parentId: 'root' },
+  ];
+  const sections = new Map(features.map((feature) => [feature.id, 'g1']));
+  sections.set('other', 'g2');
+
+  it('hides only displayed descendants in the same section and retains parent rows', () => {
+    const model = buildFoldModel(features, sections, new Set(['root']));
+    expect([...model.hidden]).to.deep.equal(['child', 'grandchild', 'sibling']);
+    expect(model.counts.get('root')).to.equal(3);
+    expect(model.counts.has('other')).to.be.false;
+    expect(model.visible.map((feature) => feature.id)).to.deep.equal(['root', 'other']);
+  });
+
+  it('folds and unfolds one visible level at a time without losing nested folds', () => {
+    let folded = new Set();
+    folded = applyFoldAction(buildFoldModel(features, sections, folded), folded, 'collapse-one');
+    expect([...folded]).to.deep.equal(['child']);
+    folded = applyFoldAction(buildFoldModel(features, sections, folded), folded, 'collapse-one');
+    expect([...folded]).to.deep.equal(['child', 'root']);
+    folded = applyFoldAction(buildFoldModel(features, sections, folded), folded, 'expand-one');
+    expect([...folded]).to.deep.equal(['child']);
+    expect(buildFoldModel(features, sections, folded).visible.map((feature) => feature.id))
+      .to.deep.equal(['root', 'child', 'sibling', 'other']);
+    folded = applyFoldAction(buildFoldModel(features, sections, folded), folded, 'expand-all');
+    expect(folded.size).to.equal(0);
+  });
+});
 
 describe('FeatureBoard._packIntoRows', () => {
   let el;
@@ -358,6 +393,49 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
       uniqueIds.size,
       `Expected no duplicate feature IDs in normal mode render list, got: [${ids.join(', ')}]`
     );
+  });
+
+  it('folds rendered descendants without changing the parent task dates or position', async () => {
+    const parent = { ...makeFeature('parent'), originalRank: 1 };
+    const child = { ...makeFeature('child'), parentId: 'parent', originalRank: 2 };
+    const grandchild = { ...makeFeature('grandchild'), parentId: 'child', originalRank: 3 };
+    const other = { ...makeFeature('other'), originalRank: 4 };
+    effectiveFeatures = [parent, child, grandchild, other];
+
+    await board.renderFeatures();
+    const original = board._fullRenderList.find((item) => item.feature.id === 'parent');
+    const originalWidth = original.width;
+    board.foldHierarchy('collapse-all');
+    await board.updateComplete;
+    expect(board._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
+      .to.deep.equal(['parent', 'other']);
+    const foldedParent = board._fullRenderList.find((item) => item.feature.id === 'parent');
+    expect(foldedParent.foldCount).to.equal(2);
+    expect(foldedParent.width).to.equal(originalWidth);
+    expect(foldedParent.feature.start).to.equal(parent.start);
+
+    board.foldHierarchy('expand-one');
+    await board.updateComplete;
+    expect(board._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
+      .to.deep.equal(['parent', 'child', 'other']);
+  });
+
+  it('retains a group pill date span when its child task rows are folded', async () => {
+    const parent = { ...makeFeature('parent'), originalRank: 1, end: '2025-02-01' };
+    const child = { ...makeFeature('child'), parentId: 'parent', originalRank: 2 };
+    effectiveFeatures = [parent, child];
+    sel.group.getDisplayGroupsForSelectedPlans.returns([{
+      id: 'g1', plan_id: 'p1', name: 'Group', members: ['parent', 'child'], rank: 1,
+    }]);
+
+    await board.renderFeatures();
+    const expandedWidth = board._fullRenderList.find((item) => item.isGroup).width;
+    board.foldHierarchy('collapse-all');
+    await board.updateComplete;
+
+    expect(board._fullRenderList.find((item) => item.isGroup).width).to.equal(expandedWidth);
+    expect(board._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
+      .to.deep.equal(['parent']);
   });
 
   it('compact mode: duplicate IDs in source features produce only one card per ID', async () => {

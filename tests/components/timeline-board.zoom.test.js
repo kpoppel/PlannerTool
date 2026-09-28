@@ -1,7 +1,19 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import { TimelineBoard } from '../../www/js/components/TimelineBoard.lit.js';
+import { bus } from '../../www/js/core/EventBus.js';
+import { BoardEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('TimelineBoard board zoom', () => {
+  it('leaves hierarchy controls to the sidebar instead of a toolbar above the timeline', async () => {
+    const board = await fixture(html`<timeline-board></timeline-board>`);
+    expect(board.shadowRoot.querySelector('.fold-toolbar')).to.be.null;
+    bus.emit(BoardEvents.FOLD_STATE, {
+      active: true, foldedCount: 1, foldableCount: 3, canCollapse: true,
+    });
+    await board.updateComplete;
+    expect(board.shadowRoot.querySelector('.fold-toolbar')).to.be.null;
+  });
+
   it('steps, clamps, and resets board-local zoom', () => {
     const board = new TimelineBoard();
 

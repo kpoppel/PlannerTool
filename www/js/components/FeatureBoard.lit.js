@@ -38,6 +38,7 @@ import {
   resolveInsertionSlot,
 } from './groupBandLayout.js';
 import { RANK_GAP } from '../application/shared/ordering.js';
+import { applyFoldAction, buildFoldModel } from './hierarchyFold.js';
 import './FeatureGroup.lit.js';
 export { initBoard } from './FeatureBoard.init.js';
 
@@ -66,6 +67,8 @@ class FeatureBoard extends LitElement {
     this._groupBands = [];
     // Set of group IDs the user has collapsed.
     this._collapsedGroups = new Set();
+    this._foldedFeatures = new Set();
+    this._foldModel = null;
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
     this._overlayOffset = 0;
     this._renderGeneration = 0;
@@ -92,6 +95,8 @@ class FeatureBoard extends LitElement {
       }
     };
     bus.on(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
+    this._onFoldAction = ({ action }) => this.foldHierarchy(action);
+    bus.on(BoardEvents.FOLD_ACTION, this._onFoldAction);
     this._onPresentationScopeChanged = () => {
       this.renderFeatures();
     };
@@ -289,6 +294,9 @@ class FeatureBoard extends LitElement {
             .project=${item.project}
             .groupColor=${item.groupColor}
             .hideGhostTitle=${!!item.hideGhostTitle}
+            .foldCount=${item.foldCount}
+            .folded=${item.folded}
+            @feature-fold-toggle=${this._onFeatureFoldToggle}
             style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px"
           ></feature-card-lit>`;
         }
@@ -352,6 +360,19 @@ class FeatureBoard extends LitElement {
       this._collapsedGroups.delete(String(groupId));
     }
     // Re-layout: collapsed groups hide their children
+    this.renderFeatures();
+  }
+
+  _onFeatureFoldToggle(event) {
+    const id = String(event.detail.featureId);
+    if (this._foldedFeatures.has(id)) this._foldedFeatures.delete(id);
+    else this._foldedFeatures.add(id);
+    this.renderFeatures();
+  }
+
+  foldHierarchy(action) {
+    if (this._foldModel === null) return;
+    this._foldedFeatures = applyFoldAction(this._foldModel, this._foldedFeatures, action);
     this.renderFeatures();
   }
 
@@ -543,6 +564,7 @@ class FeatureBoard extends LitElement {
     if (this._onOverlayOffsetChanged) {
       bus.off(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
     }
+    bus.off(BoardEvents.FOLD_ACTION, this._onFoldAction);
     if (this._onPresentationScopeChanged) {
       bus.off(FilterEvents.CHANGED, this._onPresentationScopeChanged);
     }
@@ -667,6 +689,57 @@ class FeatureBoard extends LitElement {
       candidateSwimlanes
     );
 
+    const groupByMember = new Map();
+    const groupsById = new Map(displayGroups.map((group) => [String(group.id), group]));
+    for (const group of displayGroups) {
+      const members = group.members === undefined ? [] : group.members;
+      for (const id of members) groupByMember.set(String(id), String(group.id));
+    }
+    const groupIsCollapsed = (groupId) => {
+      let current = groupId;
+      while (current) {
+        if (this._collapsedGroups.has(current)) return true;
+        const group = groupsById.get(current);
+        current = group && group.parent_id ? String(group.parent_id) : null;
+      }
+      return false;
+    };
+    const foldableFeatures = visibleFeatures.filter(
+      (feature) => !groupIsCollapsed(groupByMember.get(String(feature.id)))
+    );
+    const sections = new Map();
+    const allFeaturesById = new Map(rawFeatures.map((feature) => [String(feature.id), feature]));
+    for (const feature of foldableFeatures) {
+      const lane = swimlaneActive ? assignFeatureToSwimlane(
+        feature, candidateSwimlanes, allFeaturesById, context,
+        groupedOwnerPlanByFeatureId.get(String(feature.id))
+      ) : 'board';
+      const groupId = groupByMember.get(String(feature.id));
+      sections.set(String(feature.id), `${lane}:${groupId ? groupId : 'ungrouped'}`);
+    }
+    this._foldModel = isPacked ? null : buildFoldModel(
+      this._orderFeaturesHierarchically(foldableFeatures, sel.view.getFeatureSortMode()),
+      sections,
+      this._foldedFeatures
+    );
+    bus.emit(BoardEvents.FOLD_STATE, {
+      active: this._foldModel !== null && this._foldModel.counts.size > 0,
+      foldableCount: this._foldModel === null ? 0 : this._foldModel.counts.size,
+      foldedCount: this._foldModel === null ? 0 : [...this._foldModel.counts.keys()].filter(
+        (id) => this._foldedFeatures.has(id)
+      ).length,
+      canCollapse: this._foldModel !== null && this._foldModel.visible.some(
+        (feature) => this._foldModel.counts.has(String(feature.id))
+          && !this._foldedFeatures.has(String(feature.id))
+      ),
+    });
+    const displayedFeatures = this._foldModel === null ? visibleFeatures : this._foldModel.visible;
+    const foldProps = (feature) => ({
+      foldCount: this._foldModel === null || !this._foldModel.counts.has(String(feature.id))
+        ? 0 : this._foldModel.counts.get(String(feature.id)),
+      folded: this._foldedFeatures.has(String(feature.id)),
+    });
+
     let renderList;
     let totalHeight;
 
@@ -684,7 +757,7 @@ class FeatureBoard extends LitElement {
 
       // Group visible features into per-swimlane buckets
       const buckets = new Map(swimlanes.map((s) => [s.id, []]));
-      for (const feature of visibleFeatures) {
+      for (const feature of displayedFeatures) {
         const sid = assignFeatureToSwimlane(
           feature,
           swimlanes,
@@ -798,8 +871,17 @@ class FeatureBoard extends LitElement {
           const { items: groupItems, totalHeight: gHeight, bands: groupBandItems } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
             sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
-            { preserveFeatureOrder: true }
+            {
+              preserveFeatureOrder: true,
+              dateFeatures: visibleFeatures.filter((feature) => assignFeatureToSwimlane(
+                feature, swimlanes, allFeaturesById, context,
+                groupedOwnerPlanByFeatureId.get(String(feature.id))
+              ) === swimlane.id),
+            }
           );
+          for (const item of groupItems) {
+            if (!item.isGroup) Object.assign(item, foldProps(item.feature));
+          }
           renderList.push(...groupItems);
           groupBands.push(...groupBandItems);
           swimlaneHeight = Math.max(gHeight, laneHeight());
@@ -818,6 +900,7 @@ class FeatureBoard extends LitElement {
             for (const bar of row) {
               renderList.push({
                 feature: bar.feature,
+                ...foldProps(bar.feature),
                 left: bar.left,
                 width: bar.width,
                 top,
@@ -840,6 +923,7 @@ class FeatureBoard extends LitElement {
             const pos = computePosition(feature, months) || {};
             renderList.push({
               feature,
+              ...foldProps(feature),
               left: pos.left ?? 0,
               width: pos.width ?? 0,
               top: swimlaneTop + laneIndex * laneHeight(),
@@ -893,15 +977,18 @@ class FeatureBoard extends LitElement {
       // what stamps the shared ordering keys onto every row, which the group
       // insertion caret needs in order to point between two ungrouped tasks.
       const visibleFiltered = this._orderFeaturesHierarchically(
-        visibleFeatures,
+        displayedFeatures,
         sel.view.getFeatureSortMode()
       );
       const { items: groupItems, totalHeight: gHeight, bands: groupBandItems } = buildGroupBandItems(
         visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,
         sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
-        { preserveFeatureOrder: true }
+        { preserveFeatureOrder: true, dateFeatures: visibleFeatures }
       );
       renderList = groupItems;
+      for (const item of renderList) {
+        if (!item.isGroup) Object.assign(item, foldProps(item.feature));
+      }
       this._groupBands = groupBandItems;
       totalHeight = allGroups.length > 0 ? gHeight : gHeight + this._overlayOffset;
     }

@@ -25,6 +25,49 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(root.textContent).to.include('2025-01-01');
   });
 
+  it('shows a keyboard-accessible fold control only for parents and emits a toggle', async () => {
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'parent', title: 'Parent task', start: '2025-01-01', end: '2025-01-05' };
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.fold-toggle')).to.be.null;
+
+    el.foldCount = 3;
+    await el.updateComplete;
+    const button = el.shadowRoot.querySelector('.fold-toggle');
+    const card = el.shadowRoot.querySelector('.feature-card');
+    expect(card.contains(button)).to.be.true;
+    expect(card.classList.contains('has-children')).to.be.true;
+    expect(button.getAttribute('aria-expanded')).to.equal('true');
+    expect(button.getAttribute('aria-label')).to.include('3 tasks');
+    let requestedId;
+    el.addEventListener('feature-fold-toggle', (event) => { requestedId = event.detail.featureId; });
+    button.click();
+    expect(requestedId).to.equal('parent');
+
+    el.folded = true;
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.fold-toggle').getAttribute('aria-expanded')).to.equal('false');
+    expect(card.querySelector('.fold-toggle .fold-count').textContent).to.equal('3');
+    expect(button.firstElementChild.classList.contains('fold-chevron')).to.be.true;
+    expect(button.lastElementChild.classList.contains('fold-count')).to.be.true;
+    el.foldCount = 1;
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.fold-toggle').getAttribute('aria-label')).to.include('1 task under');
+    expect(el.shadowRoot.querySelector('.fold-count').getAttribute('title')).to.equal('1 task hidden');
+  });
+
+  it('does not clip the fold control on narrow or small parent cards', async () => {
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'parent', title: 'Parent task', start: '2025-01-01', end: '2025-01-05' };
+    el.foldCount = 2;
+    await el.updateComplete;
+    const card = el.shadowRoot.querySelector('.feature-card');
+    expect(card.classList.contains('has-children')).to.be.true;
+    expect(el.constructor.styles.cssText).to.match(
+      /\.feature-card\.narrow\.has-children,\s*\.feature-card\.small-feature\.has-children\s*\{[^}]*overflow:\s*visible;/
+    );
+  });
+
   it('applyVisuals updates styles and selection', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = { id: 'f2', title: 'Another' };

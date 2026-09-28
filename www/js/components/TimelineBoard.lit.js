@@ -284,6 +284,7 @@ export class TimelineBoard extends LitElement {
   // Public API
   // ---------------------------------------------------------------------------
 
+
   scrollTo(x, y) {
     const scroll = this.shadowRoot.querySelector('#scroll-container');
     // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.

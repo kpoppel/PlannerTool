@@ -149,6 +149,8 @@ export const BoardEvents = {
   OVERLAY_OFFSET_CHANGED: Symbol('board:overlay-offset-changed'),
   /** Board zoom (ctrl +/-) changed; row heights derived from laneHeight() must be recomputed. */
   ZOOM_CHANGED: Symbol('board:zoom-changed'),
+  FOLD_ACTION: Symbol('board:fold-action'),
+  FOLD_STATE: Symbol('board:fold-state'),
 };
 
 // Group events — fired by GroupService

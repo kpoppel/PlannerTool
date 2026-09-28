@@ -12,7 +12,7 @@ import { expect } from '@open-wc/testing';
 import '../../www/js/components/Sidebar.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
-import { FilterEvents, FeatureEvents } from '../../www/js/core/EventRegistry.js';
+import { BoardEvents, FilterEvents, FeatureEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('Sidebar task-type filter', () => {
   let sidebar;
@@ -48,6 +48,45 @@ describe('Sidebar task-type filter', () => {
     await sidebar.updateComplete;
     expect(sel.view.getTaskViewMode()).to.equal('team');
     expect(buttons[1].getAttribute('aria-pressed')).to.equal('true');
+  });
+
+  it('shows four task hierarchy commands below Task view and tracks board state', async () => {
+    sidebar._getTeamDrilldownTeams = () => [{ id: 'team-a', name: 'Team A', selected: true }];
+    bus.emit(BoardEvents.FOLD_STATE, {
+      active: true, foldedCount: 1, foldableCount: 3, canCollapse: true,
+    });
+    await sidebar.updateComplete;
+
+    const taskView = sidebar.shadowRoot.querySelector('.team-view-mode-group');
+    const hierarchy = sidebar.shadowRoot.querySelector('.hierarchy-fold-group');
+    expect(hierarchy).to.exist;
+    expect(Boolean(taskView.compareDocumentPosition(hierarchy) & Node.DOCUMENT_POSITION_FOLLOWING)).to.be.true;
+    expect(hierarchy.textContent).to.include('1 of 3 branches folded');
+    const buttons = hierarchy.querySelectorAll('button');
+    expect(buttons).to.have.length(4);
+    expect(Array.from(buttons, (button) => button.textContent.trim())).to.deep.equal([
+      'Fold all', 'Fold one level', 'Expand one level', 'Expand all',
+    ]);
+    const actions = [];
+    const onAction = ({ action }) => actions.push(action);
+    bus.on(BoardEvents.FOLD_ACTION, onAction);
+    try {
+      for (const button of buttons) button.click();
+      expect(actions).to.deep.equal(['collapse-all', 'collapse-one', 'expand-one', 'expand-all']);
+    } finally {
+      bus.off(BoardEvents.FOLD_ACTION, onAction);
+    }
+    bus.emit(BoardEvents.FOLD_STATE, {
+      active: true, foldedCount: 3, foldableCount: 3, canCollapse: false,
+    });
+    await sidebar.updateComplete;
+    expect(hierarchy.querySelectorAll('button')[0].disabled).to.be.true;
+    expect(hierarchy.querySelectorAll('button')[1].disabled).to.be.true;
+
+    sidebar._getTeamDrilldownTeams = () => [];
+    sidebar.requestUpdate();
+    await sidebar.updateComplete;
+    expect(sidebar.shadowRoot.querySelector('.hierarchy-fold-group')).to.exist;
   });
 
   // -------------------------------------------------------------------------

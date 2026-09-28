@@ -267,7 +267,7 @@ export function resolveGroupDropSlot(items, groupId, y, bottomY) {
  * @param {boolean} condensed        Use condensed card height (normal mode)
  * @param {boolean} packed           Pack consecutive task rows horizontally
  * @param {Set<string>} collapsedGroups  Set of collapsed group IDs
- * @param {{preserveFeatureOrder?: boolean}} options  Layout options
+ * @param {{preserveFeatureOrder?: boolean, dateFeatures?: Array}} options  Layout options
  * @returns {{ items: Array, totalHeight: number, bands: Array }}
  */
 export function buildGroupBandItems(
@@ -314,15 +314,23 @@ export function buildGroupBandItems(
     orderedTaskFeatures.map((f, index) => [String(f.id), (index + 1) * RANK_GAP])
   );
   const featureById = new Map(orderedFeatures.map((f) => [String(f.id), f]));
+  const dateFeatureById = options.dateFeatures
+    ? new Map(options.dateFeatures.map((feature) => [String(feature.id), feature]))
+    : featureById;
 
   // groupId → its member features that are actually visible
   const memberIds = (group) => (group.members === undefined ? [] : group.members);
   const featuresByGroup = new Map();
+  const datesByGroup = new Map();
   const childGroupsByParent = new Map();
   for (const group of planGroups) {
     featuresByGroup.set(
       String(group.id),
       memberIds(group).map((taskId) => featureById.get(String(taskId))).filter(Boolean)
+    );
+    datesByGroup.set(
+      String(group.id),
+      memberIds(group).map((taskId) => dateFeatureById.get(String(taskId))).filter(Boolean)
     );
     childGroupsByParent.set(String(group.id), []);
   }
@@ -425,7 +433,7 @@ export function buildGroupBandItems(
 
   /** Aggregate dates from a group and all its descendants for the pill span. */
   const collectDates = (groupId) => {
-    const direct = featuresByGroup.get(String(groupId));
+    const direct = datesByGroup.get(String(groupId));
     const starts = direct.map((f) => f.start).filter(Boolean);
     const ends = direct.map((f) => f.end).filter(Boolean);
     for (const child of childGroupsByParent.get(String(groupId))) {

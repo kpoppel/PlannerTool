@@ -31,6 +31,8 @@ export class FeatureCardLit extends LitElement {
     /** When true, suppresses the ghost (overflow) title label.
      *  Required in packed mode where multiple cards share a lane. */
     hideGhostTitle: { type: Boolean },
+    foldCount: { type: Number },
+    folded: { type: Boolean },
   };
 
   static styles = css`
@@ -62,6 +64,45 @@ export class FeatureCardLit extends LitElement {
 
     .feature-card:hover {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .fold-toggle {
+      position: absolute;
+      z-index: 4;
+      left: calc(-24px * var(--board-zoom, 1));
+      top: 0;
+      width: calc(24px * var(--board-zoom, 1));
+      height: 100%;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      background: transparent;
+      color: white;
+      text-shadow: 0 1px 2px #202d30, 0 -1px 2px #202d30;
+      cursor: pointer;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .fold-toggle:hover, .fold-toggle:focus-visible {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .fold-toggle:focus-visible {
+      outline: 2px solid #176d68;
+      outline-offset: 2px;
+    }
+
+    .fold-count {
+      font-size: calc(10px * var(--board-zoom, 1));
+      font-weight: 600;
+    }
+
+    .fold-chevron {
+      font-size: calc(16px * var(--board-zoom, 1));
     }
 
     /* Group membership marker: a bar drawn on top of the card edge rather than
@@ -179,6 +220,10 @@ export class FeatureCardLit extends LitElement {
       border-left-width: 4px;
       border-left-style: dashed;
       border-left-color: var(--project-color, #999);
+    }
+
+    .feature-card.has-children {
+      border-left-width: calc(24px * var(--board-zoom, 1));
     }
 
     .feature-card.ghosted:hover {
@@ -321,6 +366,11 @@ export class FeatureCardLit extends LitElement {
       padding: calc(2px * var(--board-zoom, 1)) 6px;
       overflow: hidden;
       cursor: pointer;
+    }
+
+    .feature-card.narrow.has-children,
+    .feature-card.small-feature.has-children {
+      overflow: visible;
     }
 
     /* Hide most internal content visually but keep the title-row visible
@@ -504,6 +554,8 @@ export class FeatureCardLit extends LitElement {
     this.project = null;
     this.groupColor = null;
     this.hideGhostTitle = false;
+    this.foldCount = 0;
+    this.folded = false;
     this._suppressClickUntil = 0;
     this._rootCard = null;
     this._titleEl = null;
@@ -927,6 +979,15 @@ export class FeatureCardLit extends LitElement {
     return html`<span class="feature-card-icon ${type.toLowerCase()}">${getIconTemplate(type)}</span>`;
   }
 
+  _toggleFold(event) {
+    event.stopPropagation();
+    this.dispatchEvent(new CustomEvent('feature-fold-toggle', {
+      detail: { featureId: this.feature.id },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
   _splitTitleAtMiddle(title) {
     if (!title) return '';
     const words = String(title).split(/\s+/);
@@ -971,6 +1032,7 @@ export class FeatureCardLit extends LitElement {
       ghosted: isUnplanned,
       completed: isCompleted,
       'in-group': !!this.groupColor,
+      'has-children': this.foldCount > 0,
     };
 
     return html`
@@ -987,6 +1049,15 @@ export class FeatureCardLit extends LitElement {
         @contextmenu=${this._handleContextMenu}
         part="feature-card"
       >
+        ${this.foldCount > 0 ? html`<button
+          class="fold-toggle"
+          type="button"
+          aria-expanded=${this.folded ? 'false' : 'true'}
+          aria-label=${`${this.folded ? 'Expand' : 'Collapse'} ${this.foldCount} ${this.foldCount === 1 ? 'task' : 'tasks'} under ${this.feature.title}`}
+          title=${`${this.folded ? 'Expand' : 'Collapse'} ${this.foldCount} ${this.foldCount === 1 ? 'task' : 'tasks'}`}
+          @mousedown=${(event) => event.stopPropagation()}
+          @click=${this._toggleFold}
+        ><span class="fold-chevron">${this.folded ? '▸' : '▾'}</span>${this.folded ? html`<span class="fold-count" title=${`${this.foldCount} ${this.foldCount === 1 ? 'task' : 'tasks'} hidden`}>${this.foldCount}</span>` : ''}</button>` : ''}
         ${this._renderTeamLoadRow()}
         <div class="title-row">
           <div class="small-feature-indicator">

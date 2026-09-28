@@ -38,6 +38,7 @@ python3 scripts/migrate.py --apply
 ```
 
 ### Added
+- Added task hierarchy folding with chevrons embedded in widened plan-color card borders and sidebar fold/unfold controls that preserve timeline dates and group spans.
 - Added a Plan overview / Team focus task view control under Team Drill-down to hide unrelated plan tasks while retaining parents of selected-team work.
 - Added scope-first planning workflow: a Scope menu for including related work, Context controls for Parent, Child, Dependency, and Other allocations, and Team Drill-down controls with select-all/select-none behavior.
 - Added top-bar Data Funnel and status metrics showing the task and team population in scope versus the tasks currently displayed, with task counts for scope options and capacity tooltips in MainGraph.
