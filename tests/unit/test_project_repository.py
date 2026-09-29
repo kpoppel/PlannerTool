@@ -2,6 +2,7 @@
 import pytest
 
 from planner_lib.repository.project_repository import ProjectRepository
+from planner_lib.backend.config import ConfigBackend
 from planner_lib.backend.azure import AzureDevOpsBackend
 from planner_lib.projects.metadata_service import AzureProjectMetadataService
 
@@ -77,6 +78,21 @@ def test_project_repository_delegates_to_backend():
     projects = repo.list_projects()
     assert len(projects) == 1
     assert projects[0]['name'] == 'TeamA'
+
+
+def test_configured_container_order_is_exposed_on_projects():
+    cache = FakeDiskCache()
+    cache.save('config', 'projects', {
+        'container_types': ['B', 'A', 'C'],
+        'project_map': [
+            {'name': 'Alpha', 'type': 'A'},
+            {'name': 'Bravo', 'type': 'B'},
+            {'name': 'Charlie', 'type': 'C'},
+        ],
+    })
+    backend = ConfigBackend(cache)
+    projects = backend.fetch_projects()
+    assert [project['container_order'] for project in projects] == [1, 0, 2]
 
 
 # ---------------------------------------------------------------------------

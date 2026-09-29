@@ -45,6 +45,7 @@ export class AdminProjects extends BaseConfigComponent {
     _editMetadataLoading: { type: Boolean, state: true },
     _editMetadataError: { type: String, state: true },
     _iterationSets: { type: Array, state: true },
+    newContainerType: { type: String, state: true },
   };
 
   static styles = [
@@ -54,6 +55,7 @@ export class AdminProjects extends BaseConfigComponent {
 
   constructor() {
     super();
+    this.content = this.defaultContent;
     this.editingIndex = -1;
     this.localProjects = [];
     this.availableTaskTypes = [];
@@ -71,11 +73,12 @@ export class AdminProjects extends BaseConfigComponent {
     this._editMetadataLoading = false;
     this._editMetadataError = '';
     this._iterationSets = [];
+    this.newContainerType = '';
   }
 
   get configType() { return 'projects'; }
   get title() { return 'Projects Configuration'; }
-  get defaultContent() { return { project_map: [] }; }
+  get defaultContent() { return { container_types: ['project', 'team'], project_map: [] }; }
 
   connectedCallback() {
     super.connectedCallback();
@@ -282,7 +285,7 @@ export class AdminProjects extends BaseConfigComponent {
 
     const newProject = {
       name: areaPath.split(sep).slice(-1)[0] || areaPath,
-      type: 'project',
+      type: this.containerTypes[0],
       area_path: areaPath,
       task_types: metadata?.types ? [...metadata.types] : [],
       include_states: metadata?.states ? [...metadata.states] : [],
@@ -301,7 +304,7 @@ export class AdminProjects extends BaseConfigComponent {
   addNewProject() {
     const newProject = {
       name: 'New Project',
-      type: 'project',
+      type: this.containerTypes[0],
       area_path: '',
       task_types: [],
       include_states: [],
@@ -342,6 +345,42 @@ export class AdminProjects extends BaseConfigComponent {
     this.editingIndex = -1;
     this.content = { ...this.content, project_map: [...this.localProjects] };
     this.requestUpdate();
+  }
+
+  get containerTypes() {
+    return this.content.container_types;
+  }
+
+  addContainerType() {
+    const type = this.newContainerType.trim();
+    if (!type || this.containerTypes.some((item) => item.toLowerCase() === type.toLowerCase())) {
+      this.statusMsg = 'Enter a unique container type';
+      this.statusType = 'error';
+      return;
+    }
+    this.content = { ...this.content, container_types: [...this.containerTypes, type] };
+    this.newContainerType = '';
+  }
+
+  removeContainerType(type) {
+    if (this.containerTypes.length === 1) return;
+    if (this.localProjects.some((project) => project.type === type)) {
+      this.statusMsg = `Move plans out of ${type} before removing it`;
+      this.statusType = 'error';
+      return;
+    }
+    this.content = {
+      ...this.content,
+      container_types: this.containerTypes.filter((item) => item !== type),
+    };
+  }
+
+  moveContainerType(from, to) {
+    if (to < 0 || to >= this.containerTypes.length) return;
+    const types = [...this.containerTypes];
+    const [type] = types.splice(from, 1);
+    types.splice(to, 0, type);
+    this.content = { ...this.content, container_types: types };
   }
 
   deleteProject(index) {

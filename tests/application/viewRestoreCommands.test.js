@@ -7,6 +7,7 @@ import {
 } from '../../www/js/core/EventRegistry.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 import { createViewRestoreCommands } from '../../www/js/application/commands/viewRestoreCommands.js';
+import { createViewCommands } from '../../www/js/application/commands/viewCommands.js';
 import { store } from '../../www/js/application/store.js';
 
 describe('application/commands/viewRestoreCommands', () => {
@@ -57,7 +58,7 @@ describe('application/commands/viewRestoreCommands', () => {
         },
         view: {
           ...state.view,
-          options: { ...state.view.options, timelineScale: 'weeks', displayMode: 'compact', taskViewMode: 'team' },
+          options: { ...state.view.options, timelineScale: 'weeks', displayMode: 'compact', taskViewMode: 'team', focusedPlanId: 'p3' },
           context: { parent: true, child: false, dependency: false, otherAllocations: true },
         },
       }),
@@ -81,6 +82,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(captured.selectedTeams).toEqual({ t2: true });
     expect(captured.viewOptions.timelineScale).toBe('weeks');
     expect(captured.viewOptions.taskViewMode).toBe('team');
+    expect(captured.viewOptions.focusedPlanId).toBe('p3');
     expect(captured.viewOptions.selectedFeatureStates).toEqual(['Doing', 'Done']);
     expect(captured.viewOptions.selectedTaskTypes).toEqual(['feature', 'epic']);
     expect(captured.viewOptions.taskFilters).toMatchObject({ schedule: { planned: true, unplanned: false } });
@@ -90,6 +92,32 @@ describe('application/commands/viewRestoreCommands', () => {
       dependency: false,
       otherAllocations: true,
     });
+  });
+
+  it('round-trips the connected-plan focus and clears it for older views', async () => {
+    let savedView;
+    const dataService = {
+      saveView: vi.fn(async (payload) => {
+        savedView = { ...payload, id: 'saved' };
+        return { id: 'saved' };
+      }),
+      listViews: vi.fn(async () => [savedView]),
+      getView: vi.fn(async (id) => id === 'saved' ? savedView : {
+        id: 'older', selectedProjects: {}, selectedTeams: {}, viewOptions: {},
+      }),
+    };
+    const viewCommands = createViewCommands(store, bus);
+    const restoreCommands = createViewRestoreCommands(store, dataService, null, vi.fn());
+    viewCommands.setFocusedPlanId('program-1');
+
+    await restoreCommands.saveCurrentView('Program focus');
+    expect(savedView.viewOptions.focusedPlanId).toBe('program-1');
+    viewCommands.setFocusedPlanId('team-f');
+    await restoreCommands.loadAndApplyView('saved');
+    expect(store.getState().view.options.focusedPlanId).toBe('program-1');
+
+    await restoreCommands.loadAndApplyView('older');
+    expect(store.getState().view.options.focusedPlanId).toBe('');
   });
 
   it('loadAndApplyView applies stored view payload (selection/filter/options)', async () => {
@@ -109,6 +137,7 @@ describe('application/commands/viewRestoreCommands', () => {
           selectedTaskTypes: ['feature'],
           taskFilters: { schedule: { planned: false, unplanned: true }, relations: { hasLinks: true, noLinks: false } },
           capacityViewMode: 'project',
+          focusedPlanId: 'p3',
           context: {
             parent: true,
             child: true,
@@ -140,6 +169,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(snapshot.view.options.timelineScale).toBe('weeks');
     expect(snapshot.view.options.taskViewMode).toBe('team');
     expect(snapshot.view.options.capacityViewMode).toBe('project');
+    expect(snapshot.view.options.focusedPlanId).toBe('p3');
     expect(snapshot.view.context).toEqual({
       parent: true,
       child: true,

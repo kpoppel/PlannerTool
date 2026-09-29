@@ -113,6 +113,11 @@ class ConfigBackend(
         """Return all configured projects in frontend-ready shape."""
         cfg = self._storage.load("config", "projects") or {}
         project_map = cfg.get("project_map") or []
+        if not project_map:
+            return []
+        container_order = {
+            type_name: index for index, type_name in enumerate(cfg['container_types'])
+        }
 
         global_hierarchy: list = []
         global_state_sequence: list = []
@@ -128,6 +133,7 @@ class ConfigBackend(
                 id=slugify(p.get("name"), prefix="project-"),
                 name=p.get("name") or "",
                 type=p.get("type") if isinstance(p.get("type"), str) else "project",
+                container_order=container_order[p.get("type", "project")],
                 area_path=p.get("area_path"),
                 display_states=p.get("display_states") or [],
                 state_categories={},

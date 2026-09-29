@@ -142,7 +142,7 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#123' }],
-        projects: [{ id: 'p1', color: '#456' }],
+        projects: [{ id: 'p1', color: '#456', type: 'team' }],
         capacityDates: months.map((m) => new Date(m).toISOString().slice(0, 10)),
         teamDailyCapacity: [
           [10, 20, 30],
@@ -152,6 +152,8 @@ describe('MainGraph Tests', () => {
         teamDailyCapacityMap: null,
         projectDailyCapacity: [],
         projectDailyCapacityMap: null,
+        planDailyCapacityMap: [{ p1: 10 }, { p1: 5 }, {}],
+        planTeamDailyCapacityMap: [{ p1: { t1: 10 } }, { p1: { t1: 5 } }, {}],
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'team',
         selectedTeamIds: new Set(['t1']),
@@ -194,7 +196,7 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#111' }],
-        projects: [{ id: 'p1', color: '#222' }],
+        projects: [{ id: 'p1', color: '#222', type: 'project' }],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: null,
@@ -203,6 +205,8 @@ describe('MainGraph Tests', () => {
           [20, 0],
         ],
         projectDailyCapacityMap: null,
+        planDailyCapacityMap: [{ p1: 10 }, { p1: 20 }],
+        planTeamDailyCapacityMap: [{}, {}],
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'project',
         selectedTeamIds: new Set(['t1']),
@@ -319,12 +323,14 @@ describe('MainGraph Tests', () => {
       el._fullRender(mockCtx, {
         months,
         teams: [{ id: 't1', color: '#111111' }, { id: 't2', color: '#222222' }],
-        projects: [{ id: 'p1', color: '#333333' }],
+        projects: [{ id: 'p1', color: '#333333', type: 'team' }],
         capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: [{ t1: 50, t2: 60 }, { t1: 40, t2: 70 }],
         projectDailyCapacity: [],
         projectDailyCapacityMap: null,
+        planDailyCapacityMap: [{ p1: 110 }, { p1: 110 }],
+        planTeamDailyCapacityMap: [{ p1: { t1: 50, t2: 60 } }, { p1: { t1: 40, t2: 70 } }],
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'team',
         selectedTeamIds: new Set(['t1']),
@@ -336,7 +342,39 @@ describe('MainGraph Tests', () => {
       el.remove();
     });
 
-    it('keeps project and unfunded values normalized by the full roster', async () => {
+    it('shows only selected program allocations without charging shared-team work sideways', async () => {
+      const el = document.createElement('maingraph-lit');
+      document.body.appendChild(el);
+      await el.updateComplete;
+      const mockCtx = {
+        clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        save() {}, restore() {}, setLineDash() {},
+      };
+      el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
+      const snapshot = {
+        months, teams: [{ id: 'f' }, { id: 'g' }],
+        projects: [
+          { id: 'p1', name: 'Program 1', type: 'program', color: '#333' },
+          { id: 'p2', name: 'Program 2', type: 'program', color: '#777' },
+        ],
+        capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
+        teamDailyCapacity: [], teamDailyCapacityMap: [],
+        projectDailyCapacity: [], projectDailyCapacityMap: [],
+        planDailyCapacityMap: [{ p1: 30, p2: 20 }, { p1: 30, p2: 20 }],
+        planTeamDailyCapacityMap: [],
+        totalOrgDailyPerTeamAvg: [], capacityViewMode: 'program',
+        selectedTeamIds: new Set(['f']), selectedProjectIds: new Set(['p1']),
+      };
+
+      el._fullRender(mockCtx, snapshot);
+      expect(el._hoverDays[0].entries).to.deep.equal([
+        { name: 'Program 1', color: '#333', value: 15 },
+      ]);
+      el.remove();
+    });
+
+    it('normalizes selected project values by the full roster without an unfunded segment', async () => {
       const el = document.createElement('maingraph-lit');
       document.body.appendChild(el);
       await el.updateComplete;
@@ -356,6 +394,8 @@ describe('MainGraph Tests', () => {
         teamDailyCapacityMap: { 0: { t1: 20, t2: 110 }, 1: { t1: 20, t2: 110 } },
         projectDailyCapacity: [],
         projectDailyCapacityMap: { 0: { p1: 100, __unfunded__: 40 }, 1: { p1: 100, __unfunded__: 40 } },
+        planDailyCapacityMap: [{ p1: 100 }, { p1: 100 }],
+        planTeamDailyCapacityMap: [{}, {}],
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'project',
         selectedTeamIds: new Set(['t1']),
@@ -371,7 +411,6 @@ describe('MainGraph Tests', () => {
 
       expect(narrowDrillDownEntries).to.deep.equal([
         { name: 'Plan', color: '#333', value: 50 },
-        { name: 'Unfunded', color: '#C49E78', value: 20 },
       ]);
       expect(el._hoverDays[0].entries).to.deep.equal(narrowDrillDownEntries);
       el.remove();
@@ -392,12 +431,14 @@ describe('MainGraph Tests', () => {
       el._fullRender(mockCtx, {
         months,
         teams: [{ id: 'bluetooth', name: 'Bluetooth', color: '#111' }],
-        projects: [{ id: 'p1', name: 'Project', color: '#222' }],
+        projects: [{ id: 'p1', name: 'Team plan', color: '#222', type: 'team' }],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: { 0: { bluetooth: 88 }, 1: { bluetooth: 88 } },
         projectDailyCapacity: [],
         projectDailyCapacityMap: { 0: { p1: 88, __unfunded__: 26 }, 1: { p1: 88, __unfunded__: 26 } },
+        planDailyCapacityMap: [{ p1: 88 }, { p1: 88 }],
+        planTeamDailyCapacityMap: [{ p1: { bluetooth: 88 } }, { p1: { bluetooth: 88 } }],
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'team',
         selectedTeamIds: new Set(['bluetooth']),
@@ -435,12 +476,14 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 101, color: '#111' }],
-        projects: [{ id: 201, color: '#222' }],
+        projects: [{ id: 201, color: '#222', type: 'team' }],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: { 0: { 101: 50 }, 1: { 101: 60 } },
         projectDailyCapacity: [],
         projectDailyCapacityMap: null,
+        planDailyCapacityMap: [{ 201: 50 }, { 201: 60 }],
+        planTeamDailyCapacityMap: [{ 201: { 101: 50 } }, { 201: { 101: 60 } }],
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'team',
         selectedTeamIds: new Set(['101']),

@@ -19,6 +19,8 @@ describe('KeyboardShortcutManager', () => {
         getDisplayMode: () => 'normal',
         getFeatureSortMode: () => 'rank',
         getCapacityViewMode: () => 'team',
+        getEffectiveCapacityViewMode: () => 'team',
+        getAvailableGraphTypes: () => ['team', 'project'],
       },
       openSearch: () => calls.push(['search']),
       getTimelineBoard: () => ({ adjustBoardZoom() {}, resetBoardZoom() {} }),
@@ -50,6 +52,25 @@ describe('KeyboardShortcutManager', () => {
     const restoreTab = keyEvent('t');
     manager.handleKeydown(restoreTab);
     expect(restoreTab.defaultPrevented).to.equal(false);
+  });
+
+  it('cycles only selected graph levels from the effective displayed level', () => {
+    const calls = [];
+    const definitions = createApplicationShortcutDefinitions({
+      commands: { setCapacityViewMode: (mode) => calls.push(mode) },
+      selectors: {
+        getCapacityViewMode: () => 'team',
+        getEffectiveCapacityViewMode: () => 'project',
+        getAvailableGraphTypes: () => ['project', 'program'],
+      },
+      openSearch() {},
+      getTimelineBoard() {},
+    });
+    const manager = new KeyboardShortcutManager(document, definitions);
+
+    manager.handleKeydown(keyEvent('g'));
+
+    expect(calls).to.deep.equal(['program']);
   });
 
   it('prevents browser zoom and adjusts only the timeline board', () => {

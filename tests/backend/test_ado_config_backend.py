@@ -85,6 +85,7 @@ def test_fetch_projects_reads_from_storage():
     """fetch_projects returns projects from diskcache storage."""
     storage = _MemStore()
     storage.save('config', 'projects', {
+        'container_types': ['project', 'team'],
         'project_map': [
             {'name': 'Alpha', 'area_path': 'Org\\Alpha', 'task_types': ['Feature'], 'iteration_uuid': 'set-alpha'}
         ]

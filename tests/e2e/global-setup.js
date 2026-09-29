@@ -88,6 +88,7 @@ async function bootstrapTestData(page) {
     await post('/admin/v1/projects', {
       content: {
         schema_version: 3,
+        container_types: ['project', 'team'],
         project_map: [
           {
             name: 'Synthetic Team A',

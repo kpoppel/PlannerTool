@@ -91,6 +91,15 @@ _SCHEMAS: dict[str, Any] = {
                 'default': 3,
                 'minimum': 1,
             },
+            'container_types': {
+                'type': 'array',
+                'title': 'Plan Container Hierarchy',
+                'description': 'Unique container types in top-to-bottom order',
+                'items': {'type': 'string', 'minLength': 1},
+                'uniqueItems': True,
+                'minItems': 1,
+                'default': ['project', 'team'],
+            },
             'project_map': {
                 'type': 'array',
                 'title': 'Project Mappings',
@@ -111,7 +120,6 @@ _SCHEMAS: dict[str, Any] = {
                         'type': {
                             'type': 'string',
                             'title': 'Type',
-                            'enum': ['project', 'team'],
                             'default': 'project',
                         },
                         'task_types': {
@@ -145,7 +153,7 @@ _SCHEMAS: dict[str, Any] = {
                 },
             },
         },
-        'required': ['project_map'],
+        'required': ['container_types', 'project_map'],
     },
     'teams': {
         'type': 'object',

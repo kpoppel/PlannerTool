@@ -64,6 +64,7 @@ describe('application/commands/dataCommands', () => {
 
     expect(store.getState().capacity.organizationDaily).toEqual([100]);
     expect(store.getState().capacity.organizationDailyPerTeamAverage).toEqual([50]);
+    expect(store.getState().capacity.planDailyMap[0]).toEqual({ p1: 20, p2: 80 });
     featureFlags.GRAPH_ONLY_SELECTED_PLANS = originalGraphOnlySelectedPlans;
   });
 

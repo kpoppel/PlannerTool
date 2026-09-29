@@ -72,7 +72,7 @@ def test_save_projects_backup_fallback(tmp_path, monkeypatch):
         async def json(self):
             return self._payload
 
-    payload = {'content': {'a': 1}}
+    payload = {'content': {'container_types': ['project', 'team'], 'project_map': []}}
     req = Req(payload)
     # should still raise HTTPException because storage.save failed and backup attempted
     with pytest.raises(HTTPException):
@@ -181,7 +181,7 @@ def test_admin_save_projects_success_and_backup(tmp_path, monkeypatch):
         async def json(self):
             return self._payload
 
-    payload = {'content': {'a': 1}}
+    payload = {'content': {'container_types': ['project', 'team'], 'project_map': []}}
     req = Req(payload)
     res = asyncio.run(admin_api.admin_save_projects.__wrapped__(req))
     assert res['ok']

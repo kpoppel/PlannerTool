@@ -1,7 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
-import { TimelineEvents, ViewEvents, ViewManagementEvents } from '../core/EventRegistry.js';
+import { FeatureEvents, ProjectEvents, TimelineEvents, ViewEvents, ViewManagementEvents } from '../core/EventRegistry.js';
 
 /**
  * ViewMenu - Dropdown menu for Views
@@ -228,6 +228,8 @@ export class ViewMenuLit extends LitElement {
     bus.on(ViewEvents.DISPLAY_MODE, this._onDisplayChanged);
     bus.on(ViewEvents.SORT_MODE, this._onDisplayChanged);
     bus.on(ViewEvents.CAPACITY_MODE, this._onDisplayChanged);
+    bus.on(ProjectEvents.CHANGED, this._onDisplayChanged);
+    bus.on(FeatureEvents.UPDATED, this._onDisplayChanged);
 
     // Don't initialize from state - views are passed as properties from TopMenu
   }
@@ -242,6 +244,8 @@ export class ViewMenuLit extends LitElement {
       bus.off(ViewEvents.DISPLAY_MODE, this._onDisplayChanged);
       bus.off(ViewEvents.SORT_MODE, this._onDisplayChanged);
       bus.off(ViewEvents.CAPACITY_MODE, this._onDisplayChanged);
+      bus.off(ProjectEvents.CHANGED, this._onDisplayChanged);
+      bus.off(FeatureEvents.UPDATED, this._onDisplayChanged);
     }
   }
 
@@ -338,7 +342,10 @@ export class ViewMenuLit extends LitElement {
         <div class="display-section">
           <div class="display-title" role="heading" aria-level="2">Graph Type <kbd class="shortcut-pill">Ctrl+Shift+G</kbd></div>
           <div class="segment-group">
-            ${[['team', 'Team'], ['project', 'Project']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getCapacityViewMode() === value ? 'active' : ''}" @click=${() => this._setGraphType(value)}>${label}</button>`)}
+            ${sel.view.getAvailableGraphTypes().map((type) => html`
+              <button class="segment-btn ${sel.view.getEffectiveCapacityViewMode() === type ? 'active' : ''}"
+                @click=${() => this._setGraphType(type)}>${type}</button>`)}
+            ${sel.view.getAvailableGraphTypes().length === 0 ? html`<span>Select a plan</span>` : ''}
           </div>
         </div>
         <div class="display-section">

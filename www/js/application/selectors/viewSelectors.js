@@ -1,4 +1,5 @@
 /** @typedef {import('../types.js').StoreApi} StoreApi */
+import { createScopeSelectors } from './scopeSelectors.js';
 
 function toStringArray(values) {
   return Array.from(values).map((v) => String(v));
@@ -45,6 +46,7 @@ function getStoreHiddenTypes(state) {
  * @returns {object}
  */
 export function createViewSelectors(store) {
+  const scopeSelectors = createScopeSelectors(store);
   const selectors = {
     getTimelineScale() {
       return getTimelineScaleFromStore(store.getState());
@@ -56,6 +58,38 @@ export function createViewSelectors(store) {
 
     getCapacityViewMode() {
       return getCapacityViewModeFromStore(store.getState());
+    },
+
+    getFocusedPlanId() {
+      return store.getState().view.options.focusedPlanId;
+    },
+
+    getAvailableGraphTypes() {
+      const state = store.getState();
+      const scopedPlanIds = new Set(scopeSelectors.getContextFeatures()
+        .map((feature) => String(feature.project)));
+      const types = new Map();
+      for (const project of state.baseline.projects) {
+        if (scopedPlanIds.has(String(project.id))) types.set(project.type, project.container_order);
+      }
+      return [...types.entries()].sort((first, second) => first[1] - second[1])
+        .map(([type]) => type);
+    },
+
+    getEffectiveCapacityViewMode() {
+      const state = store.getState();
+      const available = selectors.getAvailableGraphTypes();
+      if (available.length === 0) return null;
+      const preferred = state.view.options.capacityViewMode;
+      if (available.includes(preferred)) return preferred;
+      const preferredPlan = state.baseline.projects.find((project) => project.type === preferred);
+      if (!preferredPlan) return available[0];
+      const byType = new Map(state.baseline.projects.map((project) =>
+        [project.type, project.container_order]));
+      return [...available].sort((first, second) =>
+        Math.abs(byType.get(first) - preferredPlan.container_order) -
+        Math.abs(byType.get(second) - preferredPlan.container_order) ||
+        byType.get(second) - byType.get(first))[0];
     },
 
     getHighlightFeatureRelationMode() {

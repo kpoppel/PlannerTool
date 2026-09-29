@@ -18,6 +18,7 @@ describe('admin-projects', () => {
   it('syncs display_states when include_states are added and removed', async () => {
     // initialize content with one project with empty states
     comp.content = {
+      container_types: ['project', 'team'],
       project_map: [{ name: 'P1', include_states: [], display_states: [] }],
     };
     await comp.requestUpdate();
@@ -46,6 +47,33 @@ describe('admin-projects', () => {
     expect(comp.iterationSetLabel('')).to.equal('');
   });
 
+  it('edits ordered container types and keeps types assigned to plans', async () => {
+    await vi.waitFor(() => expect(comp.loading).to.equal(false));
+    comp.content = {
+      container_types: ['B', 'A', 'C'],
+      project_map: [{ name: 'Plan A', type: 'A' }],
+    };
+    await comp.updateComplete;
+
+    comp.editProject(0);
+    await comp.updateComplete;
+    const options = [...comp.shadowRoot.querySelectorAll('tr.editing-row select option')]
+      .map((option) => option.value);
+    expect(options.slice(0, 3)).to.deep.equal(['B', 'A', 'C']);
+
+    comp.removeContainerType('A');
+    expect(comp.content.container_types).to.deep.equal(['B', 'A', 'C']);
+    comp.moveContainerType(2, 0);
+    expect(comp.content.container_types).to.deep.equal(['C', 'B', 'A']);
+
+    comp.newContainerType = 'b';
+    comp.addContainerType();
+    expect(comp.content.container_types).to.deep.equal(['C', 'B', 'A']);
+    comp.newContainerType = 'D';
+    comp.addContainerType();
+    expect(comp.content.container_types).to.deep.equal(['C', 'B', 'A', 'D']);
+  });
+
   describe('area-path metadata integration', () => {
     const METADATA = {
       types: ['Epic', 'Feature', 'User Story'],
@@ -67,6 +95,7 @@ describe('admin-projects', () => {
 
     it('fetches metadata when editProject is called on a project with an area_path', async () => {
       comp.content = {
+        container_types: ['project', 'team'],
         project_map: [
           { name: 'My Team', area_path: 'MyProj\\TeamA', task_types: [], include_states: [], display_states: [] },
         ],
@@ -86,6 +115,7 @@ describe('admin-projects', () => {
 
     it('clears _editMetadata when cancelEdit is called', async () => {
       comp.content = {
+        container_types: ['project', 'team'],
         project_map: [
           { name: 'My Team', area_path: 'MyProj\\TeamA', task_types: [], include_states: [], display_states: [] },
         ],
@@ -105,6 +135,7 @@ describe('admin-projects', () => {
 
     it('clears stale metadata when area_path input changes', async () => {
       comp.content = {
+        container_types: ['project', 'team'],
         project_map: [
           { name: 'My Team', area_path: 'MyProj\\TeamA', task_types: [], include_states: [], display_states: [] },
         ],
@@ -127,6 +158,7 @@ describe('admin-projects', () => {
 
     it('does not fetch metadata when editProject is called on a project without area_path', async () => {
       comp.content = {
+        container_types: ['project', 'team'],
         project_map: [
           { name: 'New Project', area_path: '', task_types: [], include_states: [], display_states: [] },
         ],
@@ -148,6 +180,7 @@ describe('admin-projects', () => {
       );
 
       comp.content = {
+        container_types: ['project', 'team'],
         project_map: [
           { name: 'My Team', area_path: 'MyProj\\TeamA', task_types: [], include_states: [], display_states: [] },
         ],

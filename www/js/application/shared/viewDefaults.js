@@ -14,6 +14,7 @@ export function createDefaultViewOptions() {
     condensedCards: false,
     featureSortMode: 'rank',
     capacityViewMode: 'team',
+    focusedPlanId: '',
     displayMode: 'normal',
     packedMode: false,
     showUnassignedCards: true,

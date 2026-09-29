@@ -13,6 +13,7 @@ class DomainProject(TypedDict):
     id: str                                     # slug e.g. 'project-my-team'
     name: str                                   # display name
     type: str                                   # 'project' or other configured type
+    container_order: int                        # position in plan container hierarchy
     area_path: Optional[str]                    # Azure DevOps area path
     task_types: List[str]                       # configured work item types
     task_type_hierarchy: List[str]              # global hierarchy list

@@ -1,6 +1,6 @@
 # The Main Graph
 
-The graph area displays the allocated capacity on plans for two types of plans.  A "plan" is a collection of tasks from a single Azure Devops area path. Selecting multiple plans adds data to the graph.
+The graph area displays allocated capacity at the plan level chosen in the View menu. A "plan" is a collection of tasks from a single Azure DevOps area path. Selecting multiple plans adds data to the graph.
 
 ## What it is useful for
 The graph area provides a visual representation of the capacity allocation for tasks in Azure Devops. It is useful for planning purposes, as it provides a visual representation of the capacity allocation for tasks in Azure Devops.
@@ -8,11 +8,9 @@ The graph very quickly gives a complete overview over over and under-utilisation
 
 # How does it work? 
 
-The graph displays in two modes which are mutually exclusive:
-- Team graph
-- Project graph
+The Graph Type control in the View menu offers the container types represented by tasks in Scope, in their configured order. Enabling Ancestors or Descendant work can add graph levels without checking their plans. Team draws team allocation lines from team plans in Scope; any other level (such as Project or Program) stacks plans of that type in Scope. When a saved graph level is unavailable, the nearest available level is shown without changing the saved preference.
 
-The team graph uses only data from plans of the "team" type, while the project graph uses data from plans of type "project". The type of plan is configured in the admin interface.
+Each task's allocation contributes to its own plan and to the plans on its single parent-task chain. A team serving two programs can therefore contribute to both, but work under one program is never charged to the other through the shared team plan. The Plan menu's "Connected to" focus only limits which plans are listed for browsing; it does not change the checked selection.
 
 ## Team graph
 Team graphs display the sum of capacity allocation calculated per day across all tasks where the team has an allocation.
@@ -34,27 +32,13 @@ If a team is allocated 50% from 2026-01-01 to 2026-01-10 and again 50% from 2026
 
 The Team graph will highlight areas where teams are over-utilised.  And the graph has a dotted line displaying 100% allocation.
 
-## Project Graph
-The project graph is more complicated. This is an opinionated graph which disregards traditional focus on individuals in teams and rather supports a team-based approach.  This means a team of 2 people and a team of 10 people carry equal weight in the project graph.
+## Higher-level graphs
+Project, Program and other configured higher-level graphs use the same team-based organisational weighting. A team of 2 people and a team of 10 people carry equal weight.
 This approach enables display of a neutral organisational allocation. It is clear that a team of 2 people more quickly fill up their capacity, but this is built into the allocation model already.
 
 The logic of the calculation is as follows:
 - For each team we calculate equal organisational weight. For 10 teams, each team carry 10% of the organisation's total allocation capacity.
 - For each day the sum of allocated team capacity multiplied by their organisational weight is calculated. If all teams are allocated 100%, the total organisation's allocation is 100%. If a team in this example is allocated 10%, it's total organisational allocation is 10% of 10%, so 1%.
-- This calculation is performed on each selected project and the numbers are stacked up in the graph.
+- This calculation is performed on each selected plan of the displayed type, and the numbers are stacked up in the graph.
 
-### Team selection affects organisational weight
-The Team menu's team checkboxes double as the control for which teams participate in the organisational-weight calculation, not just which team lines are visible in the Team graph:
-
-- A **selected** team counts towards both the numerator (its allocated capacity contributes to the totals) and the denominator (it is one of the "N teams" the organisation's capacity is divided across).
-- A **deselected** team is fully excluded: its capacity is dropped from the Project graph's totals, *and* it no longer occupies a "seat" in the organisational weight denominator. The other selected teams' organisational weight increases accordingly (e.g. with 10 teams total but only 5 selected, each selected team now carries 20% of the organisation's weight instead of 10%).
-
-This is a deliberate design choice: deselecting a team means "leave this team out of the organisational picture entirely" — for example, to temporarily exclude a supporting/tooling team that isn't meant to count towards the core delivery capacity. Use the Team menu selection (and optionally save it as a named View via the Views menu) to produce a stable "organisational capacity" view that only accounts for the teams you care about.
-
-Because team selection is session/view state rather than a permanent team property, switching to a different saved View (or the Default View) resets which teams count — so a dedicated View is the recommended way to keep a consistent "organisational capacity" configuration.
-
-### Allocations with no parent in a project plan:
-- Tasks may have team allocations, but are not parented in a task from a plan of the type "project".
-- All of these tasks are combined into a virtual project and is displayed in the graph as well.
-
-This can, depending on the organisation, be interpreted as "unfunded" work, or simply work that needs to be done for non-project purposes.  Tasks involving improvement of quality of work, refactoring, tool maintenance etc. could fall under this category.
+The denominator is the full team roster. Team drill-down changes the visible lines in Team mode, but does not change organisational weighting. Work without a parent task in a plan of the displayed type does not appear as a synthetic "Unfunded" plan.

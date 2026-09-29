@@ -36,6 +36,32 @@ export const adminProjectsStyles = css`
         margin-bottom: 8px;
       }
 
+      .container-types {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+      }
+
+      .container-type-list, .container-type-add, .container-type-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .container-type-item {
+        border-right: 1px solid #d1d5db;
+        padding-right: 8px;
+      }
+
+      .container-type-add input {
+        max-width: 180px;
+      }
+
       .search-input {
         flex: 1;
         padding: 6px 10px;

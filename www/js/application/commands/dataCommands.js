@@ -121,6 +121,8 @@ export function createDataCommands(store, bus, dataService) {
             projectDailyRaw: result.projectDailyCapacityRaw,
             projectDaily: result.projectDailyCapacity,
             projectDailyMap: result.projectDailyCapacityMap,
+            planDailyMap: result.planDailyCapacityMap,
+            planTeamDailyMap: result.planTeamDailyCapacityMap,
             organizationDaily: result.totalOrgDailyCapacity,
             organizationDailyPerTeamAverage: result.totalOrgDailyPerTeamAvg,
           },

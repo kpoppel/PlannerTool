@@ -19,6 +19,8 @@ describe('CapacityCalculator (unit)', () => {
       'projectDailyCapacityRaw',
       'projectDailyCapacity',
       'projectDailyCapacityMap',
+      'planDailyCapacityMap',
+      'planTeamDailyCapacityMap',
       'totalOrgDailyCapacity',
       'totalOrgDailyPerTeamAvg',
     ]);
@@ -93,6 +95,75 @@ describe('CapacityCalculator (unit)', () => {
     expect(narrowedTeams.totalOrgDailyPerTeamAvg).to.deep.equal(allTeams.totalOrgDailyPerTeamAvg);
     expect(narrowedTeams.teamDailyCapacityMap[0]).to.deep.equal({ t1: 20, t2: 80 });
     expect(narrowedTeams.totalOrgDailyPerTeamAvg[0]).to.equal(50);
+  });
+
+  it('rolls shared-team allocations up each unique task ancestor chain', () => {
+    const calc = new CapacityCalculator(bus);
+    const projects = [
+      { id: 'program-1', type: 'program' }, { id: 'program-2', type: 'program' },
+      { id: 'project-a', type: 'project' }, { id: 'project-b', type: 'project' },
+      { id: 'team-f', type: 'team' },
+    ];
+    const features = [
+      { id: 'p1', project: 'program-1' }, { id: 'p2', project: 'program-2' },
+      { id: 'a', project: 'project-a', parentId: 'p1' },
+      { id: 'b', project: 'project-b', parentId: 'p2' },
+      { id: 'f1', project: 'team-f', parentId: 'a', start: '2025-01-01', end: '2025-01-01',
+        state: 'active', capacity: [{ team: 'f', capacity: 30 }] },
+      { id: 'f2', project: 'team-f', parentId: 'b', start: '2025-01-01', end: '2025-01-01',
+        state: 'active', capacity: [{ team: 'f', capacity: 20 }] },
+    ];
+    const filters = { selectedProjects: projects.map((project) => project.id),
+      selectedTeams: ['f'], selectedStates: ['active'] };
+    const result = calc.calculate(features, filters, [{ id: 'f' }], projects);
+    expect(result.planDailyCapacityMap[0]).to.deep.equal({
+      'team-f': 50, 'project-a': 30, 'program-1': 30,
+      'project-b': 20, 'program-2': 20,
+    });
+    expect(result.planTeamDailyCapacityMap[0]['team-f']).to.deep.equal({ f: 50 });
+
+    const changed = features.map((feature) => feature.id === 'f1' ?
+      { ...feature, capacity: [{ team: 'f', capacity: 40 }] } : feature);
+    const updated = calc.calculate(changed, filters, [{ id: 'f' }], projects, ['f1']);
+    expect(updated.planDailyCapacityMap[0]['program-1']).to.equal(40);
+    expect(updated.planDailyCapacityMap[0]['program-2']).to.equal(20);
+    expect(updated.planDailyCapacityMap[0]['team-f']).to.equal(60);
+  });
+
+  it('keeps team-plan capacity when no project-type plan exists', () => {
+    const calc = new CapacityCalculator(bus);
+    const features = [{ id: 'task', project: 'team-f', start: '2025-01-01',
+      end: '2025-01-01', state: 'active', capacity: [{ team: 'f', capacity: 25 }] }];
+    const filters = { selectedProjects: ['team-f'], selectedTeams: ['f'],
+      selectedStates: ['active'] };
+    const result = calc.calculate(features, filters, [{ id: 'f' }],
+      [{ id: 'team-f', type: 'team' }]);
+
+    expect(result.planTeamDailyCapacityMap[0]['team-f']).to.deep.equal({ f: 25 });
+    expect(result.planDailyCapacityMap[0]['team-f']).to.equal(25);
+  });
+
+  it('moves plan rollups to the new ancestor after a task is reparented', () => {
+    const calc = new CapacityCalculator(bus);
+    const projects = [{ id: 'program-1', type: 'program' },
+      { id: 'program-2', type: 'program' }, { id: 'team-f', type: 'team' }];
+    const features = [
+      { id: 'p1', project: 'program-1' },
+      { id: 'p2', project: 'program-2' },
+      { id: 'task', project: 'team-f', parentId: 'p1', start: '2025-01-01',
+        end: '2025-01-01', state: 'active', capacity: [{ team: 'f', capacity: 25 }] },
+    ];
+    const filters = { selectedProjects: projects.map((project) => project.id),
+      selectedTeams: ['f'], selectedStates: ['active'] };
+    calc.calculate(features, filters, [{ id: 'f' }], projects);
+
+    const moved = features.map((feature) => feature.id === 'task' ?
+      { ...feature, parentId: 'p2' } : feature);
+    const result = calc.calculate(moved, filters, [{ id: 'f' }], projects, ['task']);
+
+    expect(result.planDailyCapacityMap[0]['program-1']).to.equal(undefined);
+    expect(result.planDailyCapacityMap[0]['program-2']).to.equal(25);
+    expect(result.planDailyCapacityMap[0]['team-f']).to.equal(25);
   });
 
   it('incremental delta updates adjust cached result', () => {

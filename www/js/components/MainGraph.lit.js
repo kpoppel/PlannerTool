@@ -197,9 +197,8 @@ export class MainGraphLit extends LitElement {
     this._maingraphUnsubs = [];
     const buildSnapshot = () => {
       const months = getTimelineMonths();
-      // Use expansion-aware project IDs so the graph is consistent with the
-      // feature cards shown on the board (e.g. when expand-by-allocation is on).
-      const selectedProjectIds = sel.selection.getEffectiveSelectedProjectIds();
+      const selectedProjectIds = [...new Set(sel.scope.getContextFeatures()
+        .map((feature) => String(feature.project)))];
       const contextTeamIds = new Set(sel.scope.getContextTeams().map((id) => String(id)));
       const selectedTeamIds = sel.selection.getSelectedTeamIds()
         .filter((id) => contextTeamIds.has(String(id)));
@@ -212,8 +211,10 @@ export class MainGraphLit extends LitElement {
         teamDailyCapacityMap: sel.capacity.getTeamDailyCapacityMap(),
         projectDailyCapacity: sel.capacity.getProjectDailyCapacity(),
         projectDailyCapacityMap: sel.capacity.getProjectDailyCapacityMap(),
+        planDailyCapacityMap: sel.capacity.getPlanDailyCapacityMap(),
+        planTeamDailyCapacityMap: sel.capacity.getPlanTeamDailyCapacityMap(),
         totalOrgDailyPerTeamAvg: sel.capacity.getTotalOrgDailyPerTeamAvg(),
-        capacityViewMode: sel.view.getCapacityViewMode(),
+        capacityViewMode: sel.view.getEffectiveCapacityViewMode(),
         selectedTeamIds,
         selectedProjectIds,
         selectedFeatureStateFilter: sel.filter.getSelectedFeatureStateSet(),
@@ -307,6 +308,8 @@ export class MainGraphLit extends LitElement {
     const teamDailyCapacityMap = data.teamDailyCapacityMap || null;
     const projectDailyCapacity = Array.isArray(data.projectDailyCapacity) ? data.projectDailyCapacity : [];
     const projectDailyCapacityMap = data.projectDailyCapacityMap || null;
+    const planDailyCapacityMap = data.planDailyCapacityMap;
+    const planTeamDailyCapacityMap = data.planTeamDailyCapacityMap;
     const totalOrgDailyPerTeamAvg = Array.isArray(data.totalOrgDailyPerTeamAvg) ? data.totalOrgDailyPerTeamAvg : [];
     const capacityViewMode = data.capacityViewMode || 'team';
     const selectedTeamIds = new Set(data.selectedTeamIds);
@@ -358,6 +361,8 @@ export class MainGraphLit extends LitElement {
       teamDailyCapacityMap,
       projectDailyCapacity,
       projectDailyCapacityMap,
+      planDailyCapacityMap,
+      planTeamDailyCapacityMap,
       totalOrgDailyPerTeamAvg,
       capacityViewMode,
       selectedTeamIds,
@@ -408,6 +413,8 @@ export class MainGraphLit extends LitElement {
       teamDailyCapacityMap,
       projectDailyCapacity,
       projectDailyCapacityMap,
+      planDailyCapacityMap,
+      planTeamDailyCapacityMap,
       totalOrgDailyPerTeamAvg,
       capacityViewMode,
       selectedTeamIds,
@@ -587,101 +594,36 @@ export class MainGraphLit extends LitElement {
       }
       const teamBucket = {};
       let maxTeamVal = 0;
-      const dayTeamMap = (teamDailyCapacityMap && teamDailyCapacityMap[idx]) || null;
-      if (dayTeamMap) {
-        for (const team of teams) {
-          const v = dayTeamMap[team.id] || 0;
-          if (!selectedTeamIdSet.has(String(team.id))) continue;
-          teamBucket[team.id] = v;
-          if (v > maxTeamVal) maxTeamVal = v;
+      if (capacityViewMode === 'team') {
+        const dayPlanTeams = planTeamDailyCapacityMap[idx];
+        for (const plan of projects) {
+          if (plan.type !== 'team' || !selectedProjectIdSet.has(String(plan.id))) continue;
+          const loads = dayPlanTeams[plan.id];
+          if (!loads) continue;
+          for (const [teamId, load] of Object.entries(loads)) {
+            if (teamBucket[teamId] === undefined) teamBucket[teamId] = 0;
+            teamBucket[teamId] += load;
+          }
         }
-      } else {
-        const tTuple = teamDailyCapacity[idx] || [];
-        for (let i = 0; i < teams.length; i++) {
-          const team = teams[i];
-          const v = tTuple[i] || 0;
-          if (!selectedTeamIdSet.has(String(team.id))) continue;
-          teamBucket[team.id] = v;
-          if (v > maxTeamVal) maxTeamVal = v;
-        }
+      }
+      for (const team of teams) {
+        if (!selectedTeamIdSet.has(String(team.id))) delete teamBucket[team.id];
+        else if (teamBucket[team.id] > maxTeamVal) maxTeamVal = teamBucket[team.id];
       }
       teamDayMap.set(d, teamBucket);
 
-      // Project bucket - read from ALL projects but only add type='project' to display bucket
       const projectBucket = {};
-      const dayProjectMap =
-        (projectDailyCapacityMap && projectDailyCapacityMap[idx]) || null;
-      if (dayProjectMap) {
-        for (const project of projects) {
-          const v = dayProjectMap[project.id] || 0;
-          const isProjectType =
-            (project && project.type ? String(project.type) : 'project') === 'project';
-          // Only display type='project' projects, but we've read all data
-          if (isProjectType && selectedProjectIdSet.has(String(project.id))) {
-            projectBucket[project.id] = v / Math.max(1, nTeams);
-          }
-        }
-        // Always include unfunded synthetic project if capacity calculator provided it
-        if (dayProjectMap['__unfunded__']) {
-          projectBucket['__unfunded__'] =
-            dayProjectMap['__unfunded__'] / Math.max(1, nTeams);
-        }
-      } else {
-        const pTuple = projectDailyCapacity[idx] || [];
-        for (let i = 0; i < projects.length; i++) {
-          const project = projects[i];
-          const v = pTuple[i] || 0;
-          const isProjectType =
-            (project && project.type ? String(project.type) : 'project') === 'project';
-          // Only display type='project' projects, but we've read all data
-          if (isProjectType && selectedProjectIdSet.has(String(project.id))) {
-            projectBucket[project.id] = v;
-          }
-        }
-        // Always include unfunded synthetic project if capacity calculator provided it (last index in tuple)
-        if (pTuple.length > projects.length) {
-          const unfundedVal = pTuple[projects.length] || 0;
-          if (unfundedVal > 0) {
-            projectBucket['__unfunded__'] = unfundedVal;
-          }
+      const dayPlanMap = planDailyCapacityMap[idx];
+      for (const project of projects) {
+        if (project.type === capacityViewMode && selectedProjectIdSet.has(String(project.id))) {
+          const load = dayPlanMap[project.id];
+          projectBucket[project.id] = load === undefined ? 0 : load / Math.max(1, nTeams);
         }
       }
       projectDayMap.set(d, projectBucket);
 
       orgTotalsTeam.set(d, maxTeamVal);
-      let totalPerTeam = 0;
-      if (dayProjectMap) {
-        for (const proj of projects) {
-          if (!selectedProjectIdSet.has(String(proj.id))) continue;
-          const isProjectType =
-            (proj && proj.type ? String(proj.type) : 'project') === 'project';
-          if (!isProjectType) continue;
-          totalPerTeam += (dayProjectMap[proj.id] || 0) / Math.max(1, nTeams);
-        }
-        // Include unfunded in total if calculator provided it
-        if (dayProjectMap['__unfunded__']) {
-          totalPerTeam += dayProjectMap['__unfunded__'] / Math.max(1, nTeams);
-        }
-      } else {
-        for (let i = 0; i < projects.length; i++) {
-          const proj = projects[i];
-          if (!selectedProjectIdSet.has(String(proj.id))) continue;
-          const isProjectType =
-            (proj && proj.type ? String(proj.type) : 'project') === 'project';
-          if (!isProjectType) continue;
-          totalPerTeam +=
-            projectDailyCapacity[idx] && projectDailyCapacity[idx][i] ?
-              projectDailyCapacity[idx][i]
-            : 0;
-        }
-        // Include unfunded in total if calculator provided it (last index)
-        const pTuple = projectDailyCapacity[idx] || [];
-        if (pTuple.length > projects.length) {
-          const unfundedValue = pTuple[projects.length];
-          if (unfundedValue !== undefined) totalPerTeam += unfundedValue;
-        }
-      }
-      orgTotalsProject.set(d, totalPerTeam);
+      orgTotalsProject.set(d, Object.values(projectBucket).reduce((sum, value) => sum + value, 0));
 
       const date = capacityDates[idx] !== undefined ?
         capacityDates[idx]
@@ -701,9 +643,6 @@ export class MainGraphLit extends LitElement {
             color: project.color === undefined ? '#888' : project.color,
             value: projectBucket[project.id],
           }));
-      if (capacityViewMode === 'project' && projectBucket.__unfunded__ !== undefined) {
-        entries.push({ name: 'Unfunded', color: '#C49E78', value: projectBucket.__unfunded__ });
-      }
       this._hoverDays.push({
         startX: dayX[localIdx],
         endX: dayX[localIdx + 1],

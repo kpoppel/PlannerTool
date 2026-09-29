@@ -86,8 +86,21 @@ async def admin_save_projects(request: Request):
         if content is None:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
 
-        if not isinstance(content, (dict, list)):
+        if not isinstance(content, dict):
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Unsupported content type'})
+
+        types = content.get('container_types')
+        plans = content.get('project_map')
+        if (not isinstance(types, list) or not types or
+                any(not isinstance(item, str) or not item.strip() for item in types) or
+                len(types) != len({item.casefold() for item in types}) or
+                not isinstance(plans, list) or
+                any(not isinstance(plan, dict) or plan.get('type', 'project') not in types
+                    for plan in plans)):
+            raise HTTPException(status_code=400, detail={
+                'error': 'invalid_container_hierarchy',
+                'message': 'Container types must be unique and include every plan type',
+            })
 
         admin_svc = resolve_service(request, 'admin_service')
         admin_svc.save_config('projects', content)

@@ -187,12 +187,20 @@ def test_admin_save_projects_success_and_invalid_payload():
             return self._payload
 
     # valid content
-    content_obj = {'a': 1}
+    content_obj = {'container_types': ['project', 'team'], 'project_map': []}
     payload = {'content': content_obj}
     req = Req(payload)
     res = asyncio.run(admin_api.admin_save_projects.__wrapped__(req))
     assert res['ok']
     assert storage.data['config']['projects'] == content_obj
+
+    req_invalid_hierarchy = Req({'content': {
+        'container_types': ['B', 'A', 'B'],
+        'project_map': [{'name': 'Plan C', 'type': 'C'}],
+    }})
+    with pytest.raises(HTTPException) as hierarchy_error:
+        asyncio.run(admin_api.admin_save_projects.__wrapped__(req_invalid_hierarchy))
+    assert hierarchy_error.value.status_code == 400
 
     # invalid (empty) content
     req2 = Req({'content': ''})

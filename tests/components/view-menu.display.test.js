@@ -2,7 +2,7 @@ import { expect } from '@open-wc/testing';
 import '../../www/js/components/ViewMenu.lit.js';
 import { cmd } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
-import { TimelineEvents, ViewEvents } from '../../www/js/core/EventRegistry.js';
+import { FeatureEvents, TimelineEvents, ViewEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('ViewMenu display controls', () => {
   it('routes timeline, card, sorting, and graph controls through view commands', () => {
@@ -49,8 +49,9 @@ describe('ViewMenu display controls', () => {
     bus.emit(ViewEvents.DISPLAY_MODE);
     bus.emit(ViewEvents.SORT_MODE);
     bus.emit(ViewEvents.CAPACITY_MODE);
+    bus.emit(FeatureEvents.UPDATED);
 
-    expect(redraws).to.equal(4);
+    expect(redraws).to.equal(5);
     menu.remove();
   });
 

@@ -136,12 +136,12 @@ export class PluginGraph extends LitElement {
     bus.on(TeamEvents.CHANGED, () => this._scheduleRender());
     bus.on(StateFilterEvents.CHANGED, () => this._scheduleRender());
     bus.on(ViewEvents.CAPACITY_MODE, () => {
-      this.mode = sel.view.getCapacityViewMode();
+      this.mode = sel.view.getEffectiveCapacityViewMode();
       this._scheduleRender();
     });
     bus.on(FilterEvents.CHANGED, () => this._scheduleRender());
     bus.on(CapacityEvents.UPDATED, () => this._scheduleRender());
-    this.mode = sel.view.getCapacityViewMode();
+    this.mode = sel.view.getEffectiveCapacityViewMode();
   }
 
   _ensureTooltip() {
@@ -218,7 +218,7 @@ export class PluginGraph extends LitElement {
     await this.updateComplete;
 
     // Set graph mode to match current view mode
-    this.mode = sel.view.getCapacityViewMode();
+    this.mode = sel.view.getEffectiveCapacityViewMode();
 
     // Always set date range from the current timeline selection.
     const months = getTimelineMonths();
@@ -295,25 +295,24 @@ export class PluginGraph extends LitElement {
   }
 
   _computeDailyTotals(mode, sDate, eDate) {
-    const effective = sel.feature?.getEffectiveFeatures?.() || [];
     const teams = sel.selection.getTeams() || [];
     const allProjects = sel.selection.getProjects() || [];
     const visibleTeamIds = sel.scope.getTeamDrilldownIds();
-    const selectedProjects = sel.selection.getSelectedProjectIds();
+    const scopedProjects = sel.scope.getContextFeatures()
+      .map((feature) => String(feature.project));
     const selectedStates = sel.filter.getSelectedFeatureStateNames();
-    const projectSetSelected = new Set(selectedProjects);
+    const projectSetSelected = new Set(scopedProjects);
     const teamSetVisible = new Set(visibleTeamIds.map((id) => String(id)));
-    const stateSetSelected = new Set(selectedStates);
-    if (mode === 'project' && projectSetSelected.size === 0)
+    if (projectSetSelected.size === 0)
       return { days: 0, totals: [] };
     if (mode === 'team' && teamSetVisible.size === 0) return { days: 0, totals: [] };
-    if (stateSetSelected.size === 0) return { days: 0, totals: [] };
+    if (selectedStates.length === 0) return { days: 0, totals: [] };
 
     const days = this._daysBetween(sDate, eDate);
     const stateDates = sel.capacity.getCapacityDates() || [];
-    const teamDaily = sel.capacity.getTeamDailyCapacity() || [];
-    const projectDaily = sel.capacity.getProjectDailyCapacity() || [];
-    if (stateDates && stateDates.length && teamDaily && projectDaily) {
+    const planDaily = sel.capacity.getPlanDailyCapacityMap();
+    const planTeams = sel.capacity.getPlanTeamDailyCapacityMap();
+    if (stateDates.length) {
       const dateIndexMap = new Map(stateDates.map((ds, i) => [ds, i]));
       const totals = new Array(days)
         .fill(0)
@@ -322,146 +321,35 @@ export class PluginGraph extends LitElement {
         const iso = this._fmtDate(this._addDays(sDate, i));
         const si = dateIndexMap.get(iso);
         if (si === undefined) continue;
-        const tTuple = teamDaily[si] || [];
-        const pTuple = projectDaily[si] || [];
+        const dayPlans = planDaily[si];
+        const dayTeams = planTeams[si];
         let maxTeamVal = 0;
-        for (let ti = 0; ti < teams.length; ti++) {
-          const tid = teams[ti].id;
-          if (!teamSetVisible.has(String(tid))) continue;
-          const v = Number(tTuple[ti] || 0);
-          totals[i].perTeam[tid] = v;
-          if (v > maxTeamVal) maxTeamVal = v;
-        }
         let sumProj = 0;
-        // Use allProjects to match indices with capacity calculator, but only display type='project'
-        for (let pi = 0; pi < allProjects.length; pi++) {
-          const proj = allProjects[pi];
-          const pid = proj.id;
-          if (!projectSetSelected.has(pid)) continue;
-          const v = Number(pTuple[pi] || 0);
-          const isProjectType =
-            (proj && proj.type ? String(proj.type) : 'project') === 'project';
-          if (isProjectType) {
-            totals[i].perProject[pid] = v;
-            sumProj += v;
+        for (const plan of allProjects) {
+          if (!projectSetSelected.has(String(plan.id)) || plan.type !== mode) continue;
+          if (mode === 'team') {
+            const loads = dayTeams[plan.id];
+            if (!loads) continue;
+            for (const [teamId, value] of Object.entries(loads)) {
+              if (!teamSetVisible.has(String(teamId))) continue;
+              if (totals[i].perTeam[teamId] === undefined) totals[i].perTeam[teamId] = 0;
+              totals[i].perTeam[teamId] += value;
+            }
+          } else {
+            const load = dayPlans[plan.id];
+            const value = load === undefined ? 0 : load / Math.max(1, teams.length);
+            totals[i].perProject[plan.id] = value;
+            sumProj += value;
           }
         }
-        // Always include unfunded synthetic project if capacity calculator provided it (last index in tuple)
-        if (pTuple.length > allProjects.length) {
-          const unfundedVal = Number(pTuple[allProjects.length] || 0);
-          if (unfundedVal > 0) {
-            totals[i].perProject['__unfunded__'] = unfundedVal;
-            sumProj += unfundedVal;
-          }
+        for (const value of Object.values(totals[i].perTeam)) {
+          if (value > maxTeamVal) maxTeamVal = value;
         }
         totals[i].total = mode === 'team' ? maxTeamVal : sumProj;
       }
       return { days, totals };
     }
-
-    const teamDayMap = new Map();
-    const projectDayMap = new Map();
-    // Display-team selection controls rendered series; normalization stays at the
-    // organization roster denominator supplied by the capacity calculation.
-    const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
-    function addRawTeam(dayIdx, teamId, raw) {
-      if (dayIdx < 0 || dayIdx >= days) return;
-      if (!teamDayMap.has(dayIdx)) teamDayMap.set(dayIdx, {});
-      const b = teamDayMap.get(dayIdx);
-      b[teamId] = (b[teamId] || 0) + Number(raw || 0);
-    }
-    function addNormalizedProject(dayIdx, projectId, raw) {
-      if (dayIdx < 0 || dayIdx >= days) return;
-      if (!projectDayMap.has(dayIdx)) projectDayMap.set(dayIdx, {});
-      const b = projectDayMap.get(dayIdx);
-      b[projectId] = (b[projectId] || 0) + raw / numTeamsGlobal;
-    }
-
-    const featuresByEpic = new Map();
-    for (const f of effective) {
-      if (f.parentId) {
-        if (!featuresByEpic.has(f.parentId)) featuresByEpic.set(f.parentId, []);
-        featuresByEpic.get(f.parentId).push(f);
-      }
-    }
-
-    const startMs = new Date(sDate).setHours(0, 0, 0, 0);
-    const msPerDay = 24 * 60 * 60 * 1000;
-
-    for (const item of effective) {
-      const itemState = item.state;
-      if (stateSetSelected.size > 0 && !stateSetSelected.has(itemState)) continue;
-      const hasChildren = featuresByEpic.has(item.id);
-      if (!projectSetSelected.has(item.project)) continue;
-      const itemStart = new Date(item.start).setHours(0, 0, 0, 0);
-      const itemEnd = new Date(item.end).setHours(0, 0, 0, 0);
-      if (hasChildren) {
-        const children = featuresByEpic.get(item.id) || [];
-        const childRanges =
-          children.length ?
-            children.map((ch) => ({
-              s: new Date(ch.start).setHours(0, 0, 0, 0),
-              e: new Date(ch.end).setHours(0, 0, 0, 0),
-            }))
-          : [];
-        const startIdx = Math.max(
-          0,
-          Math.floor((Math.max(itemStart, startMs) - startMs) / msPerDay)
-        );
-        const endIdx = Math.min(
-          days - 1,
-          Math.floor(
-            (Math.min(itemEnd, new Date(eDate).setHours(0, 0, 0, 0)) - startMs) / msPerDay
-          )
-        );
-        for (let d = startIdx; d <= endIdx; d++) {
-          const currentDayMs = startMs + d * msPerDay;
-          const coveredByChild = childRanges.some(
-            (r) => currentDayMs >= r.s && currentDayMs <= r.e
-          );
-          if (coveredByChild) continue;
-          for (const tl of item.capacity || []) {
-            if (!teamSetVisible.has(String(tl.team))) continue;
-            addRawTeam(d, tl.team, tl.capacity);
-            addNormalizedProject(d, item.project, tl.capacity);
-          }
-        }
-      } else {
-        // Always include features in capacity calculations regardless of view visibility
-        const startIdx = Math.max(
-          0,
-          Math.floor((Math.max(itemStart, startMs) - startMs) / msPerDay)
-        );
-        const endIdx = Math.min(
-          days - 1,
-          Math.floor(
-            (Math.min(itemEnd, new Date(eDate).setHours(0, 0, 0, 0)) - startMs) / msPerDay
-          )
-        );
-        for (let d = startIdx; d <= endIdx; d++) {
-          for (const tl of item.capacity || []) {
-            if (!teamSetVisible.has(String(tl.team))) continue;
-            addRawTeam(d, tl.team, tl.capacity);
-            addNormalizedProject(d, item.project, tl.capacity);
-          }
-        }
-      }
-    }
-
-    const totals = new Array(days)
-      .fill(0)
-      .map(() => ({ total: 0, perTeam: {}, perProject: {} }));
-    for (let i = 0; i < days; i++) {
-      const tmap = teamDayMap.get(i) || {};
-      const pmap = projectDayMap.get(i) || {};
-      totals[i].perTeam = tmap;
-      totals[i].perProject = pmap;
-      const teamVals = Object.values(tmap).map((v) => Number(v || 0));
-      const tMax = teamVals.length ? Math.max(...teamVals) : 0;
-      const pSum = Object.values(pmap).reduce((a, b) => a + b, 0);
-      totals[i].total = mode === 'team' ? tMax : pSum;
-    }
-    return { days, totals };
+    return { days: 0, totals: [] };
   }
 
   _clearSvg() {
@@ -626,7 +514,7 @@ export class PluginGraph extends LitElement {
       const date = this._addDays(this.startDate, dayIndex);
       html += `<div style="font-weight:700; margin-bottom:6px;">${new Date(date).toLocaleString()}</div>`;
       html += `<div style="color:#ddd; margin-bottom:6px;">Total: <strong style="color:#fff">${Math.round(totalsForDay.total)}%</strong></div>`;
-      if (this.mode === 'project') {
+      if (this.mode !== 'team') {
         const per = totalsForDay.perProject || {};
         const entries = Object.entries(per).map(([id, v]) => ({ id, v }));
         entries.sort((a, b) => b.v - a.v);
@@ -696,6 +584,7 @@ export class PluginGraph extends LitElement {
   }
 
   _render() {
+    this.mode = sel.view.getEffectiveCapacityViewMode();
     const host = this._ensureSvg();
     if (!host) return;
     this._clearSvg();
@@ -717,7 +606,7 @@ export class PluginGraph extends LitElement {
     this.lastRenderedData = data;
     let maxY = 100;
     let step = 20;
-    if (this.mode === 'project') {
+    if (this.mode !== 'team') {
       const observedMax = Math.max(...data.totals.map((t) => (t && t.total) || 0));
       maxY = observedMax && observedMax > 0 ? Math.ceil(observedMax) : 100;
     } else {
@@ -756,7 +645,7 @@ export class PluginGraph extends LitElement {
     rootGroup.setAttribute('transform', `scale(${this.xScale},1)`);
     this.svgEl.appendChild(rootGroup);
     this._renderAxes(w, hContent, this.startDate, this.endDate, maxY, step);
-    if (this.mode === 'project')
+    if (this.mode !== 'team')
       this._renderProjectBars(data, w, hContent, rootGroup, maxY);
     else this._renderTeamLines(data, w, hContent, rootGroup, maxY);
   }

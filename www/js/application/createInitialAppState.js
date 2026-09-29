@@ -66,6 +66,8 @@ export function createInitialAppState() {
       projectDailyRaw: [],
       projectDaily: [],
       projectDailyMap: [],
+      planDailyMap: [],
+      planTeamDailyMap: [],
       organizationDaily: [],
       organizationDailyPerTeamAverage: [],
     },

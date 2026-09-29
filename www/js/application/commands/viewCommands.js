@@ -147,6 +147,13 @@ export function createViewCommands(store, bus) {
       }
     },
 
+    setFocusedPlanId(planId) {
+      setViewOptions(
+        (options) => ({ ...options, focusedPlanId: String(planId) }),
+        'view.setFocusedPlanId'
+      );
+    },
+
     setTaskViewMode(mode, runtimeOptions = {}) {
       if (mode !== 'plan' && mode !== 'team') throw new Error(`Unknown task view mode: ${mode}`);
       if (store.getState().view.options.taskViewMode === mode) return;

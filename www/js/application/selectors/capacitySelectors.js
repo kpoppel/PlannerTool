@@ -58,6 +58,14 @@ export function createCapacitySelectors(store) {
       return toArray(store.getState()?.capacity?.projectDailyMap);
     },
 
+    getPlanDailyCapacityMap() {
+      return toArray(store.getState().capacity.planDailyMap);
+    },
+
+    getPlanTeamDailyCapacityMap() {
+      return toArray(store.getState().capacity.planTeamDailyMap);
+    },
+
     getTotalOrgDailyPerTeamAvg() {
       return toArray(store.getState()?.capacity?.organizationDailyPerTeamAverage);
     },

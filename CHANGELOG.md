@@ -38,6 +38,8 @@ python3 scripts/migrate.py --apply
 ```
 
 ### Added
+- Added task-ancestry plan focus and selection-sensitive Team/Project/Program graph levels with per-plan capacity rollups in the View menu. A selection box is added as well as a button to clear hidden plans while focusing on a plan and its hierarchy.
+- Added admin-managed ordered plan container types and grouped the Plan menu by configured hierarchy (migration 0030).
 - Added keyboard shortcut pills to the View menu display section headings and moved Timeline Scale to Ctrl+Shift+1 to avoid the browser's restore-tab shortcut.
 - Added task hierarchy folding with chevrons embedded in widened plan-color card borders and sidebar fold/unfold controls that preserve timeline dates and group spans.
 - Added a Plan overview / Team focus task view control under Team Drill-down to hide unrelated plan tasks while retaining parents of selected-team work.
@@ -55,6 +57,7 @@ python3 scripts/migrate.py --apply
 - Added a translucent background box behind each group spanning its full extent (pill plus members), so nested sub-groups are visually distinguishable as a darker overlapping shade.
 
 ### Changed
+- Derived View-menu graph levels and graph plan series from plans represented by tasks in Scope, including ancestor and descendant work.
 - Replaced the monolithic frontend state and pre-store service layer with a canonical Zustand-backed application store, explicit command/selector seams, strict hydration contracts, and signal-oriented event handling. Runtime consumers, views, scenarios, groups, filters, capacity, and plugins now use these canonical boundaries.
 - Separated resolved task data from presentation scope: Scope determines the candidate task set, Context and Team Drill-down determine what is displayed, and display filters no longer alter organization-wide capacity inputs.
 - Changed plan and team presentation behavior so contextual descendants use canonical source-plan swimlanes, grouped tasks preserve mother-plan placement, and specialized plugins apply the appropriate visible-task or organization-wide scope.

@@ -15,12 +15,14 @@ View menu
 - Timeline Scale: 3 Months / Weeks / Months / Quarters / Years — choose the time scale appropriate for your planning horizon.
 - Cards: Normal / Compact / Packed display mode.
 - Task Sort: Rank or Date ordering (disabled while Packed card mode is active).
-- Graph Type: Team or Project — controls which capacity calculation the [Graph Area](graph.md) shows.
+- Graph Type: choose among the container levels represented by tasks in Scope, including Ancestors and Descendant work; controls which plan allocations the [Graph Area](graph.md) shows.
 - Saved Views: load one of your saved Views, or save the current Plan/Scope/filter selection as a new named View.
 
 Plan menu
 
-- Lists delivery plans and team backlogs as separate groups; check/uncheck a plan to include or exclude it from the board.
+- Lists plans grouped by the ordered container hierarchy configured in Admin > Projects; check/uncheck a plan to include or exclude it from the board.
+- The searchable "Connected to" selector lists plans by configured container level and narrows the list to plans linked through task ancestry without changing which plans are checked. Choose "All plans" to clear the focus; saved Views remember the chosen focus.
+- All/None selects or clears only the plans currently shown. While focused, Clear hidden appears only when a checked plan is hidden by the focus and clears only hidden plans.
 - Which teams are shown for drill-down in the Sidebar depends on which plans are selected here (see [Sidebar — Team Drill-down & Task Filters](sidebar.md)).
 
 Scope menu

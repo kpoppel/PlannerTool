@@ -3,7 +3,6 @@ import { cmd, sel } from '../application/imports.js';
 const TIMELINE_SCALES = ['threeMonths', 'weeks', 'months', 'quarters', 'years'];
 const DISPLAY_MODES = ['normal', 'compact', 'packed'];
 const SORT_MODES = ['rank', 'date'];
-const GRAPH_MODES = ['team', 'project'];
 
 export class KeyboardShortcutManager {
   constructor(target, definitions) {
@@ -68,7 +67,9 @@ export function createApplicationShortcutDefinitions(dependencies) {
       commands.setFeatureSortMode(nextOption(SORT_MODES, selectors.getFeatureSortMode()));
     }),
     shortcut('graph-type', 'g', () => {
-      commands.setCapacityViewMode(nextOption(GRAPH_MODES, selectors.getCapacityViewMode()));
+      const types = selectors.getAvailableGraphTypes();
+      if (types.length === 0) return;
+      commands.setCapacityViewMode(nextOption(types, selectors.getEffectiveCapacityViewMode()));
     }),
     { id: 'board-zoom-in', keys: ['+', '='], ctrlKey: true, run: () => adjustBoardZoom(1) },
     { id: 'board-zoom-out', keys: ['-'], ctrlKey: true, run: () => adjustBoardZoom(-1) },

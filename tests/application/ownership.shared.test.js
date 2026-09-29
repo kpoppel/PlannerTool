@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveFundedTargetProject } from '../../www/js/application/shared/ownership.js';
+import { getConnectedPlanIds, resolveFundedTargetProject } from '../../www/js/application/shared/ownership.js';
 
 function maps(features, projects) {
   return {
@@ -58,5 +58,23 @@ describe('application/shared/ownership', () => {
     expect(resolveFundedTargetProject(features.get('task'), features, projects, memo)).toBe('project');
     features.get('task').project = 'missing';
     expect(resolveFundedTargetProject(features.get('task'), features, projects, memo)).toBe('project');
+  });
+
+  it('finds plan connections through task ancestry without traversing sideways through a shared team', () => {
+    const features = [
+      { id: 'p1', project: 'program-1' },
+      { id: 'a', project: 'project-a', parentId: 'p1' },
+      { id: 'f1', project: 'team-f', parentId: 'a' },
+      { id: 'p2', project: 'program-2' },
+      { id: 'b', project: 'project-b', parentId: 'p2' },
+      { id: 'f2', project: 'team-f', parentId: 'b' },
+    ];
+
+    expect(getConnectedPlanIds('program-1', features)).toEqual(
+      new Set(['program-1', 'project-a', 'team-f'])
+    );
+    expect(getConnectedPlanIds('team-f', features)).toEqual(
+      new Set(['team-f', 'project-a', 'program-1', 'project-b', 'program-2'])
+    );
   });
 });

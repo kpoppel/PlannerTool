@@ -16,6 +16,9 @@ const mockSel = vi.hoisted(() => ({
   },
   scope: {
     getContextTeams: vi.fn(() => ['t1']),
+    getContextFeatures: vi.fn(() => [
+      { project: 'p1' }, { project: 'program-1' },
+    ]),
   },
   capacity: {
     getCapacityDates: vi.fn(() => []),
@@ -23,13 +26,15 @@ const mockSel = vi.hoisted(() => ({
     getTeamDailyCapacityMap: vi.fn(() => null),
     getProjectDailyCapacity: vi.fn(() => []),
     getProjectDailyCapacityMap: vi.fn(() => null),
+    getPlanDailyCapacityMap: vi.fn(() => []),
+    getPlanTeamDailyCapacityMap: vi.fn(() => []),
     getTotalOrgDailyPerTeamAvg: vi.fn(() => []),
   },
   filter: {
     getSelectedFeatureStateSet: vi.fn(() => new Set(['Active'])),
   },
   view: {
-    getCapacityViewMode: vi.fn(() => 'team'),
+    getEffectiveCapacityViewMode: vi.fn(() => 'team'),
   },
 }));
 
@@ -68,7 +73,7 @@ describe('MainGraph Phase 4 selector seam', () => {
     mockSel.selection.getSelectedTeamIds.mockClear();
     mockSel.scope.getContextTeams.mockClear();
     mockSel.filter.getSelectedFeatureStateSet.mockClear();
-    mockSel.view.getCapacityViewMode.mockClear();
+    mockSel.view.getEffectiveCapacityViewMode.mockClear();
     mockBus.on.mockClear();
     mockBoardCoords.subscribe.mockClear();
 
@@ -99,10 +104,11 @@ describe('MainGraph Phase 4 selector seam', () => {
     const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
     await el.updateComplete;
 
-    expect(mockSel.selection.getEffectiveSelectedProjectIds).toHaveBeenCalled();
     expect(mockSel.selection.getSelectedTeamIds).toHaveBeenCalled();
     expect(mockSel.scope.getContextTeams).toHaveBeenCalled();
-    expect(mockSel.view.getCapacityViewMode).toHaveBeenCalled();
+    expect(mockSel.scope.getContextFeatures).toHaveBeenCalled();
+    expect(el._renderData.selectedProjectIds).toEqual(['p1', 'program-1']);
+    expect(mockSel.view.getEffectiveCapacityViewMode).toHaveBeenCalled();
     expect(mockSel.filter.getSelectedFeatureStateSet).toHaveBeenCalled();
 
     expect(mockBus.on).toHaveBeenCalled();

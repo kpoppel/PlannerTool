@@ -6,7 +6,7 @@
 
 import { CapacityEvents } from '../core/EventRegistry.js';
 import { isEnabled } from '../config.js';
-import { resolveFundedTargetProject } from '../application/shared/ownership.js';
+import { getPlanAncestorIds, resolveFundedTargetProject } from '../application/shared/ownership.js';
 
 // Special project ID for unfunded/orphaned allocations
 const UNFUNDED_PROJECT_ID = '__unfunded__';
@@ -108,6 +108,12 @@ export class CapacityCalculator {
     // If incremental update requested and we have a compatible cache, apply deltas
     if (
       Array.isArray(changedFeatureIds) &&
+      changedFeatureIds.every((id) => {
+        const oldFeature = this._lastFeaturesById.get(id);
+        const newFeature = effectiveById.get(id);
+        return oldFeature && newFeature && oldFeature.parentId === newFeature.parentId &&
+          oldFeature.project === newFeature.project;
+      }) &&
       this._lastResultCache &&
       this._lastResultCache.dates.length === dates.length
     ) {
@@ -139,6 +145,8 @@ export class CapacityCalculator {
         projectDailyCapacityRaw: cached.projectDaily,
         projectDailyCapacity: projectDailyNormalized,
         projectDailyCapacityMap: cached.projectDailyMap,
+        planDailyCapacityMap: cached.planDailyMap,
+        planTeamDailyCapacityMap: cached.planTeamDailyMap,
         totalOrgDailyCapacity: cached.totalOrgDaily,
         totalOrgDailyPerTeamAvg,
       };
@@ -148,7 +156,8 @@ export class CapacityCalculator {
     }
 
     // Full calculation (feature-first) for best average performance
-    const { teamDaily, teamDailyMap, projectDaily, projectDailyMap, totalOrgDaily } =
+    const { teamDaily, teamDailyMap, projectDaily, projectDailyMap, planDailyMap,
+      planTeamDailyMap, totalOrgDaily } =
       this._calculateDailyCapacities_FeatureFirst(
         features,
         dates,
@@ -175,6 +184,8 @@ export class CapacityCalculator {
       projectDailyCapacityRaw: projectDaily,
       projectDailyCapacity: projectDailyNormalized,
       projectDailyCapacityMap: projectDailyMap,
+      planDailyCapacityMap: planDailyMap,
+      planTeamDailyCapacityMap: planTeamDailyMap,
       totalOrgDailyCapacity: totalOrgDaily,
       totalOrgDailyPerTeamAvg,
     };
@@ -188,6 +199,8 @@ export class CapacityCalculator {
       teamDailyMap,
       projectDaily,
       projectDailyMap,
+      planDailyMap,
+      planTeamDailyMap,
       totalOrgDaily,
     };
     // Store snapshot of features for delta subtraction
@@ -219,6 +232,8 @@ export class CapacityCalculator {
     const teamDailyMap = Array.from({ length: dlen }, () => ({}));
     const projectDaily = Array.from({ length: dlen }, () => new Array(plen).fill(0));
     const projectDailyMap = Array.from({ length: dlen }, () => ({}));
+    const planDailyMap = Array.from({ length: dlen }, () => ({}));
+    const planTeamDailyMap = Array.from({ length: dlen }, () => ({}));
     const totalOrgDaily = new Array(dlen).fill(0);
 
     const selectedProjectSet = new Set(selectedProjects);
@@ -232,6 +247,8 @@ export class CapacityCalculator {
         teamDailyMap,
         projectDaily,
         projectDailyMap,
+        planDailyMap,
+        planTeamDailyMap,
         totalOrgDaily,
       };
     }
@@ -268,6 +285,7 @@ export class CapacityCalculator {
       }
 
       const tls = f.capacity || [];
+      const ancestorPlanIds = getPlanAncestorIds(f, effectiveById, projectById);
       for (let di = startIdx; di <= endIdx; di++) {
         let projectLoadForDay = 0;
         for (const tl of tls) {
@@ -276,6 +294,14 @@ export class CapacityCalculator {
           if (teamsWithChildren && teamsWithChildren.has(String(tl.team))) continue;
           const ti = teamIndexById.get(tl.team);
           const load = Number(tl.capacity) || 0;
+          for (const planId of ancestorPlanIds) {
+            if (planDailyMap[di][planId] === undefined) planDailyMap[di][planId] = 0;
+            planDailyMap[di][planId] += load;
+            if (!planTeamDailyMap[di][planId]) planTeamDailyMap[di][planId] = {};
+            const teamLoads = planTeamDailyMap[di][planId];
+            if (teamLoads[tl.team] === undefined) teamLoads[tl.team] = 0;
+            teamLoads[tl.team] += load;
+          }
           if (ti !== undefined) {
             teamDaily[di][ti] += load;
             teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + load;
@@ -305,6 +331,8 @@ export class CapacityCalculator {
       teamDailyMap,
       projectDaily,
       projectDailyMap,
+      planDailyMap,
+      planTeamDailyMap,
       totalOrgDaily,
     };
   }
@@ -331,6 +359,8 @@ export class CapacityCalculator {
     const projectDaily = cache.projectDaily;
     const teamDailyMap = cache.teamDailyMap;
     const projectDailyMap = cache.projectDailyMap;
+    const planDailyMap = cache.planDailyMap;
+    const planTeamDailyMap = cache.planTeamDailyMap;
     const totalOrgDaily = cache.totalOrgDaily;
 
     const selectedProjectSet = new Set(selectedProjects);
@@ -381,6 +411,7 @@ export class CapacityCalculator {
       }
 
       const tls = f.capacity || [];
+      const ancestorPlanIds = getPlanAncestorIds(f, childSource, projectById);
       for (let di = startIdx; di <= endIdx; di++) {
         let projectLoadForDay = 0;
         for (const tl of tls) {
@@ -388,6 +419,14 @@ export class CapacityCalculator {
           if (teamsWithChildren && teamsWithChildren.has(String(tl.team))) continue;
           const ti = teamIndexById.get(tl.team);
           const load = Number(tl.capacity) || 0;
+          for (const planId of ancestorPlanIds) {
+            if (planDailyMap[di][planId] === undefined) planDailyMap[di][planId] = 0;
+            planDailyMap[di][planId] += sign * load;
+            if (!planTeamDailyMap[di][planId]) planTeamDailyMap[di][planId] = {};
+            const teamLoads = planTeamDailyMap[di][planId];
+            if (teamLoads[tl.team] === undefined) teamLoads[tl.team] = 0;
+            teamLoads[tl.team] += sign * load;
+          }
           if (ti !== undefined) {
             teamDaily[di][ti] += sign * load;
             teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + sign * load;
@@ -452,6 +491,8 @@ export class CapacityCalculator {
       projectDailyCapacityRaw: [],
       projectDailyCapacity: [],
       projectDailyCapacityMap: [],
+      planDailyCapacityMap: [],
+      planTeamDailyCapacityMap: [],
       totalOrgDailyCapacity: [],
       totalOrgDailyPerTeamAvg: [],
     };

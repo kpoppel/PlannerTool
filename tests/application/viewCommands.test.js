@@ -27,6 +27,7 @@ describe('application/commands/viewCommands', () => {
     commands.setCondensedCards(true);
     commands.setFeatureSortMode('date');
     commands.setCapacityViewMode('project');
+    commands.setFocusedPlanId('program-1');
     commands.setDisplayMode('packed');
     commands.setTypeVisibility('feature', false);
     commands.setTypeVisibility('feature', true);
@@ -36,6 +37,7 @@ describe('application/commands/viewCommands', () => {
       condensedCards: true,
       featureSortMode: 'date',
       capacityViewMode: 'project',
+      focusedPlanId: 'program-1',
       displayMode: 'packed',
       packedMode: true,
       hiddenTypes: [],

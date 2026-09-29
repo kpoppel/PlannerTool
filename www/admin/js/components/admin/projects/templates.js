@@ -184,8 +184,7 @@ export const renderRowTemplate = (ctx, project, index) => {
         <select class="inline-select"
           .value=${project.type || 'project'}
           @change=${(e) => ctx.updateProjectField(index, 'type', e.target.value)}>
-          <option value="project">project</option>
-          <option value="team">team</option>
+          ${ctx.containerTypes.map((type) => html`<option value=${type}>${type}</option>`)}
         </select>
       </td>
       <td style="min-width:220px">
@@ -310,6 +309,34 @@ export const renderMainTemplate = (ctx) => {
               ></textarea>
             ` : html`
               ${renderBrowsePanelTemplate(ctx)}
+
+              <div class="container-types" aria-label="Plan container hierarchy">
+                <strong>Plan container hierarchy</strong>
+                <div class="container-type-list">
+                  ${ctx.containerTypes.map((type, index) => html`
+                    <div class="container-type-item">
+                      <span>${type}</span>
+                      <button class="action-btn" title="Move ${type} up" aria-label="Move ${type} up"
+                        ?disabled=${index === 0}
+                        @click=${() => ctx.moveContainerType(index, index - 1)}>↑</button>
+                      <button class="action-btn" title="Move ${type} down" aria-label="Move ${type} down"
+                        ?disabled=${index === ctx.containerTypes.length - 1}
+                        @click=${() => ctx.moveContainerType(index, index + 1)}>↓</button>
+                      <button class="action-btn" title="Remove ${type}" aria-label="Remove ${type}"
+                        ?disabled=${ctx.containerTypes.length === 1 ||
+                          ctx.localProjects.some((project) => project.type === type)}
+                        @click=${() => ctx.removeContainerType(type)}>×</button>
+                    </div>
+                  `)}
+                </div>
+                <div class="container-type-add">
+                  <input class="inline-input" aria-label="New container type"
+                    .value=${ctx.newContainerType}
+                    @input=${(event) => { ctx.newContainerType = event.target.value; }}
+                    @keydown=${(event) => { if (event.key === 'Enter') ctx.addContainerType(); }} />
+                  <button class="btn" @click=${() => ctx.addContainerType()}>Add type</button>
+                </div>
+              </div>
 
               <div class="search-bar">
                 <span class="small">🔎</span>
