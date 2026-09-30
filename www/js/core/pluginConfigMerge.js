@@ -7,14 +7,14 @@
  * Merge policy
  * ─────────────
  * Technical fields always come from modules.config.json (source of truth):
- *   id, name, version, description, mountPoint, dependencies, exclusive, fullscreen, persistent
+ *   id, type, name, icon, version, description, mountPoint, dependencies, exclusive, persistent
  *
  * Runtime-managed fields come from the backend config when present:
- *   enabled, activated, order (expressed as list position), custom_config
+ *   enabled, activateOnStartup, menuPosition, sequence (list position), custom_config
  *
  * Default strategy when a plugin is missing from runtime config:
  *   enabled  → uses the value from modules.config.json (metadata default)
- *   activated → false  (never auto-activate a plugin with no saved state)
+ *   activateOnStartup → false  (never auto-activate a plugin with no saved state)
  *
  * Output ordering:
  *   1. Plugins that appear in the runtime config list are output in that order.
@@ -27,22 +27,25 @@
 /**
  * @typedef {{
  *   id: string,
+ *   type: 'hidden'|'tool'|'menu',
+ *   icon: string,
  *   name: string,
  *   version: string,
  *   description: string,
  *   enabled: boolean,
- *   activated: boolean,
+ *   activateOnStartup: boolean,
  *   exclusive: boolean,
  *   mountPoint: string,
  *   dependencies: string[],
- *   fullscreen?: boolean,
+ *   menuPosition?: 'before-tools'|'after-tools',
  *   persistent?: boolean,
  *   custom_config?: unknown,
  * }} PluginModuleConfig
  * @typedef {{
  *   id: string,
  *   enabled: boolean,
- *   activated: boolean,
+ *   activateOnStartup: boolean,
+ *   menuPosition?: 'before-tools'|'after-tools',
  *   custom_config?: unknown,
  * }} RuntimePluginConfig
  */
@@ -117,23 +120,25 @@ function _buildMergedEntry(meta, runtime) {
   const base = {
     // Technical fields — read-only, always from metadata
     id: meta.id,
+    type: meta.type,
     name: meta.name,
+    icon: meta.icon,
     version: meta.version,
     description: meta.description,
     mountPoint: meta.mountPoint,
     dependencies: meta.dependencies,
     exclusive: meta.exclusive,
-    // fullscreen is optional
-    ...(meta.fullscreen !== undefined ? { fullscreen: meta.fullscreen } : {}),
     ...(meta.persistent !== undefined ? { persistent: meta.persistent } : {}),
+    ...(meta.menuPosition !== undefined ? { menuPosition: meta.menuPosition } : {}),
   };
 
   if (runtime) {
     return {
       ...base,
       enabled: Boolean(runtime.enabled),
-      // Default activated to false when not present in runtime entry
-      activated: Boolean(runtime.activated),
+      // Default activateOnStartup to false when not present in runtime entry
+      activateOnStartup: Boolean(runtime.activateOnStartup),
+      ...(runtime.menuPosition !== undefined ? { menuPosition: runtime.menuPosition } : {}),
       ...(runtime.custom_config !== undefined ? { custom_config: runtime.custom_config } : {}),
     };
   }
@@ -142,6 +147,6 @@ function _buildMergedEntry(meta, runtime) {
   return {
     ...base,
     enabled: Boolean(meta.enabled),
-    activated: false,
+    activateOnStartup: false,
   };
 }

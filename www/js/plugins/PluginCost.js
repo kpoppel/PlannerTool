@@ -36,17 +36,6 @@ export class PluginCost extends FullscreenPlugin {
     await super.deactivate();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: this.config.name || 'Cost Analysis',
-      description: this.config.description || 'Three-view cost analysis with project, task, and team breakdowns',
-      icon: this.config.icon || 'assessment',
-      section: 'tools',
-      autoActivate: false,
-      fullscreen: true,
-    };
-  }
 }
 
 export default PluginCost;

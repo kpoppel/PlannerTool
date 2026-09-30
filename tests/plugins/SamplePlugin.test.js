@@ -2,13 +2,15 @@ import { expect, describe, it, beforeEach, vi, afterEach } from 'vitest';
 import { SamplePlugin } from '../../www/js/plugins/SamplePlugin.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents } from '../../www/js/core/EventRegistry.js';
+import modulesConfig from '../../www/js/modules.config.json';
 
 describe('SamplePlugin', () => {
   let plugin;
   const testId = 'test-sample-plugin';
 
   beforeEach(() => {
-    plugin = new SamplePlugin(testId, {});
+    const config = modulesConfig.modules.find((entry) => entry.id === 'sample-plugin');
+    plugin = new SamplePlugin(testId, config);
   });
 
   afterEach(() => {
@@ -99,8 +101,9 @@ describe('SamplePlugin', () => {
       const meta = plugin.getMetadata();
       expect(meta.id).to.equal(testId);
       expect(meta.name).to.equal('Sample Plugin');
-      expect(meta.section).to.equal('tools');
-      expect(meta.autoActivate).to.be.false;
+      expect(meta.type).to.equal('tool');
+      expect(meta.version).to.equal('1.0.0');
+      expect(meta).not.to.have.property('autoActivate');
     });
 
     it('sets mountSelector to _body for floating panel', () => {

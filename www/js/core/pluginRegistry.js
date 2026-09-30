@@ -3,6 +3,7 @@
 // simply do `const ctor = PluginRegistry[id]`.
 
 import { SamplePlugin } from '../plugins/SamplePlugin.js';
+import { SampleMenuPlugin } from '../plugins/SampleMenuPlugin.js';
 import PluginMarkers from '../plugins/PluginMarkers.js';
 import PluginCost from '../plugins/PluginCost.js';
 import PluginExportTimeline from '../plugins/PluginExportTimeline.js';
@@ -18,6 +19,7 @@ import PluginPortfolio from '../plugins/PluginPortfolio.js';
 
 const PluginRegistry = {
   'sample-plugin': SamplePlugin,
+  'sample-menu-plugin': SampleMenuPlugin,
   'plugin-markers': PluginMarkers,
   'plugin-cost': PluginCost,
   'plugin-export-timeline': PluginExportTimeline,

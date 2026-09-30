@@ -25,16 +25,6 @@ export class PluginEvents extends MountedPlugin {
     await super.deactivate();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: 'Plan Events',
-      description: 'Display locally-stored plan events on the timeline',
-      icon: 'event',
-      section: 'tools',
-      autoActivate: false,
-    };
-  }
 }
 
 export default PluginEvents;

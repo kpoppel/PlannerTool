@@ -21,6 +21,7 @@ export class FullscreenPlugin extends MountedPlugin {
   /* ── overrides: always fullscreen ───────────────────────────────────── */
 
   get mountSelector() { return 'app'; }
+  get isFullscreen() { return true; }
 
   /* ── activate: hide timeline-board ──────────────────────────────────── */
 

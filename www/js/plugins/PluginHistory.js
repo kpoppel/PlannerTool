@@ -25,16 +25,6 @@ export class PluginHistory extends MountedPlugin {
     await super.deactivate();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: 'Task History',
-      description: 'Display task date change history on timeline',
-      icon: 'history',
-      section: 'tools',
-      autoActivate: false,
-    };
-  }
 }
 
 export default PluginHistory;

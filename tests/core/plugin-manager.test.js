@@ -5,7 +5,7 @@ import { PluginManager } from '../../www/js/core/PluginManager.js';
 
 class TestPlugin extends Plugin {
   constructor(id, config = {}) {
-    super(id, config);
+    super(id, { type: 'tool', ...config });
     this.initCalled = false;
     this.activateCalled = false;
     this.deactivateCalled = false;
@@ -169,11 +169,24 @@ describe('PluginManager & Plugin base', () => {
   it('does not list plugins configured outside the Tools menu', async () => {
     const plugin = new TestPlugin('context-plugin', {
       dependencies: [],
-      showInTools: false,
+      type: 'hidden',
     });
     await manager.register(plugin);
 
-    expect(manager.list().find((p) => p.id === 'context-plugin')).to.not.exist;
+    expect(manager.listTools().find((p) => p.id === 'context-plugin')).to.not.exist;
+    expect(manager.list().find((p) => p.id === 'context-plugin')).to.exist;
+  });
+
+  it('routes menu plugins separately and rejects activation before closing a tool', async () => {
+    const tool = new TestPlugin('active-tool', { dependencies: [] });
+    const menu = new TestPlugin('menu-plugin', { type: 'menu', dependencies: [] });
+    await manager.register(tool);
+    await manager.register(menu);
+    await manager.activate(tool.id);
+    await expect(manager.activate(menu.id)).rejects.toThrow('opened by the top menu');
+    expect(tool.active).to.equal(true);
+    expect(manager.listMenus().map((plugin) => plugin.id)).to.deep.equal(['menu-plugin']);
+    expect(manager.listTools().map((plugin) => plugin.id)).to.deep.equal(['active-tool']);
   });
 
   it('should prevent unregister when dependents exist', async () => {
@@ -256,8 +269,8 @@ describe('PluginManager.loadFromConfig', () => {
 
   it('registers enabled plugins and skips disabled ones', async () => {
     await manager.loadFromConfig(makeConfig([
-      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
-      { id: 'plugin-b', enabled: false, activated: false, dependencies: [] },
+      { id: 'plugin-a', enabled: true, activateOnStartup: false, dependencies: [] },
+      { id: 'plugin-b', enabled: false, activateOnStartup: false, dependencies: [] },
     ]));
 
     expect(manager.has('plugin-a')).to.equal(true);
@@ -266,8 +279,8 @@ describe('PluginManager.loadFromConfig', () => {
 
   it('disabled plugins are not listed', async () => {
     await manager.loadFromConfig(makeConfig([
-      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
-      { id: 'plugin-b', enabled: false, activated: false, dependencies: [] },
+      { id: 'plugin-a', enabled: true, activateOnStartup: false, dependencies: [] },
+      { id: 'plugin-b', enabled: false, activateOnStartup: false, dependencies: [] },
     ]));
 
     const ids = manager.list().map((p) => p.id);
@@ -275,21 +288,21 @@ describe('PluginManager.loadFromConfig', () => {
     expect(ids).not.to.include('plugin-b');
   });
 
-  it('auto-activates exactly the first plugin with activated:true', async () => {
+  it('auto-activates exactly the first plugin with activateOnStartup:true', async () => {
     await manager.loadFromConfig(makeConfig([
-      { id: 'plugin-a', enabled: true, activated: true, dependencies: [] },
-      { id: 'plugin-b', enabled: true, activated: true, dependencies: [] },
+      { id: 'plugin-a', enabled: true, activateOnStartup: true, dependencies: [] },
+      { id: 'plugin-b', enabled: true, activateOnStartup: true, dependencies: [] },
     ]));
 
     expect(manager.isActive('plugin-a')).to.equal(true);
-    // second activated:true is ignored — only first one activates
+    // second activateOnStartup:true is ignored — only first one activates
     expect(manager.isActive('plugin-b')).to.equal(false);
   });
 
-  it('does not activate any plugin when none has activated:true', async () => {
+  it('does not activate any plugin when none has activateOnStartup:true', async () => {
     await manager.loadFromConfig(makeConfig([
-      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
-      { id: 'plugin-b', enabled: true, activated: false, dependencies: [] },
+      { id: 'plugin-a', enabled: true, activateOnStartup: false, dependencies: [] },
+      { id: 'plugin-b', enabled: true, activateOnStartup: false, dependencies: [] },
     ]));
 
     expect(manager.isActive('plugin-a')).to.equal(false);
@@ -298,8 +311,8 @@ describe('PluginManager.loadFromConfig', () => {
 
   it('preserves admin-defined order when no dependency reordering is needed', async () => {
     await manager.loadFromConfig(makeConfig([
-      { id: 'plugin-b', enabled: true, activated: false, dependencies: [] },
-      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
+      { id: 'plugin-b', enabled: true, activateOnStartup: false, dependencies: [] },
+      { id: 'plugin-a', enabled: true, activateOnStartup: false, dependencies: [] },
     ]));
 
     // list() uses the plugins Map which preserves insertion (registration) order
@@ -313,13 +326,14 @@ describe('PluginManager.loadFromConfig', () => {
 
     // plugin-b depends on plugin-a, but admin put b before a
     await manager.loadFromConfig(makeConfig([
-      { id: 'plugin-b', enabled: true, activated: false, dependencies: ['plugin-a'] },
-      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
+      { id: 'plugin-b', enabled: true, activateOnStartup: false, dependencies: ['plugin-a'] },
+      { id: 'plugin-a', enabled: true, activateOnStartup: false, dependencies: [] },
     ]));
 
     // plugin-a must be registered first due to dependency
     expect(manager.loadOrder[0]).to.equal('plugin-a');
     expect(manager.loadOrder[1]).to.equal('plugin-b');
+    expect(manager.list().map((plugin) => plugin.id)).to.deep.equal(['plugin-b', 'plugin-a']);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('adjusted for dependency safety'),
       expect.anything(),

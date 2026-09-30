@@ -12,7 +12,7 @@ const MODULES_META = {
       version: '1.0.0',
       description: 'Alpha plugin',
       enabled: true,
-      activated: false,
+      activateOnStartup: false,
       exclusive: true,
       mountPoint: 'feature-board',
       dependencies: [],
@@ -23,7 +23,7 @@ const MODULES_META = {
       version: '2.0.0',
       description: 'Beta plugin',
       enabled: false,
-      activated: false,
+      activateOnStartup: false,
       exclusive: false,
       mountPoint: 'app',
       dependencies: [],
@@ -34,7 +34,7 @@ const MODULES_META = {
       version: '1.0.0',
       description: 'Cost analysis plugin',
       enabled: false,
-      activated: false,
+      activateOnStartup: false,
       exclusive: true,
       mountPoint: 'app',
       dependencies: [],
@@ -45,8 +45,8 @@ const MODULES_META = {
 const PLUGINS_CONFIG = {
   schema_version: 1,
   plugins: [
-    { id: 'plugin-alpha', enabled: true, activated: false },
-    { id: 'plugin-beta', enabled: false, activated: false },
+    { id: 'plugin-alpha', enabled: true, activateOnStartup: false },
+    { id: 'plugin-beta', enabled: false, activateOnStartup: false },
   ],
 };
 
@@ -85,6 +85,19 @@ describe('admin-plugins', () => {
   });
 
   describe('component load and render', () => {
+    it('blocks saving when runtime settings require migration', async () => {
+      await flush(comp);
+      server.use(http.get('/admin/v1/plugins-config', () => HttpResponse.json({
+        error: 'invalid_payload', message: 'Run scripts/migrate.py --apply',
+      }, { status: 400 })));
+      await comp._load();
+      await comp.updateComplete;
+      expect(comp._rows).to.have.length(0);
+      expect(comp._hasValidationErrors()).to.equal(true);
+      expect(comp._statusType).to.equal('error');
+      expect(comp.shadowRoot.querySelector('.btn-save').disabled).to.equal(true);
+    });
+
     it('renders a row for each plugin including the invalid one', async () => {
       await flush(comp);
       expect(comp._rows).to.have.length(3);
@@ -100,11 +113,11 @@ describe('admin-plugins', () => {
       expect(alpha.exclusive).to.equal(true);
     });
 
-    it('merges enabled/activated from runtime config', async () => {
+    it('merges enabled/activateOnStartup from runtime config', async () => {
       await flush(comp);
       const alpha = comp._rows.find((r) => r.id === 'plugin-alpha');
       expect(alpha.enabled).to.equal(true);
-      expect(alpha.activated).to.equal(false);
+      expect(alpha.activateOnStartup).to.equal(false);
     });
 
     it('shows validation error for entry missing id', async () => {
@@ -114,7 +127,7 @@ describe('admin-plugins', () => {
     });
   });
 
-  describe('activated exclusivity', () => {
+  describe('activateOnStartup exclusivity', () => {
     it('activating a plugin deactivates all others', async () => {
       await flush(comp);
       // Manually enable both for this test
@@ -123,32 +136,32 @@ describe('admin-plugins', () => {
 
       comp._onSelectActivated(0);
       await comp.updateComplete;
-      expect(comp._rows[0].activated).to.equal(true);
-      expect(comp._rows[1].activated).to.equal(false);
+      expect(comp._rows[0].activateOnStartup).to.equal(true);
+      expect(comp._rows[1].activateOnStartup).to.equal(false);
 
       comp._onSelectActivated(1);
       await comp.updateComplete;
-      expect(comp._rows[0].activated).to.equal(false);
-      expect(comp._rows[1].activated).to.equal(true);
+      expect(comp._rows[0].activateOnStartup).to.equal(false);
+      expect(comp._rows[1].activateOnStartup).to.equal(true);
     });
 
     it('activating again toggles off (deactivates)', async () => {
       await flush(comp);
-      comp._rows = comp._rows.map((r, i) => ({ ...r, enabled: true, activated: i === 0 }));
+      comp._rows = comp._rows.map((r, i) => ({ ...r, enabled: true, activateOnStartup: i === 0 }));
       await comp.updateComplete;
 
       comp._onSelectActivated(0);
       await comp.updateComplete;
-      expect(comp._rows[0].activated).to.equal(false);
+      expect(comp._rows[0].activateOnStartup).to.equal(false);
     });
   });
 
   describe('disabling active plugin clears activation', () => {
-    it('toggling enabled off when activated also clears activated', async () => {
+    it('toggling enabled off when activateOnStartup also clears activateOnStartup', async () => {
       await flush(comp);
-      // Set plugin-alpha as enabled + activated
+      // Set plugin-alpha as enabled + activateOnStartup
       comp._rows = comp._rows.map((r) =>
-        r.id === 'plugin-alpha' ? { ...r, enabled: true, activated: true } : r
+        r.id === 'plugin-alpha' ? { ...r, enabled: true, activateOnStartup: true } : r
       );
       await comp.updateComplete;
 
@@ -158,11 +171,33 @@ describe('admin-plugins', () => {
 
       const row = comp._rows[idx];
       expect(row.enabled).to.equal(false);
-      expect(row.activated).to.equal(false);
+      expect(row.activateOnStartup).to.equal(false);
     });
   });
 
   describe('reorder — move up/down', () => {
+    it('edits menu position and prevents startup activation of menu plugins', async () => {
+      await flush(comp);
+      comp._rows = [{
+        id: 'sample-menu-plugin', type: 'menu', name: 'Sample Menu', version: '1.0.0',
+        description: 'Sample menu', enabled: true, activateOnStartup: false,
+        menuPosition: 'before-tools', custom_config: {},
+      }];
+      await comp.updateComplete;
+      const position = comp.shadowRoot.querySelector('select[aria-label="Sample Menu menu position"]');
+      expect(position).to.exist;
+      position.value = 'after-tools';
+      position.dispatchEvent(new Event('change'));
+      comp._onSelectActivated(0);
+      await comp.updateComplete;
+      expect(comp._rows[0].menuPosition).to.equal('after-tools');
+      expect(comp._rows[0].activateOnStartup).to.equal(false);
+      expect(comp.shadowRoot.querySelector('.radio-cell input')).to.equal(null);
+      expect(comp._buildRow({ type: 'menu', menuPosition: 'before-tools' }, {
+        enabled: true, activateOnStartup: true, menuPosition: 'after-tools',
+      }).activateOnStartup).to.equal(false);
+    });
+
     it('_onMoveUp swaps rows', async () => {
       await flush(comp);
       const firstId = comp._rows[0].id;
@@ -202,6 +237,32 @@ describe('admin-plugins', () => {
   });
 
   describe('save payload and providerREST calls', () => {
+    it('persists menu placement and reloads it with the same display sequence', async () => {
+      await flush(comp);
+      let saved;
+      server.use(http.post('/admin/v1/plugins-config', async ({ request }) => {
+        saved = (await request.json()).content;
+        return HttpResponse.json({ ok: true });
+      }));
+      const metadata = [{
+        id: 'sample-menu-plugin', type: 'menu', name: 'Sample Menu', version: '1.0.0',
+        enabled: false, activateOnStartup: false, menuPosition: 'before-tools',
+      }];
+      comp._rows = comp._mergeConfig(metadata, { schema_version: 2, plugins: [] });
+      comp._validationErrors = [];
+      comp._onToggleEnabled(0);
+      comp._onMenuPositionChange(0, 'after-tools');
+      await comp._onSave();
+      expect(saved.schema_version).to.equal(2);
+      expect(saved.plugins).to.deep.equal([{
+        id: 'sample-menu-plugin', enabled: true, activateOnStartup: false,
+        menuPosition: 'after-tools', custom_config: {},
+      }]);
+      const reloaded = comp._mergeConfig(metadata, saved);
+      expect(reloaded[0].menuPosition).to.equal('after-tools');
+      expect(reloaded[0].enabled).to.equal(true);
+    });
+
     // Helpers to set up a clean (no-invalid-entry) component for save tests
     function useCleanHandlers(postHandler) {
       server.use(
@@ -209,8 +270,8 @@ describe('admin-plugins', () => {
           HttpResponse.json(
             {
               modules: [
-                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: 'Alpha plugin', enabled: true, activated: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
-                { id: 'plugin-beta', name: 'Beta', version: '2.0.0', description: 'Beta plugin', enabled: false, activated: false, exclusive: false, mountPoint: 'app', dependencies: [] },
+                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: 'Alpha plugin', enabled: true, activateOnStartup: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
+                { id: 'plugin-beta', name: 'Beta', version: '2.0.0', description: 'Beta plugin', enabled: false, activateOnStartup: false, exclusive: false, mountPoint: 'app', dependencies: [] },
               ],
             },
             { status: 200 }
@@ -238,15 +299,15 @@ describe('admin-plugins', () => {
 
       expect(capturedBody).to.exist;
       expect(capturedBody.content).to.be.an('object');
-      expect(capturedBody.content.schema_version).to.equal(1);
+      expect(capturedBody.content.schema_version).to.equal(2);
       expect(capturedBody.content.plugins).to.be.an('array');
       // Only entries with valid ids
       capturedBody.content.plugins.forEach((item) => expect(item.id).to.be.a('string'));
-      // Payload shape includes enabled and activated fields
+      // Payload shape includes enabled and activateOnStartup fields
       const alpha = capturedBody.content.plugins.find((x) => x.id === 'plugin-alpha');
       expect(alpha).to.exist;
       expect(alpha).to.have.property('enabled');
-      expect(alpha).to.have.property('activated');
+      expect(alpha).to.have.property('activateOnStartup');
     });
 
     it('reorder persists expected sequence in save payload', async () => {
@@ -287,7 +348,7 @@ describe('admin-plugins', () => {
           HttpResponse.json(
             {
               modules: [
-                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: '', enabled: true, activated: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
+                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: '', enabled: true, activateOnStartup: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
               ],
             },
             { status: 200 }
@@ -314,7 +375,7 @@ describe('admin-plugins', () => {
           HttpResponse.json(
             {
               modules: [
-                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: '', enabled: true, activated: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
+                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: '', enabled: true, activateOnStartup: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
               ],
             },
             { status: 200 }
@@ -409,7 +470,7 @@ describe('adminProvider plugins-config methods', () => {
   it('getPluginsConfig returns content object on success', async () => {
     server.use(
       http.get('/admin/v1/plugins-config', () =>
-        HttpResponse.json({ content: { schema_version: 1, plugins: [{ id: 'plugin-alpha', enabled: true, activated: false }] } }, { status: 200 })
+        HttpResponse.json({ content: { schema_version: 1, plugins: [{ id: 'plugin-alpha', enabled: true, activateOnStartup: false }] } }, { status: 200 })
       )
     );
     const result = await adminProvider.getPluginsConfig();
@@ -438,7 +499,7 @@ describe('adminProvider plugins-config methods', () => {
         return HttpResponse.json({ ok: true }, { status: 200 });
       })
     );
-    const payload = { schema_version: 1, plugins: [{ id: 'plugin-alpha', enabled: true, activated: false }] };
+    const payload = { schema_version: 1, plugins: [{ id: 'plugin-alpha', enabled: true, activateOnStartup: false }] };
     const result = await adminProvider.savePluginsConfig(payload);
     expect(result.ok).to.equal(true);
     expect(body.content.schema_version).to.equal(1);

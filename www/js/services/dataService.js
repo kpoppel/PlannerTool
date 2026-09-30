@@ -147,7 +147,8 @@ class DataService {
   }
   async getPluginsConfig() {
     const result = await this.providers['rest'].getPluginsConfig();
-    return this._unwrapOrFallback('getPluginsConfig', result, { schema_version: 1, plugins: [] });
+    if (!result.ok) throw new Error('Loading plugin settings failed', { cause: result.error });
+    return result.data;
   }
 
   async getPluginsSchemas() {

@@ -1,6 +1,8 @@
 import { bus } from './EventBus.js';
 import { PluginEvents } from './EventRegistry.js';
 import PluginRegistry from './pluginRegistry.js';
+import { Plugin } from './Plugin.js';
+import { MenuPlugin } from '../plugins/MenuPlugin.js';
 
 /**
  * Module: PluginManager
@@ -17,6 +19,7 @@ export class PluginManager {
   constructor() {
     this.plugins = new Map();
     this.loadOrder = [];
+    this.displayOrder = [];
   }
 
   async register(plugin) {
@@ -41,6 +44,7 @@ export class PluginManager {
     this.plugins.set(plugin.id, plugin);
     await plugin.init();
     plugin.initialized = true;
+    if (!this.displayOrder.includes(plugin.id)) this.displayOrder.push(plugin.id);
     this._addToLoadOrder(plugin);
     console.log(`[PluginManager] Plugin registered: ${plugin.id}`);
     bus.emit(PluginEvents.REGISTERED, { plugin: plugin.id });
@@ -71,6 +75,7 @@ export class PluginManager {
     await plugin.destroy();
     this.plugins.delete(pluginId);
     this.loadOrder = this.loadOrder.filter((id) => id !== pluginId);
+    this.displayOrder = this.displayOrder.filter((id) => id !== pluginId);
     console.log(`[PluginManager] Plugin unregistered: ${pluginId}`);
     bus.emit(PluginEvents.UNREGISTERED, { plugin: pluginId });
   }
@@ -87,6 +92,10 @@ export class PluginManager {
       const msg = `Plugin ${pluginId} not found`;
       console.error(`[PluginManager] ${msg}`);
       throw new Error(msg);
+    }
+
+    if (plugin.config.type === 'menu') {
+      throw new Error(`Menu plugin ${pluginId} is opened by the top menu, not activated`);
     }
 
     if (!plugin.initialized) {
@@ -232,13 +241,28 @@ export class PluginManager {
 
   /**
    * List all plugins
-   * @returns {Array<object>} array of plugin metadata
+  * @returns {ReturnType<Plugin['getMetadata']>[]} array of plugin metadata
    */
   list() {
-    return [...this.plugins.values()]
-      .filter((plugin) => !(plugin.config && plugin.config.showInTools === false))
-      .map((p) => p.getMetadata())
-      .filter((metadata) => metadata.showInTools !== false);
+    return this.displayOrder
+      .filter((id) => this.plugins.has(id))
+      .map((id) => this.plugins.get(id).getMetadata());
+  }
+
+  listTools() {
+    return this.list().filter((metadata) => metadata.type === 'tool');
+  }
+
+  listMenus() {
+    return this.list().filter((metadata) => metadata.type === 'menu');
+  }
+
+  createMenuElement(pluginId) {
+    const plugin = this.plugins.get(pluginId);
+    if (!(plugin instanceof MenuPlugin)) {
+      throw new Error(`Plugin ${pluginId} does not implement the menu plugin contract`);
+    }
+    return plugin.createMenuElement();
   }
 
   /**
@@ -253,10 +277,10 @@ export class PluginManager {
    * Disabled plugins are skipped entirely and will not appear in the plugin registry
    * or the Tools menu.
    *
-   * Activation: the first plugin found with `activated === true` is auto-activated
-   * at startup. Subsequent activated entries are ignored (only one may be active).
+  * Activation: the first non-menu plugin with `activateOnStartup === true` is activated
+  * at startup. Subsequent startup selections are ignored (only one may be active).
    *
-    * @param {{modules: Array<{id:string,enabled?:boolean,activated?:boolean,dependencies:string[]}>}} config
+    * @param {{modules: Array<{id:string,type:'hidden'|'tool'|'menu',enabled?:boolean,activateOnStartup?:boolean,dependencies:string[]}>}} config
    * @returns {Promise<void>}
    */
   async loadFromConfig(config) {
@@ -275,6 +299,7 @@ export class PluginManager {
     // Apply topological sort to enforce dependency order within the admin sequence.
     // Warn when the sort must change the admin-defined order.
     const adminOrder = enabled.map((m) => m.id);
+    this.displayOrder = adminOrder;
     const sorted = this._topologicalSort(enabled);
     const sortedOrder = sorted.map((m) => m.id);
     if (adminOrder.join(',') !== sortedOrder.join(',')) {
@@ -298,8 +323,8 @@ export class PluginManager {
         const pluginInstance = new ctor(moduleConfig.id, moduleConfig);
         await this.register(pluginInstance);
 
-        // Only the first activated:true plugin auto-activates at startup.
-        if (!defaultActivated && moduleConfig.activated === true) {
+        // Only the first activateOnStartup:true plugin auto-activates at startup.
+        if (moduleConfig.type !== 'menu' && !defaultActivated && moduleConfig.activateOnStartup === true) {
           await this.activate(moduleConfig.id);
           defaultActivated = true;
         }
@@ -343,8 +368,8 @@ export class PluginManager {
   }
 
   /**
-    * @param {Array<{id:string,enabled?:boolean,activated?:boolean,dependencies:string[]}>} modules
-    * @returns {Array<{id:string,enabled?:boolean,activated?:boolean,dependencies:string[]}>}
+    * @param {Array<{id:string,type:'hidden'|'tool'|'menu',enabled?:boolean,activateOnStartup?:boolean,dependencies:string[]}>} modules
+    * @returns {Array<{id:string,type:'hidden'|'tool'|'menu',enabled?:boolean,activateOnStartup?:boolean,dependencies:string[]}>}
    */
   _topologicalSort(modules) {
     // Simple topological sort by dependencies

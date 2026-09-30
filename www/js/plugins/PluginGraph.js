@@ -20,17 +20,6 @@ export class PluginGraph extends FullscreenPlugin {
     if (typeof this._el.open === 'function') this._el.open();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: this.config.name || 'Graph Viewer',
-      description: this.config.description || 'Large capacity allocation graph',
-      icon: this.config.icon || 'bar_chart',
-      section: 'tools',
-      autoActivate: false,
-      fullscreen: true,
-    };
-  }
 }
 
 export default PluginGraph;

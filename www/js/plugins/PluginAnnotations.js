@@ -25,17 +25,6 @@ export class PluginAnnotations extends MountedPlugin {
     await super.deactivate();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: this.config.name || 'Annotations',
-      description: this.config.description || 'Add notes, shapes and lines to the timeline',
-      icon: this.config.icon || 'edit_note',
-      section: 'tools',
-      autoActivate: false,
-    };
-  }
-
   isActive() { return this.active; }
 
   async getAnnotationState() {

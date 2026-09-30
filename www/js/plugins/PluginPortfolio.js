@@ -20,17 +20,6 @@ export class PluginPortfolio extends FullscreenPlugin {
     if (typeof this._el.open === 'function') this._el.open();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: this.config.name || 'Portfolio Board',
-      description: this.config.description || 'Kanban-style portfolio board with team rows and workflow state columns',
-      icon: this.config.icon || 'view_kanban',
-      section: 'tools',
-      autoActivate: false,
-      fullscreen: true,
-    };
-  }
 }
 
 export default PluginPortfolio;

@@ -25,16 +25,6 @@ export class PluginMarkers extends MountedPlugin {
     await super.deactivate();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: 'Plan Markers',
-      description: 'Display delivery plan markers on timeline',
-      icon: 'flag',
-      section: 'tools',
-      autoActivate: false,
-    };
-  }
 }
 
 export default PluginMarkers;

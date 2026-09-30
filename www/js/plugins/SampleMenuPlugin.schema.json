@@ -1,0 +1,17 @@
+{
+  "schema": {
+    "type": "object",
+    "title": "Sample Menu Configuration",
+    "properties": {
+      "initialCount": {
+        "type": "integer",
+        "title": "Initial Counter",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 100
+      }
+    },
+    "required": []
+  },
+  "defaultConfig": { "initialCount": 0 }
+}

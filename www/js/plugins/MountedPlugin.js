@@ -14,6 +14,7 @@
  */
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
+import { Plugin } from '../core/Plugin.js';
 
 /**
  * Static module loader map for plugin components.
@@ -53,10 +54,9 @@ export function resolvePluginComponentLoader(componentPath, moduleMap = pluginCo
   return moduleMap[componentPath] || null;
 }
 
-export class MountedPlugin {
+export class MountedPlugin extends Plugin {
   constructor(id, config = {}) {
-    this.id = id;
-    this.config = config;
+    super(id, config);
     /** @type {HTMLElement|null} */
     this._el = null;
     /** @type {Element|null} */

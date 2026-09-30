@@ -1,6 +1,9 @@
 import { expect } from '@open-wc/testing';
 import '../../www/js/components/TopMenu.lit.js';
 import { sel } from '../../www/js/application/imports.js';
+import { pluginManager } from '../../www/js/core/PluginManager.js';
+import { SampleMenuPlugin } from '../../www/js/plugins/SampleMenuPlugin.js';
+import modulesConfig from '../../www/js/modules.config.json';
 
 describe('TopMenu Data Funnel', () => {
   let menu;
@@ -12,8 +15,70 @@ describe('TopMenu Data Funnel', () => {
     await menu.updateComplete;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (menu && menu.isConnected) menu.remove();
+    for (const id of ['test-after-menu', 'test-before-menu', 'test-active-tool']) {
+      await pluginManager.unregister(id);
+    }
+  });
+
+  async function registerMenu(id, menuPosition) {
+    const config = modulesConfig.modules.find((entry) => entry.id === 'sample-menu-plugin');
+    const plugin = new SampleMenuPlugin(id, { ...config, id, enabled: true, menuPosition });
+    await pluginManager.register(plugin);
+    await menu.updateComplete;
+    return plugin;
+  }
+
+  it('places plugin menus after Scope on both sides of Tools', async () => {
+    await registerMenu('test-before-menu', 'before-tools');
+    await registerMenu('test-after-menu', 'after-tools');
+    const labels = [...menu.shadowRoot.querySelectorAll('.menu-item')].map((element) =>
+      element.dataset.pluginId === undefined ? element.id : element.dataset.pluginId);
+    expect(labels.slice(-4)).to.deep.equal([
+      'scopeMenuBtn', 'test-before-menu', 'toolsMenuBtn', 'test-after-menu',
+    ]);
+  });
+
+  it('opens and closes a dropdown without deactivating the current tool', async () => {
+    const tool = {
+      id: 'test-active-tool', config: { dependencies: [], type: 'tool' },
+      async init() {}, async activate() {}, async deactivate() {}, async destroy() {},
+      getMetadata() { return { id: this.id, type: 'tool' }; },
+    };
+    await pluginManager.register(tool);
+    await pluginManager.activate(tool.id);
+    const plugin = await registerMenu('test-before-menu', 'before-tools');
+    const trigger = menu.shadowRoot.querySelector('[data-plugin-id="test-before-menu"]');
+    trigger.click();
+    await menu.updateComplete;
+    const content = menu.shadowRoot.querySelector('sample-menu-plugin-content');
+    await content.updateComplete;
+    expect(content).to.exist;
+    expect(tool.active).to.equal(true);
+    expect(plugin.active).to.equal(false);
+    content.shadowRoot.querySelector('.close').click();
+    await menu.updateComplete;
+    expect(menu.openMenu).to.equal(null);
+    expect(menu.shadowRoot.activeElement).to.equal(trigger);
+  });
+
+  it('dismisses with Escape and removes an unregistered plugin menu', async () => {
+    await registerMenu('test-before-menu', 'before-tools');
+    const trigger = menu.shadowRoot.querySelector('[data-plugin-id="test-before-menu"]');
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
+    await menu.updateComplete;
+    expect(menu.openMenu).to.equal('plugin:test-before-menu');
+    menu.shadowRoot.querySelector('.plugin-menu-popover').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
+    await menu.updateComplete;
+    expect(menu.openMenu).to.equal(null);
+    trigger.click();
+    await menu.updateComplete;
+    await pluginManager.unregister('test-before-menu');
+    await menu.updateComplete;
+    expect(menu.openMenu).to.equal(null);
+    expect(menu.shadowRoot.querySelector('[data-plugin-id="test-before-menu"]')).to.equal(null);
   });
 
   it('renders canonical funnel metrics instead of a Team trigger', async () => {

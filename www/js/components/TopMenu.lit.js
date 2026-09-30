@@ -9,7 +9,9 @@ import {
   ViewManagementEvents,
   FilterEvents,
   FeatureEvents,
+  PluginEvents,
 } from '../core/EventRegistry.js';
+import { pluginManager } from '../core/PluginManager.js';
 import { dataService } from '../services/dataService.js';
 import './PlanMenu.lit.js';
 import './ScenarioMenu.lit.js';
@@ -31,6 +33,7 @@ export class TopMenuBarLit extends LitElement {
     selectedTeamsCount: { type: Number },
     funnel: { type: Object },
     scopeContext: { type: Object },
+    menuPlugins: { type: Array },
   };
 
   static styles = css`
@@ -46,10 +49,11 @@ export class TopMenuBarLit extends LitElement {
       width: 100%;
       background: var(--color-sidebar-bg);
       color: white;
-      display: flex;
+      display: grid;
+      grid-template-columns: var(--sidebar-width, 240px) minmax(0, 1fr) auto;
       align-items: center;
       overflow: visible;
-      gap: 10px;
+      gap: 0;
       z-index: 1000;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
       font-size: 13px;
@@ -68,25 +72,39 @@ export class TopMenuBarLit extends LitElement {
     }
     /* menu items positioned above timeline left edge (right edge of sidebar) */
     .menu-items {
-      position: absolute;
-      left: var(--sidebar-width);
-      top: 4px;
       display: flex;
-      gap: 12px;
+      gap: 8px;
       align-items: center;
       white-space: nowrap;
       z-index: 1100;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 4px;
     }
+    .menu-items::-webkit-scrollbar { display: none; }
     .menu-right {
-      position: absolute;
-      right: 8px;
-      top: 4px;
       display: flex;
       gap: 12px;
       align-items: center;
       white-space: nowrap;
       z-index: 1100;
+      padding: 0 8px;
     }
+
+    .plugin-menu-popover {
+      box-sizing: border-box;
+      width: min(320px, calc(100vw - 16px));
+      max-height: calc(100vh - 56px);
+      overflow: auto;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      background: var(--color-sidebar-bg);
+      color: white;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    }
+    .menu-item:focus-visible { outline: 2px solid #8ec8ff; outline-offset: -2px; }
 
     .menu-item {
       background: rgba(255, 255, 255, 0.06);
@@ -217,6 +235,7 @@ export class TopMenuBarLit extends LitElement {
       teamsInView: 0,
     };
     this.scopeContext = { parent: false, child: false, dependency: false, otherAllocations: false };
+    this.menuPlugins = [];
     this._ensureGlobalMenuStyles();
   }
 
@@ -280,6 +299,18 @@ export class TopMenuBarLit extends LitElement {
       }
     };
     document.addEventListener('click', this._outsideClickHandler);
+    this._onPluginMenusChanged = () => {
+      this.menuPlugins = pluginManager.listMenus();
+      if (this.openMenu && this.openMenu.startsWith('plugin:') &&
+          !this.menuPlugins.some((plugin) => `plugin:${plugin.id}` === this.openMenu)) {
+        this._closeMenu(false);
+      }
+    };
+    bus.on(PluginEvents.REGISTERED, this._onPluginMenusChanged);
+    bus.on(PluginEvents.UNREGISTERED, this._onPluginMenusChanged);
+    this._onPluginMenusChanged();
+    this._onMenuResize = () => this._closeMenu(false);
+    window.addEventListener('resize', this._onMenuResize);
 
     // Listen to state changes to update menu data
     this._onProjectsChanged = () => {
@@ -364,6 +395,9 @@ export class TopMenuBarLit extends LitElement {
     if (this._outsideClickHandler) {
       document.removeEventListener('click', this._outsideClickHandler);
     }
+    bus.off(PluginEvents.REGISTERED, this._onPluginMenusChanged);
+    bus.off(PluginEvents.UNREGISTERED, this._onPluginMenusChanged);
+    if (this._onMenuResize) window.removeEventListener('resize', this._onMenuResize);
 
     // Clean up event listeners
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
@@ -389,13 +423,97 @@ export class TopMenuBarLit extends LitElement {
 
   _toggleMenu(menuName, e) {
     e.stopPropagation();
+    this._menuButton = e.currentTarget;
     this.openMenu = this.openMenu === menuName ? null : menuName;
+    this._menuElement = null;
 
     if (this.openMenu) {
+      if (menuName.startsWith('plugin:')) {
+        const metadata = this.menuPlugins.find((plugin) => `plugin:${plugin.id}` === menuName);
+        if (!metadata) throw new Error(`Plugin menu ${menuName} is not registered`);
+        this._menuLabel = metadata.name;
+        this._menuElement = pluginManager.createMenuElement(menuName.slice(7));
+        this._focusPluginMenu = true;
+      }
       // Store button position for menu positioning
       this._menuButtonRect = e.currentTarget.getBoundingClientRect();
       this.requestUpdate();
     }
+  }
+
+  _closeMenu(returnFocus = true) {
+    this.openMenu = null;
+    this._menuElement = null;
+    if (returnFocus && this._menuButton && this._menuButton.isConnected) this._menuButton.focus();
+  }
+
+  _pluginMenuControls() {
+    if (!this._menuElement) return [];
+    const root = this._menuElement.shadowRoot === null ? this._menuElement : this._menuElement.shadowRoot;
+    return [...root.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]')]
+      .filter((element) => element instanceof HTMLElement);
+  }
+
+  async updated() {
+    if (this._focusPluginMenu && this._menuElement) {
+      this._focusPluginMenu = false;
+      const element = this._menuElement;
+      await element.updateComplete;
+      if (element !== this._menuElement) return;
+      const controls = this._pluginMenuControls();
+      if (controls.length > 0) controls[0].focus();
+    }
+  }
+
+  _onMenuKeyDown(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this._closeMenu();
+      return;
+    }
+    const path = event.composedPath();
+    const inPluginMenu = this._menuElement && path.includes(this._menuElement);
+    if (inPluginMenu) {
+      if (event.key === 'Tab') {
+        this._closeMenu();
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const controls = this._pluginMenuControls();
+        if (controls.length === 0) return;
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        const index = controls.indexOf(path[0]);
+        controls[(index + step + controls.length) % controls.length].focus();
+      }
+      return;
+    }
+    const trigger = path.find((element) => element.classList && element.classList.contains('menu-item'));
+    if (!trigger) return;
+    if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      trigger.click();
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      const root = this.shadowRoot;
+      if (!root) return;
+      const triggers = [...root.querySelectorAll('.menu-item')]
+        .filter((element) => element instanceof HTMLElement);
+      const step = event.key === 'ArrowRight' ? 1 : -1;
+      triggers[(triggers.indexOf(trigger) + step + triggers.length) % triggers.length].focus();
+    }
+  }
+
+  _renderPluginTriggers(position) {
+    return this.menuPlugins.filter((plugin) => plugin.menuPosition === position).map((plugin) => html`
+      <button
+        class="menu-item ${this.openMenu === `plugin:${plugin.id}` ? 'active' : ''}"
+        data-plugin-id=${plugin.id}
+        role="menuitem"
+        aria-haspopup="true"
+        aria-expanded=${this.openMenu === `plugin:${plugin.id}` ? 'true' : 'false'}
+        title=${plugin.description}
+        @click=${(event) => this._toggleMenu(`plugin:${plugin.id}`, event)}
+      >${plugin.name}</button>
+    `);
   }
 
   _getViewName() {
@@ -425,12 +543,12 @@ export class TopMenuBarLit extends LitElement {
 
   render() {
     return html`
-      <nav class="menu-bar" role="navigation" aria-label="Top menu">
+      <nav class="menu-bar" role="navigation" aria-label="Top menu" @keydown=${this._onMenuKeyDown}>
         <div class="menu-left">
           <div class="app-title title-only">Planner Tool</div>
         </div>
 
-        <div class="menu-items" role="menubar" aria-label="Main menus">
+        <div class="menu-items" role="menubar" aria-label="Main menus" @scroll=${() => this._closeMenu(false)}>
           <div
             class="menu-item ${this.openMenu === 'view' ? 'active' : ''}"
             id="viewMenuBtn"
@@ -480,6 +598,7 @@ export class TopMenuBarLit extends LitElement {
             ${this.scopeContext.dependency ? html`<span class="scope-icons" title="Dependencies">↔</span>` : ''}
             ${this.scopeContext.otherAllocations ? html`<span class="scope-icons" title="Other work by participating teams">●</span>` : ''}
           </div>
+          ${this._renderPluginTriggers('before-tools')}
           <div
             class="menu-item ${this.openMenu === 'tools' ? 'active' : ''}"
             id="toolsMenuBtn"
@@ -489,6 +608,7 @@ export class TopMenuBarLit extends LitElement {
           >
             Tools
           </div>
+          ${this._renderPluginTriggers('after-tools')}
         </div>
 
         <div class="menu-right">
@@ -524,6 +644,19 @@ export class TopMenuBarLit extends LitElement {
 
   _renderOpenMenu() {
     if (!this.openMenu || !this._menuButtonRect) return null;
+
+    if (this.openMenu.startsWith('plugin:')) {
+      const width = Math.min(320, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(this._menuButtonRect.left, window.innerWidth - width - 8));
+      return html`<div
+        class="plugin-menu-popover"
+        style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;left:${left}px;z-index:2000"
+        role="region"
+        aria-label=${this._menuLabel}
+        @keydown=${this._onMenuKeyDown}
+        @menu-close=${() => this._closeMenu()}
+      >${this._menuElement}</div>`;
+    }
 
     const style = `
       position: fixed;

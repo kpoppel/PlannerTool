@@ -40,6 +40,7 @@ python3 scripts/migrate.py --apply
 ### Added
 - Added task-ancestry plan focus and selection-sensitive Team/Project/Program graph levels with per-plan capacity rollups in the View menu. A selection box is added as well as a button to clear hidden plans while focusing on a plan and its hierarchy.
 - Added admin-managed ordered plan container types and grouped the Plan menu by configured hierarchy (migration 0030).
+- Harmonised plugin types, metadata, startup settings and display order; added admin-positioned top-menu plugins and a Sample Menu demonstration (migration 0031).
 - Added keyboard shortcut pills to the View menu display section headings and moved Timeline Scale to Ctrl+Shift+1 to avoid the browser's restore-tab shortcut.
 - Added task hierarchy folding with chevrons embedded in widened plan-color card borders and sidebar fold/unfold controls that preserve timeline dates and group spans.
 - Added a Plan overview / Team focus task view control under Team Drill-down to hide unrelated plan tasks while retaining parents of selected-team work.

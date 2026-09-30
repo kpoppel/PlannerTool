@@ -1028,7 +1028,7 @@ async def admin_save_plugins_config(request: Request):
         admin_svc = resolve_service(request, 'admin_service')
         admin_svc.save_config('plugin_runtime_config', normalized)
         num_plugins = len(normalized.get('plugins', []))
-        activated = [p for p in normalized.get('plugins', []) if p.get('activated')]
+        activated = [p for p in normalized.get('plugins', []) if p.get('activateOnStartup')]
         logger.info('Saved plugin runtime config: %d plugins (%d activated)', num_plugins, len(activated))
         return {'ok': True}
     except ValueError as e:

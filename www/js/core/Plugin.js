@@ -51,20 +51,28 @@ export class Plugin {
 
   /**
    * Return metadata describing the plugin configuration and capabilities.
-   * @returns {{id:string,name:string,title:string,enabled:boolean,version:string,description:string,author:string,dependencies:string[]}}
+  * @returns {{id:string,type:'hidden'|'tool'|'menu',name:string,enabled:boolean,
+  * version:string,description:string,icon:string,dependencies:string[],exclusive:boolean,
+  * persistent:boolean,fullscreen:boolean,menuPosition?:'before-tools'|'after-tools'}}
    */
   getMetadata() {
     return {
       id: this.id,
-      name: this.config.name || this.id,
-      title: this.config.title || this.config.name || this.id,
+      type: this.config.type,
+      name: this.config.name,
       enabled: this.config.enabled === true,
-      version: this.config.version || '1.0.0',
-      description: this.config.description || '',
-      author: this.config.author || 'Unknown',
-      dependencies: this.config.dependencies || [],
+      version: this.config.version,
+      description: this.config.description,
+      icon: this.config.icon,
+      dependencies: this.config.dependencies,
+      exclusive: this.config.exclusive,
+      persistent: this.config.persistent === true,
+      fullscreen: this.isFullscreen,
+      menuPosition: this.config.menuPosition,
     };
   }
+
+  get isFullscreen() { return false; }
 }
 
 export default Plugin;

@@ -20,17 +20,6 @@ export class PluginXYBoard extends FullscreenPlugin {
     if (typeof this._el.open === 'function') this._el.open();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: this.config.name || 'XY Board',
-      description: this.config.description || 'Display features in an X/Y field intersection table',
-      icon: this.config.icon || 'table_chart',
-      section: 'tools',
-      autoActivate: false,
-      fullscreen: true,
-    };
-  }
 }
 
 export default PluginXYBoard;

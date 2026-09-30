@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SCHEMA_VERSION = 1
+DEFAULT_SCHEMA_VERSION = 2
 
 
 DependencyOrderValidator = Callable[[list[dict[str, Any]]], Any]
@@ -46,10 +46,9 @@ def normalize_plugin_runtime_config(
     if not isinstance(payload, dict):
         raise ValueError('plugins config content must be an object')
 
-    schema_version = payload.get('schema_version', DEFAULT_SCHEMA_VERSION)
-    if isinstance(schema_version, bool) or not isinstance(schema_version, (int, float)):
-        raise ValueError('schema_version must be a number')
-    schema_version = int(schema_version)
+    schema_version = payload.get('schema_version')
+    if type(schema_version) is not int or schema_version != DEFAULT_SCHEMA_VERSION:
+        raise ValueError('plugins config requires schema_version 2; run scripts/migrate.py --apply')
 
     plugins = payload.get('plugins', [])
     if plugins is None:
@@ -85,14 +84,17 @@ def _normalize_plugin_entry(entry: Any, index: int) -> dict[str, Any]:
     if not isinstance(plugin_id, str) or not plugin_id.strip():
         raise ValueError('plugin id must be a non-empty string')
 
+    if 'activated' in entry or 'order' in entry:
+        raise ValueError('legacy plugin settings require scripts/migrate.py --apply')
+
     enabled = bool(entry.get('enabled', True))
-    activated = bool(entry.get('activated', False))
+    activated = bool(entry.get('activateOnStartup', False))
     if not enabled:
         activated = False
 
-    order = entry.get('order', index)
-    if isinstance(order, bool) or not isinstance(order, int):
-        raise ValueError('plugin order must be an integer when provided')
+    menu_position = entry.get('menuPosition')
+    if menu_position is not None and menu_position not in ('before-tools', 'after-tools'):
+        raise ValueError('menuPosition must be before-tools or after-tools')
 
     custom_config = entry.get('custom_config', {})
     if custom_config is None:
@@ -103,8 +105,8 @@ def _normalize_plugin_entry(entry: Any, index: int) -> dict[str, Any]:
     return {
         'id': plugin_id.strip(),
         'enabled': enabled,
-        'activated': activated,
-        'order': order,
+        'activateOnStartup': activated,
+        **({'menuPosition': menu_position} if menu_position is not None else {}),
         'custom_config': dict(custom_config),
     }
 
@@ -120,15 +122,15 @@ def _ensure_single_activated(plugins: list[dict[str, Any]]) -> None:
     
     for plugin in plugins:
         if not plugin.get('enabled', False):
-            if plugin.get('activated', False):
-                plugin['activated'] = False
+            if plugin.get('activateOnStartup', False):
+                plugin['activateOnStartup'] = False
                 adjusted_plugins.append(plugin['id'])
             continue
-        if plugin.get('activated', False) and not active_seen:
+        if plugin.get('activateOnStartup', False) and not active_seen:
             active_seen = True
             continue
-        if plugin.get('activated', False):
-            plugin['activated'] = False
+        if plugin.get('activateOnStartup', False):
+            plugin['activateOnStartup'] = False
             adjusted_plugins.append(plugin['id'])
     
     if adjusted_plugins:

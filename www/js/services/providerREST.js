@@ -668,7 +668,7 @@ export class ProviderREST extends RestProviderBase {
     const result = await this._requestJson('/api/plugins/config');
     if (!result.ok) return result;
     const j = result.data;
-    if (j && typeof j === 'object' && Array.isArray(j.plugins)) {
+    if (j && typeof j === 'object' && j.schema_version === 2 && j.plugins instanceof Array) {
       return ok(j);
     }
     return fail({ message: 'Invalid plugins config payload' });

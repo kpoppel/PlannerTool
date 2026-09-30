@@ -26,3 +26,10 @@ These replace the timeline board with an alternative view of the same data:
 ## Export
 
 - [Tool - Export Timeline](plugin_export.md) — produce SVG/PNG or clipboard images of the current board.
+
+## Plugin Menus
+
+Menu plugins appear directly in the top bar after Scope, either before or after Tools.
+Their position and sequence are configured in [Admin - Plugins](admin_plugins.md).
+Opening a plugin menu does not replace the current board or deactivate a tool.
+Sample Menu is a disabled-by-default demonstration with scope counts and a counter.

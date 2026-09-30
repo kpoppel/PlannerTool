@@ -30,6 +30,10 @@ Notes
 - Add tests for any non-trivial migration.
 
 Current migrations
+- `0032_harmonise_plugin_runtime_config.py` upgrades plugin settings to schema v2,
+  renames startup activation, removes numeric order, and preserves display sequence
+  and custom settings. With `--backup`, the original settings are stored in
+  `config_backup/plugin_runtime_config_before_v2`.
 - `0029_migrate_view_expansion_to_context.py` converts saved-view expansion flags
   to canonical Context fields and removes the legacy keys. With `--backup`, the
   original payloads are copied to the `views_expansion_backup` namespace.

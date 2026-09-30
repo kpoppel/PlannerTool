@@ -9,11 +9,11 @@ import { getPluginSchema, hasPluginSchema, hasConfigurableSchema } from '../../c
  *  - Static plugin metadata from /www/js/modules.config.json (read-only).
  *  - Runtime plugin config from /admin/v1/plugins-config (editable).
  *
- * Editable fields per plugin: enabled, activated, order (move up/down).
+ * Editable fields per plugin: enabled, activateOnStartup, order (move up/down).
  *
  * UI rules enforced:
- *  - If enabled is false, activated must be false.
- *  - Only one plugin can be activated at a time.
+ *  - If enabled is false, activateOnStartup must be false.
+ *  - Only one plugin can be activateOnStartup at a time.
  *  - An entry missing an id is shown as a validation error and blocks save.
  */
 export class AdminPlugins extends LitElement {
@@ -546,17 +546,21 @@ export class AdminPlugins extends LitElement {
       this._discoverPluginSchemas(),
     ]);
 
-    const runtimeConfig = runtimeResult?.ok ? runtimeResult.data : null;
+    if (!runtimeResult.ok) {
+      this._rows = [];
+      this._validationErrors = ['Plugin settings could not be loaded; saving is blocked. Check the server error and required migrations.'];
+      this._statusMsg = runtimeResult.error.message;
+      this._statusType = 'error';
+      this._loading = false;
+      this.requestUpdate();
+      return;
+    }
+    const runtimeConfig = runtimeResult.data;
 
     this._metadata = metaResponse;
     this._rows = this._mergeConfig(metaResponse, runtimeConfig);
     this._schemas = schemas;
     this._validationErrors = this._detectValidationErrors(metaResponse);
-    if (!runtimeResult?.ok) {
-      const msg = runtimeResult?.error?.message || 'Failed to load runtime plugin config';
-      this._statusMsg = msg;
-      this._statusType = 'warning';
-    }
     this._loading = false;
     this.requestUpdate();
   }
@@ -700,6 +704,7 @@ export class AdminPlugins extends LitElement {
     return {
       // read-only metadata
       id: meta.id || null,
+      type: meta.type,
       name: meta.name || '',
       version: meta.version || '',
       description: meta.description || '',
@@ -708,7 +713,9 @@ export class AdminPlugins extends LitElement {
       exclusive: meta.exclusive || false,
       // editable runtime state (fallback to metadata defaults)
       enabled: runtime ? Boolean(runtime.enabled) : Boolean(meta.enabled),
-      activated: runtime ? Boolean(runtime.activated) : Boolean(meta.activated),
+      activateOnStartup: meta.type !== 'menu' &&
+        (runtime ? Boolean(runtime.activateOnStartup) : Boolean(meta.activateOnStartup)),
+      menuPosition: runtime && runtime.menuPosition !== undefined ? runtime.menuPosition : meta.menuPosition,
       custom_config: runtime && runtime.custom_config ? { ...runtime.custom_config } : {},
       // internal
       _metaOnly: runtime === null,
@@ -735,21 +742,22 @@ export class AdminPlugins extends LitElement {
     const row = { ...rows[rowIndex] };
     row.enabled = !row.enabled;
     if (!row.enabled) {
-      row.activated = false;
+      row.activateOnStartup = false;
     }
     rows[rowIndex] = row;
     this._rows = rows;
   }
 
   _onSelectActivated(rowIndex) {
-    // Only one plugin can be activated at a time
+    if (this._rows[rowIndex].type === 'menu') return;
+    // Only one plugin can be activateOnStartup at a time
     this._rows = this._rows.map((row, i) => ({
       ...row,
-      activated: i === rowIndex ? !row.activated : false,
+      activateOnStartup: i === rowIndex ? !row.activateOnStartup : false,
     }));
-    // If we just activated, ensure enabled is true
+    // If we just activateOnStartup, ensure enabled is true
     const target = this._rows[rowIndex];
-    if (target.activated && !target.enabled) {
+    if (target.activateOnStartup && !target.enabled) {
       const rows = [...this._rows];
       rows[rowIndex] = { ...rows[rowIndex], enabled: true };
       this._rows = rows;
@@ -761,6 +769,13 @@ export class AdminPlugins extends LitElement {
     const rows = [...this._rows];
     [rows[rowIndex - 1], rows[rowIndex]] = [rows[rowIndex], rows[rowIndex - 1]];
     this._rows = rows;
+  }
+
+  _onMenuPositionChange(rowIndex, position) {
+    if (position !== 'before-tools' && position !== 'after-tools') {
+      throw new Error(`Invalid menu position: ${position}`);
+    }
+    this._rows = this._rows.map((row, index) => index === rowIndex ? { ...row, menuPosition: position } : row);
   }
 
   _onMoveDown(rowIndex) {
@@ -826,13 +841,14 @@ export class AdminPlugins extends LitElement {
     // Build payload: wrap in object with schema_version and plugins array
     // (backend expects { schema_version, plugins: [...] })
     const content = {
-      schema_version: 1,
+      schema_version: 2,
       plugins: this._rows
         .filter((r) => r.id)
         .map((r) => ({
           id: r.id,
           enabled: r.enabled,
-          activated: r.activated,
+          activateOnStartup: r.activateOnStartup,
+          ...(r.type === 'menu' ? { menuPosition: r.menuPosition } : {}),
           custom_config: r.custom_config || {},
         })),
     };
@@ -1222,7 +1238,20 @@ export class AdminPlugins extends LitElement {
           ${isInvalid ? html`<span class="missing-id-badge">missing id</span>` : ''}
         </td>
         <td class="td-version">${row.version}</td>
+        <td>${row.type}</td>
         <td class="td-desc">${row.description}</td>
+        <td>
+          ${row.type === 'menu' ? html`
+            <select
+              aria-label=${`${row.name} menu position`}
+              .value=${row.menuPosition}
+              @change=${(event) => this._onMenuPositionChange(index, event.target.value)}
+            >
+              <option value="before-tools">Before Tools</option>
+              <option value="after-tools">After Tools</option>
+            </select>
+          ` : ''}
+        </td>
         <td class="toggle-cell">
           <label class="toggle" title="Toggle enabled">
             <input
@@ -1235,13 +1264,13 @@ export class AdminPlugins extends LitElement {
           </label>
         </td>
         <td class="radio-cell">
-          <input
+          ${row.type !== 'menu' ? html`<input
             type="checkbox"
-            .checked=${row.activated}
+            .checked=${row.activateOnStartup}
             ?disabled=${isInvalid || !row.enabled}
             @change=${() => this._onSelectActivated(index)}
-            title="Toggle this plugin as active (only one can be active at a time)"
-          />
+            title="Activate this plugin at startup (only one startup tool)"
+          />` : ''}
         </td>
         <td class="order-cell">
           ${isConfigurable
@@ -1285,8 +1314,7 @@ export class AdminPlugins extends LitElement {
       <div class="panel">
         <p class="hint">
           Manage plugin runtime settings. Metadata (id, name, version, etc.) is read-only and comes
-          from <code>modules.config.json</code>. Use enabled/activated/order to control runtime
-          behaviour. Click "Config" to edit custom settings for plugins.
+          from <code>modules.config.json</code>.
         </p>
         ${this._renderValidationErrors()}
         ${this._renderStatus()}
@@ -1295,9 +1323,11 @@ export class AdminPlugins extends LitElement {
             <tr>
               <th>Name</th>
               <th>Version</th>
+              <th>Type</th>
               <th>Description</th>
+              <th>Menu Position</th>
               <th>Enabled</th>
-              <th>Activated</th>
+              <th>At Startup</th>
               <th>Actions</th>
             </tr>
           </thead>

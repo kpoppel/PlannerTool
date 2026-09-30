@@ -25,16 +25,6 @@ export class PluginPlanHealth extends MountedPlugin {
     await super.deactivate();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: 'Plan Health',
-      description: 'Detect and highlight planning issues and anomalies',
-      icon: 'heartbeat',
-      section: 'tools',
-      autoActivate: false,
-    };
-  }
 }
 
 export default PluginPlanHealth;

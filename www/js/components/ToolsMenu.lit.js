@@ -151,20 +151,7 @@ export class ToolsMenuLit extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._updatePlugins = () => {
-      try {
-        if (pluginManager && typeof pluginManager.list === 'function') {
-          this.plugins = pluginManager.list();
-        } else if (pluginManager && pluginManager.plugins instanceof Map) {
-          this.plugins = [...pluginManager.plugins.values()].map((p) =>
-            typeof p.getMetadata === 'function' ? p.getMetadata() : p
-          );
-        } else {
-          this.plugins = [];
-        }
-      } catch (e) {
-        console.warn('[ToolsMenu] failed to update plugins', e);
-        this.plugins = [];
-      }
+      this.plugins = pluginManager.listTools();
       this.requestUpdate();
     };
 

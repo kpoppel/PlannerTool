@@ -90,20 +90,6 @@ export class SamplePlugin extends MountedPlugin {
     await super.deactivate();
   }
 
-  // ── Required: plugin metadata for registration and toolbar display ──
-  // Every plugin must implement getMetadata() with id, name, description, icon.
-
-  getMetadata() {
-    return {
-      id: this.id,
-      name: 'Sample Plugin',
-      description: 'Example plugin demonstrating lifecycle and custom config',
-      icon: 'help',
-      section: 'tools',  // toolbar section where this appears (e.g., 'tools', 'overlay')
-      autoActivate: false,  // set true to auto-activate on app load
-    };
-  }
-
   // ── Custom logic — demonstrates consuming admin-configured values at runtime ──
 
   /**

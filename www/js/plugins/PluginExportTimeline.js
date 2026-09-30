@@ -46,16 +46,6 @@ export class PluginExportTimeline extends MountedPlugin {
     if (this._el?.open) this._el.open(this.config.mode);
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: this.config.name || 'Export Timeline',
-      description: this.config.description || 'Export timeline data to JSON or CSV',
-      icon: this.config.icon || 'file_download',
-      section: 'tools',
-      autoActivate: false,
-    };
-  }
 }
 
 export default PluginExportTimeline;

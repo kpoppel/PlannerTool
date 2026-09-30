@@ -32,18 +32,6 @@ export class PluginDependencies extends MountedPlugin {
     await super.deactivate();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: 'Dependencies',
-      description: 'Render dependency arrows between feature cards',
-      icon: 'account_tree',
-      section: 'overlay',
-      autoActivate: false,
-      showInTools: this.config.showInTools !== false,
-      persistent: true,
-    };
-  }
 }
 
 export default PluginDependencies;

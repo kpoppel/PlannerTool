@@ -65,17 +65,6 @@ export class PluginLinkEditor extends MountedPlugin {
     await super.deactivate();
   }
 
-  getMetadata() {
-    return {
-      id: this.id,
-      name: 'Link Editor',
-      description: 'Edit dependency links between features',
-      icon: 'link',
-      section: 'tools',
-      autoActivate: false,
-    };
-  }
-
   /* ── event handler ────────────────────────────────────────────────── */
 
   _onFeatureUpdate(payload) {
