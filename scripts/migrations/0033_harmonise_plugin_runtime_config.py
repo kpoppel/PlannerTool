@@ -1,6 +1,6 @@
 """Migration: harmonise plugin startup activation and menu placement."""
 
-MIGRATION_ID = '0031.harmonise-plugin-runtime-config'
+MIGRATION_ID = '0033.harmonise-plugin-runtime-config'
 
 
 def migrate_config(payload, menu_positions):

@@ -10,6 +10,7 @@ import PluginExportTimeline from '../plugins/PluginExportTimeline.js';
 import PluginAnnotations from '../plugins/PluginAnnotations.js';
 import PluginGraph from '../plugins/PluginGraph.js';
 import PluginPlanHealth from '../plugins/PluginPlanHealth.js';
+import PluginReconciliation from '../plugins/PluginReconciliation.js';
 import PluginHistory from '../plugins/PluginHistory.js';
 import PluginLinkEditor from '../plugins/PluginLinkEditor.js';
 import PluginDependencies from '../plugins/PluginDependencies.js';
@@ -26,6 +27,7 @@ const PluginRegistry = {
   'plugin-annotations': PluginAnnotations,
   'plugin-graph': PluginGraph,
   'plugin-plan-health': PluginPlanHealth,
+  'plugin-reconciliation': PluginReconciliation,
   'plugin-history': PluginHistory,
   'plugin-link-editor': PluginLinkEditor,
   'plugin-dependencies': PluginDependencies,

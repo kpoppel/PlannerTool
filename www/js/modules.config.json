@@ -1,6 +1,20 @@
 {
   "modules": [
     {
+      "id": "plugin-reconciliation",
+      "type": "menu",
+      "icon": "account_tree",
+      "name": "Reconciliation",
+      "version": "0.1.0",
+      "description": "Project-boundary reconciliation queue and workspace shell",
+      "enabled": true,
+      "activateOnStartup": false,
+      "exclusive": false,
+      "persistent": false,
+      "menuPosition": "before-tools",
+      "dependencies": []
+    },
+    {
       "id": "sample-menu-plugin",
       "type": "menu",
       "icon": "menu",

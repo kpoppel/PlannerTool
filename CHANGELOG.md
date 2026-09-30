@@ -38,6 +38,7 @@ python3 scripts/migrate.py --apply
 ```
 
 ### Added
+- Added the Reconciliation top-menu plugin shell with project-responsibility queues and a reconciliation workspace.
 - Added task-ancestry plan focus and selection-sensitive Team/Project/Program graph levels with per-plan capacity rollups in the View menu. A selection box is added as well as a button to clear hidden plans while focusing on a plan and its hierarchy.
 - Added admin-managed ordered plan container types and grouped the Plan menu by configured hierarchy (migration 0030).
 - Harmonised plugin types, metadata, startup settings and display order; added admin-positioned top-menu plugins and a Sample Menu demonstration (migration 0031).

@@ -48,6 +48,29 @@ Dropdown components may dispatch a bubbling, composed `menu-close` event after a
 command. TopMenu handles dismissal, focus return, keyboard navigation, and viewport
 positioning. Dropdown openness is UI state, not plugin activation state.
 
+## Reconciliation Shell
+
+`plugin-reconciliation` is an enabled-by-default menu plugin positioned before
+Tools. Administrators may disable or reposition it using the existing plugin
+settings. Opening it does not activate a tool or replace the board.
+
+The shell provides project-responsibility queue navigation and a detail workspace
+for decision, re-plan, sibling-blocked, applied, waiting, live divergence,
+unclaimed, and recently resolved work. Projects are reconciliation boundaries;
+plans remain views. It has no board-filter or active-plan dependency.
+
+This slice is UI scaffolding only. The queue explicitly reports unavailable
+until an organization-backed service is implemented; it does not fabricate
+records, claimants, counts, or a healthy empty state. No acceptance or commit
+actions are exposed yet.
+
+Detection will come from the server hierarchy evaluator, prevention from
+non-blocking board badges and the commit gate, and reconciliation from durable
+records presented here. Authentication, project claims, boundary policy,
+evaluation, audit, concurrency, acceptance-as-commit, broadcasts, and top-bar
+attention counts remain separate implementation work. Plan Health remains a
+diagnostic tool rather than the workflow's source of truth.
+
 ## Upgrade
 
 Run `python3 scripts/migrate.py --apply` before using an existing installation.

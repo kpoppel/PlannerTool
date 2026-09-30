@@ -30,7 +30,7 @@ Notes
 - Add tests for any non-trivial migration.
 
 Current migrations
-- `0032_harmonise_plugin_runtime_config.py` upgrades plugin settings to schema v2,
+- `0033_harmonise_plugin_runtime_config.py` upgrades plugin settings to schema v2,
   renames startup activation, removes numeric order, and preserves display sequence
   and custom settings. With `--backup`, the original settings are stored in
   `config_backup/plugin_runtime_config_before_v2`.

@@ -3,6 +3,7 @@ import '../../www/js/components/TopMenu.lit.js';
 import { sel } from '../../www/js/application/imports.js';
 import { pluginManager } from '../../www/js/core/PluginManager.js';
 import { SampleMenuPlugin } from '../../www/js/plugins/SampleMenuPlugin.js';
+import PluginReconciliation from '../../www/js/plugins/PluginReconciliation.js';
 import modulesConfig from '../../www/js/modules.config.json';
 
 describe('TopMenu Data Funnel', () => {
@@ -17,7 +18,7 @@ describe('TopMenu Data Funnel', () => {
 
   afterEach(async () => {
     if (menu && menu.isConnected) menu.remove();
-    for (const id of ['test-after-menu', 'test-before-menu', 'test-active-tool']) {
+    for (const id of ['test-after-menu', 'test-before-menu', 'test-active-tool', 'plugin-reconciliation']) {
       await pluginManager.unregister(id);
     }
   });
@@ -55,6 +56,32 @@ describe('TopMenu Data Funnel', () => {
     const content = menu.shadowRoot.querySelector('sample-menu-plugin-content');
     await content.updateComplete;
     expect(content).to.exist;
+    expect(tool.active).to.equal(true);
+    expect(plugin.active).to.equal(false);
+    content.shadowRoot.querySelector('.close').click();
+    await menu.updateComplete;
+    expect(menu.openMenu).to.equal(null);
+    expect(menu.shadowRoot.activeElement).to.equal(trigger);
+  });
+
+  it('opens the Reconciliation shell without replacing an active tool and returns focus', async () => {
+    const tool = {
+      id: 'test-active-tool', config: { dependencies: [], type: 'tool' },
+      async init() {}, async activate() {}, async deactivate() {}, async destroy() {},
+      getMetadata() { return { id: this.id, type: 'tool' }; },
+    };
+    await pluginManager.register(tool);
+    await pluginManager.activate(tool.id);
+    const config = modulesConfig.modules.find((entry) => entry.id === 'plugin-reconciliation');
+    const plugin = new PluginReconciliation(config.id, config);
+    await pluginManager.register(plugin);
+    await menu.updateComplete;
+    const trigger = menu.shadowRoot.querySelector('[data-plugin-id="plugin-reconciliation"]');
+    trigger.click();
+    await menu.updateComplete;
+    const content = menu.shadowRoot.querySelector('plugin-reconciliation-content');
+    await content.updateComplete;
+    expect(content.shadowRoot.querySelectorAll('[data-queue]').length).to.equal(8);
     expect(tool.active).to.equal(true);
     expect(plugin.active).to.equal(false);
     content.shadowRoot.querySelector('.close').click();
