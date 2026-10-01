@@ -5,7 +5,20 @@ Utilities collects maintenance actions for keeping a PlannerTool installation he
 ## Backup & Restore
 
 - "Backup All" downloads a single JSON file containing configuration, users, views and scenarios. Cached Azure DevOps data is not included — back up your configuration, not a copy of Azure DevOps itself.
-- To restore, choose a backup file, tick which parts to restore (Config, Users, Views, Scenarios), and click "Restore Selected". This is a destructive action and requires confirmation, since it overwrites the corresponding current data.
+- To restore, choose a backup file, tick which parts to restore (Config, User accounts, Views, Scenarios), and click "Restore Selected". This is a destructive action and requires confirmation, since it overwrites the corresponding current data.
+
+**User accounts** is optional. Leave it unchecked to preserve current accounts,
+PATs, keys, permissions, and remembered-browser credentials. Accounts and their
+authentication are restored together. All successful restores clear active
+sessions; a valid remembered browser can renew access automatically.
+
+When restoring User accounts, read the warning before confirming: account keys
+may revert to older keys, newer keys may stop working, revoked browsers may
+regain access, and deleted accounts may return. Users who cannot enroll, sign in
+again, or delete their accounts may need **Users > Reset access** and a replacement
+account key. Ensure an administrator can authenticate using snapshot-valid
+credentials before continuing. If no administrator can sign in afterward, ask
+the installation operator to reset access. Retained backups can undo deletion.
 
 ## Cache Cleanup
 

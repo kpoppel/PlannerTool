@@ -55,8 +55,8 @@ def make_request(container, payload, session_email=None):
     class Req:
         def __init__(self, payload, container, session_email):
             self._payload = payload
-            self.headers = {'X-Session-Id': 's1'} if session_email else {}
-            self.cookies = {}
+            self.headers = {}
+            self.cookies = {'sessionId': 's1'} if session_email else {}
             self.app = SimpleNamespace(state=SimpleNamespace(container=container))
         async def json(self):
             return self._payload
@@ -109,7 +109,8 @@ class ExplicitAccountManager:
 
 
 def _explicit_request(account_manager, payload=None):
-    session_manager = SessMgr({'email': 'current@example.com'})
+    session_manager = SessMgr({'account_id': '11111111-1111-4111-8111-111111111111',
+                              'email': 'current@example.com'})
     container = SimpleNamespace(get=lambda name: {
         'account_manager': account_manager,
         'session_manager': session_manager,
@@ -145,49 +146,15 @@ def test_create_user_rejects_invalid_email():
     assert exc_info.value.status_code == 400
 
 
-def test_setup_updates_existing_account_permissions_by_id():
+def test_old_setup_cannot_issue_email_only_admin_session():
     from planner_lib.admin.setup_routes import admin_setup
-
-    class ExistingAccountManager:
-        def __init__(self):
-            self.updated_account_id = None
-
-        def count_all_with_permission(self, permission):
-            return 0
-
-        def create_account(self, credentials, permissions):
-            raise ValueError('Account already exists')
-
-        def update_credentials(self, credentials):
-            return {'ok': True}
-
-        def get_account_id(self, email):
-            return '11111111-1111-4111-8111-111111111111'
-
-        def set_permissions(self, account_id, permissions):
-            self.updated_account_id = account_id
-
-    class SetupSessionManager:
-        def create(self, email):
-            return 'setup-session'
-
-        def set_val(self, session_id, key, value):
-            pass
-
-    account_manager = ExistingAccountManager()
-    container = SimpleNamespace(get=lambda name: {
-        'account_manager': account_manager,
-        'session_manager': SetupSessionManager(),
-    }.get(name))
-    request = make_request(
-        container,
-        {'email': 'current@example.com', 'pat': 'valid-pat'},
-    )
-
-    result = asyncio.run(admin_setup(request))
-
-    assert result.status_code == 200
-    assert account_manager.updated_account_id == '11111111-1111-4111-8111-111111111111'
+    from fastapi import HTTPException
+    request = _explicit_request(ExplicitAccountManager(), {
+        'email': 'current@example.com', 'pat': 'valid-pat',
+    })
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(admin_setup(request))
+    assert error.value.status_code == 410
 
 
 def test_get_users_returns_account_ids_and_current_id():

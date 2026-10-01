@@ -2,8 +2,8 @@ import asyncio
 
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_id_from_request, SESSION_COOKIE
-from planner_lib.services.resolver import resolve_service, resolve_optional_service
+from planner_lib.middleware.session import get_session_context_from_request
+from planner_lib.services.resolver import resolve_service
 from planner_lib.backend.port import BackendCredential
 import logging
 
@@ -14,26 +14,13 @@ logger = logging.getLogger(__name__)
 @router.post('/cost')
 @require_session
 async def api_cost_post(request: Request, payload: dict = Body(default={})):
-    sid = get_session_id_from_request(request)
-    logger.debug("Calculating cost for session %s", sid)
+    logger.debug("Calculating cost")
     try:
         from planner_lib.cost import build_cost_schema
 
-        session_manager = resolve_service(request, 'session_manager')
-        ctx = session_manager.get(sid) or {}
-        email = ctx.get('email')
-        pat = ctx.get('pat')
-        if email and not pat:
-            try:
-                account_manager = resolve_service(request, 'account_manager')
-                loaded = account_manager.load(email)
-                if loaded:
-                    pat = loaded.get('pat')
-                    session_manager.set_val(sid, 'pat', pat)
-            except Exception as e:
-                logger.exception('Failed to load user config for %s: %s', email, e)
-
-        user_id = email or ''
+        ctx = get_session_context_from_request(request)
+        pat = ctx['pat']
+        user_id = ctx['account_id']
         # TODO: what's going on here? The data shape is well known!
         features = (payload or {}).get('features')
         scenario_id = (payload or {}).get('scenarioId') or (payload or {}).get('scenario_id') or (payload or {}).get('scenario')
@@ -126,19 +113,17 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
     Accepts payload: { features: [{ id, start?, end?, capacity? }, ...], mode?: 'full' }
     Falls back to session tasks if `features` not provided.
     """
-    sid = get_session_id_from_request(request)
-    logger.debug("Calculating feature-level cost details for session %s", sid)
+    logger.debug("Calculating feature-level cost details")
     try:
-        session_manager = resolve_service(request, 'session_manager')
         from planner_lib.cost import build_cost_schema
-        ctx = session_manager.get(sid) or {}
+        ctx = get_session_context_from_request(request)
 
         features = (payload or {}).get('features')
         if features is None:
             task_repo = resolve_service(request, 'task_repository')
             _pat = ctx.get('pat')
-            _email = ctx.get('email') or ''
-            cred = BackendCredential(token=_pat, user_id=_email) if _pat else None
+            account_id = ctx['account_id']
+            cred = BackendCredential(token=_pat, user_id=account_id) if _pat else None
             tasks = await asyncio.to_thread(task_repo.read, credential=cred)
             features = []
             for t in (tasks or []):
@@ -166,33 +151,15 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
 @router.get('/cost')
 @require_session
 async def api_cost_get(request: Request):
-    sid = request.headers.get("X-Session-Id") or request.cookies.get(SESSION_COOKIE)
-    session_manager = resolve_service(request, 'session_manager')
-    if not sid or not session_manager.exists(sid):
-        from planner_lib.cost import build_cost_schema
-        return build_cost_schema({}, mode='schema', session_features=None)
-
-    sid = get_session_id_from_request(request)
-    logger.debug("Fetching calculated cost for session %s", sid)
-    ctx = session_manager.get(sid) or {}
-    email = ctx.get('email')
-    pat = ctx.get('pat')
-    if email and not pat:
-        try:
-            account_manager = resolve_service(request, 'account_manager')
-            loaded = account_manager.load(email)
-            if loaded:
-                pat = loaded.get('pat')
-                ctx['pat'] = pat
-                session_manager.set(sid, ctx)
-        except Exception as e:
-            logger.exception('Failed to load user config for %s: %s', email, e)
+    logger.debug("Fetching calculated cost")
+    ctx = get_session_context_from_request(request)
+    pat = ctx['pat']
 
     try:
         from planner_lib.cost import build_cost_schema
 
         task_repo = resolve_service(request, 'task_repository')
-        cred = BackendCredential(token=pat, user_id=email) if pat else None
+        cred = BackendCredential(token=pat, user_id=ctx['account_id']) if pat else None
         tasks = await asyncio.to_thread(task_repo.read, credential=cred)
         features = []
         for t in tasks or []:

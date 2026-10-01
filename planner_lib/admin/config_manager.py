@@ -12,7 +12,11 @@ All config keys (including server_config) are stored in the diskcache-backed
 from __future__ import annotations
 
 import logging
+import math
+import re
+from contextlib import nullcontext
 from typing import Any, Optional
+from uuid import UUID
 
 from planner_lib.storage.base import StorageBackend
 
@@ -215,7 +219,15 @@ class ConfigManager:
     # Backup / restore
     # ------------------------------------------------------------------
 
+    def _transaction(self):
+        cache = getattr(self._storage, '_cache', None)
+        return cache.transact() if cache is not None else nullcontext()
+
     def get_backup(self) -> dict:
+        with self._transaction():
+            return self._get_backup()
+
+    def _get_backup(self) -> dict:
         """Create a full backup snapshot of configuration and data.
 
         PATs are decrypted to plaintext before being written into the JSON
@@ -254,6 +266,21 @@ class ConfigManager:
             logger.error("Failed to backup accounts: %s", e)
             backup_data["accounts"] = {"users": {}}
 
+        account_auth = {}
+        for account in backup_data['accounts']['users'].values():
+            account_id = account['account_id']
+            if self._storage.exists('account_auth', account_id):
+                account_auth[account_id] = self._storage.load('account_auth', account_id)
+            else:
+                account_auth[account_id] = {'enrolled': False}
+        backup_data['authentication'] = {
+            'account_auth': account_auth,
+            'auth_control': {
+                key: self._storage.load('auth_control', key)
+                for key in self._storage.list_keys('auth_control')
+            },
+        }
+
         # Views
         try:
             for key in list(self._storage.list_keys('views') or []):
@@ -284,6 +311,104 @@ class ConfigManager:
         current_user_email: Optional[str] = None,
         sync_accounts_fn=None,
     ) -> dict:
+        """Restore accounts and auth state atomically on diskcache storage."""
+        with self._transaction():
+            return self._restore_backup(
+                data, current_admins=current_admins, current_user_email=current_user_email,
+                sync_accounts_fn=sync_accounts_fn,
+            )
+
+    def _validate_authentication(self, data: dict) -> None:
+        authentication = data.get('authentication')
+        if not isinstance(authentication, dict) or set(authentication) != {'account_auth', 'auth_control'}:
+            raise ValueError('Account restore requires a complete authentication section')
+        accounts = data['accounts']
+        if not isinstance(accounts, dict):
+            raise ValueError('Invalid authentication account mapping')
+        users = accounts.get('users')
+        records = authentication['account_auth']
+        control = authentication['auth_control']
+        if not isinstance(users, dict) or not isinstance(records, dict) or not isinstance(control, dict):
+            raise ValueError('Invalid authentication backup mappings')
+        account_ids = set()
+        for account in users.values():
+            if not isinstance(account, dict):
+                raise ValueError('Invalid authentication account record')
+            account_id = account.get('account_id')
+            try:
+                canonical_id = str(UUID(account_id))
+            except (AttributeError, TypeError, ValueError) as error:
+                raise ValueError('Authentication account IDs must be canonical UUIDs') from error
+            if canonical_id != account_id or account_id in account_ids:
+                raise ValueError('Authentication account IDs must be unique canonical UUIDs')
+            account_ids.add(account_id)
+        if set(records) != account_ids:
+            raise ValueError('Authentication records must match the restored account IDs')
+        if control and (set(control) != {'bootstrap_claimed'} or control['bootstrap_claimed'] is not True):
+            raise ValueError('Invalid authentication bootstrap marker')
+        for record in records.values():
+            if not isinstance(record, dict) or type(record.get('enrolled')) is not bool:
+                raise ValueError('Invalid authentication enrollment state')
+            if not record['enrolled']:
+                if set(record) != {'enrolled'}:
+                    raise ValueError('Unenrolled authentication records cannot contain credentials')
+                continue
+            if control != {'bootstrap_claimed': True}:
+                raise ValueError('Enrolled authentication records require a bootstrap marker')
+            if set(record) != {'enrolled', 'name', 'account_key_hash', 'devices'}:
+                raise ValueError('Account backup requires the current account-key schema; create a new backup')
+            if not isinstance(record.get('name'), str) or not record['name'].strip():
+                raise ValueError('Enrolled authentication records require a display name')
+            if not isinstance(record.get('account_key_hash'), str) or not re.fullmatch(r'[0-9a-f]{64}', record['account_key_hash']):
+                raise ValueError('Invalid authentication account key hash')
+            if not isinstance(record.get('devices'), dict):
+                raise ValueError('Invalid authentication devices')
+            for device_id, device in record['devices'].items():
+                if not isinstance(device_id, str) or not re.fullmatch(r'[0-9a-f]{32}', device_id):
+                    raise ValueError('Invalid authentication device ID')
+                if not isinstance(device, dict) or not isinstance(device.get('hash'), str) or not re.fullmatch(r'[0-9a-f]{64}', device['hash']):
+                    raise ValueError('Invalid authentication device hash')
+                expires = device.get('expires')
+                if type(expires) not in (int, float) or not math.isfinite(expires) or expires < 0:
+                    raise ValueError('Invalid authentication device expiry')
+
+    def _validate_user_data_ownership(self, data: dict) -> None:
+        for namespace, register_key in (
+            ('views', 'view_register'), ('scenarios', 'scenario_register'),
+        ):
+            if namespace not in data:
+                continue
+            records = data[namespace]
+            if not isinstance(records, dict):
+                raise ValueError('User-data backup must be an account ID mapping')
+            for key, payload in records.items():
+                if key == register_key:
+                    if not isinstance(payload, dict):
+                        raise ValueError('User-data register must be an account ID mapping')
+                    for item_key, metadata in payload.items():
+                        owner, _, item_id = item_key.partition('_')
+                        if metadata['user'] != owner or metadata['id'] != item_id:
+                            raise ValueError('User-data register must match its account ID keys')
+                    owner_keys = payload
+                else:
+                    owner_keys = (key,)
+                for item_key in owner_keys:
+                    owner, separator, item_id = item_key.partition('_')
+                    try:
+                        canonical_id = str(UUID(owner))
+                    except (AttributeError, TypeError, ValueError) as error:
+                        raise ValueError('User-data owner must be an account ID; run migration 0032') from error
+                    if canonical_id != owner or not separator or not item_id:
+                        raise ValueError('User-data key must contain a canonical account ID')
+
+    def _restore_backup(
+        self,
+        data: dict,
+        *,
+        current_admins: Optional[list] = None,
+        current_user_email: Optional[str] = None,
+        sync_accounts_fn=None,
+    ) -> dict:
         """Restore configuration and data from a backup snapshot.
 
         Parameters
@@ -300,13 +425,22 @@ class ConfigManager:
             Callable ``(users, admins)`` that persists the account changes.
             Pass :meth:`AdminService.sync_accounts_full`.
         """
+        if 'accounts' in data:
+            self._validate_authentication(data)
+            if sync_accounts_fn is None:
+                raise ValueError('Account restore requires an account sync function')
+        elif 'authentication' in data:
+            raise ValueError('Authentication restore requires accounts')
+
+        self._validate_user_data_ownership(data)
+
         if "config" in data:
             for key, content in data["config"].items():
                 if content is not None:
                     self._storage.save('config', key, content)
 
         if "accounts" in data:
-            users = data["accounts"].get("users", {})
+            users = {email: dict(record) for email, record in data['accounts']['users'].items()}
 
             # Guard: don't let a restore remove the currently authenticated admin.
             if (
@@ -337,6 +471,12 @@ class ConfigManager:
                 admins_set = [k for k, v in users.items() if isinstance(v, dict) and AccountPermissions.ADMIN in (v.get('permissions') or [])]
                 sync_accounts_fn(users, admins_set)
 
+            for namespace in ('account_auth', 'auth_control'):
+                for key in list(self._storage.list_keys(namespace)):
+                    self._storage.delete(namespace, key)
+                for key, content in data['authentication'][namespace].items():
+                    self._storage.save(namespace, key, content)
+
         if "views" in data:
             for key, content in data["views"].items():
                 self._storage.save('views', key, content)
@@ -345,4 +485,18 @@ class ConfigManager:
             for key, content in data["scenarios"].items():
                 self._storage.save('scenarios', key, content)
 
-        return {"ok": True, "message": "Restore completed successfully."}
+        for namespace in ('auth_sessions',):
+            for key in list(self._storage.list_keys(namespace)):
+                if self._storage.exists(namespace, key):
+                    self._storage.delete(namespace, key)
+
+        result = {"ok": True, "message": "Restore completed successfully."}
+        if 'accounts' in data:
+            result['warning'] = (
+                'User accounts restored. Account keys may now be older than users\' saved keys. '
+                'Newer keys may no longer work, revoked browsers may regain access, and deleted '
+                'accounts may return. Active sessions have ended. If users cannot enroll, sign '
+                'in again, or delete their account, use Users > Reset access and provide the '
+                'replacement account key. If no administrator can sign in, use the operator reset procedure.'
+            )
+        return result

@@ -73,14 +73,14 @@ def _make_task_repository():
     return TaskRepo()
 
 
-def _make_session_mgr(pat='token', email='test@example.com'):
+def _make_session_mgr(pat='token', email='test@example.com', account_id='test-account-id'):
     """Session manager stub that returns the given pat and email."""
     class FakeSessionMgr:
         def exists(self, sid):
             return True
 
         def get(self, sid):
-            return {'email': email, 'pat': pat}
+            return {'account_id': account_id, 'email': email, 'pat': pat}
 
         def create(self, email_: str):
             return 'test-session'
@@ -90,9 +90,25 @@ def _make_session_mgr(pat='token', email='test@example.com'):
                 return pat
             if key == 'email':
                 return email
+            if key == 'account_id':
+                return account_id
             return None
 
     return FakeSessionMgr()
+
+
+def test_backend_credential_uses_account_id(client):
+    from planner_lib.projects.api import _get_credential
+    from starlette.requests import Request
+
+    register_service_on_client(client, 'session_manager', _make_session_mgr(
+        email='owner@example.com', account_id='11111111-1111-4111-8111-111111111111',
+    ))
+    request = Request({'type': 'http', 'app': client.app,
+                       'headers': [(b'cookie', b'sessionId=test-session')]})
+    credential, user_id = _get_credential(request)
+    assert user_id == '11111111-1111-4111-8111-111111111111'
+    assert credential['user_id'] == user_id
 
 
 def _make_backend_with_warning():
@@ -111,28 +127,28 @@ def _make_backend_with_warning():
 def test_teams_happy_path(client):
     svc = _make_team_service([{'id': 1, 'name': 'TeamA'}])
     register_service_on_client(client, 'team_repository', svc)
-    r = client.get('/api/teams', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/teams', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 200
     assert r.json() == [{'id': 1, 'name': 'TeamA'}]
 
 
-def test_teams_missing_service(client):
+def test_teams_missing_service(client, monkeypatch):
     # Ensure service is not present in the container (clear both singletons and factories)
     container = getattr(client.app.state, 'container', None)
     if container is not None:
-        container._singletons.pop('team_repository', None)
-        container._factories.pop('team_repository', None)
+        monkeypatch.delitem(container._singletons, 'team_repository', raising=False)
+        monkeypatch.delitem(container._factories, 'team_repository', raising=False)
     # Use a client that does not raise server exceptions so we can assert 500
     from fastapi.testclient import TestClient
     c = TestClient(client.app, raise_server_exceptions=False)
-    r = c.get('/api/teams', headers={'X-Session-Id': 'test-session'})
+    r = c.get('/api/teams', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 500
 
 
 def test_projects_happy_path(client):
     svc = _make_project_service([{'id': 'p1', 'name': 'Proj1', 'iteration_uuid': None}])
     register_service_on_client(client, 'project_repository', svc)
-    r = client.get('/api/projects', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/projects', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 200
     assert r.json() == [{'id': 'p1', 'name': 'Proj1', 'iteration_uuid': None}]
 
@@ -140,7 +156,7 @@ def test_projects_happy_path(client):
 def test_projects_returns_iteration_uuid_from_repository(client):
     svc = _make_project_service([{'id': 'p1', 'name': 'Proj1', 'iteration_uuid': 'set-abc'}])
     register_service_on_client(client, 'project_repository', svc)
-    r = client.get('/api/projects', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/projects', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 200
     assert r.json() == [{'id': 'p1', 'name': 'Proj1', 'iteration_uuid': 'set-abc'}]
 
@@ -150,11 +166,11 @@ def test_tasks_list_and_project_param(client):
     register_service_on_client(client, 'task_repository', task_repo)
     register_service_on_client(client, 'session_manager', _make_session_mgr())
 
-    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/tasks', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 200
     assert isinstance(r.json(), list) and len(r.json()) == 2
 
-    r2 = client.get('/api/tasks?project=42', headers={'X-Session-Id': 'test-session'})
+    r2 = client.get('/api/tasks?project=42', headers={'Cookie': 'sessionId=test-session'})
     assert r2.status_code == 200
     assert r2.json() == [{'id': 't-p-42'}]
     # ensure the repository saw the project_id
@@ -167,7 +183,7 @@ def test_tasks_returns_warning_headers_when_stale_fallback_used(client):
     register_service_on_client(client, 'session_manager', _make_session_mgr(email='warn@example.com'))
     register_service_on_client(client, 'backend', _make_backend_with_warning())
 
-    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/tasks', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 200
     assert r.headers.get('X-Backend-Diagnostic-Severity') == 'warning'
     assert r.headers.get('X-Backend-Diagnostic-Code') == 'tasks_stale_invalid_pat'
@@ -184,7 +200,7 @@ def test_tasks_invalid_pat_without_stale_returns_401(client):
     register_service_on_client(client, 'task_repository', TaskRepo())
     register_service_on_client(client, 'session_manager', _make_session_mgr())
 
-    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/tasks', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 401
     assert 'invalid_pat' in r.text
 
@@ -199,7 +215,7 @@ def test_tasks_backend_outage_without_stale_returns_503(client):
     register_service_on_client(client, 'task_repository', TaskRepo())
     register_service_on_client(client, 'session_manager', _make_session_mgr())
 
-    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/tasks', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 503
     assert 'backend_unavailable' in r.text
 
@@ -214,7 +230,7 @@ def test_tasks_backend_misconfigured_returns_500(client):
     register_service_on_client(client, 'task_repository', TaskRepo())
     register_service_on_client(client, 'session_manager', _make_session_mgr())
 
-    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/tasks', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 500
     assert 'backend_misconfigured' in r.text
 
@@ -226,27 +242,28 @@ def test_tasks_update_success_and_errors(client):
 
     # success
     payload = [{'id': 1}, {'id': 2}]
-    r = client.post('/api/tasks', json=payload, headers={'X-Session-Id': 'test-session'})
+    r = client.post('/api/tasks', json=payload, headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 200
     assert r.json().get('ok') is True
     assert r.json().get('updated') == 2
 
     # error path
     bad = [{'id': 3, 'error': True}]
-    r2 = client.post('/api/tasks', json=bad, headers={'X-Session-Id': 'test-session'})
+    r2 = client.post('/api/tasks', json=bad, headers={'Cookie': 'sessionId=test-session'})
     assert r2.status_code == 200
     assert r2.json().get('ok') is False
     assert 'errors' in r2.json()
 
 
-def test_tasks_missing_service_returns_500(client):
+def test_tasks_missing_service_returns_500(client, monkeypatch):
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
     container = getattr(client.app.state, 'container', None)
     if container is not None:
-        container._singletons.pop('task_repository', None)
-        container._factories.pop('task_repository', None)
+        monkeypatch.delitem(container._singletons, 'task_repository', raising=False)
+        monkeypatch.delitem(container._factories, 'task_repository', raising=False)
     from fastapi.testclient import TestClient
     c = TestClient(client.app, raise_server_exceptions=False)
-    r = c.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    r = c.get('/api/tasks', headers={'Cookie': 'sessionId=test-session'})
     assert r.status_code == 500
 
 
@@ -260,7 +277,7 @@ def test_iterations_returns_set_id_keyed_payload(client):
     register_service_on_client(client, 'session_manager', _make_session_mgr())
     register_service_on_client(client, 'azure_client', AzureClientStub())
 
-    r = client.get('/api/iterations?project=project-dalton', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/iterations?project=project-dalton', headers={'Cookie': 'sessionId=test-session'})
 
     assert r.status_code == 200
     assert r.json() == {
@@ -288,7 +305,7 @@ def test_iterations_without_filter_returns_set_id_keyed_payload(client):
     register_service_on_client(client, 'session_manager', _make_session_mgr())
     register_service_on_client(client, 'azure_client', AzureClientStub())
 
-    r = client.get('/api/iterations', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/iterations', headers={'Cookie': 'sessionId=test-session'})
 
     assert r.status_code == 200
     assert r.json() == {

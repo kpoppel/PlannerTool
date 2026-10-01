@@ -1,21 +1,20 @@
-"""Tests for the PAT refresh path in the cost API.
-
-Bug: cost/api.py called `session_manager.set(sid, ctx)` which does not exist on
-SessionManager. The correct call is `session_manager.set_val(sid, key, value)`.
-This test reproduces the AttributeError and verifies the fix.
-"""
+"""Cost requests use current account credentials, not copied session PATs."""
 import os
 os.environ.setdefault('PLANNERTOOL_SKIP_SETUP', '1')
 
-import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
-import yaml
 import pytest
 from fastapi.testclient import TestClient
 
 from planner_lib.main import create_app, Config
 from planner_lib.accounts.config import AccountCredentialsPayload
+from planner_lib.middleware import session as session_module
+
+
+pytestmark = pytest.mark.real_auth
 
 
 def _make_app(tmp_path: Path) -> TestClient:
@@ -44,53 +43,40 @@ class _FakeCostService:
         return {"projects": {}, "project_types": {}}
 
 
-def test_cost_post_pat_refresh_does_not_raise_attribute_error(client, caplog):
-    """POST /api/cost must not raise AttributeError when session has email but no PAT.
-
-    This reproduces the bug where `session_manager.set(sid, ctx)` was called but
-    SessionManager only exposes `set_val(sid, key, value)`. The AttributeError was
-    silently swallowed by a broad try/except, causing it to be logged as a failure
-    to load user config — masking the real error and preventing reliable PAT refresh.
-    """
+@pytest.mark.parametrize('pat', [None, 'updated-token'])
+@pytest.mark.parametrize('method', ['post', 'get'])
+def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monkeypatch, pat, method):
     import logging
 
     email = "user@example.com"
-    pat = "mytoken"
-
     container = client.app.state.container
-
-    # Register an account with a PAT so the refresh path can load it
     account_mgr = container.get("account_manager")
-    account_mgr.update_credentials(AccountCredentialsPayload(email=email, pat=pat))
-
-    # Create a session for the user but leave PAT absent from session context
     session_mgr = container.get("session_manager")
-    sid = "testsessionid123"
-    session_mgr._store[sid] = {"email": email}  # intentionally no 'pat' key
+    account_mgr.update_credentials(AccountCredentialsPayload(email=email))
+    sid = session_mgr.create(email)
+    account_mgr.update_credentials(AccountCredentialsPayload(email=email, pat=pat))
+    assert session_mgr.get(sid)['pat'] == pat
 
-    # Replace cost_service with an in-memory stub so we don't need Azure
+    def reject_session_refresh(*args):
+        raise AssertionError('PAT is already resolved from the account')
+
+    monkeypatch.setattr(session_mgr, 'set_val', reject_session_refresh, raising=False)
+    client.cookies.set(session_module.SESSION_COOKIE, sid)
+
     container.register_singleton("cost_service", _FakeCostService())
+    read_tasks = Mock(return_value=[])
+    container.register_singleton('task_repository', SimpleNamespace(read=read_tasks))
 
     with caplog.at_level(logging.ERROR, logger="planner_lib.cost.api"):
-        response = client.post(
-            "/api/cost",
-            json={"features": []},
-            headers={"X-Session-Id": sid},
-        )
+        if method == 'post':
+            response = client.post('/api/cost', json={'features': []},
+                                   headers={'Accept': 'application/json'})
+        else:
+            response = client.get('/api/cost', headers={
+                'Accept': 'application/json', 'X-Session-Id': 'unsupported-session',
+            })
+            read_tasks.assert_called_once()
 
-    # Must not be a 500
-    assert response.status_code != 500, (
-        f"Expected non-500; got {response.status_code}: {response.text}"
-    )
-
-    # The 'Failed to load user config' error log indicates the AttributeError was
-    # swallowed by the broad except. It must NOT appear after the fix.
+    assert response.status_code == 200, response.text
     error_logs = [r for r in caplog.records if "Failed to load user config" in r.message]
-    assert not error_logs, (
-        f"session_manager.set() raised a silent AttributeError: {error_logs[0].message}"
-    )
-
-    # After processing, the PAT should now be present in the session context
-    ctx = session_mgr.get(sid)
-    assert ctx is not None
-    assert ctx.get("pat") == pat, "PAT should have been stored in session after refresh"
+    assert not error_logs

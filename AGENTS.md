@@ -42,6 +42,7 @@ General
 - Fallback-style `||` defaults are restricted (for example `value || ''`, `value || []`, `value || null`) unless explicitly asked by the user or truly necessary.
 - If one of the restricted constructions above is truly necessary, confirm the reason with the user first, then proceed only after explicit confirmation.
 - Update the `CHANGELOG.md` file with a single line high level description of the change.  Do not change the template section. If there is a section `[vX.Y.Z] - unreleased` update this section. If no such section. _copy_ the template first to create a new varsioned but unlreleased section.
+- This application has no mobile interactions. Never add CSS, create or run tests which test a mobile view.
 
 Git hook enforcement (required)
 

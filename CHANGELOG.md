@@ -39,9 +39,11 @@ python3 scripts/migrate.py --apply
 
 ### Added
 - Added the Reconciliation top-menu plugin shell with project-responsibility queues and a reconciliation workspace.
+- Added passwordless device enrollment, persistent expiring sessions, rotating account keys, and authenticated account updates (migration 0031; HTTP transport risk accepted for intranet rollout).
+- Added Configuration sign-out with current-browser revocation, selective local-data cleanup, and installation-scoped cookie removal.
 - Added task-ancestry plan focus and selection-sensitive Team/Project/Program graph levels with per-plan capacity rollups in the View menu. A selection box is added as well as a button to clear hidden plans while focusing on a plan and its hierarchy.
 - Added admin-managed ordered plan container types and grouped the Plan menu by configured hierarchy (migration 0030).
-- Harmonised plugin types, metadata, startup settings and display order; added admin-positioned top-menu plugins and a Sample Menu demonstration (migration 0031).
+- Harmonised plugin types, metadata, startup settings and display order; added admin-positioned top-menu plugins and a Sample Menu demonstration (migration 0033).
 - Added keyboard shortcut pills to the View menu display section headings and moved Timeline Scale to Ctrl+Shift+1 to avoid the browser's restore-tab shortcut.
 - Added task hierarchy folding with chevrons embedded in widened plan-color card borders and sidebar fold/unfold controls that preserve timeline dates and group spans.
 - Added a Plan overview / Team focus task view control under Team Drill-down to hide unrelated plan tasks while retaining parents of selected-team work.
@@ -59,6 +61,7 @@ python3 scripts/migrate.py --apply
 - Added a translucent background box behind each group spanning its full extent (pill plus members), so nested sub-groups are visually distinguishable as a darker overlapping shade.
 
 ### Changed
+- Removed redundant plugin ordering and legacy runtime parsing, retired cost-session PAT refresh paths, and fixed failed plugin registration and account-ownership migration reruns.
 - Derived View-menu graph levels and graph plan series from plans represented by tasks in Scope, including ancestor and descendant work.
 - Replaced the monolithic frontend state and pre-store service layer with a canonical Zustand-backed application store, explicit command/selector seams, strict hydration contracts, and signal-oriented event handling. Runtime consumers, views, scenarios, groups, filters, capacity, and plugins now use these canonical boundaries.
 - Separated resolved task data from presentation scope: Scope determines the candidate task set, Context and Team Drill-down determine what is displayed, and display filters no longer alter organization-wide capacity inputs.
@@ -94,6 +97,13 @@ python3 scripts/migrate.py --apply
   app and admin assets, sharing vendor chunks and requiring no separate build step or static file mount.
 
 ### Fixed
+- Added indexed user help for enrollment, pairing, recovery, and account reset, and made Configuration show account email as non-editable text.
+- Fixed admin iteration browsing to connect, fetch, and close the thread-local Azure client on the same worker thread.
+- Removed the duplicate Enroll button from the enrollment dialog while keeping enrollment navigation available from pairing and recovery.
+- Fixed admin access reset to show replacement keys in the shared save-and-confirm recovery modal, prevent duplicate resets, and defer self-reset navigation until acknowledgment.
+- Fixed Brotli response rebuilding dropping session cookies alongside device cookies, causing authenticated API and admin requests to fail after successful enrollment or renewal.
+- Fixed Vite proxy Host rewriting that blocked migrated-account enrollment with a cross-origin 403 during startup.
+- Fixed server JSON backup/restore to preserve enrollment, device and recovery hashes, and bootstrap state, invalidate sessions and pairing codes, and reject account backups missing authentication data.
 - Fixed store migration parity across startup, Default View and saved-view restore, scenario hydration and rename/save flows, baseline overrides, group projection, filters, capacity, graph rendering, and plugin aggregates.
 - Fixed Context, Team Drill-down, dependency visibility, parent/child expansion, swimlane assignment, unallocated work, task counts, and deselection behavior across the board and specialized plugins.
 - Fixed group creation, nesting, membership, date shifting, mixed ordering, drag placement, cross-plan assignment, and scenario publishing so pending changes remain consistent and do not duplicate.

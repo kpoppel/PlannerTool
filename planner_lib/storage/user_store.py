@@ -51,6 +51,11 @@ class UserDataStore:
 
     @contextmanager
     def _register_lock(self):
+        cache = getattr(self._storage, '_cache', None)
+        if cache is not None:
+            with cache.transact():
+                yield
+            return
         base_dir = os.path.join("data", self.namespace)
         os.makedirs(base_dir, exist_ok=True)
         lock_path = os.path.join(base_dir, self.lock_file)
@@ -157,3 +162,15 @@ class UserDataStore:
         prefix = f"{user_id}_"
         reg = self.load_register()
         return [meta for key, meta in reg.items() if key.startswith(prefix)]
+
+    def delete_items_for_user(self, user_id: str) -> None:
+        """Remove owned items and metadata, including unregistered items."""
+        prefix = f'{user_id}_'
+        with self._register_lock():
+            for key in list(self._storage.list_keys(self.namespace)):
+                if key.startswith(prefix):
+                    self._storage.delete(self.namespace, key)
+            register = self.load_register()
+            remaining = {key: value for key, value in register.items()
+                         if not key.startswith(prefix)}
+            self.save_register(remaining)

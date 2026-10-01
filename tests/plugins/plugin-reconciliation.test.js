@@ -3,6 +3,9 @@ import PluginRegistry from '../../www/js/core/pluginRegistry.js';
 import modulesConfig from '../../www/js/modules.config.json';
 
 const config = modulesConfig.modules.find((entry) => entry.id === 'plugin-reconciliation');
+const schemaFiles = import.meta.glob('../../www/js/plugins/*.schema.json', {
+  query: '?raw', import: 'default', eager: true,
+});
 
 describe('Reconciliation plugin shell', () => {
   afterEach(() => {
@@ -24,6 +27,23 @@ describe('Reconciliation plugin shell', () => {
     expect(config.activateOnStartup).toBe(false);
     expect(config.exclusive).toBe(false);
     expect(config.menuPosition).toBe('before-tools');
+  });
+
+  it('publishes a discoverable JSON configuration schema for the admin page', () => {
+    const className = config.id.split('-')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join('');
+    const schemaJson = schemaFiles[`../../www/js/plugins/${className}.schema.json`];
+    expect(schemaJson).toBeTypeOf('string');
+    const schemaData = JSON.parse(schemaJson);
+    expect(schemaData).toEqual({
+      schema: {
+        type: 'object',
+        title: 'Reconciliation Configuration',
+        properties: {},
+        required: [],
+      },
+      defaultConfig: {},
+    });
   });
 
   it('requires initialization before creating its menu', () => {

@@ -1,23 +1,27 @@
 # Initial user setup
 
-When the application loads the first time you will see an empty board, even if the server side is configured. Get started as follows:
+On your first visit, enroll your account and save the account key before
+continuing. On another browser or after sign-out, use the same Enrollment form
+with your latest account key, then save its replacement. See
+[Account Access](account_access.md) for enrollment, deletion, and administrator
+reset instructions.
 
 ## Configuration
 
-Open the Configuration modal (Gear) to enter server and user settings required for fetching data and writing back to Azure DevOps.
-
-![CfgModal](img/configuration_modal.png)
+Open the Configuration modal (Gear) to set your Azure access token and autosave
+preferences. Server and project settings are managed by your administrator.
 
 Fields
-- Email: user identifier used when writing changes back to Azure.
+- Account email: the signed-in account identity, displayed as non-editable text.
 - Personal Access Token (PAT): paste a PAT from Azure DevOps with Work Items (Read/Write/Manage) scope, and Wiki permission (read/write).
 - Server settings: server or organization settings may be provided by your PlannerTool installation; confirm correct project visibility.
 - Autosave: enable to persist scenario edits automatically in browser storage.
 
 If you don't know how to get a PAT, see below.
 
+1. Enter your Azure PAT if the installation requires it.
 2. Save the configuration.
-3. Reload the application
+3. Reload the application.
 
 Now you should see projects defined on the server and teams. If this works, you are set for using the application.
 

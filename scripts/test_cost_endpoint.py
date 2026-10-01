@@ -3,43 +3,37 @@
 
 Starts a session, fetches baseline data, posts to /api/cost, then posts revisions.
 """
-import requests
-import sys
 from pprint import pprint
+import argparse
+from .api_cli import authenticated_session
 
 BASE = 'http://localhost:8000'
 
-def start_session(email='user@example.com'):
-    r = requests.post(f'{BASE}/api/session', json={'email': email})
-    r.raise_for_status()
-    sid = r.json().get('sessionId')
-    return sid
-
-def fetch_baseline(session_id):
-    headers = {'X-Session-Id': session_id}
-    r = requests.get(f'{BASE}/api/projects', headers=headers)
+def fetch_baseline(session):
+    r = session.get(f'{BASE}/api/projects', timeout=30)
     r.raise_for_status()
     projects = r.json()
-    r = requests.get(f'{BASE}/api/tasks', headers=headers)
+    r = session.get(f'{BASE}/api/tasks', timeout=30)
     r.raise_for_status()
     tasks = r.json()
     return projects, tasks
 
-def post_cost(session_id, features=None, revisions=None):
-    headers = {'X-Session-Id': session_id}
+def post_cost(session, features=None, revisions=None):
     payload = {}
     if features is not None:
         payload['features'] = features
     if revisions is not None:
         payload['revisions'] = revisions
-    r = requests.post(f'{BASE}/api/cost', headers=headers, json=payload)
+    r = session.post(f'{BASE}/api/cost', json=payload, timeout=30)
     r.raise_for_status()
     return r.json()
 
 def main():
-    sid = start_session()
-    print('Session:', sid)
-    projects, tasks = fetch_baseline(sid)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--cookies', required=True, help='Private enrolled cookie jar')
+    args = parser.parse_args()
+    session = authenticated_session(BASE, args.cookies)
+    projects, tasks = fetch_baseline(session)
     print('\nProjects:')
     pprint(projects[:3])
     print('\nTasks sample:')
@@ -56,7 +50,7 @@ def main():
         })
 
     print('\nPosting baseline cost...')
-    baseline = post_cost(sid, features=sample_features)
+    baseline = post_cost(session, features=sample_features)
     pprint(baseline)
 
     if sample_features:
@@ -64,12 +58,12 @@ def main():
         tid = first.get('id')
         print('\nPosting revised dates for task', tid)
         rev1 = [{'taskId': tid, 'start': first.get('start'), 'end': first.get('end')}]
-        r1 = post_cost(sid, features=sample_features, revisions=rev1)
+        r1 = post_cost(session, features=sample_features, revisions=rev1)
         pprint(r1)
 
         print('\nPosting revised capacity for task', tid)
         rev2 = [{'taskId': tid, 'capacity': 0.5}]
-        r2 = post_cost(sid, features=sample_features, revisions=rev2)
+        r2 = post_cost(session, features=sample_features, revisions=rev2)
         pprint(r2)
 
 if __name__ == '__main__':

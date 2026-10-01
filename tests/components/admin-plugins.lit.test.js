@@ -43,7 +43,7 @@ const MODULES_META = {
 };
 
 const PLUGINS_CONFIG = {
-  schema_version: 1,
+  schema_version: 2,
   plugins: [
     { id: 'plugin-alpha', enabled: true, activateOnStartup: false },
     { id: 'plugin-beta', enabled: false, activateOnStartup: false },
@@ -85,6 +85,34 @@ describe('admin-plugins', () => {
   });
 
   describe('component load and render', () => {
+    it('fetches metadata once and discovers schemas concurrently', async () => {
+      await vi.waitFor(() => expect(comp._loading).to.equal(false));
+      const metadataRequests = vi.fn(() => HttpResponse.json(MODULES_META));
+      const schemaRequests = vi.fn();
+      let releaseSchemas;
+      const schemaGate = new Promise(resolve => { releaseSchemas = resolve; });
+      server.use(
+        http.get('/static/js/modules.config.json', metadataRequests),
+        http.get('/static/js/plugins/:filename', async ({ params }) => {
+          schemaRequests(params.filename);
+          await schemaGate;
+          return HttpResponse.json({ schema: { type: 'object' }, defaultConfig: {} });
+        })
+      );
+      const loading = comp._load();
+      try {
+        await vi.waitFor(() => expect(schemaRequests).toHaveBeenCalledTimes(2));
+      } finally {
+        releaseSchemas();
+        await loading;
+      }
+      expect(metadataRequests).toHaveBeenCalledTimes(1);
+      expect(schemaRequests.mock.calls.map(([filename]) => filename).sort()).to.deep.equal([
+        'PluginAlpha.schema.json', 'PluginBeta.schema.json',
+      ]);
+      expect(Object.keys(comp._schemas).sort()).to.deep.equal(['plugin-alpha', 'plugin-beta']);
+    });
+
     it('blocks saving when runtime settings require migration', async () => {
       await flush(comp);
       server.use(http.get('/admin/v1/plugins-config', () => HttpResponse.json({

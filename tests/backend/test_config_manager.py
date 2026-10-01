@@ -10,6 +10,12 @@ Covers:
 """
 import pytest
 from unittest.mock import MagicMock
+from planner_lib.middleware.session import SessionManager
+
+REAL_CREATE = SessionManager.create
+REAL_GET = SessionManager.get
+REAL_EXISTS = SessionManager.exists
+ACCOUNT_ID = '11111111-1111-4111-8111-111111111111'
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +43,9 @@ class _Store:
 
     def list_keys(self, ns):
         return list(self._data.get(ns, {}).keys())
+
+    def delete(self, ns, key):
+        del self._data[ns][key]
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +196,7 @@ def test_get_backup_includes_accounts():
     from planner_lib.admin.config_manager import ConfigManager
     acct = _Store()
     # Admin account: has 'admin' in permissions (no separate accounts_admin namespace)
-    acct.save('accounts', 'a@b.com', {'email': 'a@b.com', 'permissions': ['admin']})
+    acct.save('accounts', 'a@b.com', {'account_id': ACCOUNT_ID, 'email': 'a@b.com', 'permissions': ['admin']})
     cm = ConfigManager(storage=acct)
     bk = cm.get_backup()
     assert 'a@b.com' in bk['accounts']['users']
@@ -223,6 +232,7 @@ def test_restore_backup_calls_sync_accounts_fn():
         'email': 'u@x.com',
         'permissions': ['admin'],
     }}}}
+    data['authentication'] = {'account_auth': {account_id: {'enrolled': False}}, 'auth_control': {}}
     cm.restore_backup(data, sync_accounts_fn=sync)
     assert 'u@x.com' in called['users']
     assert called['users']['u@x.com']['account_id'] == account_id
@@ -233,6 +243,7 @@ def test_restore_backup_guards_current_admin():
     from planner_lib.admin.config_manager import ConfigManager
     cm = ConfigManager(storage=_Store())
     data = {'accounts': {'users': {}, 'admins': {}}}
+    data['authentication'] = {'account_auth': {}, 'auth_control': {}}
     with pytest.raises(ValueError, match="Cannot remove the current admin"):
         cm.restore_backup(
             data,
@@ -240,6 +251,219 @@ def test_restore_backup_guards_current_admin():
             current_user_email='admin@example.com',
             sync_accounts_fn=lambda u, a: None,
         )
+
+
+@pytest.mark.parametrize('destination_enrolled', [False, True])
+def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path, monkeypatch, destination_enrolled):
+    import json
+    from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.session.auth import AuthManager
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
+
+    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
+    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
+    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
+    source = DiskCacheStorage(tmp_path / 'source')
+    target = DiskCacheStorage(tmp_path / 'target')
+    try:
+        source_accounts = AccountManager(source)
+        source_auth = AuthManager(source, source_accounts, SessionManager(source_accounts, source))
+        device, recovery, _ = source_auth.enroll('admin@example.com', 'Administrator')
+        source_accounts.update_credentials(AccountCredentialsPayload(email='admin@example.com', pat='azure-pat'))
+        backup = json.loads(json.dumps(ConfigManager(source).get_backup()))
+
+        assert set(backup['authentication']) == {'account_auth', 'auth_control'}
+        assert 'auth_sessions' not in backup['authentication']
+        assert 'auth_pairing' not in backup['authentication']
+        target_accounts = AccountManager(target)
+        target_sessions = SessionManager(target_accounts, target)
+        target_auth = AuthManager(target, target_accounts, target_sessions)
+        if destination_enrolled:
+            old_device, _, old_session = target_auth.enroll('admin@example.com', 'Old Identity')
+            obsolete_id = target_accounts.get_account_id('admin@example.com')
+            target.save('views', obsolete_id + '_old', {'private': True})
+            target.save('views', 'view_register', {
+                obsolete_id + '_old': {'user': obsolete_id, 'id': 'old'},
+            })
+        monkeypatch.setenv('PLANNER_SECRET_KEY', 'different-restore-key')
+        ConfigManager(target).restore_backup(
+            backup, current_admins=['admin@example.com'], current_user_email='admin@example.com',
+            sync_accounts_fn=target_accounts.sync_accounts_full,
+        )
+
+        if destination_enrolled:
+            assert not target.exists('account_auth', obsolete_id)
+            assert not target.exists('views', obsolete_id + '_old')
+            assert obsolete_id + '_old' not in target.load('views', 'view_register')
+            assert not target_sessions.exists(old_session)
+            with pytest.raises(PermissionError):
+                target_auth.authenticate_device(old_device)
+        assert list(target.list_keys('auth_sessions')) == []
+        assert list(target.list_keys('auth_pairing')) == []
+        assert target.load('auth_control', 'bootstrap_claimed') is True
+        account_id = target_accounts.get_account_id('admin@example.com')
+        assert target.load('account_auth', account_id) == backup['authentication']['account_auth'][account_id]
+        assert backup['accounts']['users']['admin@example.com']['pat'] == 'azure-pat'
+        assert target_accounts.load('admin@example.com')['pat'] == 'azure-pat'
+        assert target_auth.authenticate_device(device)[0] == 'admin@example.com'
+        assert target_auth.enroll('admin@example.com', account_key=recovery)[1]
+        with pytest.raises(PermissionError):
+            target_auth.enroll('admin@example.com', 'Impersonator')
+    finally:
+        source.close()
+        target.close()
+
+
+def test_account_restore_reinstates_older_key_and_admin_reset_recovers_access(tmp_path, monkeypatch):
+    from planner_lib.accounts.config import AccountManager
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.session.auth import AuthManager
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
+
+    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
+    storage = DiskCacheStorage(tmp_path)
+    try:
+        accounts = AccountManager(storage)
+        auth = AuthManager(storage, accounts, SessionManager(accounts, storage))
+        auth.enroll('admin@example.com', 'Admin')
+        snapshot_device, snapshot_key, _ = auth.enroll('owner@example.com', 'Owner')
+        manager = ConfigManager(storage)
+        backup = manager.get_backup()
+        newer_device, newer_key, _ = auth.enroll('owner@example.com', account_key=snapshot_key)
+        result = manager.restore_backup(
+            backup, current_admins=['admin@example.com'], current_user_email='admin@example.com',
+            sync_accounts_fn=accounts.sync_accounts_full,
+        )
+        assert 'older' in result['warning']
+        assert 'Reset access' in result['warning']
+        assert auth.authenticate_device(snapshot_device)[0] == 'owner@example.com'
+        with pytest.raises(PermissionError):
+            auth.authenticate_device(newer_device)
+        with pytest.raises(PermissionError):
+            auth.enroll('owner@example.com', account_key=newer_key)
+        with pytest.raises(PermissionError):
+            auth.delete_account('owner@example.com', newer_key)
+        reset_key = auth.reset('owner@example.com')
+        with pytest.raises(PermissionError):
+            auth.enroll('owner@example.com', account_key=snapshot_key)
+        assert auth.enroll('owner@example.com', account_key=reset_key)[1] != reset_key
+    finally:
+        storage.close()
+
+
+def test_account_restore_without_authentication_is_rejected_before_writes():
+    from planner_lib.admin.config_manager import ConfigManager
+    store = _Store()
+    store.save('config', 'server_config', {'version': 'current'})
+    with pytest.raises(ValueError, match='authentication'):
+        ConfigManager(store).restore_backup({
+            'config': {'server_config': {'version': 'old'}},
+            'accounts': {'users': {}},
+        }, sync_accounts_fn=lambda users, admins: None)
+    assert store.load('config', 'server_config') == {'version': 'current'}
+
+
+@pytest.mark.parametrize('namespace, register_key', [
+    ('views', 'view_register'), ('scenarios', 'scenario_register'),
+])
+def test_restore_rejects_email_owned_data_before_writes(namespace, register_key):
+    from planner_lib.admin.config_manager import ConfigManager
+    store = _Store()
+    store.save('config', 'server_config', {'version': 'current'})
+    backup = {
+        'config': {'server_config': {'version': 'restored'}},
+        namespace: {
+            'owner@example.com_item': {'name': 'Private data'},
+            register_key: {'owner@example.com_item': {'id': 'item', 'user': 'owner@example.com'}},
+        },
+    }
+    with pytest.raises(ValueError, match='account ID'):
+        ConfigManager(store).restore_backup(backup)
+    assert store.load('config', 'server_config') == {'version': 'current'}
+
+
+@pytest.mark.parametrize('invalid_part', ['account_ids', 'bootstrap', 'key', 'legacy_key', 'expiry', 'accounts'])
+def test_invalid_authentication_backup_is_rejected_before_writes(invalid_part):
+    from planner_lib.admin.config_manager import ConfigManager
+    record = {
+        'enrolled': True, 'name': 'Administrator', 'account_key_hash': 'a' * 64,
+        'devices': {'b' * 32: {'hash': 'c' * 64, 'expires': 2000000000}},
+    }
+    backup = {
+        'config': {'server_config': {'version': 'restored'}},
+        'accounts': {'users': {'admin@example.com': {'account_id': ACCOUNT_ID, 'email': 'admin@example.com'}}},
+        'authentication': {'account_auth': {ACCOUNT_ID: record}, 'auth_control': {'bootstrap_claimed': True}},
+    }
+    if invalid_part == 'account_ids':
+        backup['authentication']['account_auth'] = {}
+    elif invalid_part == 'bootstrap':
+        backup['authentication']['auth_control']['bootstrap_claimed'] = 1
+    elif invalid_part == 'key':
+        record['account_key_hash'] = 'plaintext-account-key'
+    elif invalid_part == 'legacy_key':
+        record['recovery_hash'] = record['account_key_hash']
+    elif invalid_part == 'expiry':
+        record['devices']['b' * 32]['expires'] = float('nan')
+    elif invalid_part == 'accounts':
+        backup['accounts']['users']['admin@example.com'] = None
+    store = _Store()
+    store.save('config', 'server_config', {'version': 'current'})
+    with pytest.raises(ValueError):
+        ConfigManager(store).restore_backup(backup, sync_accounts_fn=lambda users, admins: None)
+    assert store.load('config', 'server_config') == {'version': 'current'}
+
+
+def test_auth_restore_rolls_back_failed_account_sync(tmp_path):
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
+    store = DiskCacheStorage(tmp_path)
+    try:
+        store.save('config', 'server_config', {'version': 'current'})
+        store.save('auth_control', 'bootstrap_claimed', True)
+        store.save('auth_sessions', 'active-session', {'email': 'admin@example.com'})
+        backup = ConfigManager(store).get_backup()
+        backup['config']['server_config'] = {'version': 'restored'}
+
+        def failing_sync(users, admins):
+            store.save('accounts', 'partial@example.com', {'account_id': ACCOUNT_ID})
+            raise ValueError('Account sync failed')
+
+        with pytest.raises(ValueError, match='Account sync failed'):
+            ConfigManager(store).restore_backup(backup, sync_accounts_fn=failing_sync)
+        assert store.load('config', 'server_config') == {'version': 'current'}
+        assert not store.exists('accounts', 'partial@example.com')
+        assert store.exists('auth_sessions', 'active-session')
+        assert store.load('auth_control', 'bootstrap_claimed') is True
+    finally:
+        store.close()
+
+
+def test_selective_restore_without_accounts_preserves_current_credentials(tmp_path, monkeypatch):
+    from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.session.auth import AuthManager
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
+    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
+    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
+    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
+    storage = DiskCacheStorage(tmp_path)
+    try:
+        accounts = AccountManager(storage)
+        sessions = SessionManager(accounts, storage)
+        auth = AuthManager(storage, accounts, sessions)
+        device, key, session = auth.enroll('owner@example.com', 'Owner')
+        accounts.update_credentials(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
+        account_id = accounts.get_account_id('owner@example.com')
+        original = storage.load('account_auth', account_id)
+        ConfigManager(storage).restore_backup({'config': {'server_config': {'version': 'restored'}}})
+        assert storage.load('account_auth', account_id) == original
+        assert accounts.load('owner@example.com')['pat'] == 'azure-pat'
+        assert not sessions.exists(session)
+        assert auth.authenticate_device(device)[0] == 'owner@example.com'
+        assert auth.enroll('owner@example.com', account_key=key)[1] != key
+    finally:
+        storage.close()
 
 
 # ---------------------------------------------------------------------------
@@ -285,9 +509,10 @@ def test_restore_backup_reencrypts_plaintext_pats(monkeypatch):
     data = {
         '_meta': {'pat_format': 'plaintext'},
         'accounts': {
-            'users': {'user@example.com': {'email': 'user@example.com', 'pat': 'plaintext-pat'}},
+            'users': {'user@example.com': {'account_id': ACCOUNT_ID, 'email': 'user@example.com', 'pat': 'plaintext-pat'}},
             'admins': {},
         },
+        'authentication': {'account_auth': {ACCOUNT_ID: {'enrolled': False}}, 'auth_control': {}},
     }
     cm.restore_backup(data, sync_accounts_fn=sync)
 
@@ -312,9 +537,10 @@ def test_restore_backup_encrypts_plaintext_pats_without_metadata(monkeypatch):
     cm = ConfigManager(storage=_Store())
     data = {
         'accounts': {
-            'users': {'user@example.com': {'email': 'user@example.com', 'pat': 'plaintext-pat'}},
+            'users': {'user@example.com': {'account_id': ACCOUNT_ID, 'email': 'user@example.com', 'pat': 'plaintext-pat'}},
             'admins': {},
         },
+        'authentication': {'account_auth': {ACCOUNT_ID: {'enrolled': False}}, 'auth_control': {}},
     }
     cm.restore_backup(data, sync_accounts_fn=sync)
     stored_pat = synced['users']['user@example.com']['pat']
@@ -329,7 +555,7 @@ def test_get_backup_corrupt_pat_becomes_none(monkeypatch):
 
     acct = _Store()
     # Inject a corrupt ciphertext directly into storage
-    acct.save('accounts', 'bad@example.com', {'email': 'bad@example.com', 'pat': 'not-a-fernet-token'})
+    acct.save('accounts', 'bad@example.com', {'account_id': ACCOUNT_ID, 'email': 'bad@example.com', 'pat': 'not-a-fernet-token'})
 
     cm = ConfigManager(storage=acct)
     bk = cm.get_backup()

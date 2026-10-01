@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
+import { showAccountKeyDialog } from '../../../../js/components/AuthDialog.lit.js';
 
 function resultErrorMessage(result, fallback = 'Request failed') {
   if (result?.error?.message) return result.error.message;
@@ -266,6 +267,7 @@ export class AdminUsers extends LitElement {
     newAdmin: { type: String },
     statusMsg: { type: String },
     statusType: { type: String },
+    resetting: { type: Boolean },
   };
 
   constructor() {
@@ -279,6 +281,7 @@ export class AdminUsers extends LitElement {
     this.current = null;
     this.statusMsg = '';
     this.statusType = '';
+    this.resetting = false;
   }
 
   connectedCallback() {
@@ -385,6 +388,28 @@ export class AdminUsers extends LitElement {
     await this._runMutation(() => adminProvider.deleteUser(account.id));
   }
 
+  async resetAccess(account) {
+    if (this.resetting) return;
+    const selfReset = this.current === account.id;
+    const warning = selfReset
+      ? `Resetting access for ${account.email} will sign you out of every browser. Save the new account key before continuing. Proceed?`
+      : `Revoke every remembered browser for ${account.email} and issue a new account key?`;
+    if (!window.confirm(warning)) return;
+    this.resetting = true;
+    this.error = '';
+    try {
+      const result = await adminProvider.resetAccountAccess(account.id);
+      if (!result.ok) {
+        this.error = resultErrorMessage(result, 'Access reset failed');
+        return;
+      }
+      await showAccountKeyDialog(result.data.accountKey, account.email);
+      if (selfReset) window.location.assign(new URL('../', window.location.href).href);
+    } finally {
+      this.resetting = false;
+    }
+  }
+
   async moveTo(targetList, account) {
     if (targetList === 'users') {
       await this._runMutation(() => adminProvider.setUserPermissions(account.id, []));
@@ -458,6 +483,9 @@ export class AdminUsers extends LitElement {
                             : ''}
                           </span>
                           <div class="user-actions">
+                            <button class="btn btn-small" @click=${() => this.resetAccess(u)}
+                              ?disabled=${this.resetting}
+                              title="Revoke devices and issue a replacement account key">Reset access</button>
                             ${u.permissions.includes('admin') ?
                               html` <span class="user-badge">Admin</span> `
                             : html`

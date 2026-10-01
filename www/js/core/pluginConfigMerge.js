@@ -74,12 +74,6 @@ export function mergePluginConfig(modulesConfig, runtimeConfig) {
     return modulesConfig;
   }
 
-  // Index runtime config by id
-  const runtimeById = new Map();
-  runtimeConfig.forEach((r) => {
-    if (r.id) runtimeById.set(r.id, r);
-  });
-
   const merged = [];
   const placed = new Set();
 

@@ -8,14 +8,16 @@ from fastapi import HTTPException
 
 def make_request_with_container(container, sid='s1'):
     app = SimpleNamespace(state=SimpleNamespace(container=container))
-    headers = {'X-Session-Id': sid}
-    cookies = {}
+    headers = {}
+    cookies = {'sessionId': sid}
     return SimpleNamespace(headers=headers, cookies=cookies, app=app, url=SimpleNamespace(path='/'))
 
 
 class SimpleSessionMgr:
     def __init__(self, ctx=None):
         self._ctx = ctx or {}
+        self._ctx['pat'] = None
+        self._ctx['account_id'] = '11111111-1111-4111-8111-111111111111'
     def exists(self, sid):
         return True
     def get(self, sid):
@@ -91,9 +93,7 @@ def test_api_cost_post_scenario_not_found(monkeypatch):
     assert ei.value.status_code == 404
 
 
-def test_api_cost_get_no_session_returns_schema():
-    # no session -> build schema mode
-    # create container with session_manager that reports false for exists
+def test_api_cost_get_no_session_is_rejected():
     class SessMgr(SimpleSessionMgr):
         def exists(self, sid):
             return False
@@ -101,9 +101,9 @@ def test_api_cost_get_no_session_returns_schema():
     app = SimpleNamespace(state=SimpleNamespace(container=container))
     req = SimpleNamespace(headers={}, cookies={}, app=app, url=SimpleNamespace(path='/'))
 
-    res = asyncio.run(api_cost_get.__wrapped__(req))
-    assert isinstance(res, dict)
-    assert res['meta']['response_mode'] == 'schema'
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(api_cost_get.__wrapped__(req))
+    assert error.value.status_code == 401
 
 
 def test_api_cost_teams_aggregates():

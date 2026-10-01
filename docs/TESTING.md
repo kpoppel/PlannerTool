@@ -6,6 +6,12 @@
 
 coverage report dropped in `coverage/htmlcov`
 
+Authentication-sensitive Python suites must use `pytestmark = pytest.mark.real_auth`
+or mark individual tests with `@pytest.mark.real_auth`. This disables the legacy
+`ensure_test_sessions` bypass; enroll through `/api/auth/enroll` and use the issued
+cookies. Handler-only unit tests may register explicit session stubs, but must send
+cookie headers and provide the session fields consumed by the handler.
+
 ## JavaScript unit tests
 
 Withot coverage:
@@ -54,43 +60,37 @@ Data Funnel counts under Scope and Team Drill-down changes, stable organization
 graph values under display filtering, Context-owned dependency lifecycle, and
 traceable source-plan lanes for Other allocations.
 
-# Run a session from CLI
-export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' localhost:8000/api/session | jq -r .sessionId)
+# Authenticated CLI and browser tests
 
-echo "$SESSION_ID"
+Email-only sessions and X-Session-Id are not supported. Enroll a dedicated CLI
+browser and save its replacement account key privately:
 
-Create a configuration
-    curl -s -X POST -H "Content-Type: application/json" \
-      -d '{"email":"user@example.com", "pat":"YOUR PAT"}' \
-      localhost:8000/api/session
+```bash
+export API_BASE=http://localhost:8001
+python3 -m scripts.api_cli enroll user@example.com --name 'Example User' \
+    --cookies "$HOME/planner-cookies.txt" --key-output "$HOME/planner-account-key.txt"
+python3 -m scripts.api_cli get /api/projects --cookies "$HOME/planner-cookies.txt"
+```
 
-Run browser based tests:
-    source .venv/bin/activate && npx playwright test tests/e2e/modal-interactions.spec.js --config=tests/playwright.config.js --project=chromium --reporter=list
+Keep credential files outside the repository and do not log their contents.
+Routine calls renew from the cookie jar without consuming the account key.
+Use a private JSON file for PAT configuration payloads and POST it to
+`/api/config`, never to `/api/session`.
 
-# Planner REST calls:
+```bash
+python3 -m scripts.api_cli post /api/config --cookies "$HOME/planner-cookies.txt" -d @private-config.json
+curl -s -b "$HOME/planner-cookies.txt" -c "$HOME/planner-cookies.txt" \
+    -X POST -H 'Accept: application/json' "$API_BASE/api/session"
+curl -s -b "$HOME/planner-cookies.txt" -H 'Accept: application/json' "$API_BASE/api/cost"
+```
 
-Create a session
-  export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' http://localhost:8000/api/session | jq -r .sessionId)
+The dedicated authentication E2E uses isolated temporary storage and desktop
+browser contexts; it never reads or resets the active `data/` database:
 
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/health
-curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/account
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/projects
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/tasks
-curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/tasks
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/teams
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario?id=
-curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario
-curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost  # Return the cost JSON scheme
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost
-curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/admin/reload-config
-# assume session created and $SESSION_ID set and scenario id 'scen123' saved for the user
-curl -s -X POST -H "X-Session-Id: $SESSION_ID" -H "Content-Type: application/json" \
-  -d '{"scenarioId":"scen123"}' \
-  http://localhost:8000/api/cost | jq .
-  export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' http://localhost:8000/api/session | jq -r .sessionId)
-curl -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost | jq .
-curl -s -X GET http://localhost:8000/api/cost | jq .
+```bash
+npm run build
+npx playwright test --config=tests/playwright.auth.config.js
+```
 
 # Cost scenario
 Practical client-side rules (what you should send)
@@ -113,12 +113,12 @@ GET /api/cost is fine for baseline cached result when session is authenticated.
 {"op":"save","data":{"id":"scen_1766146121427_4976","name":"12-19 Scenario 1","overrides":{"516154":{"start":"2025-10-24","end":"2025-11-23"},"516364":{"start":"2025-10-24","end":"2025-11-23"},"516412":{"start":"2025-10-24","end":"2025-11-23"},"516413":{"start":"2025-10-24","end":"2025-11-23"},"516419":{"start":"2025-10-24","end":"2025-11-23"},"534751":{"start":"2025-10-24","end":"2025-11-23"},"535825":{"start":"2025-10-24","end":"2025-11-23"},"682664":{"start":"2025-12-17","end":"2026-06-22"},"688048":{"start":"2026-04-19","end":"2026-05-19"},"688049":{"start":"2026-02-20","end":"2026-04-18"},"688050":{"start":"2025-12-26","end":"2026-02-19"},"688051":{"start":"2026-05-23","end":"2026-06-22"}},"filters":{"projects":["project-a","project-b"],"teams":["team-a","team-b","team-c","team-d"]},"view":{"capacityViewMode":"team","condensedCards":false,"featureSortMode":"rank"}}}
 
 ## Scenario GET data example:
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario
+curl -s -b "$HOME/planner-cookies.txt" "$API_BASE/api/scenario"
 
-[{"id":"scen_1766146121427_4976","user":"user@example.com","shared":false}]
+[{"id":"scen_1766146121427_4976","user":"11111111-1111-4111-8111-111111111111","shared":false}]
 
 ## Scenario GET data with scenario ID example:
-curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario?id=scen_1766146121427_4976
+curl -s -b "$HOME/planner-cookies.txt" "$API_BASE/api/scenario?id=scen_1766146121427_4976"
 
 {"id":"scen_1766146121427_4976","name":"12-19 Scenario 1","overrides":{"516154":{"start":"2025-10-24","end":"2025-11-23"},"516364":{"start":"2025-10-24","end":"2025-11-23"},"516412":{"start":"2025-10-24","end":"2025-11-23"},"516413":{"start":"2025-10-24","end":"2025-11-23"},"516419":{"start":"2025-10-24","end":"2025-11-23"},"534751":{"start":"2025-10-24","end":"2025-11-23"},"535825":{"start":"2025-10-24","end":"2025-11-23"},"682664":{"start":"2025-12-17","end":"2026-06-22"},"688048":{"start":"2026-04-19","end":"2026-05-19"},"688049":{"start":"2026-02-20","end":"2026-04-18"},"688050":{"start":"2025-12-26","end":"2026-02-19"},"688051":{"start":"2026-05-23","end":"2026-06-22"}},"filters":{"projects":["project-a","project-b"],"teams":["team-a","team-b","team-c","team-d"]},"view":{"capacityViewMode":"team","condensedCards":false,"featureSortMode":"rank"}}
 

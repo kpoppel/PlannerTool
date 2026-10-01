@@ -11,7 +11,7 @@
    activate a plugin or close the current tool. Scope remains the fixed left boundary;
    Tools separates the administrator-selected before/after groups.
 4. Extend the existing admin table with type and menu position. Persist schema v2
-   and migrate v1 settings with migration 0031; do not add legacy runtime fallbacks.
+   and migrate v1 settings with migration 0033; do not add legacy runtime fallbacks.
 5. Add a disabled-by-default Sample Menu plugin, its component and custom schema.
    Verify merging, ordering, lifecycle, admin persistence, migration, keyboard use,
    and desktop toolbar overflow. Update admin documentation and the changelog.
@@ -74,6 +74,6 @@ diagnostic tool rather than the workflow's source of truth.
 ## Upgrade
 
 Run `python3 scripts/migrate.py --apply` before using an existing installation.
-Migration 0031 renames `activated`, removes numeric `order`, and initializes
+Migration 0033 renames `activated`, removes numeric `order`, and initializes
 menu placement while preserving array sequence, enabled flags, and custom config.
 Existing nonempty v1 payloads are rejected by the v2 API until migrated.

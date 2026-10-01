@@ -91,133 +91,25 @@
   </head>
   <body>
     <div class="login-card">
-      <h1 id="form-title">Admin Login</h1>
-      <div id="setup-notice" class="setup-notice">
-        <strong>First-time setup:</strong> No admin accounts exist yet. Register your
-        email below to become the first administrator.
-      </div>
+      <h1 id="form-title">Admin</h1>
       <div id="error-message" class="error"></div>
-      <div id="info-message" class="info"></div>
-      <form id="login-form">
-        <div class="form-group">
-          <label for="email">Email Address</label>
-          <input
-            type="email"
-            id="email"
-            required
-            autofocus
-            placeholder="admin@example.com"
-          />
-        </div>
-        <div class="form-group" id="pat-group" style="display: none">
-          <label for="pat">Personal Access Token (PAT)</label>
-          <input type="password" id="pat" placeholder="Azure DevOps PAT" />
-        </div>
-        <button type="submit" id="submit-btn">Sign In</button>
-      </form>
+      <p>Open the planner to enroll or add this browser.</p>
+      <a id="planner-link" href="/">Open planner</a>
     </div>
 
     <script>
-      let isSetupMode = false;
-
-      // Show a contextual info message when redirected here with ?error=
-      const _urlError = new URLSearchParams(window.location.search).get('error');
-      if (_urlError === 'not_admin') {
-        const infoEl = document.getElementById('info-message');
-        infoEl.innerText =
-          'That email address does not have admin access. Please sign in with an admin account.';
-        infoEl.style.display = 'block';
-      }
-
-      // Check if setup is needed
-      fetch((window.APP_BASE_URL || '') + '/admin/v1/setup-status')
-        .then((r) => r.json())
-        .then((data) => {
-          if (data && data.needs_setup) {
-            isSetupMode = true;
-            document.getElementById('form-title').innerText = 'Admin Setup';
-            document.getElementById('submit-btn').innerText = 'Create Admin Account';
-            document.getElementById('setup-notice').style.display = 'block';
-            document.getElementById('pat-group').style.display = 'block';
-            document.getElementById('pat').required = true;
-          }
+      const base = window.APP_BASE_URL || '';
+      document.getElementById('planner-link').href = base + '/';
+      fetch(base + '/api/session', { method: 'POST', headers: { Accept: 'application/json' } })
+        .then((response) => {
+          if (!response.ok) return;
+          return fetch(base + '/admin/check', { headers: { Accept: 'application/json' } })
+            .then((check) => {
+              if (check.ok) window.location.replace(base + '/admin/');
+              else document.getElementById('error-message').textContent = 'This account is not an administrator.';
+            });
         })
-        .catch(console.error);
-
-      document.getElementById('login-form').addEventListener('submit', function (e) {
-        e.preventDefault();
-        const email = document.getElementById('email').value;
-        const pat = document.getElementById('pat').value;
-        const errorEl = document.getElementById('error-message');
-        const btn = document.getElementById('submit-btn');
-
-        errorEl.style.display = 'none';
-        btn.disabled = true;
-
-        const endpoint = isSetupMode ? '/admin/v1/setup' : '/api/session';
-
-        // Basic PAT sanity check: disallow whitespace/control characters.
-        const PAT_RE = /^[\x21-\x7E]+$/;
-        if (isSetupMode && pat && !PAT_RE.test(pat)) {
-          errorEl.innerText = 'Invalid PAT format: remove spaces or control characters.';
-          errorEl.style.display = 'block';
-          btn.disabled = false;
-          return;
-        }
-
-        const payload = { email: email };
-        if (isSetupMode) {
-          payload.pat = pat;
-        }
-
-        fetch((window.APP_BASE_URL || '') + endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-          .then(async (r) => {
-            if (!r.ok) {
-              const err = await r.json().catch(() => ({}));
-              throw new Error(
-                (err.detail && err.detail.message) ||
-                  'An error occurred during authentication'
-              );
-            }
-            // Persist the session cookie from x-set-session-id so subsequent
-            // requests to /admin/ carry the session ID automatically instead
-            // of being treated as "anonymous" and bouncing back to login.
-            const sid = r.headers.get('x-set-session-id');
-            if (sid) {
-              document.cookie = 'planner_sid=' + sid + '; path=/; SameSite=Lax';
-            }
-            return r.json();
-          })
-          .then(() => {
-            // Persist the entered email into localStorage so the admin
-            // frontend (which may auto-acquire a session) uses the same
-            // email when it initializes. This prevents a null/absent
-            // localStorage state from causing a mismatched session.
-            try {
-              const prefsRaw = localStorage.getItem('az_planner:user_prefs:v1');
-              const prefs = prefsRaw ? JSON.parse(prefsRaw) : {};
-              prefs['user.email'] = email;
-              localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify(prefs));
-            } catch (e) {
-              /* ignore localStorage errors */
-            }
-
-            // Redirect into the protected admin root on success
-            console.log('Login successful, redirecting to admin dashboard');
-            window.location.href = (window.APP_BASE_URL || '') + '/admin/';
-          })
-          .catch((err) => {
-            errorEl.innerText = err.message;
-            errorEl.style.display = 'block';
-          })
-          .finally(() => {
-            btn.disabled = false;
-          });
-      });
+        .catch((error) => console.error('Admin session renewal failed', error));
     </script>
   </body>
 </html>

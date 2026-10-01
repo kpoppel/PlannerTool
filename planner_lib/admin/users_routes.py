@@ -10,7 +10,7 @@ import logging
 
 from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
-from planner_lib.middleware.session import get_session_id_from_request as _get_session_id_or_raise
+from planner_lib.middleware.session import get_session_context_from_request
 from planner_lib.accounts.config import _is_valid_email, AccountCredentialsPayload
 from planner_lib.accounts.constants import AccountPermissions
 
@@ -23,29 +23,16 @@ logger = logging.getLogger(__name__)
 async def admin_get_users(request: Request):
     """Return account summaries and the current account's anonymous ID."""
     try:
-        current_email = None
-        try:
-            sid = _get_session_id_or_raise(request)
-            session_mgr = resolve_service(request, 'session_manager')
-            ctx = session_mgr.get(sid) or {}
-            current_email = ctx.get('email')
-        except Exception:
-            pass
-
+        context = get_session_context_from_request(request)
         account_manager = resolve_service(request, 'account_manager')
-        resp = {'accounts': account_manager.list_accounts()}
-        if current_email:
-            resp['currentId'] = account_manager.get_account_id(current_email)
-        return resp
+        return {'accounts': account_manager.list_accounts(), 'currentId': context['account_id']}
     except Exception as e:
         logger.exception('Failed to list users/admins: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
 
 
 def _get_current_email(request: Request) -> str:
-    sid = _get_session_id_or_raise(request)
-    session_manager = resolve_service(request, 'session_manager')
-    context = session_manager.get(sid)
+    context = get_session_context_from_request(request)
     email = context.get('email')
     if not email:
         raise HTTPException(status_code=401, detail='Session account is missing')

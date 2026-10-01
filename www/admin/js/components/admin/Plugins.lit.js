@@ -540,10 +540,11 @@ export class AdminPlugins extends LitElement {
     this._statusType = '';
     this.requestUpdate();
 
+    const metadata = this._fetchMetadata();
     const [metaResponse, runtimeResult, schemas] = await Promise.all([
-      this._fetchMetadata(),
+      metadata,
       adminProvider.getPluginsConfig(),
-      this._discoverPluginSchemas(),
+      metadata.then(modules => this._discoverPluginSchemas(modules)),
     ]);
 
     if (!runtimeResult.ok) {
@@ -570,20 +571,11 @@ export class AdminPlugins extends LitElement {
    * For each plugin in metadata, attempts to load its {PluginName}.schema.json file.
    * @returns {Promise<object>} Schema map { pluginId: { schema, defaultConfig } }
    */
-  async _discoverPluginSchemas() {
-    try {
+  async _discoverPluginSchemas(modules) {
       const schemas = {};
       const base = window.APP_BASE_URL || '';
-      
-      // First fetch metadata to get list of all plugins
-      const metaRes = await fetch(`${base}/static/js/modules.config.json`);
-      if (!metaRes.ok) return {};
-      const metaJson = await metaRes.json();
-      const modules = Array.isArray(metaJson.modules) ? metaJson.modules : [];
-      
-      // For each plugin, attempt to fetch its schema file
-      for (const module of modules) {
-        if (!module.id) continue;
+
+      await Promise.all(modules.filter(module => module.id).map(async module => {
         
         // Convert plugin id to PluginClassName
         // e.g., 'sample-plugin' -> 'SamplePlugin', 'plugin-cost' -> 'PluginCost'
@@ -608,13 +600,9 @@ export class AdminPlugins extends LitElement {
           // Plugin has no schema file — skip it
           console.debug(`No schema for ${module.id} at ${schemaUrl}:`, err.message);
         }
-      }
-      
+      }));
+
       return schemas;
-    } catch (err) {
-      console.warn('AdminPlugins:_discoverPluginSchemas failed:', err);
-      return {};
-    }
   }
 
   /**
@@ -639,44 +627,26 @@ export class AdminPlugins extends LitElement {
    * Merge static metadata with persisted runtime config to produce editable rows.
    * Order follows the persisted config order when available.
    * @param {object[]} meta - modules from modules.config.json
-   * @param {object|object[]|null} runtime - persisted plugin config from backend
-   *   (can be { schema_version, plugins: [...] } object or legacy array)
+  * @param {{schema_version:number,plugins:object[]}} runtime - validated backend config
    * @returns {object[]}
    */
   _mergeConfig(meta, runtime) {
-    // Handle both new structure { schema_version, plugins } and legacy array format
-    let runtimePlugins = null;
-    if (runtime && typeof runtime === 'object') {
-      if (Array.isArray(runtime)) {
-        runtimePlugins = runtime;
-      } else if (runtime.plugins && Array.isArray(runtime.plugins)) {
-        runtimePlugins = runtime.plugins;
-      }
-    }
-
-    const runtimeMap = new Map();
-    if (Array.isArray(runtimePlugins)) {
-      runtimePlugins.forEach((r, idx) => {
-        if (r.id) runtimeMap.set(r.id, { ...r, _runtimeOrder: idx });
-      });
-    }
-
+    const runtimePlugins = runtime.plugins;
     // Build rows in persisted order, then append any meta entries not in runtime
     const ordered = [];
+    const placed = new Set();
     const metaById = new Map();
     meta.forEach((m) => {
       if (m.id) metaById.set(m.id, m);
     });
 
     // First pass: runtime order (only valid ids)
-    if (Array.isArray(runtimePlugins)) {
-      runtimePlugins.forEach((r) => {
-        if (!r.id) return;
-        const m = metaById.get(r.id);
-        if (!m) return; // id in runtime but not in metadata — skip
-        ordered.push(this._buildRow(m, r));
-      });
-    }
+    runtimePlugins.forEach((r) => {
+      const m = metaById.get(r.id);
+      if (!m) return; // id in runtime but not in metadata — skip
+      ordered.push(this._buildRow(m, r));
+      placed.add(r.id);
+    });
 
     // Second pass: metadata entries not yet in ordered list
     meta.forEach((m) => {
@@ -685,9 +655,8 @@ export class AdminPlugins extends LitElement {
         ordered.push(this._buildRow(m, null));
         return;
       }
-      if (!ordered.find((row) => row.id === m.id)) {
-        const r = runtimeMap.get(m.id) || null;
-        ordered.push(this._buildRow(m, r));
+      if (!placed.has(m.id)) {
+        ordered.push(this._buildRow(m, null));
       }
     });
 

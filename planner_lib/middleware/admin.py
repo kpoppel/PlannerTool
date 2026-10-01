@@ -5,7 +5,7 @@ from starlette.requests import Request
 
 from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.services.resolver import resolve_service
-from .session import get_session_id_from_request
+from .session import get_session_id_from_request, get_session_context_from_request
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,27 +40,25 @@ def require_admin_session(func: Callable) -> Callable:
         # generic admin access-denied message so callers see a consistent
         # `access_denied` payload instead of the lower-level session error.
         try:
-            sid = get_session_id_from_request(request)
+            get_session_id_from_request(request)
         except HTTPException as e:
             # Only translate 401 session errors; re-raise others unchanged.
             if getattr(e, 'status_code', None) == 401:
                 try:
                     path = getattr(request, 'url', '')
-                    sid = request.headers.get('X-Session-Id') or request.cookies.get('sessionId')
-                    logger.warning('Admin access denied (invalid session) path=%s sid=%s detail=%s', path, sid, e.detail)
+                    logger.warning('Admin access denied (invalid session) path=%s detail=%s', path, e.detail)
                 except Exception:
                     logger.warning('Admin access denied (invalid session)')
                 raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': '100 - Admin access required.'})
             raise
 
         # Resolve session to retrieve email
-        session_mgr = resolve_service(request, 'session_manager')
-        ctx = session_mgr.get(sid) or {}
+        ctx = get_session_context_from_request(request)
         email = ctx.get('email')
         if not email:
             try:
                 path = getattr(request, 'url', '')
-                logger.warning('Admin access denied (no email in session) path=%s sid=%s', path, sid)
+                logger.warning('Admin access denied (no email in session) path=%s', path)
             except Exception:
                 logger.warning('Admin access denied (no email in session)')
             raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': '200 - Admin access required.'})

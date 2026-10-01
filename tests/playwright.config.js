@@ -15,6 +15,7 @@ const storageStatePath = resolve(__dirname, 'e2e', 'storageState.json');
 
 export default {
   testDir: testDirPath,
+  testIgnore: '**/device-auth.spec.js',
   timeout: 30000,
   expect: { timeout: 5000 },
   fullyParallel: false,

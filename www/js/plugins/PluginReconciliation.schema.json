@@ -1,0 +1,9 @@
+{
+  "schema": {
+    "type": "object",
+    "title": "Reconciliation Configuration",
+    "properties": {},
+    "required": []
+  },
+  "defaultConfig": {}
+}

@@ -87,6 +87,7 @@ class FakeAzureService:
 
 def _register_azure_services(client, pat='test-pat', inner_client=None):
     """Register a fake session manager and azure client service on test client."""
+    client.cookies.set('sessionId', 'test-session')
     fake_client = inner_client or FakeAzureClient()
     register_services_on_client(client, {
         'session_manager': FakeSessionMgr(pat=pat),
@@ -300,6 +301,7 @@ def test_prefetch_projects_metadata_missing_area_paths_returns_422(client):
 
 def test_prefetch_projects_metadata_uses_disk_cache(client):
     """On second call for same area path the Azure client is not called again."""
+    client.cookies.set('sessionId', 'test-session')
     # Create a metadata service with an in-memory cache
     class InMemoryCache:
         def __init__(self):

@@ -25,8 +25,8 @@ class AccountManagerCredentialProvider:
     ----------
     account_manager:
         An AccountManager instance (see planner_lib/accounts/).
-        Must expose a ``load(user_id: str)`` method that returns an object
-        with a ``.pat`` attribute (or None if no credential is stored).
+        Resolves account IDs with ``get_account_by_id`` and loads the
+        corresponding credential dict with ``load(email)``.
     """
 
     def __init__(self, account_manager) -> None:
@@ -38,8 +38,7 @@ class AccountManagerCredentialProvider:
         Parameters
         ----------
         user_id:
-            Session-level user identifier (typically the email address or
-            the session-owner identifier used by AccountManager).
+            Stable account ID from the authenticated session.
 
         Returns
         -------
@@ -48,20 +47,13 @@ class AccountManagerCredentialProvider:
             PAT is found, otherwise None.
         """
         try:
-            account = self._account_manager.load(user_id)
-        except Exception as exc:
+            email = self._account_manager.get_account_by_id(user_id)['email']
+            account = self._account_manager.load(email)
+        except KeyError as exc:
             logger.warning("CredentialProvider: failed to load account for '%s': %s", user_id, exc)
             return None
 
-        if account is None:
-            return None
-
-        # account_manager.load() returns a plain dict with a 'pat' key.
-        # Support both dict and object (attribute) access for forward compat.
-        if isinstance(account, dict):
-            token = account.get('pat') or account.get('token')
-        else:
-            token = getattr(account, 'pat', None) or getattr(account, 'token', None)
+        token = account['pat']
         if not token:
             return None
 

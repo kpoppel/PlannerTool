@@ -4,6 +4,9 @@ from importlib import import_module
 from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
 
 
+pytestmark = pytest.mark.real_auth
+
+
 def test_plugin_runtime_config_rejects_legacy_settings_and_invalid_placement():
     with pytest.raises(ValueError, match='migrate.py'):
         normalize_plugin_runtime_config({'schema_version': 1, 'plugins': []})
@@ -14,7 +17,7 @@ def test_plugin_runtime_config_rejects_legacy_settings_and_invalid_placement():
 
 
 def test_plugin_runtime_migration_preserves_sequence_settings_and_is_idempotent():
-    migration = import_module('scripts.migrations.0031_harmonise_plugin_runtime_config')
+    migration = import_module('scripts.migrations.0033_harmonise_plugin_runtime_config')
     original = {'schema_version': 1, 'plugins': [
         {'id': 'beta', 'enabled': True, 'activated': True, 'order': 9, 'custom_config': {'x': 2}},
         {'id': 'alpha', 'enabled': False, 'activated': False, 'order': 0, 'custom_config': {}},
@@ -37,8 +40,8 @@ def test_plugin_runtime_migration_dry_run_backup_and_storage(tmp_path, monkeypat
     import json
     from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
-    migration = import_module('scripts.migrations.0031_harmonise_plugin_runtime_config')
-    monkeypatch.setattr(migration, '__file__', str(tmp_path / 'scripts' / 'migrations' / '0031.py'))
+    migration = import_module('scripts.migrations.0033_harmonise_plugin_runtime_config')
+    monkeypatch.setattr(migration, '__file__', str(tmp_path / 'scripts' / 'migrations' / '0033.py'))
     metadata_dir = tmp_path / 'www' / 'js'
     metadata_dir.mkdir(parents=True)
     (metadata_dir / 'modules.config.json').write_text(json.dumps({'modules': [
@@ -66,26 +69,11 @@ def test_plugin_runtime_migration_dry_run_backup_and_storage(tmp_path, monkeypat
 
 
 def _make_admin_headers(client, email='plugins-admin@example.com'):
-    payload = {'email': email, 'pat': 'token'}
-    r_acct = client.post('/api/config', json=payload)
-    assert r_acct.status_code in (200, 201)
-
-    r_sess = client.post('/api/session', json={'email': email})
-    assert r_sess.status_code == 200
-    sid = r_sess.json().get('sessionId')
-    assert sid
-
-    account_storage = client.app.state.container.get('storage')
-    try:
-        record = dict(account_storage.load('accounts', email))
-    except Exception:
-        record = {'email': email}
-    record['permissions'] = ['admin']
-    account_storage.save('accounts', email, record)
-
-    session_mgr = client.app.state.container.get('session_manager')
-    session_mgr._store[sid] = {'email': email, 'pat': 'token'}
-    return {'X-Session-Id': sid}
+    response = client.post('/api/auth/enroll', json={'email': email, 'name': 'Plugin Administrator'})
+    assert response.status_code == 200
+    accounts = client.app.state.container.get('account_manager')
+    accounts.set_permissions(accounts.get_account_id(email), ['admin'])
+    return {'Accept': 'application/json'}
 
 
 def test_normalize_plugin_runtime_config_single_active_and_disabled_rule():

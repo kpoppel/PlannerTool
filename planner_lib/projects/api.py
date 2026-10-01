@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, Request, Body, HTTPException, Response
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_id_from_request
+from planner_lib.middleware.session import get_session_context_from_request
 from planner_lib.services.resolver import resolve_service
 from planner_lib.backend.port import BackendCredential, DiagnosticBackend
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
@@ -12,14 +12,14 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _get_credential(request: Request, sid: str):
-    """Build a BackendCredential from the current session's PAT and email."""
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = session_mgr.get_val(sid, 'pat')
-    email = session_mgr.get_val(sid, 'email') or ''
+def _get_credential(request: Request):
+    """Build a BackendCredential from the current session's PAT and account ID."""
+    context = get_session_context_from_request(request)
+    pat = context['pat']
+    account_id = context['account_id']
     if not pat:
-        return None, email
-    return BackendCredential(token=pat, user_id=email), email
+        return None, account_id
+    return BackendCredential(token=pat, user_id=account_id), account_id
 
 
 @router.get('/teams')
@@ -39,10 +39,9 @@ async def api_projects(request: Request):
 @router.get('/tasks')
 @require_session
 async def api_tasks(request: Request, response: Response):
-    sid = get_session_id_from_request(request)
-    logger.debug("Fetching tasks for session %s", sid)
+    logger.debug("Fetching tasks")
     task_repo = resolve_service(request, 'task_repository')
-    credential, email = _get_credential(request, sid)
+    credential, account_id = _get_credential(request)
     project_id = request.query_params.get('project')
     try:
         tasks = await asyncio.to_thread(
@@ -69,7 +68,7 @@ async def api_tasks(request: Request, response: Response):
     try:
         backend = resolve_service(request, 'backend')
         if isinstance(backend, DiagnosticBackend):
-            diagnostics = backend.consume_diagnostics(user_id=email or None)
+            diagnostics = backend.consume_diagnostics(user_id=account_id)
             if diagnostics:
                 diagnostic = diagnostics[-1]
                 response.headers['X-Backend-Diagnostic-Severity'] = diagnostic['severity']
@@ -84,25 +83,23 @@ async def api_tasks(request: Request, response: Response):
 @router.get('/markers')
 @require_session
 async def api_markers(request: Request):
-    sid = get_session_id_from_request(request)
-    logger.debug("Fetching markers for session %s", sid)
+    logger.debug("Fetching markers")
     plan_repo = resolve_service(request, 'plan_repository')
-    _credential, email = _get_credential(request, sid)
+    _credential, account_id = _get_credential(request)
     project_id = request.query_params.get('project')
     return await asyncio.to_thread(
-        plan_repo.list_markers, project_id=project_id or None, user_id=email or None
+        plan_repo.list_markers, project_id=project_id or None, user_id=account_id
     )
 
 
 @router.post('/tasks')
 @require_session
 async def api_tasks_update(request: Request, payload: list[dict] = Body(default=[])):
-    sid = get_session_id_from_request(request)
-    logger.debug("Updating tasks for session %s: %d items", sid, len(payload or []))
+    logger.debug("Updating tasks: %d items", len(payload or []))
 
     task_repo = resolve_service(request, 'task_repository')
-    _credential, email = _get_credential(request, sid)
-    result = await asyncio.to_thread(task_repo.write, payload or [], user_id=email)
+    _credential, account_id = _get_credential(request)
+    result = await asyncio.to_thread(task_repo.write, payload or [], user_id=account_id)
     if not result.get('ok', True) and result.get('errors'):
         logger.warning("Task update completed with errors: %s", result['errors'])
 
@@ -127,13 +124,11 @@ async def api_config_iterations(request: Request):
     Returns:
         JSON with project-keyed effective iteration sets.
     """
-    sid = get_session_id_from_request(request)
-
     # Only require a PAT when talking to the live Azure DevOps endpoint.
     # Mock clients (fixture replay and synthetic generator) work without one.
     azure_client = resolve_service(request, 'azure_client')
     pat_required = getattr(azure_client, 'requires_pat', True)
-    credential, email = _get_credential(request, sid)
+    credential, account_id = _get_credential(request)
     if pat_required and not credential:
         raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
@@ -143,7 +138,7 @@ async def api_config_iterations(request: Request):
         if hasattr(iteration_repo, 'list_iteration_sets'):
             iteration_sets = await asyncio.to_thread(
                 iteration_repo.list_iteration_sets,
-                user_id=email or None,
+                user_id=account_id,
             )
     except ValueError as e:
         raise HTTPException(status_code=400, detail={'error': 'missing_config', 'message': str(e)})
@@ -206,10 +201,9 @@ async def api_history_tasks(request: Request):
         }
     """
     try:
-        sid = get_session_id_from_request(request)
-        logger.debug("Fetching task history for session %s", sid)
+        logger.debug("Fetching task history")
 
-        credential, email = _get_credential(request, sid)
+        credential, account_id = _get_credential(request)
         if not credential:
             raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
@@ -242,7 +236,7 @@ async def api_history_tasks(request: Request):
             history_repo.read,
             tasks=task_list,
             project_id=project_id,
-            user_id=email,
+            user_id=account_id,
             team_id=team_id,
             plan_id=plan_id,
             since=since,

@@ -21,6 +21,8 @@ def _make_task_repository(updated=2, errors=None):
 
 def _make_session_mgr():
     mgr = MagicMock()
+    mgr.get.return_value = {'account_id': 'test-account-id',
+                            'email': 'test@example.com', 'pat': 'fake-pat'}
     def _get_val(sid, key):
         if key == 'email':
             return 'test@example.com'
@@ -52,7 +54,7 @@ def test_tasks_update_does_not_invalidate_cache_on_success(client):
     register_service_on_client(client, 'session_manager', session_mgr)
 
     payload = [{'id': 42, 'start': '2026-01-01', 'end': '2026-03-31'}]
-    r = client.post('/api/tasks', json=payload, headers={'X-Session-Id': 'test-session'})
+    r = client.post('/api/tasks', json=payload, headers={'Cookie': 'sessionId=test-session'})
 
     assert r.status_code == 200
     assert r.json().get('ok') is True
@@ -72,7 +74,7 @@ def test_tasks_update_does_not_invalidate_cache_with_partial_errors(client):
     register_service_on_client(client, 'session_manager', session_mgr)
 
     payload = [{'id': 42}, {'id': 99}]
-    r = client.post('/api/tasks', json=payload, headers={'X-Session-Id': 'test-session'})
+    r = client.post('/api/tasks', json=payload, headers={'Cookie': 'sessionId=test-session'})
 
     assert r.status_code == 200
     coordinator.invalidate_all.assert_not_called()
@@ -90,7 +92,7 @@ def test_tasks_update_skips_cache_invalidation_when_nothing_updated(client):
     register_service_on_client(client, 'cache_coordinator', coordinator)
     register_service_on_client(client, 'session_manager', session_mgr)
 
-    r = client.post('/api/tasks', json=[], headers={'X-Session-Id': 'test-session'})
+    r = client.post('/api/tasks', json=[], headers={'Cookie': 'sessionId=test-session'})
 
     assert r.status_code == 200
     coordinator.invalidate_all.assert_not_called()

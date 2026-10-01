@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import logging
 
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_id_from_request
+from planner_lib.middleware.session import get_session_context_from_request
 from planner_lib.services.resolver import resolve_service, resolve_optional_service
 
 # Namespace used by CachingBackend when storing domain objects.
@@ -148,11 +148,9 @@ async def cache_refresh(
         areas: Comma-separated area paths to refresh
         force: accepted for API compatibility; cache is always invalidated
     """
-    sid = get_session_id_from_request(request)
-    session_mgr = resolve_service(request, 'session_manager')
     backend = resolve_service(request, 'backend')
 
-    pat = session_mgr.get_val(sid, 'pat')
+    pat = get_session_context_from_request(request)['pat']
     if not pat:
         raise HTTPException(
             status_code=401,
@@ -236,10 +234,9 @@ async def cache_metrics(request: Request):
 # session (no admin privilege required).
 # ---------------------------------------------------------------------------
 
-def _get_pat_or_raise(request: Request, session_mgr) -> str:
+def _get_pat_or_raise(request: Request) -> str:
     """Return PAT from session or raise HTTP 401."""
-    sid = get_session_id_from_request(request)
-    pat = session_mgr.get_val(sid, 'pat')
+    pat = get_session_context_from_request(request)['pat']
     if not pat:
         raise HTTPException(
             status_code=401,
@@ -284,8 +281,7 @@ async def azure_browse_projects(
     Returns:
         { "projects": ["ProjectA", "ProjectB", ...] }
     """
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = _get_pat_or_raise(request, session_mgr)
+    pat = _get_pat_or_raise(request)
     with _live_client_or_raise(org_url, pat) as client:
         projects = client.get_projects()
     return {'projects': projects}
@@ -305,8 +301,7 @@ async def azure_browse_area_paths(
     Returns:
         { "area_paths": ["Project\\Team", "Project\\Team\\SubTeam", ...] }
     """
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = _get_pat_or_raise(request, session_mgr)
+    pat = _get_pat_or_raise(request)
     azure_svc = resolve_service(request, 'azure_client')
     with azure_svc.connect(pat) as client:
         area_paths = client.get_area_paths(project)
@@ -329,8 +324,7 @@ async def azure_browse_wikis(
     Returns:
         { "wikis": [{"id": "...", "name": "MyProject.wiki", "type": "projectWiki"}, ...] }
     """
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = _get_pat_or_raise(request, session_mgr)
+    pat = _get_pat_or_raise(request)
     with _live_client_or_raise(org_url, pat) as client:
         wikis = client.get_wikis(project)
     return {'wikis': wikis}
@@ -354,8 +348,7 @@ async def azure_browse_wiki_pages(
     Returns:
         { "pages": ["/Home", "/PlannerTool", "/PlannerTool/Events", ...] }
     """
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = _get_pat_or_raise(request, session_mgr)
+    pat = _get_pat_or_raise(request)
     with _live_client_or_raise(org_url, pat) as client:
         pages = client.get_wiki_pages(project, wiki_id)
     return {'pages': pages}
@@ -379,8 +372,7 @@ async def azure_browse_work_item_metadata(
             "states_by_type": { "Bug": ["Active", "Closed", "New", ...], ... }
         }
     """
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = _get_pat_or_raise(request, session_mgr)
+    pat = _get_pat_or_raise(request)
     azure_svc = resolve_service(request, 'azure_client')
     with azure_svc.connect(pat) as client:
         metadata = client.get_work_item_metadata(project)
@@ -416,8 +408,7 @@ async def azure_browse_area_path_metadata(
             "state_categories": { "Active": "InProgress", "New": "Proposed" }
         }
     """
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = _get_pat_or_raise(request, session_mgr)
+    pat = _get_pat_or_raise(request)
     azure_svc = resolve_service(request, 'azure_client')
     with azure_svc.connect(pat) as client:
         metadata = client.get_area_path_used_metadata(project, area_path)
@@ -458,8 +449,7 @@ async def azure_prefetch_projects_metadata(
             }
         }
     """
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = _get_pat_or_raise(request, session_mgr)
+    pat = _get_pat_or_raise(request)
     azure_svc = resolve_service(request, 'azure_client')
     metadata_svc = resolve_optional_service(request, 'azure_project_metadata_service')
 

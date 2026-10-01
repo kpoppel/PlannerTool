@@ -30,6 +30,11 @@ Notes
 - Add tests for any non-trivial migration.
 
 Current migrations
+- Account enrollment now uses one rotating account key. On a pre-migration
+  database, run the existing migration chain: 0031 marks accounts unenrolled and
+  0032 assigns saved-data ownership to account IDs. No recovery-key rename
+  migration is needed for this baseline. Create a fresh full backup after
+  migration/enrollment; account backups using old recovery-key fields are rejected.
 - `0033_harmonise_plugin_runtime_config.py` upgrades plugin settings to schema v2,
   renames startup activation, removes numeric order, and preserves display sequence
   and custom settings. With `--backup`, the original settings are stored in

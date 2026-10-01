@@ -41,14 +41,15 @@ class BrotliCompression(BaseHTTPMiddleware):
         if body and len(body) >= self.minimum_size and compressible:
             try:
                 comp = brotli.compress(body, quality=self.quality)
-                headers = dict(response.headers)
-                headers.pop('content-length', None)
+                headers = response.headers.mutablecopy()
                 headers['content-encoding'] = 'br'
                 headers['vary'] = 'Accept-Encoding'
                 headers['content-length'] = str(len(comp))
-                return Response(content=comp, status_code=response.status_code, headers=headers)
+                return Response(content=comp, status_code=response.status_code, headers=headers,
+                                background=response.background)
             except Exception:
                 pass
 
         # Return response reconstructed from the consumed body
-        return Response(content=body, status_code=response.status_code, headers=dict(response.headers))
+        return Response(content=body, status_code=response.status_code, headers=response.headers,
+                background=response.background)

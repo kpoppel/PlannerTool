@@ -67,6 +67,18 @@ describe('PluginManager & Plugin base', () => {
     expect(plugin.initCalled).to.be.true;
   });
 
+  it('does not retain a plugin whose initialization fails and allows retry', async () => {
+    const plugin = new TestPlugin('failed-plugin', { dependencies: [] });
+    const init = vi.spyOn(plugin, 'init').mockRejectedValueOnce(new Error('Initialization failed'));
+
+    await expect(manager.register(plugin)).rejects.toThrow('Initialization failed');
+    expect(manager.has(plugin.id)).to.equal(false);
+    expect(manager.list()).to.deep.equal([]);
+    await manager.register(plugin);
+    expect(manager.has(plugin.id)).to.equal(true);
+    expect(init).toHaveBeenCalledTimes(2);
+  });
+
   it('should emit plugin:registered event', async () => {
     const plugin = new TestPlugin('test-plugin', { dependencies: [] });
 
@@ -315,7 +327,7 @@ describe('PluginManager.loadFromConfig', () => {
       { id: 'plugin-a', enabled: true, activateOnStartup: false, dependencies: [] },
     ]));
 
-    // list() uses the plugins Map which preserves insertion (registration) order
+    // list() preserves the admin-defined display order.
     const ids = manager.list().map((p) => p.id);
     expect(ids[0]).to.equal('plugin-b');
     expect(ids[1]).to.equal('plugin-a');
@@ -331,8 +343,7 @@ describe('PluginManager.loadFromConfig', () => {
     ]));
 
     // plugin-a must be registered first due to dependency
-    expect(manager.loadOrder[0]).to.equal('plugin-a');
-    expect(manager.loadOrder[1]).to.equal('plugin-b');
+    expect([...manager.plugins.keys()]).to.deep.equal(['plugin-a', 'plugin-b']);
     expect(manager.list().map((plugin) => plugin.id)).to.deep.equal(['plugin-b', 'plugin-a']);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('adjusted for dependency safety'),

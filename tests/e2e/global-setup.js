@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { existsSync } from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,21 +49,13 @@ async function bootstrapTestData(page) {
     };
 
     const setupStatus = await get('/admin/v1/setup-status');
-    if (setupStatus.needs_setup) {
-      await post('/admin/v1/setup', { email: adminEmail, pat: adminPat });
-    } else {
-      try {
-        await post('/api/session', { email: adminEmail });
-      } catch {
-        // Existing data may not contain this account; create it then create session.
-        await post('/api/config', {
-          email: adminEmail,
-          pat: adminPat,
-          permissions: ['admin'],
-        });
-        await post('/api/session', { email: adminEmail });
-      }
+    const renewal = await fetch('/api/session', { method: 'POST' });
+    if (renewal.status === 401) {
+      await post('/api/auth/enroll', { email: adminEmail, name: 'Playwright Admin' });
+    } else if (!renewal.ok) {
+      throw new Error(`Session renewal failed (${renewal.status})`);
     }
+    await post('/api/config', { email: adminEmail, pat: adminPat });
 
     await post('/admin/v1/ado', {
       content: {
@@ -182,7 +175,8 @@ export default async function globalSetup(config) {
   console.log('[global-setup] baseURL=', baseURL);
 
   const browser = await chromium.launch();
-  const context = await browser.newContext();
+  const context = await browser.newContext(existsSync(storageStatePath)
+    ? { storageState: storageStatePath } : {});
   const page = await context.newPage();
 
   try {

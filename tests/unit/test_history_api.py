@@ -102,7 +102,8 @@ def _make_fake_session_manager():
             return True
 
         def get(self, sid):
-            return {'email': 'test@example.com', 'pat': 'test-token'}
+            return {'account_id': '11111111-1111-4111-8111-111111111111',
+                    'email': 'test@example.com', 'pat': 'test-token'}
 
         def create(self, email: str):
             return 'test-session'
@@ -112,6 +113,8 @@ def _make_fake_session_manager():
                 return 'test-token'
             if key == 'email':
                 return 'test@example.com'
+            if key == 'account_id':
+                return '11111111-1111-4111-8111-111111111111'
             return None
 
     return FakeSessionMgr()
@@ -128,7 +131,7 @@ def test_history_api_happy_path(client):
     register_service_on_client(client, 'history_repository', history_repo)
 
     # Make the request
-    r = client.get('/api/history/tasks', headers={'X-Session-Id': 'test-session'})
+    r = client.get('/api/history/tasks', headers={'Cookie': 'sessionId=test-session'})
 
     assert r.status_code == 200
     data = r.json()
@@ -154,7 +157,7 @@ def test_history_api_with_project_filter(client):
 
     r = client.get(
         '/api/history/tasks?project=project-test',
-        headers={'X-Session-Id': 'test-session'}
+        headers={'Cookie': 'sessionId=test-session'}
     )
 
     assert r.status_code == 200
@@ -174,7 +177,7 @@ def test_history_api_with_plan_filter(client):
 
     r = client.get(
         '/api/history/tasks?plan=plan_1',
-        headers={'X-Session-Id': 'test-session'}
+        headers={'Cookie': 'sessionId=test-session'}
     )
 
     assert r.status_code == 200
@@ -194,7 +197,7 @@ def test_history_api_with_date_range(client):
 
     r = client.get(
         '/api/history/tasks?since=2026-01-01&until=2026-12-31',
-        headers={'X-Session-Id': 'test-session'}
+        headers={'Cookie': 'sessionId=test-session'}
     )
 
     assert r.status_code == 200
@@ -218,7 +221,7 @@ def test_history_api_pagination(client):
 
     r = client.get(
         '/api/history/tasks?page=2&per_page=50',
-        headers={'X-Session-Id': 'test-session'}
+        headers={'Cookie': 'sessionId=test-session'}
     )
 
     assert r.status_code == 200
@@ -235,6 +238,8 @@ def test_history_api_no_pat(client):
     class NoPATSessionMgr:
         def exists(self, sid):
             return True
+        def get(self, sid):
+            return {'account_id': 'test-account-id', 'email': 'test@example.com', 'pat': None}
         def get_val(self, sid, key):
             return None
 
@@ -242,7 +247,7 @@ def test_history_api_no_pat(client):
 
     # Create a client that doesn't raise server exceptions
     c = TestClient(client.app, raise_server_exceptions=False)
-    r = c.get('/api/history/tasks', headers={'X-Session-Id': 'test-session'})
+    r = c.get('/api/history/tasks', headers={'Cookie': 'sessionId=test-session'})
 
     assert r.status_code == 401
 

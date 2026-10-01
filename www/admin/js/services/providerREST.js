@@ -49,6 +49,10 @@ export class AdminProviderREST extends RestProviderBase {
     return this._getContent('/admin/v1/area-mappings', {});
   }
 
+  async resetAccountAccess(accountId) {
+    return this._requestJson(`/api/auth/admin-reset/${accountId}`, { method: 'POST' });
+  }
+
   async saveAreaMappings(mappings) {
     return this._saveContent('/admin/v1/area-mappings', mappings);
   }

@@ -36,23 +36,20 @@ class ReloadOrchestrator:
         self,
         storage: StorageBackend,
         azure_client: Any,
-        account_manager: Any,
         reloadable_services: list,
     ) -> None:
         """
         Args:
             storage: diskcache-backed storage holding all config keys.
             azure_client: The AzureService instance whose settings are refreshed.
-            account_manager: AccountManager used to refresh session credentials.
             reloadable_services: List of service instances to reload/invalidate.
                 Each service is tested for Reloadable / Invalidatable protocols.
         """
         self._storage = storage
         self._azure_client = azure_client
-        self._account_manager = account_manager
         self._reloadable_services = reloadable_services
 
-    def reload(self, session_id: str = '') -> dict:
+    def reload(self) -> dict:
         """Reload configuration and refresh all registered services.
 
         Returns ``{"ok": True}`` on success; raises on unexpected error.
@@ -107,12 +104,5 @@ class ReloadOrchestrator:
                     logger.debug('Invalidated %s', type(svc).__name__)
                 except Exception as e:
                     logger.debug('invalidate_cache() failed on %s: %s', type(svc).__name__, e)
-
-        # Refresh session credentials for the caller when session_id is provided.
-        if session_id:
-            try:
-                self._account_manager.load(session_id)
-            except Exception:
-                logger.debug('Failed to refresh account for session %s', session_id)
 
         return {'ok': True}

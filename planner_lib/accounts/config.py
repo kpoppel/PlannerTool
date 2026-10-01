@@ -5,6 +5,7 @@ import os
 import re
 import base64
 from uuid import UUID, uuid4
+from contextlib import nullcontext
 from planner_lib.storage import StorageBackend
 from planner_lib.accounts.constants import AccountPermissions
 
@@ -136,7 +137,7 @@ class AccountManager:
             pass
         else:
             raise ValueError(f'Account already exists: {credentials.email}')
-        return self._save_account(
+        result = self._save_account(
             AccountPayload(
                 email=credentials.email,
                 pat=credentials.pat,
@@ -144,6 +145,9 @@ class AccountManager:
                 account_id=str(uuid4()),
             )
         )
+        if result['ok']:
+            self._storage.save('account_auth', result['id'], {'enrolled': False})
+        return result
 
     def update_credentials(self, credentials: AccountCredentialsPayload) -> dict:
         """Create or update credentials without changing existing permissions."""
@@ -199,9 +203,31 @@ class AccountManager:
 
     def delete_account(self, account_id: str) -> None:
         """Delete an account selected by anonymous ID."""
-        email = self.get_account_by_id(account_id)['email']
-        self._storage.delete(self.DEFAULT_NS, email)
+        cache = getattr(self._storage, '_cache', None)
+        with cache.transact() if cache is not None else nullcontext():
+            account = self.get_account_by_id(account_id)
+            email = account['email']
+            if (AccountPermissions.ADMIN in account['permissions']
+                    and self.count_all_with_permission(AccountPermissions.ADMIN) == 1):
+                raise ValueError('Cannot remove final admin')
+            self._delete_user_data(account_id)
+            for namespace in ('auth_sessions',):
+                for key in list(self._storage.list_keys(namespace)):
+                    try:
+                        record = self._storage.load(namespace, key)
+                    except KeyError:
+                        continue
+                    if record['account_id'] == account_id:
+                        self._storage.delete(namespace, key)
+            if self._storage.exists('account_auth', account_id):
+                self._storage.delete('account_auth', account_id)
+            self._storage.delete(self.DEFAULT_NS, email)
         logger.info('Deleted account %s', email)
+
+    def _delete_user_data(self, account_id: str) -> None:
+        from planner_lib.storage.user_store import UserDataStore
+        for namespace, register in (('views', 'view_register'), ('scenarios', 'scenario_register')):
+            UserDataStore(namespace, register, register + '.lock', self._storage).delete_items_for_user(account_id)
 
     def _save_account(self, config: AccountPayload) -> dict:
         """Persist a complete internal account representation."""
@@ -341,6 +367,10 @@ class AccountManager:
 
         current_users = set(self._storage.list_keys('accounts') or [])
         incoming_users = set(users.keys())
+        for user_key in current_users:
+            current_id = self._storage.load('accounts', user_key)['account_id']
+            if current_id not in account_ids:
+                self._delete_user_data(current_id)
 
         # Add / update users — set permissions according to admin membership.
         for user_key, user_data in users.items():

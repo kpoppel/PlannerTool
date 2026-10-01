@@ -48,7 +48,6 @@ class AdminService:
         self._reload_orchestrator = ReloadOrchestrator(
             storage=storage,
             azure_client=azure_client,
-            account_manager=account_manager,
             reloadable_services=reloadable_services or [],
         )
 
@@ -106,13 +105,13 @@ class AdminService:
             sync_accounts_fn=self._account_manager.sync_accounts_full,
         )
 
-    def reload_config(self, session_id: str = '') -> dict:
+    def reload_config(self) -> dict:
         """Reload configuration artifacts touched by the admin UI.
 
         Delegates to the composed ReloadOrchestrator.
         """
         try:
-            return self._reload_orchestrator.reload(session_id=session_id)
+            return self._reload_orchestrator.reload()
         except Exception as e:
             logger.exception('Failed to reload configuration: %s', e)
             raise

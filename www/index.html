@@ -22,20 +22,6 @@
       }
     </script>
 
-    <script>
-      // Check if initial setup is needed and redirect to admin UI
-      if (!window.IS_VITE_DEV) {
-        fetch((window.APP_BASE_URL || '') + '/admin/v1/setup-status')
-          .then((res) => res.json())
-          .then((data) => {
-            if (data && data.needs_setup) {
-              window.location.href = (window.APP_BASE_URL || '') + '/admin/';
-            }
-          })
-          .catch((e) => console.warn('Setup status check failed', e));
-      }
-    </script>
-
     <meta charset="UTF-8" />
     <title>AZ Planner</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />

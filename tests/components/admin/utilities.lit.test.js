@@ -96,4 +96,46 @@ describe('admin-utilities Result handling', () => {
     expect(comp.restoreType).toBe('warning');
     expect(comp.restoreStatus).toContain('restore completed with warnings');
   });
+
+  it('excludes accounts and authentication through the rendered checkbox', async () => {
+    comp.restoreData = {
+      config: { test: true }, accounts: { users: {} },
+      authentication: { account_auth: {}, auth_control: {} },
+    };
+    const restore = vi.spyOn(adminProvider, 'restoreBackup').mockResolvedValue({ ok: true, data: {} });
+    await comp.updateComplete;
+    comp.renderRoot.querySelector('#restore-accounts').click();
+    await comp.updateComplete;
+    expect(comp.renderRoot.querySelector('#accountRestoreWarning')).toBeNull();
+    expect(comp.renderRoot.querySelector('#restore-authentication')).toBeNull();
+    await comp.handleRestore();
+    expect(restore).toHaveBeenCalledWith({ config: { test: true } });
+    expect(globalThis.confirm.mock.calls[0][0]).not.toContain('older');
+  });
+
+  it('includes authentication with accounts and warns about older keys and Reset access', async () => {
+    comp.restoreData = {
+      accounts: { users: {} }, authentication: { account_auth: {}, auth_control: {} },
+    };
+    const restore = vi.spyOn(adminProvider, 'restoreBackup').mockResolvedValue({ ok: true, data: {} });
+    await comp.updateComplete;
+    const warning = comp.renderRoot.querySelector('#accountRestoreWarning').textContent;
+    expect(warning).toContain('older');
+    expect(warning).toContain('Reset access');
+    expect(warning).toContain('delete their account');
+    await comp.handleRestore();
+    expect(restore).toHaveBeenCalledWith(comp.restoreData);
+    expect(globalThis.confirm.mock.calls[0][0]).toContain('Reset access');
+    expect(comp.restoreStatus).toContain('Reset access');
+  });
+
+  it('does not restore after cancelling the account consequences confirmation', async () => {
+    comp.restoreData = {
+      accounts: { users: {} }, authentication: { account_auth: {}, auth_control: {} },
+    };
+    globalThis.confirm.mockReturnValue(false);
+    const restore = vi.spyOn(adminProvider, 'restoreBackup');
+    await comp.handleRestore();
+    expect(restore).not.toHaveBeenCalled();
+  });
 });

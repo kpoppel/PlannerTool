@@ -90,14 +90,16 @@ def test_credential_provider_wraps_account_manager():
     from planner_lib.backend.credential import AccountManagerCredentialProvider
 
     account_mgr = MagicMock()
+    account_mgr.get_account_by_id.return_value = {'email': 'user@test.com'}
     account_mgr.load.return_value = {'ok': True, 'email': 'user@test.com', 'pat': 'secret-pat'}
 
     provider = AccountManagerCredentialProvider(account_mgr)
-    cred = provider.get_credential('user@test.com')
+    cred = provider.get_credential('11111111-1111-4111-8111-111111111111')
 
     assert cred is not None
     assert cred['token'] == 'secret-pat'
-    assert cred['user_id'] == 'user@test.com'
+    assert cred['user_id'] == '11111111-1111-4111-8111-111111111111'
+    account_mgr.get_account_by_id.assert_called_once_with('11111111-1111-4111-8111-111111111111')
     account_mgr.load.assert_called_once_with('user@test.com')
 
 
@@ -105,20 +107,21 @@ def test_credential_provider_returns_none_when_no_pat():
     from planner_lib.backend.credential import AccountManagerCredentialProvider
 
     account_mgr = MagicMock()
+    account_mgr.get_account_by_id.return_value = {'email': 'user@test.com'}
     account_mgr.load.return_value = {'ok': True, 'email': 'user@test.com', 'pat': None}
 
     provider = AccountManagerCredentialProvider(account_mgr)
-    assert provider.get_credential('user@test.com') is None
+    assert provider.get_credential('11111111-1111-4111-8111-111111111111') is None
 
 
 def test_credential_provider_returns_none_on_load_exception():
     from planner_lib.backend.credential import AccountManagerCredentialProvider
 
     account_mgr = MagicMock()
-    account_mgr.load.side_effect = KeyError('unknown user')
+    account_mgr.get_account_by_id.side_effect = KeyError('unknown account')
 
     provider = AccountManagerCredentialProvider(account_mgr)
-    assert provider.get_credential('nonexistent@test.com') is None
+    assert provider.get_credential('22222222-2222-4222-8222-222222222222') is None
 
 
 # ---------------------------------------------------------------------------

@@ -165,6 +165,12 @@ export class AdminUtilities extends LitElement {
     restoreData: { state: true },
   };
 
+  static restoreCategories = {
+    config: 'Config', accounts: 'User accounts', views: 'Views', scenarios: 'Scenarios',
+  };
+
+  static accountRestoreWarning = 'Restoring user accounts replaces current account access with the backup state. Account keys may revert to older keys, newer keys may stop working, revoked browsers may regain access, and deleted accounts may return. Users who cannot enroll, sign in again, or delete their account may need an administrator to use Users > Reset access and provide a replacement account key. Active sessions will end. Ensure an administrator can regain access using the restored credentials before continuing. If no administrator can sign in, use the documented operator reset procedure.';
+
   constructor() {
     super();
     this.cleanupStatus = '';
@@ -184,7 +190,7 @@ export class AdminUtilities extends LitElement {
     this.restoreLoading = false;
     this.restoreOptions = {
       config: true,
-      users: true,
+      accounts: true,
       views: true,
       scenarios: true,
     };
@@ -351,7 +357,11 @@ export class AdminUtilities extends LitElement {
       return;
     }
 
-    if (!confirm('This will overwrite existing data. Are you sure you want to restore?'))
+    const restoringAccounts = this.restoreOptions.accounts && Object.hasOwn(this.restoreData, 'accounts');
+    const confirmation = restoringAccounts
+      ? this.constructor.accountRestoreWarning + '\n\nOverwrite selected data?'
+      : 'This will overwrite selected data. Are you sure you want to restore?';
+    if (!confirm(confirmation))
       return;
 
     this.restoreLoading = true;
@@ -359,31 +369,24 @@ export class AdminUtilities extends LitElement {
     this.restoreType = 'info';
 
     const dataToRestore = {};
-    // Map UI restore options to top-level keys in the backup file
-    const mapping = {
-      config: 'config',
-      users: 'accounts',
-      views: 'views',
-      scenarios: 'scenarios',
-    };
     for (const key in this.restoreOptions) {
-      const srcKey = mapping[key];
-      if (!srcKey) continue;
-      if (this.restoreOptions[key] && this.restoreData[srcKey]) {
-        dataToRestore[srcKey] = this.restoreData[srcKey];
+      if (this.restoreOptions[key] && Object.hasOwn(this.restoreData, key)) {
+        dataToRestore[key] = this.restoreData[key];
       }
     }
+    if (restoringAccounts) dataToRestore.authentication = this.restoreData.authentication;
 
     try {
       const result = await adminProvider.restoreBackup(dataToRestore);
       if (result.ok) {
-        const warning = result.data?.warning;
+        const warning = result.data.warning;
         if (warning) {
           this.restoreStatus = warning;
           this.restoreType = 'warning';
         } else {
-          this.restoreStatus = 'Restore successful!';
-          this.restoreType = 'success';
+          this.restoreStatus = restoringAccounts
+            ? 'Restore successful. ' + this.constructor.accountRestoreWarning : 'Restore successful!';
+          this.restoreType = restoringAccounts ? 'warning' : 'success';
         }
       } else {
         this.restoreStatus = `Restore failed: ${this._errorMessage(result, 'Unknown error')}`;
@@ -398,7 +401,9 @@ export class AdminUtilities extends LitElement {
   }
 
   renderBackupAndRestore() {
-    const restoreCategories = this.restoreData ? Object.keys(this.restoreData) : [];
+    const restoreCategories = this.restoreData
+      ? Object.keys(this.constructor.restoreCategories).filter(key => Object.hasOwn(this.restoreData, key))
+      : [];
 
     return html`
       <div class="panel">
@@ -436,14 +441,19 @@ export class AdminUtilities extends LitElement {
                   <label>
                     <input
                       type="checkbox"
-                      .checked=${this.restoreOptions[key] !== false}
+                      id=${'restore-' + key}
+                      .checked=${this.restoreOptions[key]}
+                      ?disabled=${this.restoreLoading}
                       @change=${() => this.handleToggleRestoreOption(key)}
                     />
-                    ${key.charAt(0).toUpperCase() + key.slice(1)}
+                    ${this.constructor.restoreCategories[key]}
                   </label>
                 `
               )}
             </div>
+            ${this.restoreOptions.accounts && Object.hasOwn(this.restoreData, 'accounts')
+              ? html`<p id="accountRestoreWarning" class="status warning" role="alert">${this.constructor.accountRestoreWarning}</p>`
+              : ''}
             <div class="actions" style="margin-top: 16px;">
               <button
                 @click=${this.handleRestore}

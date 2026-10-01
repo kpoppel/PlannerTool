@@ -5,10 +5,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, Response, JSONResponse
 from starlette.requests import Request
 from fastapi import HTTPException
-import uuid
+import secrets
+import hashlib
 import logging
 import threading
+import time
 from pathlib import Path
+from urllib.parse import urlsplit
 import json
 import os
 
@@ -20,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 # Cookie name used by the frontend
 SESSION_COOKIE = "sessionId"
+DEVICE_COOKIE = "plannerDevice"
+SESSION_IDLE = 14 * 86400
+SESSION_MAX = 30 * 86400
 
 # Read the 401 HTML template once at module load.  The path is resolved
 # relative to this file so the server can be started from any working directory.
@@ -33,11 +39,7 @@ except FileNotFoundError:
 
 
 class SessionManager:
-    """In-memory session manager. Thread-safe and minimal.
-
-    Methods return None on missing sessions where convenient so callers
-    can use `manager.get(sid) or {}` without try/except.
-    """
+    """Persist hashed session identifiers with idle and absolute expiration."""
 
     def __init__(
         self,
@@ -47,116 +49,114 @@ class SessionManager:
         self._store: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._account_manager = account_manager
-        # Used for admin-fallback: check accounts_admin namespace without an HTTP round-trip.
         self._storage = storage
 
-    def create(self, email: str) -> str:
-        # Ensure the account exists before creating a session. We consider
-        # missing account a client error — do not create sessions for unknown
-        # emails. Let account_manager.load raise KeyError if not present.
-        try:
-            cfg = self._account_manager.load(email)
-        except KeyError:
-            # If the account is not present in the primary accounts namespace
-            # but an admin marker exists under `accounts_admin`, allow session
-            # creation for admin users (no PAT will be set). This keeps admin
-            # bootstrap working where admin markers live separately.
-            if self._storage is not None:
-                try:
-                    if self._storage.exists('accounts_admin', email):
-                        with self._lock:
-                            for sid, ctx in list(self._store.items()):
-                                if ctx.get('email') == email:
-                                    logger.debug("Pruning existing session %s for %s", sid, email)
-                                    del self._store[sid]
-                            sid = uuid.uuid4().hex
-                            self._store[sid] = {'email': email, 'pat': None}
-                            logger.info('Session created (admin): %s by %s', sid, email)
-                            return sid
-                except Exception:
-                    logger.debug('Admin fallback lookup failed for %s', email)
-            # Caller should translate this into an HTTP 401/400; raise to
-            # indicate creation is not allowed for unknown accounts.
-            raise
-
-        with self._lock:
-            # prune existing sessions for this email
-            for sid, ctx in list(self._store.items()):
-                if ctx.get('email') == email:
-                    logger.debug("Pruning existing session %s for %s", sid, email)
-                    del self._store[sid]
-
-            sid = uuid.uuid4().hex
-            self._store[sid] = {
-                'email': email,
-                'pat': cfg.get('pat'),
-            }
-            logger.info('Session created: %s by %s', sid, email)
-            return sid
+    def create(self, email: str, device_id: Optional[str] = None) -> str:
+        self._account_manager.load(email)
+        sid = secrets.token_urlsafe(32)
+        now = time.time()
+        self._storage.save('auth_sessions', hashlib.sha256(sid.encode()).hexdigest(), {
+            'account_id': self._account_manager.get_account_id(email),
+            'device_id': device_id, 'created': now, 'last_seen': now,
+        }, ttl_seconds=SESSION_MAX)
+        return sid
 
     def get(self, sid: str) -> Optional[dict[str, Any]]:
-        with self._lock:
-            return self._store.get(sid)
+        cache = getattr(self._storage, '_cache', None)
+        with cache.transact() if cache is not None else self._lock:
+            return self._get_record(sid)
+
+    def _get_record(self, sid: str, *, refresh: bool = True) -> Optional[dict[str, Any]]:
+        if not sid or self._storage is None:
+            return None
+        key = hashlib.sha256(sid.encode()).hexdigest()
+        if not self._storage.exists('auth_sessions', key):
+            return None
+        try:
+            record = self._storage.load('auth_sessions', key)
+        except KeyError:
+            return None
+        now = time.time()
+        if now - record['last_seen'] > SESSION_IDLE or now - record['created'] > SESSION_MAX:
+            self._storage.delete('auth_sessions', key)
+            return None
+        account_id = record['account_id']
+        try:
+            email = self._account_manager.get_account_by_id(account_id)['email']
+        except KeyError:
+            self._storage.delete('auth_sessions', key)
+            return None
+        if record['device_id'] is not None:
+            try:
+                auth = self._storage.load('account_auth', account_id)
+            except KeyError:
+                return None
+            device = auth['devices'].get(record['device_id'])
+            if device is None or device['expires'] <= now:
+                self._storage.delete('auth_sessions', key)
+                return None
+            if refresh:
+                device['expires'] = now + 90 * 86400
+                self._storage.save('account_auth', account_id, auth)
+        if refresh:
+            record['last_seen'] = now
+            self._storage.save('auth_sessions', key, record, ttl_seconds=SESSION_MAX - (now - record['created']))
+        return {'account_id': account_id, 'email': email, 'device_id': record['device_id'],
+            'pat': self._account_manager.load(email)['pat'] if refresh else None}
+
+    def is_valid(self, sid: str) -> bool:
+        cache = getattr(self._storage, '_cache', None)
+        with cache.transact() if cache is not None else self._lock:
+            return self._get_record(sid, refresh=False) is not None
 
     def exists(self, sid: str) -> bool:
-        with self._lock:
-            return sid in self._store
+        return self.get(sid) is not None
 
     def delete(self, sid: str) -> None:
-        with self._lock:
-            self._store.pop(sid, None)
+        key = hashlib.sha256(sid.encode()).hexdigest()
+        if self._storage.exists('auth_sessions', key):
+            self._storage.delete('auth_sessions', key)
 
-    def delete_by_email(self, email: str) -> None:
-        with self._lock:
-            for sid, ctx in list(self._store.items()):
-                if ctx.get('email') == email:
-                    del self._store[sid]
+    def delete_by_account_id(self, account_id: str) -> None:
+        for key in list(self._storage.list_keys('auth_sessions')):
+            try:
+                record = self._storage.load('auth_sessions', key)
+            except KeyError:
+                continue
+            if record['account_id'] == account_id:
+                self._storage.delete('auth_sessions', key)
 
     def get_val(self, sid: str, key: str) -> Optional[str]:
-        with self._lock:
-            ctx = self._store.get(sid)
-            if not ctx:
-                return None
-            return ctx.get(key)
-
-    def set_val(self, sid: str, key: str, value: Any) -> None:
-        """Set a single value in the session context if the session exists.
-
-        Silently no-ops when the session id is unknown to keep callers
-        resilient (matching get_val/get semantics used elsewhere).
-        """
-        with self._lock:
-            ctx = self._store.get(sid)
-            if not ctx:
-                return
-            ctx[key] = value
+        ctx = self.get(sid)
+        return ctx.get(key) if ctx else None
 
 
 def create_session(email: str, request: Request) -> str:
-    """Create a session for `email` and return the session id.
-
-    This will prune any existing sessions for the same email and attempt
-    to load the user's PAT into the session context.
-
-    The SessionManager is looked up from `request.app.state.container`.
-    """
+    """Internal session issuance; HTTP handlers must authenticate first."""
     mgr = resolve_service(request, 'session_manager')
     return mgr.create(email)
 
 
-def get_session_id_from_request(request: Request) -> str:
-    """Extract and validate a session id from the request.
-
-    Raises HTTPException(401) on missing/invalid session.
-    """
-    sid = request.headers.get('X-Session-Id') or request.cookies.get(SESSION_COOKIE)
+def get_session_context_from_request(request: Request) -> dict[str, Any]:
+    """Resolve credentials once for this request; never cache across requests."""
+    sid = request.cookies.get(SESSION_COOKIE)
     if not sid:
         raise HTTPException(status_code=401, detail={'error': 'missing_session_id', 'message': 'Somehow you got here without a session.'})
-    # Resolve session manager via centralized resolver.
+    cached = getattr(request, '_planner_session', None)
+    if cached is not None and cached[0] == sid:
+        return cached[1]
     mgr = resolve_service(request, 'session_manager')
-    if not mgr.exists(sid):
+    context = mgr.get(sid)
+    if context is None:
         raise HTTPException(status_code=401, detail={'error': 'invalid_session', 'message': 'Your session is invalid or expired.'})
-    return sid
+    setattr(request, '_planner_session', (sid, context))
+    return context
+
+
+def get_session_id_from_request(request: Request) -> str:
+    """Extract and validate a cookie session, reusing this request's context."""
+    get_session_context_from_request(request)
+    return request.cookies[SESSION_COOKIE]
 
 
 class SessionMiddleware(BaseHTTPMiddleware):
@@ -173,6 +173,29 @@ class SessionMiddleware(BaseHTTPMiddleware):
         self.session_manager = session_manager
 
     async def dispatch(self, request: Request, call_next):
+        if request.method == 'POST' and request.url.path.endswith((
+            '/auth/enroll', '/auth/enrollment-status', '/auth/delete-account',
+        )):
+            identity = request.client.host if request.client else 'unknown'
+            try:
+                auth = resolve_service(request, 'auth_manager')
+                auth.throttle(identity, limit=300)
+                try:
+                    payload = await request.json()
+                except ValueError:
+                    return JSONResponse(status_code=400, content={'error': 'invalid_json'})
+                if isinstance(payload, dict) and isinstance(payload.get('email'), str):
+                    auth.throttle(identity + ':' + payload['email'])
+            except PermissionError:
+                return JSONResponse(status_code=429, content={'error': 'too_many_attempts'},
+                                    headers={'Retry-After': '600'})
+        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            origin = request.headers.get('origin')
+            if request.headers.get('sec-fetch-site') == 'cross-site' or (
+                origin and urlsplit(origin).netloc != request.url.netloc
+            ):
+                return JSONResponse(status_code=403, content={'error': 'cross_origin_request'})
+        path = request.scope.get('root_path', '').rstrip('/') + '/'
         response: Response = await call_next(request)
 
         # If the app set our helper header, convert it into a cookie
@@ -184,7 +207,18 @@ class SessionMiddleware(BaseHTTPMiddleware):
                     del response.headers['x-set-session-id']
             except Exception:
                 pass
-            response.set_cookie(key=SESSION_COOKIE, value=sid, path='/', httponly=True, samesite='lax')
+            response.set_cookie(key=SESSION_COOKIE, value=sid, path=path, httponly=True,
+                                samesite='lax', secure=request.url.scheme == 'https',
+                                max_age=SESSION_IDLE)
+        elif request.cookies.get(SESSION_COOKIE) and self.session_manager.is_valid(request.cookies[SESSION_COOKIE]):
+            response.set_cookie(SESSION_COOKIE, request.cookies[SESSION_COOKIE], path=path,
+                                httponly=True, samesite='lax', max_age=SESSION_IDLE,
+                                secure=request.url.scheme == 'https')
+            device = request.cookies.get(DEVICE_COOKIE)
+            if device:
+                response.set_cookie(DEVICE_COOKIE, device, path=path, httponly=True,
+                                    samesite='lax', max_age=90 * 86400,
+                                    secure=request.url.scheme == 'https')
         return response
 
 

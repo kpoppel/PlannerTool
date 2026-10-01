@@ -13,12 +13,11 @@ import { MenuPlugin } from '../plugins/MenuPlugin.js';
  * - provide introspection (list/has/get)
  * Data schemes:
  * - `plugins`: Map<id, Plugin>
- * - `loadOrder`: Array<string>
+ * - `displayOrder`: Array<string>
  */
 export class PluginManager {
   constructor() {
     this.plugins = new Map();
-    this.loadOrder = [];
     this.displayOrder = [];
   }
 
@@ -41,11 +40,10 @@ export class PluginManager {
       throw new Error(msg);
     }
 
-    this.plugins.set(plugin.id, plugin);
     await plugin.init();
     plugin.initialized = true;
+    this.plugins.set(plugin.id, plugin);
     if (!this.displayOrder.includes(plugin.id)) this.displayOrder.push(plugin.id);
-    this._addToLoadOrder(plugin);
     console.log(`[PluginManager] Plugin registered: ${plugin.id}`);
     bus.emit(PluginEvents.REGISTERED, { plugin: plugin.id });
   }
@@ -74,7 +72,6 @@ export class PluginManager {
     }
     await plugin.destroy();
     this.plugins.delete(pluginId);
-    this.loadOrder = this.loadOrder.filter((id) => id !== pluginId);
     this.displayOrder = this.displayOrder.filter((id) => id !== pluginId);
     console.log(`[PluginManager] Plugin unregistered: ${pluginId}`);
     bus.emit(PluginEvents.UNREGISTERED, { plugin: pluginId });
@@ -349,18 +346,6 @@ export class PluginManager {
         dependents.push(plugin.id);
     }
     return dependents;
-  }
-
-  _addToLoadOrder(plugin) {
-    const deps = this._getDependencies(plugin);
-
-    // Find position after all dependencies
-    let insertIndex = 0;
-    for (const depId of deps) {
-      const depIndex = this.loadOrder.indexOf(depId);
-      if (depIndex >= insertIndex) insertIndex = depIndex + 1;
-    }
-    this.loadOrder.splice(insertIndex, 0, plugin.id);
   }
 
   _getDependencies(plugin) {

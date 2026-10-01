@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_id_from_request
+from planner_lib.middleware.session import get_session_context_from_request
 from planner_lib.services.resolver import resolve_service
 
 import logging
@@ -70,11 +70,9 @@ def _validate_scenario_payload(data: dict | None) -> None:
 @router.get('/scenario')
 @require_session
 async def api_scenario_get(request: Request):
-    sid = get_session_id_from_request(request)
-    logger.debug("Fetching scenario(s) for session %s", sid)
+    logger.debug("Fetching scenario(s)")
 
-    session_mgr = resolve_service(request, 'session_manager')
-    user_id = session_mgr.get_val(sid, 'email') or ''
+    user_id = get_session_context_from_request(request)['account_id']
     scenario_id = request.query_params.get('id')
     scenario_repo = resolve_service(request, 'scenario_repository')
     try:
@@ -92,11 +90,9 @@ async def api_scenario_get(request: Request):
 @router.post('/scenario')
 @require_session
 async def api_scenario_post(request: Request, payload: dict = Body(default={})):
-    sid = get_session_id_from_request(request)
-    logger.debug("Saving/deleting scenario for session %s", sid)
+    logger.debug("Saving/deleting scenario")
 
-    session_mgr = resolve_service(request, 'session_manager')
-    user_id = session_mgr.get_val(sid, 'email') or ''
+    user_id = get_session_context_from_request(request)['account_id']
     op = (payload or {}).get('op')
     data = (payload or {}).get('data')
     if not op:

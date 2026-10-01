@@ -1,16 +1,25 @@
 """Integration tests for the /api/events REST endpoints.
 
 Uses the shared ``client`` and ``app`` fixtures from tests/conftest.py.
-Session auth is handled by the autouse ``ensure_test_sessions`` fixture which
-makes any session ID valid — tests just pass ``{'X-Session-Id': 'test'}``.
+Each test enrolls a real browser session and sends its cookies.
 Storage is cleared between tests by the autouse ``isolate_storage`` fixture.
 """
 from __future__ import annotations
 
 import pytest
 
-_HEADERS = {'X-Session-Id': 'test-session'}
+pytestmark = pytest.mark.real_auth
+
+_HEADERS = {'Accept': 'application/json'}
 _VALID_EVENT = {'date': '2026-05-01', 'title': 'Sprint Demo', 'plan_id': 'plan-42'}
+
+
+@pytest.fixture(autouse=True)
+def enrolled_browser(client):
+    response = client.post('/api/auth/enroll', json={
+        'email': 'events@example.com', 'name': 'Event Owner',
+    })
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------

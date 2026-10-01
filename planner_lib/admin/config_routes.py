@@ -13,7 +13,7 @@ import logging
 
 from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
-from planner_lib.middleware.session import get_session_id_from_request as _get_session_id_or_raise
+from planner_lib.middleware.session import get_session_context_from_request
 from planner_lib.admin import schema as admin_schema
 from planner_lib.admin import cost_inspector
 from planner_lib.admin import people_inspector
@@ -340,17 +340,18 @@ async def admin_browse_iterations(request: Request):
         root_path = payload.get('root_path')
         depth = payload.get('depth', 10)
 
-        sid = _get_session_id_or_raise(request)
-        session_mgr = resolve_service(request, 'session_manager')
-        pat = session_mgr.get_val(sid, 'pat')
+        pat = get_session_context_from_request(request)['pat']
         if not pat:
             raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
         azure_svc = resolve_service(request, 'azure_client')
-        with azure_svc.connect(pat) as client:
-            iterations = await asyncio.to_thread(
-                client.get_iterations, project, root_path=root_path, depth=depth
-            )
+
+        def fetch_iterations():
+            """Keep the thread-local Azure connection on the worker."""
+            with azure_svc.connect(pat) as client:
+                return client.get_iterations(project, root_path=root_path, depth=depth)
+
+        iterations = await asyncio.to_thread(fetch_iterations)
 
         return {'iterations': iterations}
     except HTTPException:
@@ -408,9 +409,7 @@ async def admin_refresh_area_mapping(request: Request):
         if not area_path or not isinstance(area_path, str):
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing or invalid area_path'})
 
-        sid = _get_session_id_or_raise(request)
-        session_mgr = resolve_service(request, 'session_manager')
-        pat = session_mgr.get_val(sid, 'pat')
+        pat = get_session_context_from_request(request)['pat']
         azure_svc = resolve_service(request, 'azure_client')
         admin_svc = resolve_service(request, 'admin_service')
         try:
@@ -431,9 +430,7 @@ async def admin_refresh_area_mapping(request: Request):
 async def admin_refresh_all_area_mappings(request: Request):
     """Refresh mappings for all configured area_paths.  PAT from session."""
     try:
-        sid = _get_session_id_or_raise(request)
-        session_mgr = resolve_service(request, 'session_manager')
-        pat = session_mgr.get_val(sid, 'pat')
+        pat = get_session_context_from_request(request)['pat']
         azure_svc = resolve_service(request, 'azure_client')
         admin_svc = resolve_service(request, 'admin_service')
         try:
@@ -610,9 +607,7 @@ async def admin_get_schema(request: Request, config_type: str):
         raise HTTPException(status_code=404, detail={'error': 'unknown_schema', 'message': f'No schema defined for {config_type}'})
     if config_type == 'projects':
         try:
-            sid = _get_session_id_or_raise(request)
-            session_mgr = resolve_service(request, 'session_manager')
-            pat = session_mgr.get_val(sid, 'pat')
+            pat = get_session_context_from_request(request)['pat']
             if pat:
                 azure_svc = resolve_service(request, 'azure_client')
                 admin_svc = resolve_service(request, 'admin_service')
@@ -645,12 +640,10 @@ async def admin_restore_backup(request: Request):
     try:
         payload = await request.json()
         admin_svc = resolve_service(request, 'admin_service')
-        sid = _get_session_id_or_raise(request)
-        session_mgr = resolve_service(request, 'session_manager')
-        current_user_email = session_mgr.get_val(sid, 'email')
+        current_user_email = get_session_context_from_request(request)['email']
         result = await asyncio.to_thread(admin_svc.restore_backup, payload, current_user_email)
         try:
-            await asyncio.to_thread(admin_svc.reload_config, session_id=sid)
+            await asyncio.to_thread(admin_svc.reload_config)
         except Exception as e:
             logger.exception('Failed to reload configuration after restoring backup: %s', e)
             if isinstance(result, dict):

@@ -82,6 +82,14 @@ class DataService {
   async saveConfig(account) {
     return this.providers['rest'].saveConfig(account);
   }
+  async signOut() {
+    await this.providers['rest'].signOut();
+    await this.providers['local'].clearBrowserData();
+  }
+  async deleteAccount(email, accountKey) {
+    await this.providers['rest'].deleteAccount(email, accountKey);
+    await this.providers['local'].clearBrowserData();
+  }
   async getLocalPref(key) {
     return this.providers['local'].getLocalPref(key);
   }

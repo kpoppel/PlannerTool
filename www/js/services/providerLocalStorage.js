@@ -1,6 +1,8 @@
 // providerLocalStorage.js
 // LocalStorage implementation of the BackendProvider interface
 
+const BROWSER_DATA_KEYS = new Set(['scenarios', 'config', 'features', 'teams', 'projects', 'cost_teams']);
+
 export class ProviderLocalStorage {
   logCall(method, args) {
     // Developer-friendly logging for mock provider calls
@@ -162,6 +164,17 @@ export class ProviderLocalStorage {
       'az_planner:user_prefs:v1',
       JSON.stringify({ projectColors: {}, teamColors: {} })
     );
+  }
+
+  async clearBrowserData() {
+    for (const storage of [localStorage, sessionStorage]) {
+      for (const key of Object.keys(storage)) {
+        if (key.startsWith('az_planner:') || key.startsWith('plannerTool_localPluginData_') ||
+            BROWSER_DATA_KEYS.has(key)) {
+          storage.removeItem(key);
+        }
+      }
+    }
   }
 
   async getLocalPref(key) {

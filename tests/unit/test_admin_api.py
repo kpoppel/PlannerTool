@@ -221,9 +221,9 @@ def test_admin_get_users():
     storage.save('accounts', 'admin1', {'id': 'admin-id', 'email': 'admin1', 'permissions': ['admin']})
     acct_mgr = FakeAccountManager(storage)
     admin_svc = FakeAdminService(storage)
-    session_mgr = SessMgr({'email': 'admin1'})
+    session_mgr = SessMgr({'account_id': 'admin-id', 'email': 'admin1'})
     container = SimpleNamespace(get=lambda name: {'account_manager': acct_mgr, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
-    req = make_request(container, headers={'X-Session-Id': 's1'})
+    req = make_request(container, cookies={'sessionId': 's1'})
 
     # get users
     res = asyncio.run(admin_api.admin_get_users.__wrapped__(req))
@@ -254,13 +254,16 @@ def test_admin_restore_backup_reloads_config_after_restore():
             )
             return {'ok': True, 'message': 'Restore completed successfully.'}
 
-        def reload_config(self, session_id=''):
-            called['reload_session_id'] = session_id
+        def reload_config(self):
+            called['reloaded'] = True
             return {'ok': True}
 
     class SessionMgrWithValues:
         def exists(self, sid):
             return True
+
+        def get(self, sid):
+            return {'email': 'admin1@admin', 'pat': 'pat-token'}
 
         def get_val(self, sid, key):
             values = {'email': 'admin1@admin', 'pat': 'pat-token'}
@@ -278,8 +281,8 @@ def test_admin_restore_backup_reloads_config_after_restore():
     class Req:
         def __init__(self, payload):
             self._payload = payload
-            self.headers = {'X-Session-Id': 'restore-session'}
-            self.cookies = {}
+            self.headers = {}
+            self.cookies = {'sessionId': 'restore-session'}
             self.app = SimpleNamespace(state=SimpleNamespace(container=container))
 
         async def json(self):
@@ -290,5 +293,67 @@ def test_admin_restore_backup_reloads_config_after_restore():
 
     assert res.status_code == 200
     assert called['restore_args'][1] == 'admin1@admin'
-    assert called['reload_session_id'] == 'restore-session'
+    assert called['reloaded'] is True
     assert storage.data['config']['ado_config']['feature_flags']['use_azure_mock_generator'] is True
+
+
+@pytest.mark.parametrize('azure_fails', [False, True])
+def test_iteration_browse_connects_fetches_and_closes_on_same_worker(azure_fails):
+    import threading
+    from contextlib import contextmanager
+    from planner_lib.admin.config_routes import admin_browse_iterations
+
+    request_thread = threading.get_ident()
+    lifecycle_threads = []
+    state = threading.local()
+    expected = [{'path': 'Demo\\Iteration\\Team', 'name': 'Iteration 1'}]
+
+    class AzureService:
+        @contextmanager
+        def connect(self, pat):
+            assert pat == 'test-pat'
+            lifecycle_threads.append(threading.get_ident())
+            state.connected = True
+            try:
+                yield self
+            finally:
+                lifecycle_threads.append(threading.get_ident())
+                state.connected = False
+
+        def get_iterations(self, project, root_path, depth):
+            lifecycle_threads.append(threading.get_ident())
+            assert getattr(state, 'connected', False), 'Azure connection belongs to another thread'
+            assert (project, root_path, depth) == ('Demo', 'Demo\\Iteration\\Team', 4)
+            if azure_fails:
+                raise RuntimeError('Azure iteration fetch failed')
+            return expected
+
+    class Session:
+        def exists(self, sid):
+            return sid == 'iteration-session'
+
+        def get(self, sid):
+            assert sid == 'iteration-session'
+            return {'pat': 'test-pat'}
+
+        def get_val(self, sid, key):
+            assert (sid, key) == ('iteration-session', 'pat')
+            return 'test-pat'
+
+    services = {'session_manager': Session(), 'azure_client': AzureService()}
+    request = make_request(SimpleNamespace(get=lambda name: services[name]),
+                           cookies={'sessionId': 'iteration-session'})
+
+    async def payload():
+        return {'project': 'Demo', 'root_path': 'Demo\\Iteration\\Team', 'depth': 4}
+
+    request.json = payload
+    if azure_fails:
+        with pytest.raises(HTTPException) as failure:
+            asyncio.run(admin_browse_iterations.__wrapped__(request))
+        assert failure.value.status_code == 500
+    else:
+        assert asyncio.run(admin_browse_iterations.__wrapped__(request)) == {'iterations': expected}
+    assert len(lifecycle_threads) == 3
+    assert len(set(lifecycle_threads)) == 1
+    assert lifecycle_threads[0] != request_thread

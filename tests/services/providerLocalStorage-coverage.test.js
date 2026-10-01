@@ -1,12 +1,81 @@
 import { expect } from '@esm-bundle/chai';
 import { ProviderLocalStorage } from '../../www/js/services/providerLocalStorage.js';
 import { dataService } from '../../www/js/services/dataService.js';
+import { vi } from 'vitest';
 
 describe('ProviderLocalStorage coverage', () => {
   let prov;
   beforeEach(() => {
     localStorage.clear();
     prov = new ProviderLocalStorage();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it('clears PlannerTool browser data without clearing unrelated origin storage', async () => {
+    const keys = ['az_planner:user_prefs:v1', 'az_planner:last_view_id',
+      'az_planner:search:lastQuery', 'az_planner:onboarding_seen',
+      'plannerTool_localPluginData_baseline', 'scenarios', 'config', 'features',
+      'teams', 'projects', 'cost_teams'];
+    for (const storage of [localStorage, sessionStorage]) {
+      for (const key of keys) storage.setItem(key, 'private-data');
+      storage.setItem('unrelated:preferences', 'keep');
+    }
+    await prov.clearBrowserData();
+    for (const storage of [localStorage, sessionStorage]) {
+      for (const key of keys) expect(storage.getItem(key)).to.equal(null);
+      expect(storage.getItem('unrelated:preferences')).to.equal('keep');
+    }
+  });
+
+  it('revokes the browser before clearing local data on sign out', async () => {
+    localStorage.setItem('az_planner:user_prefs:v1', 'private-data');
+    const signOut = vi.spyOn(dataService.providers.rest, 'signOut').mockImplementation(async () => {
+      expect(localStorage.getItem('az_planner:user_prefs:v1')).to.equal('private-data');
+    });
+    await dataService.signOut();
+    expect(signOut.mock.calls.length).to.equal(1);
+    expect(localStorage.getItem('az_planner:user_prefs:v1')).to.equal(null);
+  });
+
+  it('retains local data when server sign out fails', async () => {
+    localStorage.setItem('az_planner:user_prefs:v1', 'private-data');
+    vi.spyOn(dataService.providers.rest, 'signOut').mockRejectedValue(new Error('Server unavailable'));
+    let failure;
+    try {
+      await dataService.signOut();
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure.message).to.equal('Server unavailable');
+    expect(localStorage.getItem('az_planner:user_prefs:v1')).to.equal('private-data');
+  });
+
+  it('clears local data only after successful account deletion', async () => {
+    localStorage.setItem('az_planner:user_prefs:v1', 'private-data');
+    const deletion = vi.spyOn(dataService.providers.rest, 'deleteAccount').mockImplementation(async () => {
+      expect(localStorage.getItem('az_planner:user_prefs:v1')).to.equal('private-data');
+    });
+    await dataService.deleteAccount('owner@example.com', 'account-key');
+    expect(deletion.mock.calls[0]).to.deep.equal(['owner@example.com', 'account-key']);
+    expect(localStorage.getItem('az_planner:user_prefs:v1')).to.equal(null);
+  });
+
+  it('retains local data when account deletion is rejected', async () => {
+    localStorage.setItem('az_planner:user_prefs:v1', 'private-data');
+    vi.spyOn(dataService.providers.rest, 'deleteAccount').mockRejectedValue(new Error('Invalid account key'));
+    let failure;
+    try {
+      await dataService.deleteAccount('owner@example.com', 'wrong-key');
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure.message).to.equal('Invalid account key');
+    expect(localStorage.getItem('az_planner:user_prefs:v1')).to.equal('private-data');
   });
 
   it('capabilities and health', async () => {

@@ -131,13 +131,16 @@ import pytest
 
 
 @pytest.fixture(scope="function", autouse=True)
-def ensure_test_sessions(monkeypatch, app):
+def ensure_test_sessions(monkeypatch, app, request):
     """Autouse fixture to make session checks permissive during tests.
 
     Use the function-scoped `app` fixture (in-memory backend) instead of
     importing `planner.app` directly. This avoids import-time coupling and
     ensures we patch the session manager used by the test app.
     """
+    if request.node.get_closest_marker('real_auth') is not None:
+        yield
+        return
     planner_app = app
 
     # Resolve the session manager from the app's service container.
@@ -173,7 +176,8 @@ def ensure_test_sessions(monkeypatch, app):
                         return v
             except Exception:
                 pass
-            return {"email": "test@example.com", "pat": "token"}
+                return {"account_id": "11111111-1111-4111-8111-111111111111",
+                    "email": "test@example.com", "pat": "token"}
 
         monkeypatch.setattr(SessionManager, "exists", exists_any, raising=True)
         monkeypatch.setattr(SessionManager, "create", create_any, raising=True)
@@ -192,7 +196,8 @@ def ensure_test_sessions(monkeypatch, app):
                         return v
             except Exception:
                 pass
-            return {"email": "test@example.com", "pat": "token"}
+                return {"account_id": "11111111-1111-4111-8111-111111111111",
+                    "email": "test@example.com", "pat": "token"}
 
         def create_any(self_or_email, email_or_request=None):
             # Support (email) signature.

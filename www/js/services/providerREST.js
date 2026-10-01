@@ -32,7 +32,6 @@ export class ProviderREST extends RestProviderBase {
         });
       },
     });
-    this.sessionId = null;
     this._reacquiring = false;
     this._reacquirePromise = null;
     this._lastTasksWarning = null;
@@ -46,40 +45,37 @@ export class ProviderREST extends RestProviderBase {
     await this.acquireSession();
   }
 
-  // Acquire a server session. This method only manages session lifecycle
-  // (create/refresh session) and must not perform UI data-loading side
-  // effects such as reloading scenarios which could overwrite client WIP.
+  async signOut() {
+    const response = await this._fetch('/api/auth/logout', { method: 'POST' }, 0, false);
+    if (!response.ok) throw new Error(`Sign out failed: ${response.status}`);
+  }
+
+  async deleteAccount(email, accountKey) {
+    const response = await this._fetch('/api/auth/delete-account', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, accountKey, confirm: true }),
+    }, this._networkRetryCount, false);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(typeof error.detail === 'string'
+        ? error.detail : `Account deletion failed: ${response.status}`);
+    }
+  }
+
+  // Renew from the remembered device before loading any application data.
   async acquireSession() {
-    // Attempt to read user email from local storage prefs
-    let email = null;
-    try {
-      const raw = localStorage.getItem('az_planner:user_prefs:v1');
-      const prefs = raw ? JSON.parse(raw) : {};
-      email = prefs['user.email'] || null;
-      console.log('Loaded user email from prefs:', email);
-    } catch {
-      // If no email was found, don't do anything. The user needs to push the config first.
+    const response = await this._fetch('/api/session', { method: 'POST' }, 0, false);
+    if (response.status === 401) {
+      const { showAuthDialog } = await import('../components/AuthDialog.lit.js');
+      await showAuthDialog(this._resolveUrl('/api'));
       return;
     }
-
-    // Create a session via POST /api/session
-    try {
-      const result = await this._fetchJson('/api/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      if (!result.ok) {
-        console.error('Failed to create session', result.error);
-        return;
-      }
-      /** @type {any} */
-      const data = result.data || {};
-      this.sessionId = data.sessionId || null;
-      console.log('Created session id:', this.sessionId);
-    } catch (err) {
-      console.error('Session creation error', err);
+    if (!response.ok) {
+      throw new Error(`Session renewal failed: ${response.status}`);
     }
+    const account = await response.json();
+    const { ProviderLocalStorage } = await import('./providerLocalStorage.js');
+    await new ProviderLocalStorage().setLocalPref('user.email', account.email);
   }
 
   async _handleSessionExpiry() {
@@ -92,11 +88,6 @@ export class ProviderREST extends RestProviderBase {
     this._reacquirePromise = (async () => {
       try {
         await this.acquireSession();
-        // If acquireSession did not set a session id, treat it as failure.
-        if (!this.sessionId) {
-          throw new Error('reacquire_failed');
-        }
-        console.log('Session quietly re-acquired');
         return true;
       } catch (err) {
         console.error('Failed to re-acquire session', err);
@@ -135,9 +126,6 @@ export class ProviderREST extends RestProviderBase {
    */
   _headers(extra = undefined) {
     const h = /** @type {Record<string, string>} */ (Object.assign({}, extra || {}));
-    if (this.sessionId) {
-      h['X-Session-Id'] = this.sessionId;
-    }
     // Signal that we prefer JSON responses from the server
     if (!h['Accept']) h['Accept'] = 'application/json';
     return h;

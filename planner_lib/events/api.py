@@ -25,7 +25,7 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_id_from_request
+from planner_lib.middleware.session import get_session_context_from_request
 from planner_lib.services.resolver import resolve_service
 
 router = APIRouter()
@@ -169,13 +169,8 @@ def _repo(request: Request):
 
 
 def _user_id(request: Request) -> str:
-    """Return the email/user-id from the current session (empty string if not found)."""
-    try:
-        sid = get_session_id_from_request(request)
-        mgr = resolve_service(request, "session_manager")
-        return mgr.get_val(sid, "email") or ""
-    except Exception:
-        return ""
+    """Return the authenticated account ID."""
+    return get_session_context_from_request(request)['account_id']
 
 
 # ---------------------------------------------------------------------------

@@ -124,6 +124,10 @@ def _build_services(
             account_manager=container.get("account_manager"),
             storage=storage_diskcache,
         ))
+    from planner_lib.session.auth import AuthManager
+    container.register_factory("auth_manager",
+        lambda: AuthManager(storage_diskcache, container.get("account_manager"),
+                            container.get("session_manager")))
 
     # --- Project domain ---
     container.register_factory("azure_project_metadata_service",
