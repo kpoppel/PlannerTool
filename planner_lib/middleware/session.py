@@ -52,11 +52,11 @@ class SessionManager:
         self._storage = storage
 
     def create(self, email: str, device_id: Optional[str] = None) -> str:
-        self._account_manager.load(email)
+        account_id = self._account_manager.get_account_id(email)
         sid = secrets.token_urlsafe(32)
         now = time.time()
         self._storage.save('auth_sessions', hashlib.sha256(sid.encode()).hexdigest(), {
-            'account_id': self._account_manager.get_account_id(email),
+            'account_id': account_id,
             'device_id': device_id, 'created': now, 'last_seen': now,
         }, ttl_seconds=SESSION_MAX)
         return sid
@@ -101,8 +101,7 @@ class SessionManager:
         if refresh:
             record['last_seen'] = now
             self._storage.save('auth_sessions', key, record, ttl_seconds=SESSION_MAX - (now - record['created']))
-        return {'account_id': account_id, 'email': email, 'device_id': record['device_id'],
-            'pat': self._account_manager.load(email)['pat'] if refresh else None}
+        return {'account_id': account_id, 'email': email, 'device_id': record['device_id']}
 
     def is_valid(self, sid: str) -> bool:
         cache = getattr(self._storage, '_cache', None)
@@ -138,7 +137,7 @@ def create_session(email: str, request: Request) -> str:
 
 
 def get_session_context_from_request(request: Request) -> dict[str, Any]:
-    """Resolve credentials once for this request; never cache across requests."""
+    """Validate and resolve identity once for this request, without credentials."""
     sid = request.cookies.get(SESSION_COOKIE)
     if not sid:
         raise HTTPException(status_code=401, detail={'error': 'missing_session_id', 'message': 'Somehow you got here without a session.'})
@@ -151,6 +150,19 @@ def get_session_context_from_request(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail={'error': 'invalid_session', 'message': 'Your session is invalid or expired.'})
     setattr(request, '_planner_session', (sid, context))
     return context
+
+
+def get_session_credentials_from_request(request: Request) -> dict[str, Any]:
+    """Read current account credentials once, isolated to this request's session."""
+    context = get_session_context_from_request(request)
+    sid = request.cookies[SESSION_COOKIE]
+    cached = getattr(request, '_planner_credentials', None)
+    if cached is not None and cached[0] == sid:
+        return cached[1]
+    accounts = resolve_service(request, 'account_manager')
+    credentials = {**context, 'pat': accounts.load(context['email'])['pat']}
+    setattr(request, '_planner_credentials', (sid, credentials))
+    return credentials
 
 
 def get_session_id_from_request(request: Request) -> str:

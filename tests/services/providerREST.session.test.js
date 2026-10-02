@@ -1,15 +1,62 @@
 import { expect } from '@esm-bundle/chai';
 import { server } from '../msw/server.js';
 import { http, HttpResponse } from 'msw';
-import { vi } from 'vitest';
+import { vi, it as itVitest, expect as expectVitest } from 'vitest';
 import { ProviderREST } from '../../www/js/services/providerREST.js';
 import { showAuthDialog } from '../../www/js/components/AuthDialog.lit.js';
+import { bus } from '../../www/js/core/EventBus.js';
+import { SessionEvents } from '../../www/js/core/EventRegistry.js';
+import { dataService } from '../../www/js/services/dataService.js';
 
 vi.mock('../../www/js/components/AuthDialog.lit.js', () => ({
   showAuthDialog: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe('ProviderREST /api/session tests', () => {
+  it('notifies account changes but not renewal for the same account', async () => {
+    const provider = new ProviderREST();
+    const emit = vi.spyOn(bus, 'emit');
+    const fetch = vi.spyOn(provider, '_fetch');
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ email: 'first@example.com' })));
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ email: 'first@example.com' })));
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ email: 'second@example.com' })));
+    try {
+      await provider.acquireSession();
+      emit.mockClear();
+      await provider.acquireSession();
+      expectVitest(emit).not.toHaveBeenCalledWith(SessionEvents.CHANGED);
+      await provider.acquireSession();
+      expectVitest(emit).toHaveBeenCalledWith(SessionEvents.CHANGED);
+    } finally {
+      emit.mockRestore();
+      fetch.mockRestore();
+    }
+  });
+
+  itVitest.each(['signOut', 'deleteAccount'])('notifies after successful %s', async (method) => {
+    const provider = new ProviderREST();
+    const emit = vi.spyOn(bus, 'emit');
+    const fetch = vi.spyOn(provider, '_fetch').mockResolvedValue(new Response('{}'));
+    try {
+      await provider[method]('user@example.com', 'synthetic-key');
+      expectVitest(emit).toHaveBeenCalledWith(SessionEvents.CHANGED);
+    } finally {
+      emit.mockRestore();
+      fetch.mockRestore();
+    }
+  });
+
+  it('rejects failed group fetches instead of treating them as empty groups', async () => {
+    const list = vi.spyOn(dataService.providers.rest, 'listGroups').mockResolvedValue({
+      ok: false, error: { message: 'Group fetch failed' },
+    });
+    try {
+      await expectVitest(dataService.listGroups()).rejects.toThrow('Group fetch failed');
+    } finally {
+      list.mockRestore();
+    }
+  });
+
   it('does not retry a network failure during destructive account deletion', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'));
     try {

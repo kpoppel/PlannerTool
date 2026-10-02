@@ -62,6 +62,7 @@ vi.mock('../../www/js/services/GroupService.js', () => ({
     replaceId: vi.fn(),
     evictPlan: vi.fn(),
     loadGroups: vi.fn().mockResolvedValue([]),
+    loadGroupsForPlans: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -124,6 +125,7 @@ vi.mock('../../www/js/vendor/lit.js', () => ({
 import { bus } from '../../www/js/core/EventBus.js';
 import { DataEvents } from '../../www/js/core/EventRegistry.js';
 import { ScenarioMenuLit } from '../../www/js/components/ScenarioMenu.lit.js';
+import { groupService } from '../../www/js/services/GroupService.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -276,6 +278,27 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     expect(mockCreateGroup).toHaveBeenLastCalledWith(
       expect.objectContaining({ name: 'Child', parent_id: 'real-p' })
     );
+  });
+
+  it('refreshes affected plans together after publishing groups', async () => {
+    const scenario = { id: 'sc-1', name: 'Alpha', overrides: {} };
+    const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
+    const groups = ['p1', 'p2'].map((planId) => ({
+      id: `tmp_${planId}`, plan_id: planId, name: planId,
+      rank: 1024, parent_id: null, members: [],
+    }));
+    const changes = groups.map((group) => ({ type: 'create', group }));
+    mockScenarioGetScenarios.mockReturnValue([scenario]);
+    mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
+    mockPendingGroupChanges.mockReturnValue(changes);
+    mockCreateGroup.mockResolvedValue({ id: 'real-group' });
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [], groupChanges: changes });
+
+    await menu._onSaveToAzure(makeEvent(), scenario);
+
+    expect(groupService.evictPlan).toHaveBeenCalledWith('p1');
+    expect(groupService.evictPlan).toHaveBeenCalledWith('p2');
+    expect(groupService.loadGroupsForPlans).toHaveBeenCalledExactlyOnceWith(['p1', 'p2']);
   });
 
   it('does NOT call state.refreshBaseline() when user cancels the modal', async () => {    const scenario = { id: 'sc-2', overrides: { '43': { end: '2026-06-30' } } };

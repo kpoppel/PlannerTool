@@ -55,7 +55,7 @@ def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monk
     account_mgr.update_credentials(AccountCredentialsPayload(email=email))
     sid = session_mgr.create(email)
     account_mgr.update_credentials(AccountCredentialsPayload(email=email, pat=pat))
-    assert session_mgr.get(sid)['pat'] == pat
+    assert 'pat' not in session_mgr.get(sid)
 
     def reject_session_refresh(*args):
         raise AssertionError('PAT is already resolved from the account')
@@ -66,6 +66,8 @@ def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monk
     container.register_singleton("cost_service", _FakeCostService())
     read_tasks = Mock(return_value=[])
     container.register_singleton('task_repository', SimpleNamespace(read=read_tasks))
+    load_account = Mock(wraps=account_mgr.load)
+    monkeypatch.setattr(account_mgr, 'load', load_account)
 
     with caplog.at_level(logging.ERROR, logger="planner_lib.cost.api"):
         if method == 'post':
@@ -78,5 +80,12 @@ def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monk
             read_tasks.assert_called_once()
 
     assert response.status_code == 200, response.text
+    load_account.assert_called_once_with(email)
+    if method == 'get':
+        credential = read_tasks.call_args.kwargs['credential']
+        if pat is None:
+            assert credential is None
+        else:
+            assert credential['token'] == pat
     error_logs = [r for r in caplog.records if "Failed to load user config" in r.message]
     assert not error_logs

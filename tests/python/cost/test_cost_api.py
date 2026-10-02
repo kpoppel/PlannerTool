@@ -7,7 +7,9 @@ from fastapi import HTTPException
 
 
 def make_request_with_container(container, sid='s1'):
-    app = SimpleNamespace(state=SimpleNamespace(container=container))
+    accounts = SimpleNamespace(load=lambda email: {'pat': None})
+    services = SimpleNamespace(get=lambda name: accounts if name == 'account_manager' else container.get(name))
+    app = SimpleNamespace(state=SimpleNamespace(container=services))
     headers = {}
     cookies = {'sessionId': sid}
     return SimpleNamespace(headers=headers, cookies=cookies, app=app, url=SimpleNamespace(path='/'))
@@ -16,7 +18,7 @@ def make_request_with_container(container, sid='s1'):
 class SimpleSessionMgr:
     def __init__(self, ctx=None):
         self._ctx = ctx or {}
-        self._ctx['pat'] = None
+        self._ctx['email'] = 'test@example.com'
         self._ctx['account_id'] = '11111111-1111-4111-8111-111111111111'
     def exists(self, sid):
         return True

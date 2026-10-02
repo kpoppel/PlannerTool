@@ -52,6 +52,27 @@ class TestEmailValidation:
 class TestPatEncryption:
     """PATs must be stored encrypted and decrypted transparently by AccountManager."""
 
+    def test_fernet_setup_is_reused_and_replaced_on_secret_change(self, monkeypatch):
+        from planner_lib.accounts.config import _get_fernet
+        from cryptography.fernet import InvalidToken
+
+        monkeypatch.setenv('PLANNER_SECRET_KEY', 'first-synthetic-cache-secret')
+        first = _get_fernet()
+        ciphertext = first.encrypt(b'first-user-pat')
+        assert _get_fernet() is first
+        assert first.decrypt(ciphertext) == b'first-user-pat'
+
+        monkeypatch.setenv('PLANNER_SECRET_KEY', 'second-synthetic-cache-secret')
+        second = _get_fernet()
+        assert second is not first
+        assert _get_fernet() is second
+        with pytest.raises(InvalidToken):
+            second.decrypt(ciphertext)
+
+        monkeypatch.delenv('PLANNER_SECRET_KEY')
+        with pytest.raises(RuntimeError, match='PLANNER_SECRET_KEY'):
+            _get_fernet()
+
     def _make_storage(self):
         return MemoryStorage()
 

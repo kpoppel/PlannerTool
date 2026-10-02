@@ -36,6 +36,7 @@ export class ProviderREST extends RestProviderBase {
     this._reacquirePromise = null;
     this._lastTasksWarning = null;
     this._lastTasksWarningAt = 0;
+    this._accountEmail = null;
   }
   // Initialize provider and acquire a session. Init should only perform
   // overall initialization; actual session acquisition is factored into
@@ -48,6 +49,8 @@ export class ProviderREST extends RestProviderBase {
   async signOut() {
     const response = await this._fetch('/api/auth/logout', { method: 'POST' }, 0, false);
     if (!response.ok) throw new Error(`Sign out failed: ${response.status}`);
+    this._accountEmail = null;
+    bus.emit(SessionEvents.CHANGED);
   }
 
   async deleteAccount(email, accountKey) {
@@ -60,12 +63,16 @@ export class ProviderREST extends RestProviderBase {
       throw new Error(typeof error.detail === 'string'
         ? error.detail : `Account deletion failed: ${response.status}`);
     }
+    this._accountEmail = null;
+    bus.emit(SessionEvents.CHANGED);
   }
 
   // Renew from the remembered device before loading any application data.
   async acquireSession() {
     const response = await this._fetch('/api/session', { method: 'POST' }, 0, false);
     if (response.status === 401) {
+      this._accountEmail = null;
+      bus.emit(SessionEvents.CHANGED);
       const { showAuthDialog } = await import('../components/AuthDialog.lit.js');
       await showAuthDialog(this._resolveUrl('/api'));
       return;
@@ -74,6 +81,10 @@ export class ProviderREST extends RestProviderBase {
       throw new Error(`Session renewal failed: ${response.status}`);
     }
     const account = await response.json();
+    if (this._accountEmail !== account.email) {
+      this._accountEmail = account.email;
+      bus.emit(SessionEvents.CHANGED);
+    }
     const { ProviderLocalStorage } = await import('./providerLocalStorage.js');
     await new ProviderLocalStorage().setLocalPref('user.email', account.email);
   }

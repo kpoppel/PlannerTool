@@ -1,10 +1,42 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import { sel } from '../../www/js/application/imports.js';
+import { bus } from '../../www/js/core/EventBus.js';
+import { AppEvents, ProjectEvents } from '../../www/js/core/EventRegistry.js';
+import { groupService } from '../../www/js/services/GroupService.js';
 
 describe('FeatureBoard & DragSurface Tests', () => {
   afterEach(() => {
     sinon.restore();
+  });
+
+  it('batches selected plans and invalidates pending loads on deselection', async () => {
+    const board = document.createElement('feature-board');
+    board.renderFeatures = sinon.stub();
+    document.body.appendChild(board);
+    const on = sinon.stub(bus, 'on');
+    const once = sinon.stub(bus, 'once');
+    const load = sinon.stub(groupService, 'loadGroupsForPlans').resolves();
+    const evict = sinon.stub(groupService, 'evictPlan');
+    sinon.stub(groupService, 'hasPlanLoaded').returns(false);
+    const plans = [{ id: 'p1' }, { id: 'p2' }];
+    const selected = sinon.stub(sel.selection, 'getSelectedProjects').returns(plans);
+    sinon.stub(sel.selection, 'getProjects').returns(plans);
+    sinon.stub(sel.selection, 'getSelectedProjectIds').returns([]);
+    try {
+      const { initBoard } = await import('../../www/js/components/FeatureBoard.init.js');
+      await initBoard();
+      once.getCalls().find((call) => call.args[0] === AppEvents.READY).args[1]();
+      expect(load.calledOnceWithExactly(['p1', 'p2'])).to.be.true;
+      selected.returns([]);
+      for (const call of on.getCalls()) {
+        if (call.args[0] === ProjectEvents.CHANGED) call.args[1]();
+      }
+      expect(evict.calledWithExactly('p1')).to.be.true;
+      expect(evict.calledWithExactly('p2')).to.be.true;
+    } finally {
+      board.remove();
+    }
   });
 
   it('updateCardsById patches existing lit cards', async () => {

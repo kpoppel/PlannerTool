@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import logging
 
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_context_from_request
+from planner_lib.middleware.session import get_session_credentials_from_request
 from planner_lib.services.resolver import resolve_service, resolve_optional_service
 
 # Namespace used by CachingBackend when storing domain objects.
@@ -150,7 +150,7 @@ async def cache_refresh(
     """
     backend = resolve_service(request, 'backend')
 
-    pat = get_session_context_from_request(request)['pat']
+    pat = get_session_credentials_from_request(request)['pat']
     if not pat:
         raise HTTPException(
             status_code=401,
@@ -236,7 +236,7 @@ async def cache_metrics(request: Request):
 
 def _get_pat_or_raise(request: Request) -> str:
     """Return PAT from session or raise HTTP 401."""
-    pat = get_session_context_from_request(request)['pat']
+    pat = get_session_credentials_from_request(request)['pat']
     if not pat:
         raise HTTPException(
             status_code=401,

@@ -6,8 +6,8 @@ pytestmark = pytest.mark.real_auth
 
 
 @pytest.mark.parametrize('path', ['/api/auth/me', '/api/view', '/api/scenario',
-                                 '/admin/v1/users', '/admin/'])
-def test_authenticated_request_resolves_credentials_and_refreshes_expiry_once(client, monkeypatch, path):
+                                 '/api/groups', '/admin/v1/users', '/admin/'])
+def test_identity_request_skips_credentials_and_refreshes_expiry_once(client, monkeypatch, path):
     from unittest.mock import Mock
 
     assert client.post('/api/auth/enroll', json={
@@ -25,7 +25,7 @@ def test_authenticated_request_resolves_credentials_and_refreshes_expiry_once(cl
     response = client.get(path)
 
     assert response.status_code == 200
-    load_account.assert_called_once_with('resolution@example.com')
+    load_account.assert_not_called()
     assert [call.args[0] for call in save.call_args_list].count('auth_sessions') == 1
     assert [call.args[0] for call in save.call_args_list].count('account_auth') == 1
     assert len(response.headers.get_list('set-cookie')) == 2
@@ -262,6 +262,7 @@ def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monk
     from fastapi.testclient import TestClient
     from starlette.requests import Request
     from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.middleware.session import get_session_credentials_from_request
 
     assert client.post('/api/auth/enroll', json={
         'email': 'first@example.com', 'name': 'First',
@@ -277,6 +278,8 @@ def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monk
         sessions = container.get('session_manager')
         resolve_context = Mock(wraps=sessions.get)
         monkeypatch.setattr(sessions, 'get', resolve_context)
+        load_account = Mock(wraps=accounts.load)
+        monkeypatch.setattr(accounts, 'load', load_account)
 
         def make_request(browser):
             return Request({'type': 'http', 'app': client.app,
@@ -284,16 +287,26 @@ def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monk
 
         first_request = make_request(client)
         first = get_session_context_from_request(first_request)
-        second = get_session_context_from_request(make_request(other))
+        second_request = make_request(other)
+        second = get_session_context_from_request(second_request)
         assert get_session_context_from_request(first_request) is first
+        assert 'pat' not in first
+        assert 'pat' not in second
+        load_account.assert_not_called()
+        first = get_session_credentials_from_request(first_request)
+        second = get_session_credentials_from_request(second_request)
+        assert get_session_credentials_from_request(first_request) is first
         assert (first['email'], first['pat']) == ('first@example.com', 'first-pat')
         assert (second['email'], second['pat']) == ('second@example.com', 'second-pat')
         assert first['account_id'] != second['account_id']
         assert resolve_context.call_count == 2
+        assert load_account.call_count == 2
 
         accounts.update_credentials(AccountCredentialsPayload(email='first@example.com', pat='updated-pat'))
-        assert get_session_context_from_request(make_request(client))['pat'] == 'updated-pat'
+        assert get_session_credentials_from_request(make_request(client))['pat'] == 'updated-pat'
+        assert get_session_credentials_from_request(second_request)['pat'] == 'second-pat'
         assert resolve_context.call_count == 3
+        assert load_account.call_count == 3
 
 
 @pytest.mark.parametrize('mutation', ['revoke', 'reset', 'delete'])

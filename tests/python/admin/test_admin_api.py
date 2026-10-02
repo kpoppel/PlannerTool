@@ -334,13 +334,16 @@ def test_iteration_browse_connects_fetches_and_closes_on_same_worker(azure_fails
 
         def get(self, sid):
             assert sid == 'iteration-session'
-            return {'pat': 'test-pat'}
+            return {'email': 'test@example.com'}
 
         def get_val(self, sid, key):
             assert (sid, key) == ('iteration-session', 'pat')
             return 'test-pat'
 
-    services = {'session_manager': Session(), 'azure_client': AzureService()}
+    services = {
+        'session_manager': Session(), 'azure_client': AzureService(),
+        'account_manager': SimpleNamespace(load=lambda email: {'pat': 'test-pat'}),
+    }
     request = make_request(SimpleNamespace(get=lambda name: services[name]),
                            cookies={'sessionId': 'iteration-session'})
 

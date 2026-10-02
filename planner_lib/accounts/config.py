@@ -4,12 +4,15 @@ import logging
 import os
 import re
 import base64
+import threading
 from uuid import UUID, uuid4
 from contextlib import nullcontext
 from planner_lib.storage import StorageBackend
 from planner_lib.accounts.constants import AccountPermissions
 
 logger = logging.getLogger(__name__)
+_FERNET_LOCK = threading.Lock()
+_FERNET_CACHE = None
 
 # RFC-5321-lite: local-part@domain.tld — no spaces, at least one dot in domain.
 _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
@@ -48,16 +51,25 @@ def _get_fernet():
     Raises RuntimeError when the env var is not set so misconfigured
     deployments fail loudly rather than silently storing plaintext credentials.
     """
+    global _FERNET_CACHE
+    with _FERNET_LOCK:
+        key_material = os.environ.get('PLANNER_SECRET_KEY', '')
+        if not key_material:
+            _FERNET_CACHE = None
+            raise RuntimeError(
+                "PLANNER_SECRET_KEY environment variable is not set. "
+                "Set it to a strong random string to enable PAT encryption at rest."
+            )
+        if _FERNET_CACHE is None or _FERNET_CACHE[0] != key_material:
+            _FERNET_CACHE = (key_material, _derive_fernet(key_material))
+        return _FERNET_CACHE[1]
+
+
+def _derive_fernet(key_material: str):
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-    key_material = os.environ.get('PLANNER_SECRET_KEY', '')
-    if not key_material:
-        raise RuntimeError(
-            "PLANNER_SECRET_KEY environment variable is not set. "
-            "Set it to a strong random string to enable PAT encryption at rest."
-        )
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,

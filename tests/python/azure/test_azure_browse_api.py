@@ -28,7 +28,7 @@ class FakeSessionMgr:
         return True
 
     def get(self, sid):
-        return {'email': 'user@example.com', 'pat': self._pat}
+        return {'email': 'user@example.com', 'account_id': 'test-account'}
 
     def get_val(self, sid, key):
         if key == 'pat':
@@ -91,6 +91,7 @@ def _register_azure_services(client, pat='test-pat', inner_client=None):
     fake_client = inner_client or FakeAzureClient()
     register_services_on_client(client, {
         'session_manager': FakeSessionMgr(pat=pat),
+        'account_manager': SimpleNamespace(load=lambda email: {'pat': pat}),
         'azure_client': FakeAzureService(fake_client),
     })
     return fake_client
@@ -323,6 +324,7 @@ def test_prefetch_projects_metadata_uses_disk_cache(client):
     inner = FakeAzureClient()
     register_services_on_client(client, {
         'session_manager': FakeSessionMgr(pat='test-pat'),
+        'account_manager': SimpleNamespace(load=lambda email: {'pat': 'test-pat'}),
         'azure_client': FakeAzureService(inner),
         'azure_project_metadata_service': meta_svc,
     })

@@ -13,7 +13,9 @@ import logging
 
 from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
-from planner_lib.middleware.session import get_session_context_from_request
+from planner_lib.middleware.session import (
+    get_session_context_from_request, get_session_credentials_from_request,
+)
 from planner_lib.admin import schema as admin_schema
 from planner_lib.admin import cost_inspector
 from planner_lib.admin import people_inspector
@@ -340,7 +342,7 @@ async def admin_browse_iterations(request: Request):
         root_path = payload.get('root_path')
         depth = payload.get('depth', 10)
 
-        pat = get_session_context_from_request(request)['pat']
+        pat = get_session_credentials_from_request(request)['pat']
         if not pat:
             raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
@@ -409,7 +411,7 @@ async def admin_refresh_area_mapping(request: Request):
         if not area_path or not isinstance(area_path, str):
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing or invalid area_path'})
 
-        pat = get_session_context_from_request(request)['pat']
+        pat = get_session_credentials_from_request(request)['pat']
         azure_svc = resolve_service(request, 'azure_client')
         admin_svc = resolve_service(request, 'admin_service')
         try:
@@ -430,7 +432,7 @@ async def admin_refresh_area_mapping(request: Request):
 async def admin_refresh_all_area_mappings(request: Request):
     """Refresh mappings for all configured area_paths.  PAT from session."""
     try:
-        pat = get_session_context_from_request(request)['pat']
+        pat = get_session_credentials_from_request(request)['pat']
         azure_svc = resolve_service(request, 'azure_client')
         admin_svc = resolve_service(request, 'admin_service')
         try:
@@ -607,7 +609,7 @@ async def admin_get_schema(request: Request, config_type: str):
         raise HTTPException(status_code=404, detail={'error': 'unknown_schema', 'message': f'No schema defined for {config_type}'})
     if config_type == 'projects':
         try:
-            pat = get_session_context_from_request(request)['pat']
+            pat = get_session_credentials_from_request(request)['pat']
             if pat:
                 azure_svc = resolve_service(request, 'azure_client')
                 admin_svc = resolve_service(request, 'admin_service')

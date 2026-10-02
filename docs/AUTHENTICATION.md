@@ -44,12 +44,26 @@ credentials are carried in HTTP-only, SameSite=Lax cookies. Session identifiers
 are hashed in `auth_sessions`; records do not persist decrypted PATs. Browser
 cookies are scoped to the installation's reverse-proxy root path.
 
-Authenticated handlers share a request-local session context, so PAT decryption
-and session/device idle-expiry updates occur once per request. Contexts are never
-shared between requests; later requests resolve current credentials. Before
-renewing cookies, middleware checks persisted session and device validity again
-without decrypting the PAT or refreshing idle expiry. Revocation during a handler
-therefore prevents cookie renewal.
+Authenticated handlers share a request-local identity context, so session/device
+idle-expiry updates occur once per request. Identity-only routes, including groups,
+do not load or decrypt PATs. Routes needing Azure credentials explicitly resolve
+the current account PAT once per request. Neither identities nor decrypted PATs
+are cached across requests or shared between users; later requests read current
+credentials. Each server worker reuses only the Fernet cryptographic setup for
+the configured encryption secret, replacing it if that secret changes. This does
+not re-encrypt existing PATs when rotating the secret.
+
+Before renewing cookies, middleware checks persisted session and device validity
+again without decrypting the PAT or refreshing idle expiry. Revocation during a
+handler therefore prevents cookie renewal.
+
+The board fetches missing plans' baseline groups in one request and deduplicates
+in-flight group loads within that browser application. Only requested plans enter
+the cache; already-loaded plans and unsaved local groups are preserved. Plan
+deselection, publishing refreshes, and account changes invalidate older responses.
+Sign-out, account deletion, and entry into enrollment clear the browser's group
+cache. Browser instances do not share group caches or pending requests; baseline
+groups on the server remain shared planning data.
 
 Enrollment and renewal issue separate `Set-Cookie` headers for `plannerDevice`
 and `sessionId`. Compression middleware and reverse proxies must preserve both

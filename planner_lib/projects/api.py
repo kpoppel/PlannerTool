@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, Request, Body, HTTPException, Response
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_context_from_request
+from planner_lib.middleware.session import get_session_credentials_from_request
 from planner_lib.services.resolver import resolve_service
 from planner_lib.backend.port import BackendCredential, DiagnosticBackend
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def _get_credential(request: Request):
     """Build a BackendCredential from the current session's PAT and account ID."""
-    context = get_session_context_from_request(request)
+    context = get_session_credentials_from_request(request)
     pat = context['pat']
     account_id = context['account_id']
     if not pat:

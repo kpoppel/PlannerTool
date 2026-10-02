@@ -425,10 +425,10 @@ export class ScenarioMenuLit extends LitElement {
           cmd.group.clearGroupOverride(op.groupId, memberDeltas.map((d) => String(d.taskId)));
 
           const g = sel.group.getGroupById(op.groupId);
-          if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
+          if (g && g.plan_id) affectedPlanIds.add(String(g.plan_id));
         } else if (op.type === 'delete' && op.groupId) {
           const g = sel.group.getGroupById(op.groupId);
-          if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
+          if (g && g.plan_id) affectedPlanIds.add(String(g.plan_id));
           await dataService.deleteGroup(op.groupId);
           cmd.group.clearGroupOverride(op.groupId, null);
         }
@@ -441,10 +441,8 @@ export class ScenarioMenuLit extends LitElement {
         // sees the authoritative server state (real UUIDs, up-to-date members/names).
         for (const planId of affectedPlanIds) {
           groupService.evictPlan(planId);
-          groupService.loadGroups(planId).catch((err) =>
-            console.warn('[ScenarioMenu] group reload failed for plan', planId, err)
-          );
         }
+        await groupService.loadGroupsForPlans([...affectedPlanIds]);
       }
 
       // 2. Persist accepted feature overrides.

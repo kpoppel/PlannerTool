@@ -1,7 +1,7 @@
 /**
  * GroupService — manages plan-scoped task groups.
  *
- * Groups are fetched from the server once per plan and cached locally.
+ * Groups are fetched in batches and cached locally per plan.
  * Mutations (create / update / delete) go to the REST API and update the
  * local cache on success.
  *
@@ -18,7 +18,7 @@
  */
 
 import { bus } from '../core/EventBus.js';
-import { GroupEvents } from '../core/EventRegistry.js';
+import { GroupEvents, SessionEvents } from '../core/EventRegistry.js';
 import { dataService } from './dataService.js';
 import { deriveEffectiveGroupsForPlan } from '../application/shared/groupProjection.js';
 
@@ -26,6 +26,9 @@ export class GroupService {
   constructor() {
     /** @type {Map<string, Array>} planId → groups array */
     this._groupsByPlan = new Map();
+    this._pendingLoads = new Map();
+    this._batchRequest = null;
+    bus.on(SessionEvents.CHANGED, () => this.clear());
   }
 
   // ---------------------------------------------------------------------------
@@ -104,23 +107,80 @@ export class GroupService {
    * Fetch groups for a plan from the server, update the local cache, and
    * emit GroupEvents.LOADED.
    * @param {string} planId
-  * @returns {Promise<Array>} The fetched groups, or an empty array when loading fails.
+   * @returns {Promise<Array>} The fetched groups; rejects when loading fails.
    */
   async loadGroups(planId) {
-    try {
-      const groups = await dataService.listGroups(planId);
-      this._groupsByPlan.set(String(planId), groups);
-      bus.emit(GroupEvents.LOADED);
-      return groups;
-    } catch (err) {
-      console.error('[GroupService] loadGroups error', planId, err);
-      return [];
+    const key = String(planId);
+    let request = this._pendingLoads.get(key);
+    if (!request) {
+      this.evictPlan(key);
+      request = this._startLoad([key], false);
     }
+    await request.promise;
+    return this.getGroupsForPlan(key);
+  }
+
+  /** Fetch missing plans together, sharing an active batch within this application. */
+  async loadGroupsForPlans(planIds) {
+    const pending = new Set();
+    for (const planId of planIds) {
+      const key = String(planId);
+      if (this.hasPlanLoaded(key)) continue;
+      let request = this._pendingLoads.get(key);
+      if (!request) {
+        if (this._batchRequest) {
+          request = this._batchRequest;
+          request.planIds.add(key);
+          this._pendingLoads.set(key, request);
+        } else {
+          request = this._startLoad([key], true);
+        }
+      }
+      pending.add(request.promise);
+    }
+    await Promise.all(pending);
+  }
+
+  _startLoad(planIds, allPlans) {
+    const request = { planIds: new Set(planIds), promise: Promise.resolve() };
+    for (const key of planIds) this._pendingLoads.set(key, request);
+    if (allPlans) this._batchRequest = request;
+    const fetch = allPlans ? dataService.listGroups() : dataService.listGroups(planIds[0]);
+    request.promise = fetch.then((groups) => {
+      let changed = false;
+      for (const key of request.planIds) {
+        // Eviction or account changes revoke an old response's right to populate this plan.
+        if (this._pendingLoads.get(key) !== request || this.hasPlanLoaded(key)) continue;
+        this._groupsByPlan.set(key, groups.filter((group) => String(group.plan_id) === key));
+        changed = true;
+      }
+      if (changed) bus.emit(GroupEvents.LOADED);
+    }).catch((err) => {
+      console.error('[GroupService] loadGroups error', planIds, err);
+      throw err;
+    }).finally(() => {
+      for (const key of request.planIds) {
+        if (this._pendingLoads.get(key) === request) this._pendingLoads.delete(key);
+      }
+      if (this._batchRequest === request) this._batchRequest = null;
+    });
+    return request;
   }
 
   /** Evict the cache for a plan (e.g. when the plan is deselected). */
   evictPlan(planId) {
-    this._groupsByPlan.delete(String(planId));
+    const key = String(planId);
+    this._groupsByPlan.delete(key);
+    this._pendingLoads.delete(key);
+    if (this._batchRequest && this._batchRequest.planIds.has(key)) this._batchRequest = null;
+  }
+
+  /** Clear account-local state and invalidate every outstanding response. */
+  clear() {
+    this._groupsByPlan.clear();
+    this._pendingLoads.clear();
+    this._batchRequest = null;
+    bus.emit(GroupEvents.CHANGED);
   }
 
   // ---------------------------------------------------------------------------

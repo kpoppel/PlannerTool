@@ -6,6 +6,7 @@ affected fetch_tasks__* keys, so a full cache flush is unnecessary.
 """
 import pytest
 from unittest.mock import MagicMock
+from types import SimpleNamespace
 from starlette.testclient import TestClient
 
 
@@ -19,10 +20,13 @@ def _make_task_repository(updated=2, errors=None):
     return repo
 
 
-def _make_session_mgr():
+def _make_session_mgr(client):
+    from tests.helpers import register_service_on_client
+    register_service_on_client(client, 'account_manager',
+                               SimpleNamespace(load=lambda email: {'pat': 'fake-pat'}))
     mgr = MagicMock()
     mgr.get.return_value = {'account_id': 'test-account-id',
-                            'email': 'test@example.com', 'pat': 'fake-pat'}
+                            'email': 'test@example.com'}
     def _get_val(sid, key):
         if key == 'email':
             return 'test@example.com'
@@ -47,7 +51,7 @@ def test_tasks_update_does_not_invalidate_cache_on_success(client):
 
     task_repo = _make_task_repository(updated=1)
     coordinator = _make_cache_coordinator()
-    session_mgr = _make_session_mgr()
+    session_mgr = _make_session_mgr(client)
 
     register_service_on_client(client, 'task_repository', task_repo)
     register_service_on_client(client, 'cache_coordinator', coordinator)
@@ -67,7 +71,7 @@ def test_tasks_update_does_not_invalidate_cache_with_partial_errors(client):
 
     task_repo = _make_task_repository(updated=1, errors=['99: bad state'])
     coordinator = _make_cache_coordinator()
-    session_mgr = _make_session_mgr()
+    session_mgr = _make_session_mgr(client)
 
     register_service_on_client(client, 'task_repository', task_repo)
     register_service_on_client(client, 'cache_coordinator', coordinator)
@@ -86,7 +90,7 @@ def test_tasks_update_skips_cache_invalidation_when_nothing_updated(client):
 
     task_repo = _make_task_repository(updated=0)
     coordinator = _make_cache_coordinator()
-    session_mgr = _make_session_mgr()
+    session_mgr = _make_session_mgr(client)
 
     register_service_on_client(client, 'task_repository', task_repo)
     register_service_on_client(client, 'cache_coordinator', coordinator)

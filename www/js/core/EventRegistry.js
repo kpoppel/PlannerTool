@@ -110,6 +110,7 @@ export const AppEvents = {
 export const SessionEvents = {
   EXPIRED: Symbol('session:expired'),
   REACQUIRED: Symbol('session:reacquired'),
+  CHANGED: Symbol('session:changed'),
 };
 
 // Config events

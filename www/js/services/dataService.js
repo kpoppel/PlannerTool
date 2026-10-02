@@ -309,7 +309,11 @@ class DataService {
   /** @param {string} [planId] */
   async listGroups(planId) {
     const result = await this.providers['rest'].listGroups(planId);
-    return this._unwrapOrFallback('listGroups', result, []);
+    if (!result.ok) {
+      console.error('[dataService] listGroups failed', { planId, error: result.error });
+      throw new Error(result.error.message);
+    }
+    return result.data;
   }
   /** @param {{ plan_id:string, name:string, color?:string, rank?:number }} payload */
   async createGroup(payload) {

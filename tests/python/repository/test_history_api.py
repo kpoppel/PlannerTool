@@ -95,15 +95,18 @@ def _make_task_repository():
     return MockTaskRepo()
 
 
-def _make_fake_session_manager():
+def _make_fake_session_manager(client):
     """Create a fake session manager for tests."""
+    from types import SimpleNamespace
+    register_service_on_client(client, 'account_manager',
+                               SimpleNamespace(load=lambda email: {'pat': 'test-token'}))
     class FakeSessionMgr:
         def exists(self, sid):
             return True
 
         def get(self, sid):
             return {'account_id': '11111111-1111-4111-8111-111111111111',
-                    'email': 'test@example.com', 'pat': 'test-token'}
+                    'email': 'test@example.com'}
 
         def create(self, email: str):
             return 'test-session'
@@ -124,7 +127,7 @@ def test_history_api_happy_path(client):
     """Test the history API endpoint successfully returns task history."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager()
+    session_mgr = _make_fake_session_manager(client)
 
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_repository', task_repo)
@@ -149,7 +152,7 @@ def test_history_api_with_project_filter(client):
     """Test the history API with project filter."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager()
+    session_mgr = _make_fake_session_manager(client)
 
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_repository', task_repo)
@@ -169,7 +172,7 @@ def test_history_api_with_plan_filter(client):
     """Test the history API with plan filter."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager()
+    session_mgr = _make_fake_session_manager(client)
 
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_repository', task_repo)
@@ -189,7 +192,7 @@ def test_history_api_with_date_range(client):
     """Test the history API with date range filters."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager()
+    session_mgr = _make_fake_session_manager(client)
 
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_repository', task_repo)
@@ -213,7 +216,7 @@ def test_history_api_pagination(client):
     """Test the history API pagination parameters."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager()
+    session_mgr = _make_fake_session_manager(client)
 
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_repository', task_repo)
@@ -233,17 +236,20 @@ def test_history_api_pagination(client):
 def test_history_api_no_pat(client):
     """Test the history API without PAT returns 401."""
     from fastapi.testclient import TestClient
+    from types import SimpleNamespace
 
     # Create a session manager that returns no PAT
     class NoPATSessionMgr:
         def exists(self, sid):
             return True
         def get(self, sid):
-            return {'account_id': 'test-account-id', 'email': 'test@example.com', 'pat': None}
+            return {'account_id': 'test-account-id', 'email': 'test@example.com'}
         def get_val(self, sid, key):
             return None
 
     register_service_on_client(client, 'session_manager', NoPATSessionMgr())
+    register_service_on_client(client, 'account_manager',
+                               SimpleNamespace(load=lambda email: {'pat': None}))
 
     # Create a client that doesn't raise server exceptions
     c = TestClient(client.app, raise_server_exceptions=False)

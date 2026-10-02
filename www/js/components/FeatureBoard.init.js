@@ -92,13 +92,9 @@ export async function initBoard() {
   // the next selection always triggers a fresh fetch.
   const loadGroupsForSelectedPlans = () => {
     const selected = sel.selection.getSelectedProjects();
-    for (const plan of selected) {
-      if (!groupService.hasPlanLoaded(plan.id)) {
-        groupService.loadGroups(plan.id).catch((err) =>
-          console.warn('[initBoard] loadGroups failed for plan', plan.id, err)
-        );
-      }
-    }
+    groupService.loadGroupsForPlans(selected.map((plan) => plan.id)).catch((err) =>
+      console.warn('[initBoard] loadGroups failed for selected plans', err)
+    );
   };
   // Evict the cache for plans that become de-selected so the next time the plan
   // is selected its groups are fetched fresh from the server.
@@ -106,7 +102,7 @@ export async function initBoard() {
     const plans = sel.selection.getProjects();
     const selectedIds = new Set(sel.selection.getSelectedProjectIds().map((id) => String(id)));
     for (const plan of plans) {
-      if (!selectedIds.has(String(plan.id)) && groupService.hasPlanLoaded(plan.id)) {
+      if (!selectedIds.has(String(plan.id))) {
         groupService.evictPlan(plan.id);
       }
     }

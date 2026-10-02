@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 
 @pytest.mark.real_auth
-def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):
+def test_reload_config_invalidates_without_loading_credentials(client, monkeypatch):
     called = {'invalidate': False}
 
     # monkeypatch cost engine invalidate
@@ -24,4 +24,4 @@ def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):
     r3 = client.post('/admin/v1/reload-config')
     assert r3.status_code == 200
     assert called['invalidate'] is True
-    load_account.assert_called_once_with('b@test.com')
+    load_account.assert_not_called()
