@@ -83,7 +83,7 @@ export function createViewSelectors(store) {
       const preferred = state.view.options.capacityViewMode;
       if (available.includes(preferred)) return preferred;
       const preferredPlan = state.baseline.projects.find((project) => project.type === preferred);
-      if (!preferredPlan) return available[0];
+      if (!preferredPlan) return available[available.length - 1];
       const byType = new Map(state.baseline.projects.map((project) =>
         [project.type, project.container_order]));
       return [...available].sort((first, second) =>

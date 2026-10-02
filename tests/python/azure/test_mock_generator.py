@@ -10,6 +10,7 @@ from planner_lib.azure.AzureMockGeneratorClient import (
     AzureDataset,
     GeneratorConfig,
     _build_iteration_tree,
+    _build_person_pool,
     _collect_sprint_paths,
     _generate_area_items,
     _generate_revisions,
@@ -130,7 +131,35 @@ def test_generated_projects_retain_valid_container_configuration(tmp_path, confi
         storage.close()
 
 
+def test_generated_plans_use_lowest_configured_container_when_no_plans_exist(tmp_path):
+    from planner_lib.backend.config import ConfigBackend
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
+
+    storage = DiskCacheStorage(str(tmp_path / 'cache'))
+    try:
+        storage.save('config', 'projects', {
+            'schema_version': 3,
+            'container_types': ['portfolio', 'program', 'squad'],
+            'project_map': [],
+        })
+        dataset = AzureDataset(storage=storage, data_dir=str(tmp_path),
+                               config_dict=_MULTI_CONFIG_DICT)
+        dataset.build()
+        dataset.populate_storage()
+        projects = ConfigBackend(storage).fetch_projects()
+        assert projects
+        assert {plan['type'] for plan in projects} == {'squad'}
+    finally:
+        storage.close()
+
+
 class TestGeneratorConfig:
+    def test_person_pool_counts_staffing_areas_without_literal_plan_types(self):
+        areas = [{'name': f'Squad {index}', 'type': 'squad'} for index in range(4)]
+        people = _build_person_pool(None, areas, GeneratorConfig({'people_per_team': 2}),
+                                    'https://example.invalid')
+        assert len(people) == 8
+
     def test_defaults_applied(self):
         cfg = GeneratorConfig()
         assert cfg.seed == 42

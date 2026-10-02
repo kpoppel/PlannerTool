@@ -12,8 +12,9 @@ class DomainProject(TypedDict):
     """A project entry as defined in projects.yml."""
     id: str                                     # slug e.g. 'project-my-team'
     name: str                                   # display name
-    type: str                                   # 'project' or other configured type
+    type: str                                   # configured container type
     container_order: int                        # position in plan container hierarchy
+    container_types: List[str]                  # full configured hierarchy, including unused levels
     area_path: Optional[str]                    # Azure DevOps area path
     task_types: List[str]                       # configured work item types
     task_type_hierarchy: List[str]              # global hierarchy list

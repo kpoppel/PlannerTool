@@ -29,6 +29,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Consolidated cost calculation in the current calculator, moving shared month helpers and retiring unused v1 allocations and tests.
+- Generalized plan hierarchy, capacity graphs, cost ordering, admin validation, and generated plans to configured container types; lowest-level graphs use raw allocation lines.
 - Modularized DetailsPanel and Sidebar with managed controllers and explicit section contracts, removed Sidebar-owned workflow state, and persisted packed-mode Unplanned preferences through revision 34.
 - Modularized DetailsPanel rendering with explicit section models and actions, pure capacity/relation/scheduling projections, and an unchanged extracted stylesheet.
 - The Plan Menu shows the selected plan's name instead of a count when exactly one plan is selected.

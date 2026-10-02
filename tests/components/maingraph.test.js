@@ -142,7 +142,7 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#123' }],
-        projects: [{ id: 'p1', color: '#456', type: 'team' }],
+        projects: [{ id: 'p1', color: '#456', type: 'team', container_order: 1, container_types: ['project', 'team'] }],
         capacityDates: months.map((m) => new Date(m).toISOString().slice(0, 10)),
         teamDailyCapacity: [
           [10, 20, 30],
@@ -196,7 +196,10 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#111' }],
-        projects: [{ id: 'p1', color: '#222', type: 'project' }],
+        projects: [
+          { id: 'p1', color: '#222', type: 'project', container_order: 0, container_types: ['project', 'team'] },
+          { id: 'leaf', type: 'team', container_order: 1 },
+        ],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: null,
@@ -244,7 +247,7 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#111' }],
-        projects: [{ id: 'p1', color: '#222' }],
+        projects: [{ id: 'p1', color: '#222', type: 'team', container_order: 1, container_types: ['project', 'team'] }],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: { 0: { t1: 50 }, 1: { t1: 60 } },
@@ -287,7 +290,7 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#111' }, { id: 't2', color: '#222' }],
-        projects: [{ id: 'p1', color: '#333' }],
+        projects: [{ id: 'p1', color: '#333', type: 'team', container_order: 1, container_types: ['project', 'team'] }],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: { 0: { t1: 50, t2: 60 }, 1: { t1: 40, t2: 70 } },
@@ -323,7 +326,7 @@ describe('MainGraph Tests', () => {
       el._fullRender(mockCtx, {
         months,
         teams: [{ id: 't1', color: '#111111' }, { id: 't2', color: '#222222' }],
-        projects: [{ id: 'p1', color: '#333333', type: 'team' }],
+        projects: [{ id: 'p1', color: '#333333', type: 'team', container_order: 1, container_types: ['project', 'team'] }],
         capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: [{ t1: 50, t2: 60 }, { t1: 40, t2: 70 }],
@@ -355,8 +358,9 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months, teams: [{ id: 'f' }, { id: 'g' }],
         projects: [
-          { id: 'p1', name: 'Program 1', type: 'program', color: '#333' },
-          { id: 'p2', name: 'Program 2', type: 'program', color: '#777' },
+          { id: 'p1', name: 'Program 1', type: 'program', color: '#333', container_order: 0, container_types: ['program', 'squad'] },
+          { id: 'p2', name: 'Program 2', type: 'program', color: '#777', container_order: 0, container_types: ['program', 'squad'] },
+          { id: 'leaf', type: 'squad', container_order: 1 },
         ],
         capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
         teamDailyCapacity: [], teamDailyCapacityMap: [],
@@ -388,7 +392,10 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#111' }, { id: 't2', color: '#222' }],
-        projects: [{ id: 'p1', name: 'Plan', color: '#333', type: 'project' }],
+        projects: [
+          { id: 'p1', name: 'Plan', color: '#333', type: 'project', container_order: 0, container_types: ['project', 'team'] },
+          { id: 'leaf', type: 'team', container_order: 1 },
+        ],
         capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: { 0: { t1: 20, t2: 110 }, 1: { t1: 20, t2: 110 } },
@@ -431,7 +438,7 @@ describe('MainGraph Tests', () => {
       el._fullRender(mockCtx, {
         months,
         teams: [{ id: 'bluetooth', name: 'Bluetooth', color: '#111' }],
-        projects: [{ id: 'p1', name: 'Team plan', color: '#222', type: 'team' }],
+        projects: [{ id: 'p1', name: 'Team plan', color: '#222', type: 'team', container_order: 1, container_types: ['project', 'team'] }],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: { 0: { bluetooth: 88 }, 1: { bluetooth: 88 } },
@@ -476,7 +483,7 @@ describe('MainGraph Tests', () => {
       const snapshot = {
         months,
         teams: [{ id: 101, color: '#111' }],
-        projects: [{ id: 201, color: '#222', type: 'team' }],
+        projects: [{ id: 201, color: '#222', type: 'team', container_order: 1, container_types: ['project', 'team'] }],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: { 0: { 101: 50 }, 1: { 101: 60 } },

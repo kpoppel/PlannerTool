@@ -39,7 +39,7 @@ export class CapacityCalculator {
    * @returns {Object} Capacity metrics in legacy tuple format
    *
    * Note: This method adds a synthetic '__unfunded__' project to track allocations
-   * that don't roll up to any type='project' project. Consumers should check for
+  * that don't roll up to any higher-level container. Consumers should check for
    * '__unfunded__' in projectDailyCapacityMap or at the last index in projectDailyCapacity tuples.
    */
   // Optional 5th param: changedFeatureIds (Array) for incremental updates
@@ -76,7 +76,9 @@ export class CapacityCalculator {
     // Add synthetic unfunded project and include in calculations
     const unfundedProject = {
       id: UNFUNDED_PROJECT_ID,
-      type: 'project',
+      type: projects[0].container_types[0],
+      container_order: 0,
+      container_types: projects[0].container_types,
       name: 'Unfunded',
       color: '#000000',
     };

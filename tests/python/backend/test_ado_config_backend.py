@@ -87,7 +87,7 @@ def test_fetch_projects_reads_from_storage():
     storage.save('config', 'projects', {
         'container_types': ['project', 'team'],
         'project_map': [
-            {'name': 'Alpha', 'area_path': 'Org\\Alpha', 'task_types': ['Feature'], 'iteration_uuid': 'set-alpha'}
+            {'name': 'Alpha', 'type': 'project', 'area_path': 'Org\\Alpha', 'task_types': ['Feature'], 'iteration_uuid': 'set-alpha'}
         ]
     })
     storage.save('config', 'global_settings', {
@@ -100,6 +100,18 @@ def test_fetch_projects_reads_from_storage():
     assert projects[0]['name'] == 'Alpha'
     assert projects[0]['state_display_sequence'] == ['New', 'Active', 'Closed']
     assert projects[0]['iteration_uuid'] == 'set-alpha'
+
+
+def test_fetch_projects_preserves_custom_container_hierarchy_without_leaf_plans():
+    storage = _MemStore()
+    storage.save('config', 'projects', {
+        'container_types': ['portfolio', 'program', 'squad'],
+        'project_map': [{'name': 'Program', 'type': 'program'}],
+    })
+    projects = ConfigBackend(storage=storage).fetch_projects()
+    assert projects[0]['type'] == 'program'
+    assert projects[0]['container_order'] == 1
+    assert projects[0]['container_types'] == ['portfolio', 'program', 'squad']
 
 
 def test_fetch_config_teams_reads_from_storage():

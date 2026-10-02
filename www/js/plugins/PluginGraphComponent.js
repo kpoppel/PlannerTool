@@ -11,6 +11,7 @@
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
+import { isLowestContainer } from '../application/shared/ownership.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import { findInBoard } from '../components/board-utils.js';
@@ -35,7 +36,7 @@ export class PluginGraph extends LitElement {
     /** @type {DocumentFragment} */
     this.renderRoot;
     this.visible = false;
-    this.mode = 'project';
+    this.mode = null;
     this._scheduledRenderTimer = null;
     this.svgEl = null;
     this.tooltipEl = null;
@@ -294,9 +295,14 @@ export class PluginGraph extends LitElement {
     return dd.toISOString().slice(0, 10);
   }
 
+  _usesLines(mode) {
+    return sel.selection.getProjects().some((plan) => plan.type === mode && isLowestContainer(plan));
+  }
+
   _computeDailyTotals(mode, sDate, eDate) {
-    const teams = sel.selection.getTeams() || [];
-    const allProjects = sel.selection.getProjects() || [];
+    const teams = sel.selection.getTeams();
+    const allProjects = sel.selection.getProjects();
+    const usingLines = this._usesLines(mode);
     const visibleTeamIds = sel.scope.getTeamDrilldownIds();
     const scopedProjects = sel.scope.getContextFeatures()
       .map((feature) => String(feature.project));
@@ -305,11 +311,11 @@ export class PluginGraph extends LitElement {
     const teamSetVisible = new Set(visibleTeamIds.map((id) => String(id)));
     if (projectSetSelected.size === 0)
       return { days: 0, totals: [] };
-    if (mode === 'team' && teamSetVisible.size === 0) return { days: 0, totals: [] };
+    if (usingLines && teamSetVisible.size === 0) return { days: 0, totals: [] };
     if (selectedStates.length === 0) return { days: 0, totals: [] };
 
     const days = this._daysBetween(sDate, eDate);
-    const stateDates = sel.capacity.getCapacityDates() || [];
+    const stateDates = sel.capacity.getCapacityDates();
     const planDaily = sel.capacity.getPlanDailyCapacityMap();
     const planTeams = sel.capacity.getPlanTeamDailyCapacityMap();
     if (stateDates.length) {
@@ -327,7 +333,7 @@ export class PluginGraph extends LitElement {
         let sumProj = 0;
         for (const plan of allProjects) {
           if (!projectSetSelected.has(String(plan.id)) || plan.type !== mode) continue;
-          if (mode === 'team') {
+          if (usingLines) {
             const loads = dayTeams[plan.id];
             if (!loads) continue;
             for (const [teamId, value] of Object.entries(loads)) {
@@ -345,7 +351,7 @@ export class PluginGraph extends LitElement {
         for (const value of Object.values(totals[i].perTeam)) {
           if (value > maxTeamVal) maxTeamVal = value;
         }
-        totals[i].total = mode === 'team' ? maxTeamVal : sumProj;
+        totals[i].total = usingLines ? maxTeamVal : sumProj;
       }
       return { days, totals };
     }
@@ -514,7 +520,7 @@ export class PluginGraph extends LitElement {
       const date = this._addDays(this.startDate, dayIndex);
       html += `<div style="font-weight:700; margin-bottom:6px;">${new Date(date).toLocaleString()}</div>`;
       html += `<div style="color:#ddd; margin-bottom:6px;">Total: <strong style="color:#fff">${Math.round(totalsForDay.total)}%</strong></div>`;
-      if (this.mode !== 'team') {
+      if (!this._usesLines(this.mode)) {
         const per = totalsForDay.perProject || {};
         const entries = Object.entries(per).map(([id, v]) => ({ id, v }));
         entries.sort((a, b) => b.v - a.v);
@@ -606,7 +612,7 @@ export class PluginGraph extends LitElement {
     this.lastRenderedData = data;
     let maxY = 100;
     let step = 20;
-    if (this.mode !== 'team') {
+    if (!this._usesLines(this.mode)) {
       const observedMax = Math.max(...data.totals.map((t) => (t && t.total) || 0));
       maxY = observedMax && observedMax > 0 ? Math.ceil(observedMax) : 100;
     } else {
@@ -645,7 +651,7 @@ export class PluginGraph extends LitElement {
     rootGroup.setAttribute('transform', `scale(${this.xScale},1)`);
     this.svgEl.appendChild(rootGroup);
     this._renderAxes(w, hContent, this.startDate, this.endDate, maxY, step);
-    if (this.mode !== 'team')
+    if (!this._usesLines(this.mode))
       this._renderProjectBars(data, w, hContent, rootGroup, maxY);
     else this._renderTeamLines(data, w, hContent, rootGroup, maxY);
   }

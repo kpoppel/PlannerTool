@@ -2,6 +2,11 @@ import { expect } from '@open-wc/testing';
 import { CapacityCalculator } from '../../www/js/services/CapacityCalculator.js';
 import { bus } from '../../www/js/core/EventBus.js';
 
+function planConfig(id, type = 'project') {
+  const containerTypes = ['program', 'project', 'team'];
+  return { id, type, container_order: containerTypes.indexOf(type), container_types: containerTypes };
+}
+
 describe('CapacityCalculator (unit)', () => {
   it('empty inputs produce empty result', () => {
     const calc = new CapacityCalculator(bus);
@@ -53,7 +58,7 @@ describe('CapacityCalculator (unit)', () => {
       },
     ];
     const teams = [{ id: 't1' }];
-    const projects = [{ id: 'p1' }];
+    const projects = [planConfig('p1')];
     const filters = {
       selectedProjects: ['p1'],
       selectedTeams: ['t1'],
@@ -82,7 +87,7 @@ describe('CapacityCalculator (unit)', () => {
       ],
     }];
     const teams = [{ id: 't1' }, { id: 't2' }];
-    const projects = [{ id: 'p1' }];
+    const projects = [planConfig('p1')];
     const baseFilters = {
       selectedProjects: ['p1'],
       selectedStates: ['active'],
@@ -100,9 +105,8 @@ describe('CapacityCalculator (unit)', () => {
   it('rolls shared-team allocations up each unique task ancestor chain', () => {
     const calc = new CapacityCalculator(bus);
     const projects = [
-      { id: 'program-1', type: 'program' }, { id: 'program-2', type: 'program' },
-      { id: 'project-a', type: 'project' }, { id: 'project-b', type: 'project' },
-      { id: 'team-f', type: 'team' },
+      planConfig('program-1', 'program'), planConfig('program-2', 'program'),
+      planConfig('project-a'), planConfig('project-b'), planConfig('team-f', 'team'),
     ];
     const features = [
       { id: 'p1', project: 'program-1' }, { id: 'p2', project: 'program-2' },
@@ -137,7 +141,7 @@ describe('CapacityCalculator (unit)', () => {
     const filters = { selectedProjects: ['team-f'], selectedTeams: ['f'],
       selectedStates: ['active'] };
     const result = calc.calculate(features, filters, [{ id: 'f' }],
-      [{ id: 'team-f', type: 'team' }]);
+      [planConfig('team-f', 'team')]);
 
     expect(result.planTeamDailyCapacityMap[0]['team-f']).to.deep.equal({ f: 25 });
     expect(result.planDailyCapacityMap[0]['team-f']).to.equal(25);
@@ -145,8 +149,8 @@ describe('CapacityCalculator (unit)', () => {
 
   it('moves plan rollups to the new ancestor after a task is reparented', () => {
     const calc = new CapacityCalculator(bus);
-    const projects = [{ id: 'program-1', type: 'program' },
-      { id: 'program-2', type: 'program' }, { id: 'team-f', type: 'team' }];
+    const projects = [planConfig('program-1', 'program'),
+      planConfig('program-2', 'program'), planConfig('team-f', 'team')];
     const features = [
       { id: 'p1', project: 'program-1' },
       { id: 'p2', project: 'program-2' },
@@ -179,7 +183,7 @@ describe('CapacityCalculator (unit)', () => {
       },
     ];
     const teams = [{ id: 't1' }];
-    const projects = [{ id: 'p1' }];
+    const projects = [planConfig('p1')];
     const filters = {
       selectedProjects: ['p1'],
       selectedTeams: ['t1'],
@@ -207,7 +211,7 @@ describe('CapacityCalculator (unit)', () => {
   it('incremental delta removes a deleted team allocation from cached results', () => {
     const calc = new CapacityCalculator(bus);
     const teams = [{ id: 't1' }];
-    const projects = [{ id: 'p1' }];
+    const projects = [planConfig('p1')];
     const filters = {
       selectedProjects: ['p1'],
       selectedTeams: ['t1'],
@@ -279,8 +283,8 @@ describe('CapacityCalculator (unit)', () => {
     const features = [epic, child1, child2];
     const teams = [{ id: 't1' }];
     const projects = [
-      { id: 'projectA', type: 'project' },
-      { id: 'teamB', type: 'team' },
+      planConfig('projectA'),
+      planConfig('teamB', 'team'),
     ];
 
     // Set up children map
@@ -385,7 +389,7 @@ describe('CapacityCalculator (unit)', () => {
 
     const features = [orphanEpic, orphanChild, orphanFeature];
     const teams = [{ id: 't1' }];
-    const projects = [{ id: 'teamB', type: 'team' }];
+    const projects = [planConfig('teamB', 'team')];
 
     const childrenByParent = new Map();
     childrenByParent.set('e2', ['f3']);
@@ -457,7 +461,7 @@ describe('CapacityCalculator (unit)', () => {
 
     const features = [epic, child];
     const teams = [{ id: 'teamA' }, { id: 'teamB' }];
-    const projects = [{ id: 'p1', type: 'project' }];
+    const projects = [planConfig('p1')];
     const filters = {
       selectedProjects: ['p1'],
       selectedTeams: ['teamA', 'teamB'],
@@ -526,7 +530,7 @@ describe('CapacityCalculator (unit)', () => {
 
     const features = [epic, child];
     const teams = [{ id: 'teamA' }, { id: 'teamB' }];
-    const projects = [{ id: 'p1', type: 'project' }];
+    const projects = [planConfig('p1')];
     const filters = {
       selectedProjects: ['p1'],
       selectedTeams: ['teamA', 'teamB'],
@@ -582,7 +586,7 @@ describe('CapacityCalculator (unit)', () => {
     };
 
     const teams = [{ id: 'teamA' }];
-    const projects = [{ id: 'p1', type: 'project' }];
+    const projects = [planConfig('p1')];
     const filters = { selectedProjects: ['p1'], selectedTeams: ['teamA'], selectedStates: ['s'] };
 
     const childrenByParent = new Map([['epicDelta', ['childDelta']]]);
@@ -621,7 +625,7 @@ describe('CapacityCalculator (unit)', () => {
 
     const features = [epic];
     const teams = [{ id: 'teamA' }];
-    const projects = [{ id: 'p1', type: 'project' }];
+    const projects = [planConfig('p1')];
     const filters = {
       selectedProjects: ['p1'],
       selectedTeams: ['teamA'],
@@ -654,7 +658,7 @@ describe('CapacityCalculator (unit)', () => {
     };
 
     const teams = [{ id: 'teamA' }, { id: 'teamB' }];
-    const projects = [{ id: 'p1', type: 'project' }];
+    const projects = [planConfig('p1')];
     const filters = {
       selectedProjects: ['p1'],
       // teamB is intentionally not in Team Drill-down
@@ -686,7 +690,7 @@ describe('CapacityCalculator (unit)', () => {
     };
 
     const teams = [{ id: 'teamA' }, { id: 'teamB' }];
-    const projects = [{ id: 'p1', type: 'project' }];
+    const projects = [planConfig('p1')];
     const filters = {
       selectedProjects: ['p1'],
       selectedTeams: ['teamA'],

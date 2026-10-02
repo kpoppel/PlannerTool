@@ -11,9 +11,12 @@ function _delay(ms) {
 export class ProviderMock {
   constructor() {
     this.projects = [
-      { id: 'alpha', name: 'Project Alpha', type: 'project', selected: true },
-      { id: 'beta', name: 'Project Beta', type: 'project', selected: true },
-      { id: 'ceta', name: 'Project Ceta', type: 'team', selected: true },
+      { id: 'alpha', name: 'Project Alpha', type: 'project', selected: true,
+        container_order: 0, container_types: ['project', 'team'] },
+      { id: 'beta', name: 'Project Beta', type: 'project', selected: true,
+        container_order: 0, container_types: ['project', 'team'] },
+      { id: 'ceta', name: 'Project Ceta', type: 'team', selected: true,
+        container_order: 1, container_types: ['project', 'team'] },
     ];
     this.teams = [
       { id: 'frontend', name: 'Frontend Team', selected: true },

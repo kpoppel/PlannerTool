@@ -5,6 +5,13 @@
 
 import { expect } from '@open-wc/testing';
 import {
+  toDate,
+  firstOfMonth,
+  lastOfMonth,
+  addMonths,
+  monthKey,
+  monthLabel,
+  buildMonths,
   expandDataset,
   buildTaskTree,
   calculateBudgetDeviation,
@@ -16,6 +23,46 @@ import {
 } from '../../www/js/plugins/PluginCostCalculator.js';
 
 describe('PluginCostCalculator', () => {
+  describe('date and month helpers', () => {
+    it('parses date-only values at UTC midnight and preserves Date inputs', () => {
+      const date = toDate('2026-12-15');
+      expect(date.toISOString()).to.equal('2026-12-15T00:00:00.000Z');
+      expect(toDate(date)).to.equal(date);
+      expect(toDate(null)).to.equal(null);
+    });
+
+    it('computes UTC month boundaries including leap years and year rollover', () => {
+      const date = toDate('2024-02-15');
+      expect(firstOfMonth(date).toISOString()).to.equal('2024-02-01T00:00:00.000Z');
+      expect(lastOfMonth(date).toISOString()).to.equal('2024-02-29T00:00:00.000Z');
+      expect(addMonths(toDate('2026-12-15'), 1).toISOString())
+        .to.equal('2027-01-01T00:00:00.000Z');
+      expect(monthKey(date)).to.equal('2024-02');
+      expect(monthLabel(date)).to.be.a('string').and.to.not.equal('');
+      expect(firstOfMonth(null)).to.equal(null);
+      expect(lastOfMonth(null)).to.equal(null);
+    });
+
+    it('builds inclusive UTC month ranges across years', () => {
+      const months = buildMonths({ dataset_start: '2026-12-15', dataset_end: '2027-02-03' });
+      expect(months.map(monthKey)).to.deep.equal(['2026-12', '2027-01', '2027-02']);
+      expect(months.map((month) => month.toISOString())).to.deep.equal([
+        '2026-12-01T00:00:00.000Z',
+        '2027-01-01T00:00:00.000Z',
+        '2027-02-01T00:00:00.000Z',
+      ]);
+    });
+
+    it('returns no months for missing or reversed dataset bounds', () => {
+      expect(buildMonths({ dataset_start: null, dataset_end: '2026-01-31' }))
+        .to.deep.equal([]);
+      expect(buildMonths({ dataset_start: '2026-01-01', dataset_end: null }))
+        .to.deep.equal([]);
+      expect(buildMonths({ dataset_start: '2026-02-01', dataset_end: '2026-01-31' }))
+        .to.deep.equal([]);
+    });
+  });
+
   describe('expandDataset', () => {
     it('should include initial features', () => {
       const features = [{ id: '1', title: 'Feature 1' }];

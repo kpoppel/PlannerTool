@@ -13,7 +13,7 @@ export function createDefaultViewOptions() {
     timelineScale: 'months',
     condensedCards: false,
     featureSortMode: 'rank',
-    capacityViewMode: 'team',
+    capacityViewMode: null,
     focusedPlanId: '',
     displayMode: 'normal',
     packedMode: false,

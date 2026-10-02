@@ -120,7 +120,6 @@ _SCHEMAS: dict[str, Any] = {
                         'type': {
                             'type': 'string',
                             'title': 'Type',
-                            'default': 'project',
                         },
                         'task_types': {
                             'type': 'array',
@@ -149,7 +148,7 @@ _SCHEMAS: dict[str, Any] = {
                             'description': 'Optional iteration set ID from iterations configuration.',
                         },
                     },
-                    'required': ['name', 'area_path'],
+                    'required': ['name', 'area_path', 'type'],
                 },
             },
         },

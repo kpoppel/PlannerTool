@@ -1,6 +1,16 @@
 from planner_lib.cost.service import CostService, build_cost_schema
 
 
+def test_cost_schema_sorts_by_configured_container_order():
+    schema = build_cost_schema(
+        {'a-leaf': {}, 'z-root': {}, 'm-middle': {}},
+        project_types={'a-leaf': 'project', 'z-root': 'team', 'm-middle': 'program'},
+        project_container_order={'a-leaf': 2, 'z-root': 0, 'm-middle': 1},
+    )
+    assert [plan['id'] for plan in schema['projects']] == ['z-root', 'm-middle', 'a-leaf']
+    assert [plan['container_order'] for plan in schema['projects']] == [0, 1, 2]
+
+
 def test_cost_service_estimate(fake_services, cache_storage):
     storage = fake_services['storage']
     people_repository = fake_services['people_repository']

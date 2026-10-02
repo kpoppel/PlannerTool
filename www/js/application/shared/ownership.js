@@ -1,5 +1,9 @@
+export function isLowestContainer(plan) {
+  return plan.container_order === plan.container_types.length - 1;
+}
+
 /**
- * Resolve the nearest project-typed plan that owns a feature or one of its
+ * Resolve the nearest non-lowest container that owns a feature or one of its
  * ancestors. The optional memo stores one result per feature for a calculation.
  * @param {any} feature
  * @param {Map<string, any>} effectiveById
@@ -23,7 +27,7 @@ export function resolveFundedTargetProject(feature, effectiveById, projectById, 
     if (current.project !== undefined && current.project !== null) {
       const projectId = String(current.project);
       const project = projectById.get(projectId);
-      if (project && (project.type || 'project') === 'project') {
+      if (project && !isLowestContainer(project)) {
         result = projectId;
         break;
       }

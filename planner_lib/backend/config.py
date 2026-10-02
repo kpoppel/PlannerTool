@@ -132,8 +132,9 @@ class ConfigBackend(
             DomainProject(
                 id=slugify(p.get("name"), prefix="project-"),
                 name=p.get("name") or "",
-                type=p.get("type") if isinstance(p.get("type"), str) else "project",
-                container_order=container_order[p.get("type", "project")],
+                type=p['type'],
+                container_order=container_order[p['type']],
+                container_types=list(cfg['container_types']),
                 area_path=p.get("area_path"),
                 display_states=p.get("display_states") or [],
                 state_categories={},

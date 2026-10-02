@@ -3,6 +3,7 @@
 
 import { LitElement, html, css } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
+import { isLowestContainer } from '../application/shared/ownership.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import {
@@ -302,7 +303,7 @@ export class MainGraphLit extends LitElement {
     const months = Array.isArray(data.months) ? data.months : [];
     const teams = Array.isArray(data.teams) ? data.teams : [];
     const allProjects = Array.isArray(data.projects) ? data.projects : [];
-    // For project view rendering, we'll filter to only show type='project', but we calculate for all
+    // Calculate every container type; rendering selects the requested level.
     const capacityDates = Array.isArray(data.capacityDates) ? data.capacityDates : [];
     const teamDailyCapacity = Array.isArray(data.teamDailyCapacity) ? data.teamDailyCapacity : [];
     const teamDailyCapacityMap = data.teamDailyCapacityMap || null;
@@ -311,7 +312,7 @@ export class MainGraphLit extends LitElement {
     const planDailyCapacityMap = data.planDailyCapacityMap;
     const planTeamDailyCapacityMap = data.planTeamDailyCapacityMap;
     const totalOrgDailyPerTeamAvg = Array.isArray(data.totalOrgDailyPerTeamAvg) ? data.totalOrgDailyPerTeamAvg : [];
-    const capacityViewMode = data.capacityViewMode || 'team';
+    const capacityViewMode = data.capacityViewMode;
     const selectedTeamIds = new Set(data.selectedTeamIds);
     const selectedProjectIds = new Set(
       Array.isArray(data.selectedProjectIds)
@@ -425,6 +426,8 @@ export class MainGraphLit extends LitElement {
     const selectedProjectIdSet = new Set(
       Array.from(selectedProjectIds).map((id) => String(id))
     );
+    const usingTeam = projects.some((plan) =>
+      plan.type === capacityViewMode && isLowestContainer(plan));
 
     const MONTH_WIDTH = this._getRenderMonthWidth();
 
@@ -569,7 +572,7 @@ export class MainGraphLit extends LitElement {
 
     // A selected plan establishes the graph bands in both display modes.
     if (selectedProjectIdSet.size === 0) return;
-    if (capacityViewMode === 'team' && selectedTeamIdSet.size === 0) return;
+    if (usingTeam && selectedTeamIdSet.size === 0) return;
 
     for (let d = visibleStartIdx; d <= visibleEndIdx; d++) {
       const localIdx = d - visibleStartIdx;
@@ -594,10 +597,10 @@ export class MainGraphLit extends LitElement {
       }
       const teamBucket = {};
       let maxTeamVal = 0;
-      if (capacityViewMode === 'team') {
+      if (usingTeam) {
         const dayPlanTeams = planTeamDailyCapacityMap[idx];
         for (const plan of projects) {
-          if (plan.type !== 'team' || !selectedProjectIdSet.has(String(plan.id))) continue;
+          if (plan.type !== capacityViewMode || !selectedProjectIdSet.has(String(plan.id))) continue;
           const loads = dayPlanTeams[plan.id];
           if (!loads) continue;
           for (const [teamId, load] of Object.entries(loads)) {
@@ -628,7 +631,7 @@ export class MainGraphLit extends LitElement {
       const date = capacityDates[idx] !== undefined ?
         capacityDates[idx]
       : indexToDate(months, d).toISOString().slice(0, 10);
-      const entries = capacityViewMode === 'team' ?
+      const entries = usingTeam ?
         teams
           .filter((team) => selectedTeamIdSet.has(String(team.id)))
           .map((team) => ({
@@ -671,7 +674,6 @@ export class MainGraphLit extends LitElement {
       return Math.floor(cum);
     }
 
-    const usingTeam = capacityViewMode === 'team';
     const chosenMap = usingTeam ? teamDayMap : projectDayMap;
     const chosenTotals = usingTeam ? orgTotalsTeam : orgTotalsProject;
 
@@ -791,12 +793,10 @@ export class MainGraphLit extends LitElement {
           y -= h;
         }
 
-        // Render regular projects with type='project' using their project color
+        // Render the selected container level using each plan's color.
         for (const project of projects) {
           if (project.id === '__unfunded__') continue; // already handled
-          const isProjectType =
-            (project && project.type ? String(project.type) : 'project') === 'project';
-          if (!isProjectType) continue;
+          if (project.type !== capacityViewMode) continue;
           const val = bucket[project.id] || 0;
           if (val <= 0) continue;
           const h = clamp(Math.round(val * percentToPx), 0, this._canvasRef.height);

@@ -317,7 +317,7 @@ def _build_person_pool(
 
     # Fallback: synthetic pool.  Generate people_per_team per distinct team, but
     # cap total count so the pool stays manageable.
-    n_teams = len([a for a in area_configs if a.get("type") == "team"])
+    n_teams = len(area_configs)
     total = max(config.people_per_team, min(n_teams * 2, 60))
     result = []
     for i in range(1, total + 1):
@@ -928,7 +928,6 @@ class AzureDataset:
                 {
                     "name": "TestTeam",
                     "area_path": "TestProject\\TestTeam",
-                    "type": "team",
                     "task_types": ["Epic", "Feature", "User Story"],
                     "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
                     "display_states": ["New", "Defined", "Active", "Resolved", "Closed"],
@@ -1062,6 +1061,11 @@ class AzureDataset:
         """
         assert self.storage is not None, "populate_storage requires storage backend"
 
+        if self.storage.exists("config", "projects"):
+            projects_config = self.storage.load("config", "projects")
+        else:
+            projects_config = {"schema_version": 3, "container_types": ["project", "team"]}
+
         # projects config (project_map)
         project_map = []
         for area in _load_projects_config(self.storage):
@@ -1078,15 +1082,11 @@ class AzureDataset:
                     project_map.append({
                         "name": ap.split("\\")[-1] if "\\" in ap else ap,
                         "area_path": ap,
-                        "type": "team",
+                        "type": projects_config['container_types'][-1],
                         "task_types": ["Feature", "User Story"],
                         "include_states": _STATE_NAMES,
                         "display_states": _STATE_NAMES,
                     })
-        if self.storage.exists("config", "projects"):
-            projects_config = self.storage.load("config", "projects")
-        else:
-            projects_config = {"schema_version": 3, "container_types": ["project", "team"]}
         self.storage.save("config", "projects", {**projects_config, "project_map": project_map})
 
         # teams config
@@ -1321,7 +1321,7 @@ class AzureDataset:
             if not areas:
                 continue
 
-            # Every area config (type="project" or type="team") becomes its own plan.
+            # Every configured area becomes its own plan, regardless of container type.
             # Team rows shown inside each plan's timeline are taken from teams.yml
             # (non-excluded entries); any whose name matches a built team ID are included.
 

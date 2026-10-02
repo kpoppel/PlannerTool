@@ -6,32 +6,82 @@
  * - Dataset expansion via parent/child relations
  * - Task tree building (orphans vs parents-with-children)
  * - Budget deviation calculations (parent own vs children sum)
- * - Month allocation helpers (reused from PluginCostV1Calculator)
+ * - UTC date/month helpers and day-overlap allocations
  *
  * All functions are pure, side-effect free, and throw on invalid data
  * for explicit error handling (no silent failures).
  */
 
-// Import and re-export month helpers from PluginCostV1Calculator for consistency
-import {
-  toDate,
-  firstOfMonth,
-  lastOfMonth,
-  addMonths,
-  monthKey,
-  monthLabel,
-  buildMonths,
-} from './PluginCostV1Calculator.js';
+/**
+ * Parse an ISO date-only string into a Date in UTC at midnight.
+ * @param {string|Date|null} date
+ * @returns {Date|null}
+ */
+export const toDate = (date) => {
+  if (!date) return null;
+  if (date instanceof Date) return date;
+  return new Date(`${date}T00:00:00Z`);
+};
 
-// Re-export for external use
-export {
-  toDate,
-  firstOfMonth,
-  lastOfMonth,
-  addMonths,
-  monthKey,
-  monthLabel,
-  buildMonths,
+/**
+ * Return UTC midnight on the first day of the month.
+ * @param {Date|null} date
+ * @returns {Date|null}
+ */
+export const firstOfMonth = (date) => {
+  if (!date) return null;
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+};
+
+/**
+ * Return UTC midnight on the last day of the month.
+ * @param {Date|null} date
+ * @returns {Date|null}
+ */
+export const lastOfMonth = (date) => {
+  if (!date) return null;
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
+};
+
+/**
+ * Add months and return the first day of the resulting month in UTC.
+ * @param {Date} date
+ * @param {number} count
+ * @returns {Date}
+ */
+export const addMonths = (date, count) =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + count, 1));
+
+/**
+ * Create a stable YYYY-MM key using UTC month/year.
+ * @param {Date} date
+ * @returns {string}
+ */
+export const monthKey = (date) =>
+  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+
+/**
+ * Create a human-friendly month label for table headers.
+ * @param {Date} date
+ * @returns {string}
+ */
+export const monthLabel = (date) =>
+  date.toLocaleString(undefined, { month: 'short', year: 'numeric' });
+
+/**
+ * Build an inclusive month range using UTC-first-of-month dates.
+ * @param {{dataset_start: string|Date|null, dataset_end: string|Date|null}} config
+ * @returns {Date[]}
+ */
+export const buildMonths = ({ dataset_start, dataset_end }) => {
+  const start = firstOfMonth(toDate(dataset_start));
+  const end = firstOfMonth(toDate(dataset_end));
+  if (!start || !end) return [];
+  const months = [];
+  for (let current = start; current <= end; current = addMonths(current, 1)) {
+    months.push(new Date(current));
+  }
+  return months;
 };
 
 /**
@@ -242,8 +292,7 @@ export function hasSignificantDeviation(deviation, threshold = 10) {
 /**
  * Allocate feature cost/hours to months based on date overlap.
  *
- * Uses same logic as PluginCostCalculator: distributes values proportionally
- * across months based on overlapping days.
+ * Distributes values proportionally across months based on overlapping days.
  *
  * @param {Object} feature - Feature with start, end, metrics
  * @param {Array<Date>} months - Array of month start dates (UTC)

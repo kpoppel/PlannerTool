@@ -202,6 +202,14 @@ def test_admin_save_projects_success_and_invalid_payload():
         asyncio.run(admin_api.admin_save_projects.__wrapped__(req_invalid_hierarchy))
     assert hierarchy_error.value.status_code == 400
 
+    req_missing_type = Req({'content': {
+        'container_types': ['project', 'team'],
+        'project_map': [{'name': 'Missing type'}],
+    }})
+    with pytest.raises(HTTPException) as missing_type_error:
+        asyncio.run(admin_api.admin_save_projects.__wrapped__(req_missing_type))
+    assert missing_type_error.value.status_code == 400
+
     # invalid (empty) content
     req2 = Req({'content': ''})
     with pytest.raises(HTTPException) as ei:

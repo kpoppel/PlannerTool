@@ -83,6 +83,7 @@ class CostService:
         # Determine allowed project ids and build type mapping via the composed ProjectService.
         allowed_projects = None
         project_types: Dict[str, str] = {}
+        project_container_order: Dict[str, int] = {}
         try:
             if self._project_service:
                 proj_list = self._project_service.list_projects()
@@ -90,7 +91,8 @@ class CostService:
                 # Build a mapping of project_id -> type for later use
                 for p in proj_list:
                     if isinstance(p, dict) and p.get('id'):
-                        project_types[p.get('id')] = p.get('type', 'project')
+                        project_types[p['id']] = p['type']
+                        project_container_order[p['id']] = p['container_order']
         except Exception:
             allowed_projects = None
 
@@ -319,7 +321,8 @@ class CostService:
             if sites:
                 totals['sites'] = sites
 
-        return {'projects': projects, 'project_types': project_types}
+        return {'projects': projects, 'project_types': project_types,
+            'project_container_order': project_container_order}
 
 
 def _parse_totals(totals: dict) -> dict:
@@ -336,7 +339,7 @@ def _parse_totals(totals: dict) -> dict:
     return out
 
 
-def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None, project_types: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None, project_types: Optional[Dict[str, str]] = None, project_container_order: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
     """Convert the raw cost mapping returned by `estimate_costs` into the
     normalized strongly-structured schema used by the UI. Optionally enrich
     features with metadata from `session_features` and compute dataset bounds.
@@ -345,7 +348,8 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
         src: Raw cost mapping from estimate_costs
         mode: 'full' or 'schema'
         session_features: Optional list of feature metadata
-        project_types: Optional mapping of project_id -> type (e.g., 'project', 'team')
+        project_types: Optional mapping of project_id to configured container type
+        project_container_order: Optional mapping of project_id to configured hierarchy order
     """
     meta = {
         "schema_version": "2.0",
@@ -521,8 +525,7 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                 feature_obj['status'] = 'unchanged'
 
             features.append(feature_obj)
-        # Get type from project_types mapping, default to 'project'
-        proj_type = (project_types or {}).get(proj_id, 'project')
+        proj_type = project_types.get(proj_id) if project_types is not None else None
         projects.append({
             "id": proj_id,
             "name": name,
@@ -530,15 +533,13 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
             "totals": totals,
             "features": features
         })
+        if project_container_order is not None:
+            projects[-1]['container_order'] = project_container_order[proj_id]
     
-    # Sort projects: actual projects (type='project') first, then teams (type='team')
-    # Within each group, sort alphabetically by id for consistent ordering
     def sort_key(p):
-        proj_type = str(p.get('type', 'project'))
-        proj_id = str(p.get('id', ''))
-        # Return tuple: (0 for projects, 1 for teams, 2 for others, id for alphabetical sort)
-        type_order = 0 if proj_type == 'project' else (1 if proj_type == 'team' else 2)
-        return (type_order, proj_id)
+        if project_container_order is not None:
+            return (p['container_order'], str(p['id']))
+        return str(p['id'])
     
     projects.sort(key=sort_key)
     

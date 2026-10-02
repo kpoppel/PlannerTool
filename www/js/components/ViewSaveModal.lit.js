@@ -74,7 +74,7 @@ export class ViewSaveModal extends LitElement {
       selectedTeams: [],
       viewOptions: {},
       taskTypes: [],
-      graphType: 'team',
+      graphType: null,
     };
 
     this.previewData.selectedProjects = sel.selection.getSelectedProjects().map(
@@ -96,7 +96,7 @@ export class ViewSaveModal extends LitElement {
     }
 
     this.previewData.taskTypes = sel.filter.getSelectedTaskTypeNames();
-    this.previewData.graphType = sel.view.getCapacityViewMode();
+    this.previewData.graphType = sel.view.getEffectiveCapacityViewMode();
 
     this.requestUpdate();
   }

@@ -129,4 +129,56 @@ describe('MainGraph selector seam', () => {
     expect(subscribedEvents).toContain(ViewEvents.DISPLAY_MODE);
     expect(subscribedEvents).toContain(TimelineEvents.SCALE_CHANGED);
   });
+
+  it('renders custom lowest containers as lines with raw team percentages', async () => {
+    const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
+    const context = HTMLCanvasElement.prototype.getContext.mock.results[0].value;
+    context.fillRect = vi.fn();
+    context.stroke = vi.fn();
+    el._canvasRef = { width: 60, height: 120 };
+    el._fullRender(context, {
+      months: [new Date('2026-01-01T00:00:00Z')],
+      teams: [{ id: 't1', name: 'Delivery', color: '#112233' }, { id: 't2' }],
+      projects: [
+        { id: 'root', type: 'portfolio', container_order: 0 },
+        { id: 'middle', type: 'program', container_order: 1 },
+        { id: 'leaf', type: 'squad', container_order: 2, container_types: ['portfolio', 'program', 'squad'] },
+      ],
+      capacityDates: ['2026-01-01'],
+      planDailyCapacityMap: [{ leaf: 80 }],
+      planTeamDailyCapacityMap: [{ leaf: { t1: 80 } }],
+      capacityViewMode: 'squad',
+      selectedTeamIds: new Set(['t1']),
+      selectedProjectIds: new Set(['leaf']),
+    });
+    expect(el._hoverDays[0].entries).toEqual([
+      { name: 'Delivery', color: '#112233', value: 80 },
+    ]);
+    expect(context.fillRect).not.toHaveBeenCalled();
+    expect(context.stroke).toHaveBeenCalled();
+  });
+
+  it('renders intermediate containers as organisationally weighted stacked bars', async () => {
+    const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
+    const context = HTMLCanvasElement.prototype.getContext.mock.results[0].value;
+    context.fillRect = vi.fn();
+    el._canvasRef = { width: 60, height: 120 };
+    el._fullRender(context, {
+      months: [new Date('2026-01-01T00:00:00Z')],
+      teams: [{ id: 't1' }, { id: 't2' }],
+      projects: [
+        { id: 'middle', name: 'Program', color: '#123456', type: 'program', container_order: 1, container_types: ['portfolio', 'program', 'squad'] },
+      ],
+      capacityDates: ['2026-01-01'],
+      planDailyCapacityMap: [{ middle: 80 }],
+      planTeamDailyCapacityMap: [{}],
+      capacityViewMode: 'program',
+      selectedTeamIds: new Set(),
+      selectedProjectIds: new Set(['middle']),
+    });
+    expect(el._hoverDays[0].entries).toEqual([
+      { name: 'Program', color: '#123456', value: 40 },
+    ]);
+    expect(context.fillRect).toHaveBeenCalled();
+  });
 });

@@ -8,12 +8,14 @@ The graph very quickly gives a complete overview over over and under-utilisation
 
 # How does it work? 
 
-The Graph Type control in the View menu offers the container types represented by tasks in Scope, in their configured order. Enabling Ancestors or Descendant work can add graph levels without checking their plans. Team draws team allocation lines from team plans in Scope; any other level (such as Project or Program) stacks plans of that type in Scope. When a saved graph level is unavailable, the nearest available level is shown without changing the saved preference.
+The Graph Type control in the View menu offers the container types represented by tasks in Scope, in their configured order. Enabling Ancestors or Descendant work can add graph levels without checking their plans. The lowest configured container type always draws team allocation lines with raw percentages; every higher level stacks plans of that type with organisational weighting. Type names do not determine the visualisation. When a saved graph level is unavailable, the nearest available level is shown without changing the saved preference. Without a saved preference, the deepest available type is shown.
+
+Plan records returned by the API carry `type`, `container_order`, and the full ordered `container_types` list. Unused configured levels remain in that list, so a higher level is not treated as the lowest merely because no lowest-level plans exist. Cost reports preserve `container_order` and use it to order plan rows.
 
 Each task's allocation contributes to its own plan and to the plans on its single parent-task chain. A team serving two programs can therefore contribute to both, but work under one program is never charged to the other through the shared team plan. The Plan menu's "Connected to" focus only limits which plans are listed for browsing; it does not change the checked selection.
 
-## Team graph
-Team graphs display the sum of capacity allocation calculated per day across all tasks where the team has an allocation.
+## Lowest-level graph
+Lowest-level graphs display the sum of raw capacity allocation calculated per day across scoped plans of the lowest configured type where the team has an allocation.
 
 ### Here is an example:
 
@@ -30,7 +32,7 @@ If a team is allocated 50% from 2026-01-01 to 2026-01-10 and again 50% from 2026
    
 ```
 
-The Team graph will highlight areas where teams are over-utilised.  And the graph has a dotted line displaying 100% allocation.
+The lowest-level graph highlights areas where teams are over-utilised and has a dotted line displaying 100% allocation.
 
 ## Higher-level graphs
 Project, Program and other configured higher-level graphs use the same team-based organisational weighting. A team of 2 people and a team of 10 people carry equal weight.
@@ -41,4 +43,4 @@ The logic of the calculation is as follows:
 - For each day the sum of allocated team capacity multiplied by their organisational weight is calculated. If all teams are allocated 100%, the total organisation's allocation is 100%. If a team in this example is allocated 10%, it's total organisational allocation is 10% of 10%, so 1%.
 - This calculation is performed on each selected plan of the displayed type, and the numbers are stacked up in the graph.
 
-The denominator is the full team roster. Team drill-down changes the visible lines in Team mode, but does not change organisational weighting. Work without a parent task in a plan of the displayed type does not appear as a synthetic "Unfunded" plan.
+The denominator is the full team roster. Team drill-down changes the visible lines at the lowest level, but does not change organisational weighting. Work without a parent task in a plan of the displayed type does not appear as a synthetic "Unfunded" plan.

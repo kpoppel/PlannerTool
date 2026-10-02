@@ -27,7 +27,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
       getSelectedTeams: () => [{ id: 't1', name: 'Team' }],
     },
     filter: { getSelectedTaskTypeNames: () => ['Task'] },
-    view: { getCapacityViewMode: () => 'project' },
+    view: { getEffectiveCapacityViewMode: () => 'project' },
   },
   cmd: {
     viewRestore: {

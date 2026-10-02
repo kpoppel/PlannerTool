@@ -97,7 +97,7 @@ async def admin_save_projects(request: Request):
                 any(not isinstance(item, str) or not item.strip() for item in types) or
                 len(types) != len({item.casefold() for item in types}) or
                 not isinstance(plans, list) or
-                any(not isinstance(plan, dict) or plan.get('type', 'project') not in types
+                any(not isinstance(plan, dict) or plan.get('type') not in types
                     for plan in plans)):
             raise HTTPException(status_code=400, detail={
                 'error': 'invalid_container_hierarchy',

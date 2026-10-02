@@ -557,7 +557,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(snapshot.view.options).toMatchObject({
       timelineScale: 'months',
       featureSortMode: 'rank',
-      capacityViewMode: 'team',
+      capacityViewMode: null,
       displayMode: 'normal',
       showUnassignedCards: true,
       showUnplannedWork: true,

@@ -46,7 +46,7 @@ describe('application/selectors/viewSelectors', () => {
     expect(selectors.getShowUnplannedWork()).toBe(true);
     expect(selectors.getShowUnassignedCards()).toBe(true);
     expect(selectors.getDisplayMode()).toBe('normal');
-    expect(selectors.getCapacityViewMode()).toBe('team');
+    expect(selectors.getCapacityViewMode()).toBeNull();
     expect(selectors.getFocusedPlanId()).toBe('');
     expect(selectors.getFeatureSortMode()).toBe('rank');
     expect(selectors.getContext()).toEqual({
@@ -96,5 +96,20 @@ describe('application/selectors/viewSelectors', () => {
     expect(selectors.getAvailableGraphTypes()).toEqual(['program', 'team']);
     state.selection.projectIds = [];
     expect(selectors.getEffectiveCapacityViewMode()).toBeNull();
+  });
+
+  it('defaults to the deepest available custom container without a named type preference', () => {
+    const state = createInitialAppState();
+    state.baseline.projects = [
+      { id: 'root', type: 'portfolio', container_order: 0 },
+      { id: 'leaf', type: 'squad', container_order: 2 },
+    ];
+    state.baseline.features = [
+      { id: 'parent', project: 'root', state: 'Active', capacity: [], relations: [] },
+      { id: 'child', project: 'leaf', state: 'Active', capacity: [], relations: [] },
+    ];
+    state.selection.projectIds = ['root', 'leaf'];
+    const selectors = createViewSelectors({ getState: () => state });
+    expect(selectors.getEffectiveCapacityViewMode()).toBe('squad');
   });
 });

@@ -106,8 +106,10 @@ def people(fixtures_dir):
 @pytest.fixture
 def projects():
     return [
-        {'id': 'project-1', 'type': 'project'},
-        {'id': 'project-2', 'type': 'project'},
+        {'id': 'project-1', 'type': 'project', 'container_order': 0,
+         'container_types': ['project', 'team']},
+        {'id': 'project-2', 'type': 'project', 'container_order': 0,
+         'container_types': ['project', 'team']},
     ]
 
 

@@ -8,6 +8,10 @@ import {
 import { featureFlags } from '../../../www/js/config.js';
 import { DataEvents, StateFilterEvents } from '../../../www/js/core/EventRegistry.js';
 
+function planConfig(id) {
+  return { id, type: 'portfolio', container_order: 0, container_types: ['portfolio', 'squad'] };
+}
+
 function makeDataServiceMock(overrides = {}) {
   const getColorMappings = vi.fn(async () => ({ projectColors: {}, teamColors: {} }));
   const defaults = {
@@ -47,7 +51,7 @@ describe('application/commands/dataCommands', () => {
       baseline: {
         ...state.baseline,
         teams: [{ id: 't1' }, { id: 't2' }],
-        projects: [{ id: 'p1' }, { id: 'p2' }],
+        projects: [planConfig('p1'), planConfig('p2')],
         features: [
           {
             id: 'f1', project: 'p1', state: 'Active', start: '2025-01-01',
@@ -83,7 +87,7 @@ describe('application/commands/dataCommands', () => {
       baseline: {
         ...state.baseline,
         teams: [{ id: 't1' }, { id: 't2' }],
-        projects: [{ id: 'p1', type: 'project' }, { id: 'p2', type: 'project' }],
+        projects: [planConfig('p1'), planConfig('p2')],
         features: [
           {
             id: 'visible', project: 'p1', state: 'Active', type: 'Feature',
@@ -138,7 +142,8 @@ describe('application/commands/dataCommands', () => {
     const dataService = makeDataServiceMock({
       getProjects: {
         ok: true,
-        data: [{ id: 'p1', state_display_sequence: [] }, { id: 'p2', state_display_sequence: [] }],
+        data: [{ ...planConfig('p1'), state_display_sequence: [] },
+          { ...planConfig('p2'), state_display_sequence: [] }],
       },
       getTeams: { ok: true, data: [{ id: 't1' }, { id: 't2' }] },
       getFeatures: {
@@ -174,8 +179,8 @@ describe('application/commands/dataCommands', () => {
 
     expect(result.ok).toBe(true);
     expect(store.getState().baseline.projects).toEqual([
-      { id: 'p1', color: '#3498db', state_display_sequence: [] },
-      { id: 'p2', color: '#2980b9', state_display_sequence: [] },
+      { ...planConfig('p1'), color: '#3498db', state_display_sequence: [] },
+      { ...planConfig('p2'), color: '#2980b9', state_display_sequence: [] },
     ]);
     expect(store.getState().baseline.teams).toEqual([
       { id: 't1', color: '#3498db' },

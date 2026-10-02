@@ -49,6 +49,23 @@ describe('PluginCost Project View deeper branches', () => {
     mockFeatureState.childrenByParent = new Map();
   });
 
+  it('preserves selected container order across all plan types', () => {
+    mockSelectionState.projects = [
+      { id: 'z-root', name: 'Root', type: 'team', container_order: 0 },
+      { id: 'm-middle', name: 'Middle', type: 'program', container_order: 1 },
+      { id: 'a-leaf', name: 'Leaf', type: 'project', container_order: 2 },
+    ];
+    const component = {
+      months: [new Date('2026-06-01')],
+      data: { projects: {} },
+    };
+    const container = document.createElement('div');
+    render(renderProjectView(component), container);
+    const headers = Array.from(container.querySelectorAll('.project-header'));
+    expect(headers.map((header) => header.textContent.trim()))
+      .to.deep.equal(['Root', 'Middle', 'Leaf']);
+  });
+
   it('renders team-month table and summary when project has features', () => {
     const comp = {
       months: [new Date('2026-01-01'), new Date('2026-02-01')],

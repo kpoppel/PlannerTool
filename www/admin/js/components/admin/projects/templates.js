@@ -148,7 +148,7 @@ export const renderRowTemplate = (ctx, project, index) => {
         <td class="drag-handle" style="width:36px;cursor:grab">☰</td>
         <td>
           <div style="font-weight:600">${project.name || 'Unnamed'}</div>
-          <div class="small">${project.type || 'project'}</div>
+          <div class="small">${project.type}</div>
         </td>
         <td class="nowrap" title="${project.area_path}">${project.area_path || '—'}</td>
         <td>
@@ -182,7 +182,7 @@ export const renderRowTemplate = (ctx, project, index) => {
           @input=${(e) => ctx.updateProjectField(index, 'name', e.target.value)}
         />
         <select class="inline-select"
-          .value=${project.type || 'project'}
+          .value=${project.type}
           @change=${(e) => ctx.updateProjectField(index, 'type', e.target.value)}>
           ${ctx.containerTypes.map((type) => html`<option value=${type}>${type}</option>`)}
         </select>

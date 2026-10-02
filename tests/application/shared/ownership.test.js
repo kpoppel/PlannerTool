@@ -4,11 +4,28 @@ import { getConnectedPlanIds, resolveFundedTargetProject } from '../../../www/js
 function maps(features, projects) {
   return {
     features: new Map(features.map((feature) => [String(feature.id), feature])),
-    projects: new Map(projects.map((project) => [String(project.id), project])),
+    projects: new Map(projects.map((project) => [String(project.id), {
+      container_order: ['project', 'team'].indexOf(project.type),
+      container_types: ['project', 'team'],
+      ...project,
+    }])),
   };
 }
 
 describe('application/shared/ownership', () => {
+  it('resolves the nearest higher container using configured order rather than names', () => {
+    const { features, projects } = maps([
+      { id: 'task', project: 'leaf', parentId: 'parent' },
+      { id: 'parent', project: 'middle', parentId: 'root' },
+      { id: 'root', project: 'root' },
+    ], [
+      { id: 'leaf', type: 'squad', container_order: 2, container_types: ['portfolio', 'program', 'squad'] },
+      { id: 'middle', type: 'program', container_order: 1, container_types: ['portfolio', 'program', 'squad'] },
+      { id: 'root', type: 'portfolio', container_order: 0, container_types: ['portfolio', 'program', 'squad'] },
+    ]);
+    expect(resolveFundedTargetProject(features.get('task'), features, projects)).toBe('middle');
+  });
+
   it('resolves a directly project-owned feature', () => {
     const { features, projects } = maps(
       [{ id: 'task', project: 'project' }],
