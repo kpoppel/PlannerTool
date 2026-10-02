@@ -14,7 +14,7 @@ function stubMountedElement(plugin) {
   };
 }
 
-describe('PluginDependencies Phase 4 seam wrapper', () => {
+describe('PluginDependencies seam wrapper', () => {
   let host;
 
   beforeEach(() => {

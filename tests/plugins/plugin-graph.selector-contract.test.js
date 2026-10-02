@@ -43,7 +43,7 @@ vi.mock('../../www/js/components/Timeline.lit.js', () => ({
 
 import { PluginGraph } from '../../www/js/plugins/PluginGraphComponent.js';
 
-describe('PluginGraph Phase 4 selector seam', () => {
+describe('PluginGraph selector seam', () => {
   beforeEach(() => {
     mockSel.filter.getSelectedFeatureStateNames = () => [];
     mockSel.scope.getTeamDrilldownIds = () => ['t1'];

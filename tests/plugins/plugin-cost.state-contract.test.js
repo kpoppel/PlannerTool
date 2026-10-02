@@ -41,7 +41,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
 import { PluginCostComponent } from '../../www/js/plugins/PluginCostComponent.js';
 import { dataService } from '../../www/js/services/dataService.js';
 
-describe('plugin cost phase 5 pluginState seam', () => {
+describe('plugin cost pluginState seam', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSel.feature.getChildrenByParentMap.mockReturnValue(new Map());

@@ -30,7 +30,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
   },
 }));
 
-describe('PluginCost low-coverage branches', () => {
+describe('PluginCost view rendering', () => {
   afterEach(() => {
     mockSelectionState.projects = [];
     mockSelectionState.teams = [];

@@ -27,7 +27,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
 
 import { PluginExportTimeline } from '../../www/js/plugins/PluginExportTimelineComponent.js';
 
-describe('PluginExportTimelineComponent Phase 4 selector seam', () => {
+describe('PluginExportTimelineComponent selector seam', () => {
   it('collects timeline export data using sel.view for view snapshot fields', () => {
     const el = new PluginExportTimeline();
 
