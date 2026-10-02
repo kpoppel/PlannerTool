@@ -14,6 +14,13 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v4.2.2] - unreleased
+### Added
+### Changed
+- Top bar Plan and Team badges show the selected name when exactly one item is selected.
+### Fixed
+---
+
 ## [v4.2.1] - 2026-07-19
 
 ### Added
