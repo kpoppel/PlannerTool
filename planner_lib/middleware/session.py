@@ -44,9 +44,8 @@ class SessionManager:
     def __init__(
         self,
         account_manager: AccountManagerProtocol,
-        storage: Optional[StorageBackend] = None,
+        storage: StorageBackend,
     ) -> None:
-        self._store: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._account_manager = account_manager
         self._storage = storage
@@ -67,7 +66,7 @@ class SessionManager:
             return self._get_record(sid)
 
     def _get_record(self, sid: str, *, refresh: bool = True) -> Optional[dict[str, Any]]:
-        if not sid or self._storage is None:
+        if not sid:
             return None
         key = hashlib.sha256(sid.encode()).hexdigest()
         if not self._storage.exists('auth_sessions', key):
@@ -108,9 +107,6 @@ class SessionManager:
         with cache.transact() if cache is not None else self._lock:
             return self._get_record(sid, refresh=False) is not None
 
-    def exists(self, sid: str) -> bool:
-        return self.get(sid) is not None
-
     def delete(self, sid: str) -> None:
         key = hashlib.sha256(sid.encode()).hexdigest()
         if self._storage.exists('auth_sessions', key):
@@ -124,11 +120,6 @@ class SessionManager:
                 continue
             if record['account_id'] == account_id:
                 self._storage.delete('auth_sessions', key)
-
-    def get_val(self, sid: str, key: str) -> Optional[str]:
-        ctx = self.get(sid)
-        return ctx.get(key) if ctx else None
-
 
 def create_session(email: str, request: Request) -> str:
     """Internal session issuance; HTTP handlers must authenticate first."""

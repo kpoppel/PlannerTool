@@ -80,23 +80,11 @@ def _make_session_mgr(client, pat='token', email='test@example.com', account_id=
         AccountCredentialsPayload(email=email, pat=pat)
     )
     class FakeSessionMgr:
-        def exists(self, sid):
-            return True
-
         def get(self, sid):
             return {'account_id': account_id, 'email': email}
 
         def create(self, email_: str):
             return 'test-session'
-
-        def get_val(self, sid, key):
-            if key == 'pat':
-                return pat
-            if key == 'email':
-                return email
-            if key == 'account_id':
-                return account_id
-            return None
 
     return FakeSessionMgr()
 

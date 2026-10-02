@@ -27,11 +27,6 @@ def _make_session_mgr(client):
     mgr = MagicMock()
     mgr.get.return_value = {'account_id': 'test-account-id',
                             'email': 'test@example.com'}
-    def _get_val(sid, key):
-        if key == 'email':
-            return 'test@example.com'
-        return 'fake-pat'
-    mgr.get_val.side_effect = _get_val
     return mgr
 
 

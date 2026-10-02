@@ -101,24 +101,12 @@ def _make_fake_session_manager(client):
     register_service_on_client(client, 'account_manager',
                                SimpleNamespace(load=lambda email: {'pat': 'test-token'}))
     class FakeSessionMgr:
-        def exists(self, sid):
-            return True
-
         def get(self, sid):
             return {'account_id': '11111111-1111-4111-8111-111111111111',
                     'email': 'test@example.com'}
 
         def create(self, email: str):
             return 'test-session'
-
-        def get_val(self, sid, key):
-            if key == 'pat':
-                return 'test-token'
-            if key == 'email':
-                return 'test@example.com'
-            if key == 'account_id':
-                return '11111111-1111-4111-8111-111111111111'
-            return None
 
     return FakeSessionMgr()
 
@@ -238,14 +226,10 @@ def test_history_api_no_pat(client):
     from fastapi.testclient import TestClient
     from types import SimpleNamespace
 
-    # Create a session manager that returns no PAT
+    # Credentials belong to the account manager, not the session identity.
     class NoPATSessionMgr:
-        def exists(self, sid):
-            return True
         def get(self, sid):
             return {'account_id': 'test-account-id', 'email': 'test@example.com'}
-        def get_val(self, sid, key):
-            return None
 
     register_service_on_client(client, 'session_manager', NoPATSessionMgr())
     register_service_on_client(client, 'account_manager',

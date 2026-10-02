@@ -9,6 +9,32 @@ import {
 } from '../../../www/js/application/shared/groupProjection.js';
 
 describe('application/shared/groupProjection', () => {
+  it('returns empty or unchanged baseline groups without scenario edits', () => {
+    const scenario = { groupOverrides: {}, scenarioGroups: [] };
+    expect(deriveEffectiveGroupsForPlan('p1', [], scenario)).toEqual([]);
+    const baseline = [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }];
+    expect(deriveEffectiveGroupsForPlan('p1', baseline, scenario)).toEqual(baseline);
+  });
+
+  it('filters scenario groups by plan and applies deltas without mutating baseline', () => {
+    const baseline = [{
+      id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1', 'f2'], color: '#ff0000', rank: 5,
+    }];
+    const scenario = {
+      groupOverrides: { g1: { memberDeltas: [
+        { taskId: 'f2', op: 'remove' }, { taskId: 'f3', op: 'add' },
+      ] } },
+      scenarioGroups: [{ id: 'tmp_other', plan_id: 'p2', name: 'Other', members: [] }],
+    };
+    const result = deriveEffectiveGroupsForPlan('p1', baseline, scenario);
+    expect(result).toEqual([{ ...baseline[0], members: ['f1', 'f3'] }]);
+    expect(baseline[0].members).toEqual(['f1', 'f2']);
+  });
+
+  it('rejects a missing scenario instead of substituting an empty one', () => {
+    expect(() => deriveEffectiveGroupsForPlan('p1', [], null)).toThrow(TypeError);
+  });
+
   it('applies member deltas and scalar overrides to baseline groups', () => {
     const groups = [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }];
     const overrides = {

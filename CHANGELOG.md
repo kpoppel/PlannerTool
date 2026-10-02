@@ -29,6 +29,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Removed legacy per-plan group loading, duplicate group mutation/projection APIs, and obsolete session storage and credential helpers.
 - Reduced repeated account loads by reusing encryption setup, resolving PATs only for credential-bearing requests, and batching browser-local group loads with account-change and stale-response invalidation.
 - Phase 6 first-step cleanup: replaced store-path string events in selection/filter/view flows with Symbol registry events, moved Sidebar filter reactions to selector-derived state (event-as-notification), and removed remaining `filter:changed` string emission in view restore handling.
 - Phase 2 shared data-access migration completed: both `ProviderREST` and `AdminProviderREST` now share `RestProviderBase` + `result.js` Result helpers, provider/admin endpoint methods return normalized Result contracts, `dataService`/admin call sites were updated for compatibility handling, and provider/admin regression suites were rewritten to assert the new contract.

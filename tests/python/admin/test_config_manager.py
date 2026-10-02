@@ -16,7 +16,6 @@ from planner_lib.migrations.revisions import initialize
 
 REAL_CREATE = SessionManager.create
 REAL_GET = SessionManager.get
-REAL_EXISTS = SessionManager.exists
 ACCOUNT_ID = '11111111-1111-4111-8111-111111111111'
 
 
@@ -265,7 +264,6 @@ def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path
 
     monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     monkeypatch.setattr(SessionManager, 'get', REAL_GET)
-    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
     source = DiskCacheStorage(tmp_path / 'source')
     target = DiskCacheStorage(tmp_path / 'target')
     initialize(source)
@@ -300,7 +298,7 @@ def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path
             assert not target.exists('account_auth', obsolete_id)
             assert not target.exists('views', obsolete_id + '_old')
             assert obsolete_id + '_old' not in target.load('views', 'view_register')
-            assert not target_sessions.exists(old_session)
+            assert not target_sessions.is_valid(old_session)
             with pytest.raises(PermissionError):
                 target_auth.authenticate_device(old_device)
         assert list(target.list_keys('auth_sessions')) == []
@@ -452,7 +450,6 @@ def test_selective_restore_without_accounts_preserves_current_credentials(tmp_pa
     from planner_lib.storage.diskcache_backend import DiskCacheStorage
     monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     monkeypatch.setattr(SessionManager, 'get', REAL_GET)
-    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
     storage = DiskCacheStorage(tmp_path)
     try:
         accounts = AccountManager(storage)
@@ -465,7 +462,7 @@ def test_selective_restore_without_accounts_preserves_current_credentials(tmp_pa
         ConfigManager(storage).restore_backup({'config': {'server_config': {'version': 'restored'}}})
         assert storage.load('account_auth', account_id) == original
         assert accounts.load('owner@example.com')['pat'] == 'azure-pat'
-        assert not sessions.exists(session)
+        assert not sessions.is_valid(session)
         assert auth.authenticate_device(device)[0] == 'owner@example.com'
         assert auth.enroll('owner@example.com', account_key=key)[1] != key
     finally:

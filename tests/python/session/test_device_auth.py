@@ -8,7 +8,6 @@ from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
 
 REAL_CREATE = SessionManager.create
-REAL_EXISTS = SessionManager.exists
 REAL_GET = SessionManager.get
 
 
@@ -74,7 +73,6 @@ def test_key_authorized_deletion_removes_owned_data_and_preserves_other_accounts
 
 def test_enrollment_and_account_keys_survive_restart(tmp_path, monkeypatch):
     monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
     monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     storage = DiskCacheStorage(tmp_path)
     accounts = AccountManager(storage)
@@ -83,8 +81,8 @@ def test_enrollment_and_account_keys_survive_restart(tmp_path, monkeypatch):
 
     device, recovery, session = auth.enroll('first@example.com', 'First User')
     assert accounts.has_permission('first@example.com', 'admin')
-    assert sessions.exists(session)
-    assert SessionManager(accounts, storage).exists(session)
+    assert sessions.is_valid(session)
+    assert SessionManager(accounts, storage).is_valid(session)
     with pytest.raises(PermissionError):
         auth.enroll('first@example.com', 'Impersonator')
 
@@ -112,7 +110,6 @@ def test_enrollment_and_account_keys_survive_restart(tmp_path, monkeypatch):
 
 def test_session_idle_and_absolute_expiry(tmp_path, monkeypatch):
     monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
     monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     storage = DiskCacheStorage(tmp_path)
     accounts = AccountManager(storage)
@@ -122,17 +119,16 @@ def test_session_idle_and_absolute_expiry(tmp_path, monkeypatch):
     import time
     now = time.time()
     monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: now + 15 * 86400)
-    assert not sessions.exists(session)
+    assert not sessions.is_valid(session)
     _, fresh_session = auth.authenticate_device(device)
-    assert sessions.exists(fresh_session)
+    assert sessions.is_valid(fresh_session)
     auth.revoke('first@example.com', device.split('.')[1])
-    assert not sessions.exists(fresh_session)
+    assert not sessions.is_valid(fresh_session)
     storage.close()
 
 
 def test_absolute_session_limit_is_not_extended_by_activity(tmp_path, monkeypatch):
     monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
     monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     storage = DiskCacheStorage(tmp_path)
     accounts = AccountManager(storage)
@@ -142,9 +138,9 @@ def test_absolute_session_limit_is_not_extended_by_activity(tmp_path, monkeypatc
     now = time.time()
     for days in (10, 20, 29):
         monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: now + days * 86400)
-        assert sessions.exists(session)
+        assert sessions.get(session) is not None
     monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: now + 31 * 86400)
-    assert not sessions.exists(session)
+    assert not sessions.is_valid(session)
     storage.close()
 
 

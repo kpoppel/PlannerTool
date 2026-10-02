@@ -21,19 +21,8 @@ from tests.helpers import register_services_on_client
 # ---------------------------------------------------------------------------
 
 class FakeSessionMgr:
-    def __init__(self, pat=None):
-        self._pat = pat
-
-    def exists(self, sid):
-        return True
-
     def get(self, sid):
         return {'email': 'user@example.com', 'account_id': 'test-account'}
-
-    def get_val(self, sid, key):
-        if key == 'pat':
-            return self._pat
-        return None
 
     def create(self, data):
         return 'test-session'
@@ -90,7 +79,7 @@ def _register_azure_services(client, pat='test-pat', inner_client=None):
     client.cookies.set('sessionId', 'test-session')
     fake_client = inner_client or FakeAzureClient()
     register_services_on_client(client, {
-        'session_manager': FakeSessionMgr(pat=pat),
+        'session_manager': FakeSessionMgr(),
         'account_manager': SimpleNamespace(load=lambda email: {'pat': pat}),
         'azure_client': FakeAzureService(fake_client),
     })
@@ -323,7 +312,7 @@ def test_prefetch_projects_metadata_uses_disk_cache(client):
 
     inner = FakeAzureClient()
     register_services_on_client(client, {
-        'session_manager': FakeSessionMgr(pat='test-pat'),
+        'session_manager': FakeSessionMgr(),
         'account_manager': SimpleNamespace(load=lambda email: {'pat': 'test-pat'}),
         'azure_client': FakeAzureService(inner),
         'azure_project_metadata_service': meta_svc,

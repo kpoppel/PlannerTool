@@ -5,7 +5,6 @@ from planner_lib.middleware.session import SessionManager, get_session_id_from_r
 
 REAL_CREATE = SessionManager.create
 REAL_GET = SessionManager.get
-REAL_EXISTS = SessionManager.exists
 REAL_SESSION_ID = get_session_id_from_request
 
 
@@ -13,7 +12,6 @@ REAL_SESSION_ID = get_session_id_from_request
 def authenticated_client(client, monkeypatch):
     monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     monkeypatch.setattr(SessionManager, 'get', REAL_GET)
-    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
     monkeypatch.setattr('planner_lib.middleware.session.get_session_id_from_request', REAL_SESSION_ID)
     assert client.post('/api/auth/enroll', json={
         'email': 'view-owner@example.com', 'name': 'View Owner',
@@ -30,7 +28,6 @@ def test_user_data_is_owned_by_account_id_after_delete_and_reenroll(
 ):
     monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     monkeypatch.setattr(SessionManager, 'get', REAL_GET)
-    monkeypatch.setattr(SessionManager, 'exists', REAL_EXISTS)
     monkeypatch.setattr('planner_lib.middleware.session.get_session_id_from_request', REAL_SESSION_ID)
     enrollment = {'email': 'owner@example.com', 'name': 'Original Owner'}
     assert client.post('/api/auth/enroll', json=enrollment).status_code == 200

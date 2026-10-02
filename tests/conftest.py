@@ -142,70 +142,16 @@ def ensure_test_sessions(monkeypatch, app, request):
         yield
         return
     planner_app = app
+    from planner_lib.middleware.session import SessionManager
 
-    # Resolve the session manager from the app's service container.
-    container = getattr(planner_app.state, 'container', None)
-    if container is None:
-        yield
-        return
-    try:
-        mgr = container.get('session_manager')
-    except Exception:
-        yield
-        return
+    def create_any(self, email: str, device_id=None):
+        return "test-session"
 
-    # Patch the SessionManager class methods so bound-method behavior is correct
-    try:
-        from planner_lib.middleware.session import SessionManager
+    def get_any(self, sid):
+        return None
 
-        def exists_any(self, sid):
-            return True
-
-        def create_any(self, email: str):
-            return "test-session"
-
-        def get_any(self, sid):
-            # Prefer real stored session when available; otherwise return a
-            # permissive default so tests that don't create a session still
-            # behave as if an authenticated test user is present.
-            try:
-                stored = getattr(self, '_store', None)
-                if stored is not None:
-                    v = stored.get(sid)
-                    if v is not None:
-                        return v
-            except Exception:
-                pass
-                return {"account_id": "11111111-1111-4111-8111-111111111111",
-                    "email": "test@example.com", "pat": "token"}
-
-        monkeypatch.setattr(SessionManager, "exists", exists_any, raising=True)
-        monkeypatch.setattr(SessionManager, "create", create_any, raising=True)
-        monkeypatch.setattr(SessionManager, "get", get_any, raising=True)
-    except Exception:
-        # Fallback: try to patch instance methods
-        def exists_any(sid):
-            return True
-
-        def get_any(sid):
-            try:
-                stored = getattr(mgr, '_store', None)
-                if stored is not None:
-                    v = stored.get(sid)
-                    if v is not None:
-                        return v
-            except Exception:
-                pass
-                return {"account_id": "11111111-1111-4111-8111-111111111111",
-                    "email": "test@example.com", "pat": "token"}
-
-        def create_any(self_or_email, email_or_request=None):
-            # Support (email) signature.
-            # Normalize to return a constant test session id.
-            return "test-session"
-
-        monkeypatch.setattr(mgr, "exists", exists_any, raising=False)
-        monkeypatch.setattr(mgr, "create", create_any, raising=False)
+    monkeypatch.setattr(SessionManager, "create", create_any)
+    monkeypatch.setattr(SessionManager, "get", get_any)
     # Also monkeypatch the request-level helper to always return a test session id
     try:
         import planner_lib.middleware.session as session_mod

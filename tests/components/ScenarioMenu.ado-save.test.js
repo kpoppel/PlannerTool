@@ -59,9 +59,7 @@ vi.mock('../../www/js/components/modalHelpers.js', () => ({
 
 vi.mock('../../www/js/services/GroupService.js', () => ({
   groupService: {
-    replaceId: vi.fn(),
     evictPlan: vi.fn(),
-    loadGroups: vi.fn().mockResolvedValue([]),
     loadGroupsForPlans: vi.fn().mockResolvedValue(undefined),
   },
 }));

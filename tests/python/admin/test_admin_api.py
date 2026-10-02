@@ -259,15 +259,8 @@ def test_admin_restore_backup_reloads_config_after_restore():
             return {'ok': True}
 
     class SessionMgrWithValues:
-        def exists(self, sid):
-            return True
-
         def get(self, sid):
-            return {'email': 'admin1@admin', 'pat': 'pat-token'}
-
-        def get_val(self, sid, key):
-            values = {'email': 'admin1@admin', 'pat': 'pat-token'}
-            return values.get(key)
+            return {'email': 'admin1@admin'}
 
     admin_svc = RestoreAdminService(storage)
     session_mgr = SessionMgrWithValues()
@@ -329,16 +322,9 @@ def test_iteration_browse_connects_fetches_and_closes_on_same_worker(azure_fails
             return expected
 
     class Session:
-        def exists(self, sid):
-            return sid == 'iteration-session'
-
         def get(self, sid):
             assert sid == 'iteration-session'
             return {'email': 'test@example.com'}
-
-        def get_val(self, sid, key):
-            assert (sid, key) == ('iteration-session', 'pat')
-            return 'test-pat'
 
     services = {
         'session_manager': Session(), 'azure_client': AzureService(),
