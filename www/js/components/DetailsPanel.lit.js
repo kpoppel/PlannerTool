@@ -1,13 +1,22 @@
-import { LitElement, html, css } from '../vendor/lit.js';
+import { LitElement, html } from '../vendor/lit.js';
+import { DETAILS_PANEL_STYLES } from './details-panel/DetailsPanel.styles.lit.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, FeatureEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
 import { cmd, sel } from '../application/imports.js';
-import { getIconTemplate } from '../services/IconService.js';
 import { renderDetailsPanelHeader } from './details-panel/DetailsPanelHeader.lit.js';
-import { renderDetailsPanelScheduling } from './details-panel/DetailsPanelScheduling.lit.js';
-import { renderDetailsPanelCapacity } from './details-panel/DetailsPanelCapacity.lit.js';
+import {
+  buildDetailsPanelSchedulingModel,
+  renderDetailsPanelScheduling,
+} from './details-panel/DetailsPanelScheduling.lit.js';
+import {
+  buildDetailsPanelCapacityModel,
+  renderDetailsPanelCapacity,
+} from './details-panel/DetailsPanelCapacity.lit.js';
 import { renderDetailsPanelTags } from './details-panel/DetailsPanelTags.lit.js';
-import { renderDetailsPanelRelations } from './details-panel/DetailsPanelRelations.lit.js';
+import {
+  buildDetailsPanelRelationsModel,
+  renderDetailsPanelRelations,
+} from './details-panel/DetailsPanelRelations.lit.js';
 
 /**
  * Azure DevOps state category → CSS background-color mapping.
@@ -21,11 +30,6 @@ const CATEGORY_COLORS = {
   Removed:    '#fee2e2',   // light rose   — discarded
 };
 
-/**
- * Ordered list of state categories for sorting Child relations.
- */
-const CATEGORY_ORDER = ['Proposed', 'InProgress', 'Resolved', 'Completed', 'Removed'];
-
 export class DetailsPanelLit extends LitElement {
   static properties = {
     feature: { type: Object },
@@ -35,819 +39,7 @@ export class DetailsPanelLit extends LitElement {
     showAddTeamPopover: { type: Boolean },
   };
 
-  static styles = css`
-    :host {
-      display: block;
-    }
-    .panel {
-      position: fixed;
-      right: 0;
-      top: 40px;
-      bottom: 0;
-      width: var(--details-width, 340px);
-      background: var(--color-panel-bg, #f9f9f9);
-      border-left: 1px solid var(--color-border, #ccc);
-      box-shadow: -2px 0 8px var(--color-shadow, rgba(0, 0, 0, 0.08));
-      z-index: var(--z-details, 1000);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .panel.closed {
-      display: none;
-    }
-    .details-header {
-      position: relative;
-      padding: 22px 18px 8px 18px;
-      flex: 0 0 auto;
-    }
-    .details-content {
-      padding: 0 18px 22px 18px;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      flex: 1 1 auto;
-    }
-    /* match app font sizing and rhythm */
-    :host {
-      font-size: 14px;
-    }
-    .details-label {
-      font-weight: bold;
-      margin-top: 6px;
-      font-size: 14px;
-    }
-    .title-icon {
-      display: inline-flex;
-      width: 20px;
-      height: 20px;
-      vertical-align: middle;
-      margin-right: 8px;
-    }
-    .details-value {
-      margin-bottom: 8px;
-      font-size: 14px;
-    }
-    .details-changed {
-      background: #fadd92ff;
-    }
-    .date-input {
-      flex: 1 1 0;
-      min-width: 0;
-      padding: 4px 4px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: Arial, sans-serif;
-      background: #fff;
-      box-sizing: border-box;
-    }
-    .date-input.details-changed {
-      background: #fadd92ff;
-      border-color: #e6b020;
-    }
-    .date-row {
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      gap: 4px;
-      margin-top: 2px;
-    }
-    .date-sep {
-      flex: 0 0 auto;
-      color: #888;
-      font-size: 13px;
-      padding: 0 2px;
-    }
-    .date-toolbar {
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      gap: 4px;
-      margin-top: 4px;
-      flex-wrap: wrap;
-    }
-    .date-tool-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 24px;
-      padding: 0;
-      border: 1px solid rgba(35,52,77,0.18);
-      border-radius: 5px;
-      background: rgba(35,52,77,0.06);
-      cursor: pointer;
-      font-size: 18px;
-      line-height: 1;
-      color: #23344d;
-      flex: 0 0 auto;
-      transition: background 0.12s;
-    }
-    .date-tool-btn:hover {
-      background: rgba(35,52,77,0.14);
-    }
-    .date-tool-sep {
-      width: 1px;
-      height: 16px;
-      background: #ccc;
-      flex: 0 0 auto;
-      margin: 0 2px;
-    }
-    .clear-dates-btn {
-      display: inline-flex;
-      align-items: center;
-      height: 24px;
-      font-size: 12px;
-      color: #c0392b;
-      cursor: pointer;
-      background: none;
-      border: 1px solid rgba(192,57,43,0.25);
-      border-radius: 5px;
-      padding: 0 6px;
-    }
-    .clear-dates-btn:hover {
-      background: rgba(192,57,43,0.07);
-    }
-    .iteration-select {
-      width: 100%;
-      font-size: 13px;
-      padding: 4px 6px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      background: #fff;
-      box-sizing: border-box;
-    }
-    .iteration-select.dates-override {
-      border-style: dashed;
-      border-color: #e6a817;
-      outline: none;
-    }
-    .iteration-select.iteration-dirty {
-      border-style: solid;
-      border-color: #e6a817;
-      outline: none;
-    }
-    /* Both dirty AND mismatch: keep dashed to surface the mismatch hint */
-    .iteration-select.iteration-dirty.dates-override {
-      border-style: dashed;
-      border-color: #e6a817;
-    }
-    /* Status color variants (migrated from global CSS into details panel) */
-    .status-new {
-      color: #27ae60;
-    }
-    .status-inprogress {
-      color: #f1c40f;
-    }
-    .status-done {
-      color: #888;
-    }
-    .details-change-banner {
-      background: #fff8e6;
-      border: 1px solid #f0d7a6;
-      padding: 8px 10px;
-      border-radius: 6px;
-      margin-top: 8px;
-      font-size: 13px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .details-revert {
-      background: transparent;
-      border: 1px solid #ccc;
-      padding: 4px 6px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .original-date {
-      color: #666;
-      font-size: 12px;
-      margin-left: 6px;
-    }
-    .details-close {
-      position: absolute;
-      right: 18px;
-      top: 18px;
-      cursor: pointer;
-      border: none;
-      background: transparent;
-      font-size: 18px;
-    }
-    .team-load-box {
-      padding: 4px 8px;
-      border-radius: 6px;
-      color: white;
-      font-weight: 600;
-      margin-right: 6px;
-      font-size: 12px;
-    }
-    .azure-relations-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    .relations-group {
-      margin-bottom: 10px;
-    }
-    /* Capacity Progress Bars */
-    .capacity-section {
-      margin-top: 12px;
-    }
-    .capacity-bars {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-    .capacity-bar-row {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      position: relative;
-    }
-    .capacity-bar-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      height: 16px;
-    }
-    .capacity-bar-name {
-      font-size: 13px;
-      font-weight: 600;
-      color: #2c3e50;
-    }
-    .capacity-bar-delete {
-      display: none;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: #ffffff;
-      border: 1.5px solid #dc3545;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 10px;
-      line-height: 1;
-      opacity: 0.7;
-      transition: all 0.2s ease;
-    }
-    .capacity-bar-row:hover .capacity-bar-delete {
-      display: flex;
-    }
-    .capacity-bar-delete:hover {
-      background: #dc3545 !important;
-      opacity: 1;
-    }
-    .capacity-bar-delete:hover::before {
-      color: #ffffff;
-    }
-    .capacity-bar-container {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      height: 18px;
-    }
-    .capacity-bar-bg {
-      flex: 1;
-      height: 18px;
-      background: #e9ecef;
-      border-radius: 9px;
-      position: relative;
-      overflow: hidden;
-      cursor: pointer;
-      transition: box-shadow 0.2s ease;
-    }
-    .capacity-bar-row:hover .capacity-bar-bg {
-      box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
-    }
-    .capacity-bar-fill {
-      height: 100%;
-      border-radius: 9px;
-      transition: width 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .capacity-bar-label {
-      font-family: Arial, sans-serif;
-      font-size: 11px;
-      font-weight: bold;
-      color: white;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-    }
-    .capacity-bar-input-container {
-      flex: 0 0 auto;
-      position: relative;
-    }
-    .capacity-bar-input {
-      width: 50px;
-      height: 14px;
-      padding: 2px 4px;
-      border: 1px solid #ccc;
-      border-radius: 3px;
-      background: rgba(255, 255, 255, 0.9);
-      font-family: monospace;
-      font-size: 10px;
-      text-align: center;
-      outline: none;
-      -moz-appearance: textfield;
-      cursor: text;
-      transition: border-color 0.2s ease;
-    }
-    .capacity-bar-input:focus {
-      border-color: #3498db;
-      border-width: 2px;
-      background: white;
-    }
-    .capacity-bar-input::-webkit-outer-spin-button,
-    .capacity-bar-input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    .add-team-row {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .add-team-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 18px;
-      border: 1.5px dashed #3498db;
-      border-radius: 9px;
-      background: white;
-      color: #3498db;
-      font-weight: 600;
-      font-size: 11px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      margin-top: 8px;
-    }
-    .add-team-btn:hover {
-      background: #f0f8ff;
-      border-color: #2980b9;
-    }
-    .add-team-form {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      padding: 8px;
-      background: #f8f9fa;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-    }
-    .add-team-form select {
-      width: 100%;
-      padding: 6px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 11px;
-    }
-    .iteration-select {
-      width: 100%;
-      padding: 6px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 13px;
-      background: white;
-      margin-top: 6px;
-    }
-    .details-changed {
-      background: #fadd92ff;
-    }
-    .details-change-banner {
-      background: #fff8e6;
-      border: 1px solid #f0d7a6;
-      padding: 8px 10px;
-      border-radius: 6px;
-      margin-top: 8px;
-      font-size: 13px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .details-revert {
-      background: transparent;
-      border: 1px solid #ccc;
-      padding: 4px 6px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .original-date {
-      color: #666;
-      font-size: 12px;
-      margin-left: 6px;
-    }
-    .details-close {
-      position: absolute;
-      right: 18px;
-      top: 18px;
-      cursor: pointer;
-      border: none;
-      background: transparent;
-      font-size: 18px;
-    }
-    .team-load-box {
-      padding: 4px 8px;
-      border-radius: 6px;
-      color: white;
-      font-weight: 600;
-      margin-right: 6px;
-      font-size: 12px;
-    }
-    .azure-relations-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    /* Capacity Progress Bars */
-    .capacity-section {
-      margin-top: 12px;
-    }
-    .capacity-bars {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-    .capacity-bar-row {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      position: relative;
-    }
-    .capacity-bar-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      height: 16px;
-    }
-    .capacity-bar-name {
-      font-size: 13px;
-      font-weight: 600;
-      color: #2c3e50;
-    }
-    .capacity-bar-delete {
-      display: none;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: #ffffff;
-      border: 1.5px solid #dc3545;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 10px;
-      line-height: 1;
-      opacity: 0.7;
-      transition: all 0.2s ease;
-    }
-    .capacity-bar-row:hover .capacity-bar-delete {
-      display: flex;
-    }
-    .capacity-bar-delete:hover {
-      background: #dc3545 !important;
-      opacity: 1;
-    }
-    .capacity-bar-delete:hover::before {
-      color: #ffffff;
-    }
-    .capacity-bar-container {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      height: 18px;
-    }
-    .capacity-bar-bg {
-      flex: 1;
-      height: 18px;
-      background: #e9ecef;
-      border-radius: 9px;
-      position: relative;
-      overflow: hidden;
-      cursor: pointer;
-      transition: box-shadow 0.2s ease;
-    }
-    .capacity-bar-row:hover .capacity-bar-bg {
-      box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
-    }
-    .capacity-bar-fill {
-      height: 100%;
-      border-radius: 9px;
-      transition: width 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .capacity-bar-label {
-      font-family: Arial, sans-serif;
-      font-size: 11px;
-      font-weight: bold;
-      color: white;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-    }
-    .capacity-bar-input-container {
-      flex: 0 0 auto;
-      position: relative;
-    }
-    .capacity-bar-input {
-      width: 50px;
-      height: 14px;
-      padding: 2px 4px;
-      border: 1px solid #ccc;
-      border-radius: 3px;
-      background: rgba(255, 255, 255, 0.9);
-      font-family: monospace;
-      font-size: 10px;
-      text-align: center;
-      outline: none;
-      -moz-appearance: textfield;
-      cursor: text;
-      transition: border-color 0.2s ease;
-    }
-    .capacity-bar-input:focus {
-      border-color: #3498db;
-      border-width: 2px;
-      background: white;
-    }
-    .capacity-bar-input::-webkit-outer-spin-button,
-    .capacity-bar-input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    .add-team-row {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .add-team-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 18px;
-      border: 1.5px dashed #3498db;
-      border-radius: 9px;
-      background: white;
-      color: #3498db;
-      font-weight: 600;
-      font-size: 11px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      margin-top: 8px;
-    }
-    .add-team-btn:hover {
-      background: #f0f8ff;
-      border-color: #2980b9;
-    }
-    .add-team-form {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      padding: 8px;
-      background: #f8f9fa;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-    }
-    .add-team-form select {
-      width: 100%;
-      padding: 6px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 11px;
-    }
-    .add-team-form-input-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .add-team-form input {
-      flex: 1;
-      padding: 6px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 11px;
-      -moz-appearance: textfield;
-    }
-    .add-team-form input::-webkit-outer-spin-button,
-    .add-team-form input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    .add-team-form-buttons {
-      display: flex;
-      gap: 6px;
-    }
-    .add-team-form button {
-      flex: 1;
-      padding: 6px 10px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: #3498db;
-      color: white;
-      font-size: 11px;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    .add-team-form button:hover {
-      background: #2980b9;
-    }
-    .add-team-form button.cancel {
-      background: transparent;
-      color: #666;
-    }
-    .add-team-form button.cancel:hover {
-      background: #f5f5f5;
-    }
-    .total-allocation-box {
-      margin-top: 16px;
-      padding: 12px;
-      background: #fff8e6;
-      border: 1.5px solid #f39c12;
-      border-radius: 6px;
-    }
-    .total-allocation-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: bold;
-      color: #856404;
-      font-size: 10px;
-      margin-bottom: 8px;
-    }
-    .total-allocation-summary-bar {
-      height: 20px;
-      background: #e9ecef;
-      border-radius: 10px;
-      overflow: hidden;
-      display: flex;
-    }
-    .total-allocation-segment {
-      height: 100%;
-      transition: width 0.3s ease;
-    }
-    /* align icon with text baseline for pixel-accurate centering */
-    .azure-relation-item {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      padding: 0;
-      background: transparent;
-      border-radius: 4px;
-      margin: 6px 0;
-    }
-    .relation-icon {
-      width: 1.2em;
-      height: 1.2em;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1em;
-      border-radius: 0.6em;
-      background: rgba(0, 0, 0, 0.06);
-      flex: 0 0 1.2em;
-    }
-    .relation-content {
-      display: flex;
-      flex-direction: row;
-      gap: 8px;
-      align-items: center;
-    }
-    .relation-state-indicator {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      flex: 0 0 12px;
-    }
-    .relation-title,
-    .relation-title a.details-link {
-      line-height: 18px;
-      display: inline-block;
-      vertical-align: middle;
-      margin: 0;
-    }
-    .relation-title {
-      font-weight: 700;
-      color: #333;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 220px;
-      line-height: 1.1;
-    }
-    .relation-title a.details-link {
-      color: var(--color-accent, #3498db);
-      text-decoration: underline;
-    }
-    .state-chip {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 12px;
-      font-weight: 600;
-      font-size: 13px;
-      vertical-align: middle;
-    }
-    .state-select {
-      padding: 6px 8px;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      font-size: 13px;
-    }
-    .state-choices button.state-chip {
-      padding: 6px 8px;
-      border-radius: 12px;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    .state-edit-row {
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
-    }
-    .state-current-wrapper {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-    }
-    .state-choices-box {
-      flex: 1 1 auto;
-      border: 1px solid #e0e0e0;
-      background: #fff;
-      padding: 8px;
-      border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-    }
-    .state-choices {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .state-choices button.state-chip.selected {
-      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.12);
-    }
-    .tags-section {
-      margin-top: 12px;
-    }
-    .tags-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 6px;
-      margin-bottom: 6px;
-    }
-    .tag-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      border: 1px solid #c7d2df;
-      background: #f2f7fc;
-      color: #23344d;
-      font-size: 12px;
-      line-height: 1;
-    }
-    .tag-chip button {
-      border: none;
-      background: transparent;
-      color: #8a3b2e;
-      cursor: pointer;
-      font-size: 12px;
-      padding: 0;
-      line-height: 1;
-    }
-    .tag-editor-row {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-    .tag-input {
-      flex: 1;
-      min-width: 0;
-      padding: 4px 6px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 12px;
-      background: #fff;
-      box-sizing: border-box;
-    }
-    .tag-add-btn {
-      height: 26px;
-      padding: 0 9px;
-      border: 1px solid #c4d7eb;
-      border-radius: 6px;
-      background: #e9f3fc;
-      color: #214f78;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    .tag-add-btn:hover {
-      background: #deedf9;
-    }
-  `;
+  static styles = DETAILS_PANEL_STYLES;
 
   constructor() {
     super();
@@ -1032,8 +224,8 @@ export class DetailsPanelLit extends LitElement {
     return (tags || []).join('; ');
   }
 
-  _onTagInput(e) {
-    this._newTagText = e.target.value || '';
+  _onTagInput(value) {
+    this._newTagText = value;
   }
 
   _onTagInputKeydown(e) {
@@ -1246,7 +438,6 @@ export class DetailsPanelLit extends LitElement {
   }
 
   _handleDeleteCapacity(teamId, e) {
-    e.stopPropagation();
     if (this.feature && this.feature.capacity) {
       // Create a new capacity array without the deleted team
       const newCapacity = this.feature.capacity.filter((c) => c.team !== teamId);
@@ -1257,7 +448,6 @@ export class DetailsPanelLit extends LitElement {
   }
 
   _handleAddTeamClick(e) {
-    e.stopPropagation();
     this.showAddTeamPopover = !this.showAddTeamPopover;
     this.requestUpdate();
   }
@@ -1269,12 +459,17 @@ export class DetailsPanelLit extends LitElement {
     const capacityInput = form.querySelector('input');
 
     const teamId = teamSelect.value;
-    const capacity = parseInt(capacityInput.value) || 0;
+    this._addCapacityTeam(teamId, capacityInput.value);
+  }
+
+  _addCapacityTeam(teamId, value) {
+    const parsed = parseInt(value, 10);
+    const capacity = Number.isNaN(parsed) ? 0 : parsed;
     const clampedCapacity = Math.max(0, Math.min(100, capacity));
 
     if (teamId && this.feature) {
       // Check if team already exists
-      const currentCapacity = this.feature.capacity || [];
+      const currentCapacity = this.feature.capacity;
       const existing = currentCapacity.find((c) => c.team === teamId);
       if (!existing) {
         // Create new array instead of mutating baseline
@@ -1411,8 +606,8 @@ export class DetailsPanelLit extends LitElement {
     return path;
   }
 
-  _onStartDateChange(e) {
-    const val = e.target.value || null;
+  _onStartDateChange(value) {
+    const val = value === '' ? null : value;
     if (!this.feature) return;
     const end = this.feature.end || null;
     try {
@@ -1422,8 +617,8 @@ export class DetailsPanelLit extends LitElement {
     }
   }
 
-  _onEndDateChange(e) {
-    const val = e.target.value || null;
+  _onEndDateChange(value) {
+    const val = value === '' ? null : value;
     if (!this.feature) return;
     const start = this.feature.start || null;
     try {
@@ -1448,11 +643,10 @@ export class DetailsPanelLit extends LitElement {
     }
   }
 
-  async _onIterationChange(e) {
-    const sel = e.target && e.target.value ? e.target.value : null;
-    if (!sel) return;
-    const it = (this.iterations || []).find(
-      (i) => i.path === sel || (i.path && i.path.endsWith(sel))
+  async _onIterationChange(path) {
+    if (!path) return;
+    const it = this.iterations.find(
+      (iteration) => iteration.path === path || iteration.path.endsWith(path)
     );
     if (!it) return;
     const start = it.startDate ? it.startDate.slice(0, 10) : null;
@@ -1460,7 +654,7 @@ export class DetailsPanelLit extends LitElement {
     if (!this.feature) return;
     try {
       // Persist the iterationPath field first so it is included in the override
-      cmd.feature.updateFeatureField(this.feature.id, 'iterationPath', sel);
+      cmd.feature.updateFeatureField(this.feature.id, 'iterationPath', path);
       // Then update dates (preserves iterationPath already stored in override)
       if (start && end) {
         cmd.feature.updateFeatureDates([{ id: this.feature.id, start, end }]);
@@ -1491,167 +685,24 @@ export class DetailsPanelLit extends LitElement {
     const childrenByParent = sel.feature.getChildrenByParentMap();
     const stateColors = sel.filter.getFeatureStateColors();
     const availableFeatureStates = sel.filter.getAvailableFeatureStates();
-    const stateColor = stateColors[feature.state];
     const stateOrig = feature && feature.original ? feature.original.state : undefined;
     const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;
-    const stateCls = stateChanged ? 'details-value details-changed' : 'details-value';
-    const originalStateSpan =
-      stateChanged ? html` <span class="original-date">(was ${stateOrig})</span>` : '';
     const planObj = projects.find((p) => p.id === feature.project);
     const planName = planObj ? planObj.name : null;
 
-    // Use orgLoad for total allocation (organizational capacity allocated to this feature)
-    const orgLoad = feature.orgLoad || '0%';
-    const orgLoadValue = String(orgLoad).replace('%', '');
-
-    // Render capacity bars
-    const capacityBars = (feature.capacity || []).map((tl) => {
-      const t = teams.find((x) => x.id === tl.team);
-      if (!t) return null;
-
-      const cap = tl.capacity || 0;
-      const barWidth = `${Math.min(cap, 100)}%`;
-
-      return html`
-        <div class="capacity-bar-row">
-          <div class="capacity-bar-header">
-            <span class="capacity-bar-name">${t.name}</span>
-            <span
-              class="capacity-bar-delete"
-              @click=${(e) => this._handleDeleteCapacity(tl.team, e)}
-              >✕</span
-            >
-          </div>
-          <div class="capacity-bar-container">
-            <div
-              class="capacity-bar-bg"
-              @click=${(e) => this._handleCapacityClick(tl.team, e)}
-            >
-              <div
-                class="capacity-bar-fill"
-                style="width: ${barWidth}; background: ${t.color};"
-              >
-                <span class="capacity-bar-label">${cap}%</span>
-              </div>
-            </div>
-            <div class="capacity-bar-input-container">
-              <input
-                type="number"
-                class="capacity-bar-input"
-                min="0"
-                max="100"
-                .value="${cap}"
-                @keydown=${(e) => this._handleCapacityInputKeydown(tl.team, e)}
-                @blur=${(e) => this._handleCapacityInputBlur(tl.team, e)}
-                @focus=${(e) => {
-                  e.target.select();
-                }}
-                @wheel=${(e) => {
-                  e.preventDefault();
-                  const currentValue = parseInt(e.target.value) || 0;
-                  const delta = e.deltaY < 0 ? 10 : -10;
-                  const newValue = Math.max(0, Math.min(100, currentValue + delta));
-                  const roundedValue = Math.round(newValue / 10) * 10;
-                  e.target.value = roundedValue;
-                  this._saveCapacityEdit(tl.team, roundedValue);
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      `;
+    const capacityModel = buildDetailsPanelCapacityModel({
+      capacity: feature.capacity,
+      orgLoad: feature.orgLoad,
+      teams,
+      showAddTeamPopover: this.showAddTeamPopover,
     });
-
-    // Get available teams for the add team dropdown (exclude already allocated teams)
-    const allocatedTeamIds = new Set((feature.capacity || []).map((c) => c.team));
-    const availableTeams = teams.filter((t) => !allocatedTeamIds.has(t.id));
-
-    // Add team button with inline form
-    const addTeamButton = html`
-      <div class="add-team-row">
-        ${this.showAddTeamPopover ?
-          html`
-            <form class="add-team-form" @submit=${(e) => this._handleAddTeamSubmit(e)}>
-              <select required>
-                <option value="">Select Team...</option>
-                ${availableTeams.map(
-                  (t) => html`<option value="${t.id}">${t.name}</option>`
-                )}
-              </select>
-              <div class="add-team-form-input-row">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  placeholder="Capacity %"
-                  required
-                  @wheel=${(e) => {
-                    e.preventDefault();
-                    const currentValue = parseInt(e.target.value) || 0;
-                    const delta = e.deltaY < 0 ? 10 : -10;
-                    const newValue = Math.max(0, Math.min(100, currentValue + delta));
-                    const roundedValue = Math.round(newValue / 10) * 10;
-                    e.target.value = roundedValue;
-                  }}
-                />
-              </div>
-              <div class="add-team-form-buttons">
-                <button type="submit">Add</button>
-                <button
-                  type="button"
-                  class="cancel"
-                  @click=${() => this._handleAddTeamCancel()}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          `
-        : html`
-            <div class="add-team-btn" @click=${(e) => this._handleAddTeamClick(e)}>
-              + Add Team
-            </div>
-          `}
-      </div>
-    `;
-
-    // Total allocation box - displays organizational capacity with visual summary
-    let totalAllocationBox = '';
-    if (orgLoadValue && parseFloat(orgLoadValue) > 0) {
-      const totalCapacity = (feature.capacity || []).reduce(
-        (sum, c) => sum + (c.capacity || 0),
-        0
-      );
-      const teamCount = (feature.capacity || []).length;
-
-      // Build segments for visual bar
-      const segments = (feature.capacity || [])
-        .map((tl) => {
-          const t = teams.find((x) => x.id === tl.team);
-          if (!t) return null;
-          const cap = tl.capacity || 0;
-          // Calculate width as percentage of total available width (scale to max 100% visual width)
-          const widthPercent =
-            totalCapacity > 0 ? (cap / Math.max(totalCapacity, 100)) * 100 : 0;
-          return html`<div
-            class="total-allocation-segment"
-            style="width: ${widthPercent}%; background: ${t.color};"
-          ></div>`;
-        })
-        .filter((s) => s);
-
-      totalAllocationBox = html`
-        <div class="total-allocation-box">
-          <div class="total-allocation-header">
-            Total Capacity Overview:
-            <span style="color: #e67e22;"
-              >${orgLoad} across ${teamCount} team${teamCount !== 1 ? 's' : ''}</span
-            >
-          </div>
-          <div class="total-allocation-summary-bar">${segments}</div>
-        </div>
-      `;
-    }
+    const schedulingModel = buildDetailsPanelSchedulingModel({
+      feature,
+      iterations: this.iterations,
+      childrenByParent,
+      orig: feature.original,
+      today: new Date().toISOString().slice(0, 10),
+    });
 
     // Strip capacity section from description
     const cleanDescription = this._stripCapacityFromDescription(feature.description);
@@ -1660,9 +711,6 @@ export class DetailsPanelLit extends LitElement {
     const tagsChanged = tagsOrig !== undefined &&
       JSON.stringify(this._normaliseTags(feature.tags)) !==
         JSON.stringify(this._normaliseTags(tagsOrig));
-    const tagsCls = tagsChanged ? 'details-value details-changed' : 'details-value';
-    const tagsOriginalSpan =
-      tagsChanged ? html` <span class="original-date">(was ${tagsOrig || '—'})</span>` : '';
 
     const changedSet = new Set(feature.changedFields || []);
     const changedBanner =
@@ -1682,199 +730,86 @@ export class DetailsPanelLit extends LitElement {
         </div>`
       : '';
 
-    // Build relations HTML
-    let relationsTemplate = html`<div class="details-value">—</div>`;
-    try {
-      const rels = Array.isArray(feature.relations) ? feature.relations.slice() : [];
-      if (rels.length) {
-        // Sort and group
-        rels.sort((a, b) => {
-          const ta = a.type || a.relationType || 'Related';
-          const tb = b.type || b.relationType || 'Related';
-          if (ta === 'Parent' && tb !== 'Parent') return -1;
-          if (tb === 'Parent' && ta !== 'Parent') return 1;
-          return 0;
-        });
-        const groups = new Map();
-        for (const r of rels) {
-          const type = r.type || r.relationType || 'Related';
-          if (!groups.has(type)) groups.set(type, []);
-          groups.get(type).push(r);
-        }
-        const orderedKeys = [];
-        if (groups.has('Parent')) orderedKeys.push('Parent');
-        for (const k of groups.keys()) {
-          if (k !== 'Parent') orderedKeys.push(k);
-        }
-
-        const groupsArr = orderedKeys.map((type) => {
-          let groupItems = groups.get(type) || [];
-          let groupTitle = type;
-          if (type === 'Parent') {
-            const otherPlanNames = new Set();
-            for (const r of groupItems) {
-              const otherId = r.id ? String(r.id) : null;
-
-              const linked = sel.feature.getBaselineFeatureById(otherId);
-              if (linked && String(linked.project) !== String(feature.project)) {
-                const proj = projects.find((p) => p.id === linked.project);
-                if (proj?.name) otherPlanNames.add(proj.name);
-              }
-            }
-            if (otherPlanNames.size === 1) {
-              groupTitle = `Parent (in ${[...otherPlanNames][0]})`;
-            } else if (otherPlanNames.size > 1) {
-              groupTitle = 'Parent (in multiple plans)';
-            }
-          }
-
-          // Sort Child relations: loaded first, then by state category, then non-loaded
-          if (type === 'Child') {
-            groupItems = [...groupItems].sort((a, b) => {
-              const aId = a.id ? String(a.id) : null;
-              const bId = b.id ? String(b.id) : null;
-              const aLinked = sel.feature.getBaselineFeatureById(aId);
-              const bLinked = sel.feature.getBaselineFeatureById(bId);
-              
-              // Loaded vs non-loaded: loaded first
-              if (aLinked && !bLinked) return -1;
-              if (!aLinked && bLinked) return 1;
-              
-              // Both loaded: sort by state category
-              if (aLinked && bLinked) {
-                const aState = aLinked.state || '';
-                const bState = bLinked.state || '';
-                const aCategory = sel.filter.getFeatureStateCategory(aState);
-                const bCategory = sel.filter.getFeatureStateCategory(bState);
-                const aIdx = CATEGORY_ORDER.indexOf(aCategory);
-                const bIdx = CATEGORY_ORDER.indexOf(bCategory);
-                const aCatOrder = aIdx >= 0 ? aIdx : 999;
-                const bCatOrder = bIdx >= 0 ? bIdx : 999;
-                if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder;
-                // Same category: maintain original order
-                return 0;
-              }
-              
-              // Both non-loaded: maintain original order
-              return 0;
-            });
-          }
-
-          const items = groupItems.map((r) => {
-            const otherId = r.id ? String(r.id) : null;
-            let url = r.url || '';
-            if (!url && feature.url && otherId) {
-              url = feature.url.replace(/(\d+)(?!.*\d)/, otherId);
-            }
-            const href = url ? url : '';
-            let title = '';
-
-            const linked = sel.feature.getBaselineFeatureById(otherId);
-            if (linked && linked.title) {
-              title = linked.title;
-            } else if (type === 'Child' && otherId) {
-              title = '(task state not loaded)';
-            }
-
-            let iconTemplate = '';
-            let stateIndicator = '';
-            
-            if (type === 'Parent') {
-              iconTemplate = getIconTemplate(linked?.type || 'epic');
-            } else if (type === 'Child') {
-              if (linked) {
-                // For loaded children: use task type icon and add state indicator
-                iconTemplate = getIconTemplate(linked.type || 'task');
-                const childState = linked.state || '';
-                const childStateColor = stateColors[childState];
-                const bgColor = childStateColor ? childStateColor.background : '#9e9e9e';
-                stateIndicator = html`<div class="relation-state-indicator" style="background: ${bgColor};" title="${childState}"></div>`;
-              } else {
-                // For non-loaded children: use link icon
-                iconTemplate = '🔗';
-              }
-            } else if (type === 'Successor') {
-              iconTemplate = '➡️';
-            } else if (type === 'Predecessor') {
-              iconTemplate = '⬅️';
-            } else {
-              iconTemplate = '🔗';
-            }
-            
-            return html`<li class="azure-relation-item">
-              <div class="relation-icon">${iconTemplate}</div>
-              <div class="relation-content">
-                ${stateIndicator}
-                <div class="relation-title">
-                  <a class="details-link" href="${href}" target="_blank"
-                    >${otherId ? otherId : ''}${title ? ' ' + title : ''}</a
-                  >
-                </div>
-              </div>
-            </li>`;
-          });
-          return html`<div class="relations-group">
-            <div class="group-title">${groupTitle}</div>
-            <ul class="azure-relations-list">
-              ${items}
-            </ul>
-          </div>`;
-        });
-        relationsTemplate = html`${groupsArr}`;
+    const linkedFeatures = new Map();
+    const stateCategories = new Map();
+    for (const relation of feature.relations) {
+      const id = String(relation.id);
+      const linked = sel.feature.getBaselineFeatureById(id);
+      if (linked) {
+        linkedFeatures.set(id, linked);
+        stateCategories.set(linked.state, sel.filter.getFeatureStateCategory(linked.state));
       }
-    } catch (e) {
-      relationsTemplate = html`<div class="details-value">—</div>`;
     }
-
-    if (feature && feature.type && childrenByParent?.has(String(feature.id))) {
-      console.debug('[DetailsPanel] rendering shrinkwrap button for parent item', feature.id);
-    }
+    const relationsModel = buildDetailsPanelRelationsModel({
+      relations: feature.relations,
+      projectId: feature.project,
+      featureUrl: feature.url,
+      projects,
+      linkedFeatures,
+      stateColors,
+      stateCategories,
+    });
 
     return html`
       <div class="panel">
         ${renderDetailsPanelHeader({
-          feature,
-          planName,
-          stateCls,
-          stateColor,
-          originalStateSpan,
-          stateColors,
-          availableFeatureStates,
-          editingState: this.editingState,
-          stateEditValue: this._stateEditValue,
-          onClose: () => this.hide(),
-          onStateClick: (e) => this._onStateClick(e),
-          onStateBlur: (e) => this._onStateBlur(e),
-          onStateChipSelect: (value) => this._onStateChipSelect(value),
-          getIconTemplate,
+          model: {
+            feature, planName, stateChanged, originalState: stateOrig,
+            stateColors, availableFeatureStates,
+            editingState: this.editingState, stateEditValue: this._stateEditValue,
+          },
+          actions: {
+            close: () => this.hide(),
+            startStateEdit: () => this._onStateClick(),
+            blurState: () => this._onStateBlur(),
+            selectState: (value) => this._onStateChipSelect(value),
+          },
         })}
         <div class="details-content">
           ${this._renderField('Assignee', 'assignee', feature.assignee)}
           ${renderDetailsPanelScheduling({
-            host: this,
-            feature,
-            iterations: this.iterations,
-            childrenByParent,
-            orig: feature.original || {},
+            model: schedulingModel,
+            actions: {
+              selectIteration: (path) => this._onIterationChange(path),
+              changeStart: (value) => this._onStartDateChange(value),
+              changeEnd: (value) => this._onEndDateChange(value),
+              snapStart: () => this._snapStartDate(),
+              snapEnd: () => this._snapEndDate(),
+              fitChildren: () => this._shrinkwrapEpic(),
+              clearDates: () => this._clearDates(),
+            },
           })}
 
           ${renderDetailsPanelCapacity({
-            capacityBars,
-            addTeamButton,
-            totalAllocationBox,
+            model: capacityModel,
+            actions: {
+              changeCapacity: (teamId, value) => this._saveCapacityEdit(teamId, value),
+              removeTeam: (teamId) => this._handleDeleteCapacity(teamId),
+              toggleAddTeam: () => this._handleAddTeamClick(),
+              addTeam: (teamId, value) => this._addCapacityTeam(teamId, value),
+              cancelAddTeam: () => this._handleAddTeamCancel(),
+              cancelEdit: () => {
+                this.editingCapacityTeam = null;
+                this.requestUpdate();
+              },
+            },
           })}
 
           ${renderDetailsPanelTags({
-            host: this,
-            parsedTags,
-            tagsCls,
-            tagsOriginalSpan,
-            newTagText: this._newTagText,
+            model: {
+              tags: parsedTags, changed: tagsChanged, originalTags: tagsOrig,
+              newTagText: this._newTagText,
+            },
+            actions: {
+              changeDraft: (value) => this._onTagInput(value),
+              addTag: () => this._addTag(),
+              removeTag: (tag) => this._removeTag(tag),
+            },
           })}
 
           <div class="details-label">Description</div>
           <div class="details-value" .innerHTML=${cleanDescription || '—'}></div>
-          ${renderDetailsPanelRelations({ relationsTemplate })}
+          ${renderDetailsPanelRelations({ model: relationsModel })}
           ${changedBanner}
         </div>
       </div>

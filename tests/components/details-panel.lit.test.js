@@ -3,6 +3,7 @@ import '../../www/js/components/DetailsPanel.lit.js';
 import { render } from '../../www/js/vendor/lit.js';
 import { cmd } from '../../www/js/application/imports.js';
 import { store } from '../../www/js/application/store.js';
+import { DETAILS_PANEL_STYLES } from '../../www/js/components/details-panel/DetailsPanel.styles.lit.js';
 
 describe('details-panel', () => {
   let panel;
@@ -13,6 +14,13 @@ describe('details-panel', () => {
 
   afterEach(() => {
     panel.remove();
+  });
+
+  it('uses the extracted stylesheet within the existing shadow root', () => {
+    expect(panel.constructor.styles).to.equal(DETAILS_PANEL_STYLES);
+    expect(DETAILS_PANEL_STYLES.cssText).to.include('.capacity-bar-row');
+    expect(DETAILS_PANEL_STYLES.cssText).to.include('.relations-group');
+    expect(panel.shadowRoot).to.exist;
   });
 
   it('renders closed when no feature', () => {
@@ -30,6 +38,7 @@ describe('details-panel', () => {
       state: 'New',
       capacity: [{ team: 't1', capacity: 50 }],
       orgLoad: '10%',
+      relations: [],
     };
     // feature must be in baseline so sel.feature.getSelectedFeature() resolves
     store.setState(

@@ -120,6 +120,27 @@ flowchart TD
 
 For the main UI, reactivity flows Cmd → Store (write) and, separately, Cmd → Bus → listener → Lit update (repaint signal). A listener either requests an update or assigns reactive properties from selectors; rendering then uses the refreshed data. There is no general store subscription that automatically repaints every component. Plugin-state commands have their own subscriber notifications, and some plugin-local stores have a separate update path; not every store mutation emits a bus event. See §14 Known Sharp Edges.
 
+### 5.1 DetailsPanel section contracts
+
+`DetailsPanel.lit.js` composes five section render modules under `components/details-panel/`:
+Header, Scheduling, Capacity, Tags, and Relations. Each renderer takes a presentation
+`model` and named `actions` where interaction is required. Renderers do not receive the
+panel host, call private panel methods, subscribe to events, or read application state.
+DOM-local handling translates interaction into action values such as a team ID and
+capacity, iteration path, date, tag draft, or selected state.
+
+Capacity, Relations, and Scheduling export pure model builders. Capacity projects
+allocation rows and summary segments without mutating source allocations. Relations
+groups and sorts explicit baseline-feature lookups, preserving unloaded targets and
+cross-plan parent labels. Scheduling receives an explicit current date for deterministic
+iteration grouping. The panel supplies selector data and adapts actions to its existing
+command handlers; lifecycle subscriptions and temporary editor state remain panel-owned.
+
+`DetailsPanel.styles.lit.js` exports the panel's unchanged CSS result. All sections render
+inside the existing `details-panel` shadow root, preserving the stylesheet cascade and
+DOM hooks. Tests that render icon-bearing sections directly use the bundled Lit renderer
+to match the directive implementation used by the application.
+
 ## 6. State Architecture
 
 ### 6.1 Canonical store

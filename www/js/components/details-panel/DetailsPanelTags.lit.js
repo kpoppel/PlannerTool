@@ -1,26 +1,23 @@
 import { html } from '../../vendor/lit.js';
 
-export function renderDetailsPanelTags({
-  host,
-  parsedTags,
-  tagsCls,
-  tagsOriginalSpan,
-  newTagText,
-}) {
+/** Render tag presentation and dispatch draft values through explicit actions. */
+export function renderDetailsPanelTags({ model, actions }) {
+  const { tags, changed, originalTags, newTagText } = model;
+  const tagsCls = changed ? 'details-value details-changed' : 'details-value';
   return html`
     <div class="tags-section">
       <div class="details-label">Tags</div>
       <div class="${tagsCls}">
         <div class="tags-row">
-          ${parsedTags.length ?
-            parsedTags.map((tag) => html`
+          ${tags.length ?
+            tags.map((tag) => html`
               <span class="tag-chip">
                 <span>${tag}</span>
-                <button type="button" title="Remove tag ${tag}" @click=${() => host._removeTag(tag)}>✕</button>
+                <button type="button" title="Remove tag ${tag}" @click=${() => actions.removeTag(tag)}>✕</button>
               </span>
             `)
           : html`<span>—</span>`}
-          ${tagsOriginalSpan}
+          ${changed ? html`<span class="original-date">(was ${originalTags ? originalTags : '—'})</span>` : ''}
         </div>
         <div class="tag-editor-row">
           <input
@@ -28,10 +25,15 @@ export function renderDetailsPanelTags({
             class="tag-input"
             .value=${newTagText}
             placeholder="Add tag"
-            @input=${(e) => host._onTagInput(e)}
-            @keydown=${(e) => host._onTagInputKeydown(e)}
+            @input=${(event) => actions.changeDraft(event.target.value)}
+            @keydown=${(event) => {
+              if (event.key === 'Enter' || event.key === ',') {
+                event.preventDefault();
+                actions.addTag();
+              }
+            }}
           />
-          <button type="button" class="tag-add-btn" @click=${() => host._addTag()}>Add</button>
+          <button type="button" class="tag-add-btn" @click=${actions.addTag}>Add</button>
         </div>
       </div>
     </div>

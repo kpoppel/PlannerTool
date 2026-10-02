@@ -1,7 +1,10 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
-import { renderDetailsPanelScheduling } from '../../www/js/components/details-panel/DetailsPanelScheduling.lit.js';
+import {
+  buildDetailsPanelSchedulingModel,
+  renderDetailsPanelScheduling,
+} from '../../www/js/components/details-panel/DetailsPanelScheduling.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents, ProjectEvents } from '../../www/js/core/EventRegistry.js';
@@ -17,8 +20,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
 
   it('groups current and future iterations separately from past iterations', async () => {
     const today = new Date().toISOString().slice(0, 10);
-    const rendered = renderDetailsPanelScheduling({
-      host: { _formatIterationLabel: (iteration) => iteration.name },
+    const model = buildDetailsPanelSchedulingModel({
       feature: { id: 'x1' },
       iterations: [
         { name: 'Current', path: 'Current', finishDate: today },
@@ -26,7 +28,9 @@ describe('DetailsPanel editing and scheduling commands', () => {
       ],
       childrenByParent: new Map(),
       orig: {},
+      today,
     });
+    const rendered = renderDetailsPanelScheduling({ model, actions: {} });
     const root = await fixture(html`<div>${rendered}</div>`);
 
     expect([...root.querySelectorAll('optgroup')].map((group) => group.label)).to.deep.equal([
@@ -35,14 +39,39 @@ describe('DetailsPanel editing and scheduling commands', () => {
     ]);
     expect([...root.querySelectorAll('option')].map((option) => option.textContent.trim())).to.deep.equal([
       '—',
-      'Current',
-      'Past',
+      `Current (until ${today})`,
+      'Past (until 2020-01-01)',
     ]);
+  });
+
+  it('dispatches scheduling values through explicit actions without a host', async () => {
+    const model = buildDetailsPanelSchedulingModel({
+      feature: { id: 'parent', type: 'Epic', start: '2026-10-01', end: '2026-10-10' },
+      iterations: [{ name: 'Sprint', path: 'Sprint', startDate: '2026-10-01', finishDate: '2026-10-10' }],
+      childrenByParent: new Map([['parent', ['child']]]), orig: {}, today: '2026-10-02',
+    });
+    const actions = {
+      selectIteration: sinon.spy(), changeStart: sinon.spy(), changeEnd: sinon.spy(),
+      snapStart: sinon.spy(), snapEnd: sinon.spy(), fitChildren: sinon.spy(), clearDates: sinon.spy(),
+    };
+    const root = await fixture(html`<div>${renderDetailsPanelScheduling({ model, actions })}</div>`);
+    const select = root.querySelector('.iteration-select');
+    select.value = 'Sprint';
+    select.dispatchEvent(new Event('change'));
+    expect(actions.selectIteration.calledOnceWithExactly('Sprint')).to.be.true;
+    const start = root.querySelector('input[type="date"]');
+    start.value = '2026-10-03';
+    start.dispatchEvent(new Event('change'));
+    expect(actions.changeStart.calledOnceWithExactly('2026-10-03')).to.be.true;
+    root.querySelector('[data-test="shrinkwrap-chip"]').click();
+    expect(actions.fitChildren.calledOnce).to.be.true;
+    root.querySelector('.clear-dates-btn').click();
+    expect(actions.clearDates.calledOnce).to.be.true;
   });
 
   it('_onShow opens and sets feature', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
-    const f = { id: 'x1', title: 'X' };
+    const f = { id: 'x1', title: 'X', capacity: [], orgLoad: '0%', relations: [] };
     const stub = sinon.stub(sel.feature, 'getSelectedFeature').returns(f);
     el._onShow();
     stub.restore();
@@ -222,8 +251,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
     const fieldStub = sinon.stub(cmd.feature, 'updateFeatureField');
     // simulate selection change - component accepts full path or suffix
     // select elements may pass either full path or suffix; use suffix to match endsWith
-    const ev = { target: { value: 'It1' } };
-    await el._onIterationChange(ev);
+    await el._onIterationChange('It1');
 
     expect(fieldStub.calledOnceWithExactly('f10', 'iterationPath', 'It1')).to.be.true;
     expect(datesStub.calledOnce).to.be.true;
@@ -240,7 +268,9 @@ describe('DetailsPanel editing and scheduling commands', () => {
   it('reloads iterations when projects change while panel is open', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.open = true;
-    el.feature = { id: 'f-proj-refresh', project: 'project-a' };
+    el.feature = {
+      id: 'f-proj-refresh', project: 'project-a', capacity: [], orgLoad: '0%', relations: [],
+    };
     await el.updateComplete;
 
     const reloadStub = sinon.stub(el, '_loadIterationsForFeature').resolves();
@@ -253,8 +283,10 @@ describe('DetailsPanel editing and scheduling commands', () => {
 
   it('reloads displayed feature and iterations on global FeatureEvents.UPDATED', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
-    const displayed = { id: 'f-global-refresh', project: 'project-a' };
-    const refreshed = { id: 'f-global-refresh', project: 'project-a', state: 'Done' };
+    const displayed = {
+      id: 'f-global-refresh', project: 'project-a', capacity: [], orgLoad: '0%', relations: [],
+    };
+    const refreshed = { ...displayed, state: 'Done' };
 
     el.open = true;
     el.feature = displayed;
@@ -280,7 +312,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
     await el.updateComplete;
     const stub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
-    el._onStartDateChange({ target: { value: '2025-01-15' } });
+    el._onStartDateChange('2025-01-15');
 
     expect(stub.calledOnce).to.be.true;
     const arg = stub.getCall(0).args[0][0];
@@ -296,7 +328,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
     await el.updateComplete;
     const stub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
-    el._onEndDateChange({ target: { value: '2025-03-01' } });
+    el._onEndDateChange('2025-03-01');
 
     expect(stub.calledOnce).to.be.true;
     const arg = stub.getCall(0).args[0][0];
@@ -312,7 +344,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
     await el.updateComplete;
     const stub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
-    el._onStartDateChange({ target: { value: '' } });
+    el._onStartDateChange('');
 
     expect(stub.calledOnce).to.be.true;
     const arg = stub.getCall(0).args[0][0];

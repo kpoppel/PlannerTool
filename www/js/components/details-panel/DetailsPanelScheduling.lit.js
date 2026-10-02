@@ -1,8 +1,9 @@
 import { html } from '../../vendor/lit.js';
 
-export function renderDetailsPanelScheduling({ host, feature, iterations, childrenByParent, orig }) {
-  const startOrig = orig.start;
-  const endOrig = orig.end;
+/** Project scheduling presentation; today is explicit to make grouping deterministic. */
+export function buildDetailsPanelSchedulingModel({ feature, iterations, childrenByParent, orig, today }) {
+  const startOrig = orig === undefined ? undefined : orig.start;
+  const endOrig = orig === undefined ? undefined : orig.end;
   const startChanged = startOrig !== undefined && feature.start !== startOrig;
   const endChanged = endOrig !== undefined && feature.end !== endOrig;
   const hasAnyDate = !!(feature.start || feature.end);
@@ -12,9 +13,9 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
     childrenByParent &&
     (childrenByParent.has(String(feature.id)) || childrenByParent.has(feature.id));
 
-  const selectedPath = feature.iterationPath || '';
+  const selectedPath = feature.iterationPath ? feature.iterationPath : '';
   const selectedIter = selectedPath ?
-    (iterations || []).find(
+    iterations.find(
       (it) =>
         it.path === selectedPath ||
         (it.path && it.path.endsWith(selectedPath)) ||
@@ -27,7 +28,7 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
     selectedIter.startDate.slice(0, 10) !== feature.start ||
     selectedIter.finishDate.slice(0, 10) !== feature.end
   ));
-  const iterationDirty = orig.iterationPath !== undefined &&
+  const iterationDirty = orig !== undefined && orig.iterationPath !== undefined &&
     feature.iterationPath !== orig.iterationPath;
 
   const startTitle = startChanged ? `was ${startOrig}` : 'Start date';
@@ -38,20 +39,53 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
       feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
     : 'Item';
 
-  const today = new Date().toISOString().slice(0, 10);
   const currentAndFutureIterations = [];
   const pastIterations = [];
-  for (const iteration of iterations || []) {
+  for (const iteration of iterations) {
     const finishDate = iteration.finishDate ? iteration.finishDate.slice(0, 10) : null;
     if (!finishDate || finishDate >= today) {
-      currentAndFutureIterations.push(iteration);
+      currentAndFutureIterations.push({ path: iteration.path, label: formatIterationLabel(iteration) });
     } else {
-      pastIterations.push(iteration);
+      pastIterations.push({ path: iteration.path, label: formatIterationLabel(iteration) });
     }
   }
+  const originalPath = orig === undefined ? undefined : orig.iterationPath;
+  const previousPathLabel = originalPath ? originalPath : '—';
+  return {
+    start: feature.start ? feature.start : '',
+    end: feature.end ? feature.end : '',
+    startChanged, endChanged, startTitle, endTitle,
+    hasChildren, hasAnyDate, typeLabel, selectedPath, datesOverride, iterationDirty,
+    currentAndFutureIterations, pastIterations,
+    iterationTitle: iterationDirty && datesOverride ?
+      `Changed from '${previousPathLabel}' — dates also differ from this iteration's bounds` :
+      iterationDirty ? `Changed from '${previousPathLabel}'` :
+      datesOverride ? 'Dates have been overridden — they differ from this iteration\'s bounds' :
+      'Pick a sprint to fill the dates below',
+  };
+}
+
+function formatIterationLabel(iteration) {
+  const match = iteration.path.match(/^(.+?)\\Iteration\\(.+)$/);
+  const name = iteration.name ? iteration.name : match ? match[2] : iteration.path;
+  const start = iteration.startDate ? iteration.startDate.slice(0, 10) : null;
+  const end = iteration.finishDate ? iteration.finishDate.slice(0, 10) : null;
+  if (start && end) return `${name} (${start} to ${end})`;
+  if (start) return `${name} (from ${start})`;
+  if (end) return `${name} (until ${end})`;
+  return name;
+}
+
+/** Render scheduling controls with value-based actions, not host-private handlers. */
+export function renderDetailsPanelScheduling({ model, actions }) {
+  const {
+    start, end, startChanged, endChanged, startTitle, endTitle,
+    hasChildren, hasAnyDate, typeLabel, selectedPath, datesOverride, iterationDirty,
+    currentAndFutureIterations, pastIterations, iterationTitle,
+  } = model;
   const renderIterationGroup = (label, group) => group.length ? html`
     <optgroup label=${label}>
-      ${group.map((it) => html`<option value="${it.path}">${host._formatIterationLabel(it)}</option>`)}
+      ${group.map((iteration) => html`<option value=${iteration.path}>${iteration.label}</option>`)}
     </optgroup>
   ` : '';
 
@@ -61,17 +95,11 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
       <select
         class="iteration-select${iterationDirty ? ' iteration-dirty' : ''}${datesOverride ? ' dates-override' : ''}"
         .value=${selectedPath}
-        @change=${(e) => host._onIterationChange(e)}
-        title=${iterationDirty && datesOverride ?
-          `Changed from '${orig.iterationPath || '—'}' — dates also differ from this iteration's bounds`
-        : iterationDirty ?
-          `Changed from '${orig.iterationPath || '—'}'`
-        : datesOverride ?
-          'Dates have been overridden — they differ from this iteration\'s bounds'
-        : 'Pick a sprint to fill the dates below'}
+        @change=${(event) => actions.selectIteration(event.target.value)}
+        title=${iterationTitle}
       >
         <option value="">—</option>
-        ${iterations && iterations.length ?
+        ${currentAndFutureIterations.length + pastIterations.length > 0 ?
           html`
             ${renderIterationGroup('Current and future iterations', currentAndFutureIterations)}
             ${renderIterationGroup('Past iterations', pastIterations)}
@@ -83,17 +111,17 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
       <input
         type="date"
         class="date-input${startChanged ? ' details-changed' : ''}"
-        .value=${feature.start || ''}
+        .value=${start}
         title=${startTitle}
-        @change=${(e) => host._onStartDateChange(e)}
+        @change=${(event) => actions.changeStart(event.target.value)}
       />
       <span class="date-sep">→</span>
       <input
         type="date"
         class="date-input${endChanged ? ' details-changed' : ''}"
-        .value=${feature.end || ''}
+        .value=${end}
         title=${endTitle}
-        @change=${(e) => host._onEndDateChange(e)}
+        @change=${(event) => actions.changeEnd(event.target.value)}
       />
     </div>
     ${hasChildren || hasAnyDate ?
@@ -102,14 +130,14 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
           html`
             <button
               class="date-tool-btn"
-              @click=${(e) => host._snapStartDate(e)}
+              @click=${(event) => { event.stopPropagation(); actions.snapStart(); }}
               title="Snap start to earliest child"
               aria-label="Snap start to earliest child"
             >⇤</button>
             <button
               class="date-tool-btn"
               data-test="shrinkwrap-chip"
-              @click=${(e) => host._shrinkwrapEpic(e)}
+              @click=${(event) => { event.stopPropagation(); actions.fitChildren(); }}
               title="Shrink ${typeLabel} to span of children"
               aria-label="Shrink ${typeLabel} to children"
             ><svg width="18" height="14" viewBox="0 0 20 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
@@ -121,7 +149,7 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
               </svg></button>
             <button
               class="date-tool-btn"
-              @click=${(e) => host._snapEndDate(e)}
+              @click=${(event) => { event.stopPropagation(); actions.snapEnd(); }}
               title="Snap end to latest child"
               aria-label="Snap end to latest child"
             >⇥</button>
@@ -131,7 +159,7 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, childr
         ${hasAnyDate ?
           html`<button
             class="clear-dates-btn"
-            @click=${() => host._clearDates()}
+            @click=${actions.clearDates}
             title="Remove dates — task becomes unplanned"
           >✕ Clear dates</button>`
         : ''}

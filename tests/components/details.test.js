@@ -11,7 +11,7 @@ describe('DetailsPanel Consolidated', () => {
     expect(el).to.exist;
     const panel = el.shadowRoot.querySelector('.panel.closed');
     expect(panel).to.exist;
-    el.feature = { id: '1', title: 'Test item' };
+    el.feature = { id: '1', title: 'Test item', capacity: [], orgLoad: '0%', relations: [] };
     el.open = true;
     await el.updateComplete;
     const label = el.shadowRoot.querySelector('.details-label');
@@ -21,7 +21,7 @@ describe('DetailsPanel Consolidated', () => {
 
   it('closes when close button clicked', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
-    el.feature = { id: '1', title: 'Test item' };
+    el.feature = { id: '1', title: 'Test item', capacity: [], orgLoad: '0%', relations: [] };
     el.open = true;
     await el.updateComplete;
     const closeBtn = el.shadowRoot.querySelector('.details-close');
