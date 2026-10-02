@@ -1,14 +1,7 @@
 import { chromium } from 'playwright';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-import { existsSync } from 'node:fs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const storageStatePath = resolve(__dirname, 'storageState.json');
-
-async function bootstrapTestData(page) {
-  const bootstrapSummary = await page.evaluate(async () => {
+async function bootstrapTestData(page, testDataDir) {
+  const bootstrapSummary = await page.evaluate(async (dataDir) => {
     const adminEmail = 'user@example.com';
     const adminPat = 'playwright-mock-pat';
 
@@ -62,9 +55,9 @@ async function bootstrapTestData(page) {
         organization_url: 'anonymous-org',
         feature_flags: {
           use_azure_mock_generator: true,
-          data_dir: 'tests/e2e/.tmp-data',
+          data_dir: dataDir,
           generator_persist_enabled: true,
-          generator_persist_dir: 'tests/e2e/.tmp-data/azure_mock_generated',
+          generator_persist_dir: `${dataDir}/azure_mock_generated`,
           generator_config: {
             seed: 489723,
             n_plans: 1,
@@ -134,13 +127,15 @@ async function bootstrapTestData(page) {
     });
 
     await post('/admin/v1/reload-config', {});
-    await post('/api/session', { email: adminEmail });
+    await post('/api/session', {});
+    await get('/api/tasks');
+    await get('/api/projects');
 
     return {
       needsSetup: Boolean(setupStatus.needs_setup),
       adminEmail,
     };
-  });
+  }, testDataDir);
 
   console.log('[global-setup] admin bootstrap complete', bootstrapSummary);
 }
@@ -175,14 +170,14 @@ export default async function globalSetup(config) {
   console.log('[global-setup] baseURL=', baseURL);
 
   const browser = await chromium.launch();
-  const context = await browser.newContext(existsSync(storageStatePath)
-    ? { storageState: storageStatePath } : {});
+  const context = await browser.newContext();
+  const storageStatePath = config.metadata.storageStatePath;
   const page = await context.newPage();
 
   try {
     // Require the app and the config modal flow to succeed — fail fast if not available.
     await page.goto(baseURL, { waitUntil: 'networkidle', timeout: 20000 });
-    await bootstrapTestData(page);
+    await bootstrapTestData(page, config.metadata.testDataDir);
     // If an onboarding modal blocks interaction, remove it from DOM to allow clicks.
     await page.evaluate(() => {
       const selectors = [

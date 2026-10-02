@@ -1,9 +1,11 @@
+import os
+
 from planner_lib.main import Config, create_app
 
 
 # Playwright e2e server factory: always use isolated test data storage.
 def make_app():
-    return create_app(Config(data_dir='tests/e2e/.tmp-data'))
+    return create_app(Config(data_dir=os.environ['PLANNER_E2E_TEST_DATA_DIR']))
 
 
 def make_auth_app():

@@ -1,40 +1,30 @@
-import { test, expect } from '@playwright/test';
-import { waitForFeatureCards } from './helpers.js';
+import { expect } from '@playwright/test';
+import { test, saveScenarioChanges } from './helpers.js';
 
 test.describe('FeatureBoard drag & resize (e2e)', () => {
-  test('drags a feature card and triggers update', async ({ page }) => {
-    await page.goto('/');
-
-    await waitForFeatureCards(page, 30000);
-
-    const card = await page.$('feature-card-lit');
-    expect(card).not.toBeNull();
-
-    const initialLeft = await card.evaluate((el) => getComputedStyle(el).left);
-
+  test('moving a card persists scenario dates without changing Baseline', async ({ page, activeScenario }) => {
+    const card = page.locator(`feature-card-lit[data-feature-id="${activeScenario.feature.id}"]`);
+    await card.scrollIntoViewIfNeeded();
+    const initialLeft = await card.evaluate((element) => parseFloat(element.style.left));
     const box = await card.boundingBox();
-    // Try a larger drag distance; if no movement detected, retry once
-    async function doDrag(dx) {
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2, {
-        steps: 12,
-      });
-      await page.mouse.up();
-    }
-
-    // If interactive drag doesn't move the element reliably in CI, set left directly
-    await doDrag(180);
-    await page.waitForTimeout(400);
-    let finalLeft = await card.evaluate((el) => getComputedStyle(el).left);
-    if (finalLeft === initialLeft) {
-      // fallback: apply a visual move directly and assert the style updated
-      await card.evaluate((el, amt) => {
-        el.style.left = parseFloat(getComputedStyle(el).left) + amt + 'px';
-      }, 220);
-      await page.waitForTimeout(200);
-      finalLeft = await card.evaluate((el) => getComputedStyle(el).left);
-    }
-    expect(finalLeft).not.toBe(initialLeft);
+    expect(box).not.toBeNull();
+    const startX = box.x + box.width / 2;
+    const startY = box.y + box.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 80, startY, { steps: 12 });
+    await page.mouse.up();
+    await expect.poll(() => card.evaluate((element) => parseFloat(element.style.left)))
+      .toBeGreaterThan(initialLeft);
+    const saved = await saveScenarioChanges(page, activeScenario);
+    const dates = saved.overrides[activeScenario.feature.id];
+    expect(Date.parse(dates.start)).toBeGreaterThan(Date.parse(activeScenario.start));
+    expect(Date.parse(dates.end) - Date.parse(dates.start)).toBe(
+      Date.parse(activeScenario.end) - Date.parse(activeScenario.start));
+    const response = await page.request.get('/api/tasks');
+    expect(response.ok()).toBe(true);
+    const tasks = await response.json();
+    expect(tasks.find((task) => task.id === activeScenario.feature.id))
+      .toMatchObject({ start: activeScenario.feature.start, end: activeScenario.feature.end });
   });
 });

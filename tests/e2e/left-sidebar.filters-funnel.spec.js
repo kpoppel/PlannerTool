@@ -8,7 +8,7 @@ async function waitForSidebar(page) {
   });
 }
 
-test.describe('Left Sidebar - Extra coverage', () => {
+test.describe('Left Sidebar - filters and data funnel', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForSidebar(page);

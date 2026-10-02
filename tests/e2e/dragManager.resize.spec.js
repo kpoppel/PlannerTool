@@ -1,38 +1,29 @@
-import { test, expect } from '@playwright/test';
-import { waitForFeatureCards } from './helpers.js';
+import { expect } from '@playwright/test';
+import { test, saveScenarioChanges } from './helpers.js';
 
 test.describe('DragManager resize (e2e)', () => {
-  test('resizes a feature card via right-edge drag', async ({ page }) => {
-    await page.goto('/');
-    await waitForFeatureCards(page, 30000);
-
-    const card = await page.$('feature-card-lit');
-    expect(card).not.toBeNull();
-
-    // get bounding box of card and perform a drag starting near the right edge
-    const box = await card.boundingBox();
-    const startX = box.x + box.width - 6; // near right edge (resize handle)
+  test('resizing a card persists its end date without changing Baseline', async ({ page, activeScenario }) => {
+    const card = page.locator(`feature-card-lit[data-feature-id="${activeScenario.feature.id}"]`);
+    await card.scrollIntoViewIfNeeded();
+    const initialWidth = await card.evaluate((element) => parseFloat(element.style.width));
+    const box = await card.locator('.drag-handle').boundingBox();
+    expect(box).not.toBeNull();
+    const startX = box.x + box.width / 2;
     const startY = box.y + box.height / 2;
-
-    // capture initial width
-    const initialWidth = await page.evaluate(
-      (el) => parseInt(getComputedStyle(el).width, 10),
-      card
-    );
-
     await page.mouse.move(startX, startY);
     await page.mouse.down();
-    // drag to the right to increase width
-    await page.mouse.move(startX + 120, startY, { steps: 12 });
+    await page.mouse.move(startX + 80, startY, { steps: 12 });
     await page.mouse.up();
-
-    // small wait for UI updates
-    await page.waitForTimeout(300);
-
-    const finalWidth = await page.evaluate(
-      (el) => parseInt(getComputedStyle(el).width, 10),
-      card
-    );
-    expect(finalWidth).toBeGreaterThanOrEqual(initialWidth);
+    await expect.poll(() => card.evaluate((element) => parseFloat(element.style.width)))
+      .toBeGreaterThan(initialWidth);
+    const saved = await saveScenarioChanges(page, activeScenario);
+    const dates = saved.overrides[activeScenario.feature.id];
+    expect(dates.start).toBe(activeScenario.start);
+    expect(Date.parse(dates.end)).toBeGreaterThan(Date.parse(activeScenario.end));
+    const response = await page.request.get('/api/tasks');
+    expect(response.ok()).toBe(true);
+    const tasks = await response.json();
+    expect(tasks.find((task) => task.id === activeScenario.feature.id))
+      .toMatchObject({ start: activeScenario.feature.start, end: activeScenario.feature.end });
   });
 });
