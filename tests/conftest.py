@@ -278,9 +278,13 @@ def app():
         from planner_lib.storage import memory_backend as mem_mod
         OrigMemory = mem_mod.MemoryStorage
         shared = OrigMemory()
+        from planner_lib.migrations.revisions import initialize
+        initialize(shared)
         # Ensure server_config exists (empty dict) so create_app can read it
         try:
-            shared.save('config', 'server_config', {})
+            shared.save('config', 'server_config', {
+                'schema_version': 2, 'log_level': 'WARNING', 'feature_flags': {},
+            })
         except Exception:
             pass
         # Ensure people config exists for PeopleService
@@ -343,6 +347,8 @@ def isolate_storage(app):
             # If underlying backend is the in-memory implementation, clear its store
             if hasattr(be, '_store') and isinstance(getattr(be, '_store'), dict):
                 be._store.clear()
+                from planner_lib.migrations.revisions import initialize
+                initialize(be)
         except Exception:
             # Fallback: attempt to remove known namespaces if supported
             try:

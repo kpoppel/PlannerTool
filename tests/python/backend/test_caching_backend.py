@@ -452,6 +452,7 @@ def test_soft_expired_remote_cache_returns_immediately_and_refreshes_in_backgrou
     """Soft-expired remote entries are returned immediately while refresh runs async."""
     import threading
     import time
+    from concurrent.futures import ThreadPoolExecutor
     from planner_lib.backend.caching import CachingBackend
 
     class _SlowRefreshBackend:
@@ -467,7 +468,7 @@ def test_soft_expired_remote_cache_returns_immediately_and_refreshes_in_backgrou
             if self.calls == 1:
                 return [dict(_TASK, title='warm')]
             self.refresh_entered.set()
-            self.release_refresh.wait(timeout=1.0)
+            self.release_refresh.wait(timeout=5.0)
             return [dict(_TASK, title='fresh')]
 
         def write_task(self, task_id, updates, credential):
@@ -485,15 +486,17 @@ def test_soft_expired_remote_cache_returns_immediately_and_refreshes_in_backgrou
     meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
     storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
 
-    start = time.perf_counter()
-    stale = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
-    elapsed = time.perf_counter() - start
-
-    assert stale[0]['title'] == 'warm'
-    assert elapsed < 0.2, 'stale response should not block on remote refresh'
-    assert inner.refresh_entered.wait(timeout=1.0)
-
-    inner.release_refresh.set()
+    with ThreadPoolExecutor(max_workers=1) as callers:
+        pending = callers.submit(
+            caching.fetch_tasks, AREA, credential={'token': 'valid', 'user_id': 'u@example.com'},
+        )
+        try:
+            stale = pending.result(timeout=2.0)
+            assert stale[0]['title'] == 'warm'
+            assert inner.refresh_entered.wait(timeout=2.0)
+            assert not inner.release_refresh.is_set()
+        finally:
+            inner.release_refresh.set()
 
     # Allow the background refresh to publish the updated snapshot.
     for _ in range(30):
