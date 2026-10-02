@@ -53,6 +53,11 @@ function withSyntheticDefaultView(views) {
   return nextViews;
 }
 
+function requireResult(result, methodName) {
+  if (!result.ok) throw new Error(result.error.message, { cause: result.error });
+  return result.data;
+}
+
 function deriveDefaultFeatureStates(snapshot) {
   return deriveAvailableFeatureStates(snapshot.baseline.features);
 }
@@ -296,7 +301,7 @@ export function createViewRestoreCommands(
 
   const commands = {
     async loadViews() {
-      const views = withSyntheticDefaultView(await dataService.listViews());
+      const views = withSyntheticDefaultView(requireResult(await dataService.listViews(), 'listViews'));
       setViews(views);
       return views;
     },
@@ -316,8 +321,8 @@ export function createViewRestoreCommands(
         ),
         viewOptions,
       };
-      const response = await dataService.saveView(payload);
-      const nextViews = withSyntheticDefaultView(await dataService.listViews());
+      const response = requireResult(await dataService.saveView(payload), 'saveView');
+      const nextViews = withSyntheticDefaultView(requireResult(await dataService.listViews(), 'listViews'));
       const responseId = response.id === undefined ? null : response.id;
       setViews(nextViews, responseId);
       const savedViewData =
@@ -332,14 +337,14 @@ export function createViewRestoreCommands(
     },
 
     async renameView(viewId, newName) {
-      await dataService.renameView(viewId, newName);
-      const nextViews = withSyntheticDefaultView(await dataService.listViews());
+      requireResult(await dataService.renameView(viewId, newName), 'renameView');
+      const nextViews = withSyntheticDefaultView(requireResult(await dataService.listViews(), 'listViews'));
       setViews(nextViews);
     },
 
     async deleteView(viewId) {
-      await dataService.deleteView(viewId);
-      const nextViews = withSyntheticDefaultView(await dataService.listViews());
+      requireResult(await dataService.deleteView(viewId), 'deleteView');
+      const nextViews = withSyntheticDefaultView(requireResult(await dataService.listViews(), 'listViews'));
       const activeId = store.getState().view.activeId;
       setViews(nextViews, activeId === viewId ? null : activeId);
     },
@@ -353,7 +358,7 @@ export function createViewRestoreCommands(
         viewData =
           savedViews.find((view) => String(view.id) === 'default');
       } else {
-        viewData = await dataService.getView(id);
+        viewData = requireResult(await dataService.getView(id), 'getView');
         if (viewData === null) {
           throw new Error(`View not found: ${id}`);
         }

@@ -63,9 +63,9 @@ describe('CapacityCalculator (unit)', () => {
     const res = calc.calculate(features, filters, teams, projects);
     expect(res.dates).to.have.lengthOf(3);
     expect(res.teamDailyCapacity).to.be.an('array');
-    expect(res.totalOrgDaily).to.be.an('array');
+    expect(res.totalOrgDailyCapacity).to.be.an('array');
     // each day should have total org capacity 2
-    expect(res.totalOrgDaily.every((v) => v === 2)).to.be.true;
+    expect(res.totalOrgDailyCapacity.every((v) => v === 2)).to.be.true;
   });
 
   it('keeps organization capacity stable when team drill-down changes', () => {
@@ -91,7 +91,7 @@ describe('CapacityCalculator (unit)', () => {
     const allTeams = calc.calculate(features, { ...baseFilters, selectedTeams: ['t1', 't2'] }, teams, projects);
     const narrowedTeams = calc.calculate(features, { ...baseFilters, selectedTeams: ['t1'] }, teams, projects);
 
-    expect(narrowedTeams.totalOrgDaily).to.deep.equal(allTeams.totalOrgDaily);
+    expect(narrowedTeams.totalOrgDailyCapacity).to.deep.equal(allTeams.totalOrgDailyCapacity);
     expect(narrowedTeams.totalOrgDailyPerTeamAvg).to.deep.equal(allTeams.totalOrgDailyPerTeamAvg);
     expect(narrowedTeams.teamDailyCapacityMap[0]).to.deep.equal({ t1: 20, t2: 80 });
     expect(narrowedTeams.totalOrgDailyPerTeamAvg[0]).to.equal(50);
@@ -187,7 +187,7 @@ describe('CapacityCalculator (unit)', () => {
     };
 
     const first = calc.calculate(features, filters, teams, projects);
-    expect(first.totalOrgDaily.every((v) => v === 1)).to.be.true;
+    expect(first.totalOrgDailyCapacity.every((v) => v === 1)).to.be.true;
 
     // Modify feature capacity and call calculate with changedFeatureIds to trigger deltas
     const newFeatures = [
@@ -201,7 +201,7 @@ describe('CapacityCalculator (unit)', () => {
       },
     ];
     const updated = calc.calculate(newFeatures, filters, teams, projects, ['f1']);
-    expect(updated.totalOrgDaily.every((v) => v === 3)).to.be.true;
+    expect(updated.totalOrgDailyCapacity.every((v) => v === 3)).to.be.true;
   });
 
   it('incremental delta removes a deleted team allocation from cached results', () => {
@@ -234,7 +234,7 @@ describe('CapacityCalculator (unit)', () => {
     );
 
     expect(removed.teamDailyCapacityMap[0].t1).to.equal(0);
-    expect(removed.totalOrgDaily.every((value) => value === 0)).to.be.true;
+    expect(removed.totalOrgDailyCapacity.every((value) => value === 0)).to.be.true;
   });
 
   it('epic children rollup: children allocations roll up to epic parent project', () => {

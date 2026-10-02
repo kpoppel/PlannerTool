@@ -137,61 +137,58 @@ def test_update_group_without_members_does_not_change_existing(store):
 
 # ---------------------------------------------------------------------------
 # REST API integration: members field accepted and returned
-# (uses the shared client fixture from conftest.py)
+# (uses the shared authenticated_client fixture from conftest.py)
 # ---------------------------------------------------------------------------
 
-_HEADERS = {'X-Session-Id': 'test-session'}
 
 
-def test_api_create_group_with_members(client):
+def test_api_create_group_with_members(authenticated_client):
     """POST /api/groups with members persists and returns the members list."""
     payload = {'plan_id': 'plan-1', 'name': 'G', 'members': ['task-1', 'task-2']}
-    resp = client.post('/api/groups', json=payload, headers=_HEADERS)
+    resp = authenticated_client.post('/api/groups', json=payload)
     assert resp.status_code == 201
     body = resp.json()
     assert body['members'] == ['task-1', 'task-2']
 
 
-def test_api_create_group_without_members_returns_no_members_key(client):
+def test_api_create_group_without_members_returns_no_members_key(authenticated_client):
     """POST /api/groups without members should not include 'members' in response."""
     payload = {'plan_id': 'plan-1', 'name': 'G'}
-    resp = client.post('/api/groups', json=payload, headers=_HEADERS)
+    resp = authenticated_client.post('/api/groups', json=payload)
     assert resp.status_code == 201
     body = resp.json()
     assert 'members' not in body
 
 
-def test_api_update_group_members(client):
+def test_api_update_group_members(authenticated_client):
     """PUT /api/groups/{id} with members updates the members list."""
-    created = client.post(
-        '/api/groups', json={'plan_id': 'plan-1', 'name': 'G'}, headers=_HEADERS
+    created = authenticated_client.post(
+        '/api/groups', json={'plan_id': 'plan-1', 'name': 'G'}
     ).json()
-    resp = client.put(
+    resp = authenticated_client.put(
         f'/api/groups/{created["id"]}',
         json={'members': ['task-3']},
-        headers=_HEADERS,
     )
     assert resp.status_code == 200
     assert resp.json()['members'] == ['task-3']
 
 
-def test_api_get_group_returns_members(client):
+def test_api_get_group_returns_members(authenticated_client):
     """GET /api/groups/{id} returns the members list."""
-    created = client.post(
+    created = authenticated_client.post(
         '/api/groups',
         json={'plan_id': 'plan-1', 'name': 'G', 'members': ['task-1']},
-        headers=_HEADERS,
     ).json()
-    resp = client.get(f'/api/groups/{created["id"]}', headers=_HEADERS)
+    resp = authenticated_client.get(f'/api/groups/{created["id"]}')
     assert resp.status_code == 200
     assert resp.json()['members'] == ['task-1']
 
 
-def test_api_list_groups_returns_members(client):
+def test_api_list_groups_returns_members(authenticated_client):
     """GET /api/groups returns members for all groups."""
-    client.post('/api/groups', json={'plan_id': 'p', 'name': 'A', 'members': ['t1']}, headers=_HEADERS)
-    client.post('/api/groups', json={'plan_id': 'p', 'name': 'B', 'members': []}, headers=_HEADERS)
-    resp = client.get('/api/groups?plan_id=p', headers=_HEADERS)
+    authenticated_client.post('/api/groups', json={'plan_id': 'p', 'name': 'A', 'members': ['t1']})
+    authenticated_client.post('/api/groups', json={'plan_id': 'p', 'name': 'B', 'members': []})
+    resp = authenticated_client.get('/api/groups?plan_id=p')
     assert resp.status_code == 200
     groups = {g['name']: g for g in resp.json()}
     assert groups['A']['members'] == ['t1']

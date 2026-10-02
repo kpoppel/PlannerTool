@@ -76,7 +76,8 @@
 
 /**
  * @typedef {{
- *   byPlanId: Record<string, any[]>
+ *   byPlanId: Record<string, any[]>,
+ *   loadedPlanIds: string[]
  * }} GroupsState
  */
 

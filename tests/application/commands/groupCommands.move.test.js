@@ -33,7 +33,7 @@ function seedStore(baselineGroups) {
         },
       ],
     },
-    groups: { byPlanId: { p1: baselineGroups } },
+    groups: { byPlanId: { p1: baselineGroups }, loadedPlanIds: ['p1'] },
   };
 }
 

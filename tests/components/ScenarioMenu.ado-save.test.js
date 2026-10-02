@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // even though vi.mock() calls are hoisted to the top of the file.
 const { mockRefreshBaseline, mockPublishBaseline, mockOpenAzureDevopsModal } = vi.hoisted(() => ({
   mockRefreshBaseline: vi.fn().mockResolvedValue(undefined),
-  mockPublishBaseline: vi.fn().mockResolvedValue({ ok: true, updated: 2, errors: [] }),
+  mockPublishBaseline: vi.fn().mockResolvedValue({ ok: true, data: { ok: true, updated: 2, errors: [] } }),
   mockOpenAzureDevopsModal: vi.fn(),
 }));
 
@@ -35,15 +35,15 @@ const {
   mockScenarioGetScenarios: vi.fn(() => []),
   mockScenarioGetActiveScenarioId: vi.fn(() => null),
   mockGetChangedScenarioIds: vi.fn(() => []),
-  mockSaveScenario: vi.fn().mockResolvedValue(undefined),
+  mockSaveScenario: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
 vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: {
     publishBaseline: mockPublishBaseline,
     createGroup: mockCreateGroup,
-    updateGroup: vi.fn().mockResolvedValue(null),
-    deleteGroup: vi.fn().mockResolvedValue(true),
+    updateGroup: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+    deleteGroup: vi.fn().mockResolvedValue({ ok: true, data: true }),
     listGroups: vi.fn().mockResolvedValue([]),
   },
 }));
@@ -105,6 +105,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
     group: {
       getPendingGroupChanges: mockPendingGroupChanges,
       getGroupById: vi.fn(() => null),
+      getBaselineGroupById: vi.fn(() => ({ id: 'g1', plan_id: 'p1', members: [] })),
     },
   },
 }));
@@ -122,6 +123,7 @@ vi.mock('../../www/js/vendor/lit.js', () => ({
 
 import { bus } from '../../www/js/core/EventBus.js';
 import { DataEvents } from '../../www/js/core/EventRegistry.js';
+import { dataService } from '../../www/js/services/dataService.js';
 import { ScenarioMenuLit } from '../../www/js/components/ScenarioMenu.lit.js';
 import { groupService } from '../../www/js/services/GroupService.js';
 
@@ -134,6 +136,7 @@ function makeMenu(overrides = {}) {
   menu.scenarios = [];
   menu.activeScenarioId = null;
   Object.assign(menu, overrides);
+  mockScenarioGetScenarios.mockReturnValue(menu.scenarios);
   return menu;
 }
 
@@ -148,7 +151,8 @@ function makeEvent() {
 describe('ScenarioMenu._onSaveToAzure', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPublishBaseline.mockResolvedValue({ ok: true, updated: 2, errors: [] });
+    mockPublishBaseline.mockResolvedValue({ ok: true, data: { ok: true, updated: 2, errors: [] } });
+    mockSaveScenario.mockResolvedValue({ ok: true });
     mockRefreshBaseline.mockResolvedValue(undefined);
   });
 
@@ -215,6 +219,83 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     expect(mockRefreshBaseline).toHaveBeenCalledOnce();
   });
 
+  it('keeps a group update pending when the server rejects it', async () => {
+    const scenario = { id: 'sc-1', overrides: {} };
+    const change = { type: 'update', groupId: 'g1', fields: { name: 'Renamed' } };
+    const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
+    mockScenarioGetScenarios.mockReturnValue([scenario]);
+    mockPendingGroupChanges.mockReturnValue([change]);
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [], groupChanges: [change] });
+    dataService.updateGroup.mockResolvedValueOnce({
+      ok: false, error: { message: 'Group update failed' },
+    });
+
+    await menu._onSaveToAzure(makeEvent(), scenario);
+
+    expect(mockClearGroupOverride).not.toHaveBeenCalled();
+    expect(mockSaveScenario).not.toHaveBeenCalled();
+  });
+
+  it('keeps a loaded plan untouched when a group deletion fails', async () => {
+    const scenario = { id: 'sc-1', overrides: {} };
+    const change = { type: 'delete', groupId: 'g1' };
+    const menu = makeMenu({ scenarios: [scenario] });
+    mockPendingGroupChanges.mockReturnValue([change]);
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [], groupChanges: [change] });
+    dataService.deleteGroup.mockResolvedValueOnce({ ok: false, error: { message: 'Delete failed' } });
+
+    await menu._onSaveToAzure(makeEvent(), scenario);
+
+    expect(mockClearGroupOverride).not.toHaveBeenCalled();
+    expect(groupService.evictPlan).not.toHaveBeenCalled();
+    expect(groupService.loadGroupsForPlans).not.toHaveBeenCalled();
+  });
+
+  it('persists and refreshes a successful create before a later delete fails', async () => {
+    const scenario = { id: 'sc-1', overrides: {} };
+    const group = {
+      id: 'tmp_1', plan_id: 'p1', name: 'New', rank: 1024, parent_id: null, members: [],
+    };
+    const changes = [
+      { type: 'create', group }, { type: 'delete', groupId: 'g1' },
+    ];
+    const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
+    mockPendingGroupChanges.mockReturnValue(changes);
+    mockCreateGroup.mockResolvedValueOnce({ ok: true, data: { id: 'real-1' } });
+    dataService.deleteGroup.mockResolvedValueOnce({ ok: false, error: { message: 'Delete failed' } });
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [], groupChanges: changes });
+
+    await menu._onSaveToAzure(makeEvent(), scenario);
+
+    expect(mockPromoteGroupToBaseline).toHaveBeenCalledExactlyOnceWith('tmp_1', 'real-1', []);
+    expect(mockSaveScenario).toHaveBeenCalledExactlyOnceWith('sc-1');
+    expect(mockClearGroupOverride).not.toHaveBeenCalled();
+    expect(groupService.loadGroupsForPlans).toHaveBeenCalledExactlyOnceWith(['p1']);
+  });
+
+  it('does not acknowledge a rejected create or feature publish', async () => {
+    const scenario = { id: 'sc-1', overrides: {} };
+    const group = {
+      id: 'tmp_1', plan_id: 'p1', name: 'New', rank: 1024, parent_id: null, members: [],
+    };
+    const changes = [{ type: 'create', group }];
+    const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
+    mockPendingGroupChanges.mockReturnValue(changes);
+    mockCreateGroup.mockResolvedValueOnce({ ok: false, error: { message: 'Create failed' } });
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [], groupChanges: changes });
+    await menu._onSaveToAzure(makeEvent(), scenario);
+    expect(mockPromoteGroupToBaseline).not.toHaveBeenCalled();
+    expect(mockSaveScenario).not.toHaveBeenCalled();
+
+    mockPendingGroupChanges.mockReturnValue([]);
+    scenario.overrides = { t1: { name: 'Edited' } };
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [{ id: 't1', name: 'Edited' }], groupChanges: [] });
+    mockPublishBaseline.mockResolvedValueOnce({ ok: false, error: { message: 'Publish failed' } });
+    await menu._onSaveToAzure(makeEvent(), scenario);
+    expect(mockSaveScenario).not.toHaveBeenCalled();
+    expect(scenario.overrides).toEqual({ t1: { name: 'Edited' } });
+  });
+
   it('promotes a published group out of the scenario so it is not created again', async () => {
     // Regression: the publish path used to mutate the scenario object in place,
     // so the group stayed pending and was re-created on every later save —
@@ -233,7 +314,7 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     mockScenarioGetScenarios.mockReturnValue([scenario]);
     mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
     mockPendingGroupChanges.mockReturnValue([{ type: 'create', group: pendingGroup }]);
-    mockCreateGroup.mockResolvedValue({ id: 'real-1' });
+    mockCreateGroup.mockResolvedValue({ ok: true, data: { id: 'real-1' } });
     mockOpenAzureDevopsModal.mockResolvedValue({
       features: [],
       // The modal committed only t1; t2 was deselected.
@@ -245,7 +326,7 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     expect(mockCreateGroup).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: 'p1', name: 'New group', rank: 1024, parent_id: null })
     );
-    expect(mockPromoteGroupToBaseline).toHaveBeenCalledWith('tmp_1', 'real-1', []);
+    expect(mockPromoteGroupToBaseline).toHaveBeenCalledWith('tmp_1', 'real-1', ['t2']);
   });
 
   it('remaps a sub-group parent from its temp id to the created id', async () => {
@@ -261,8 +342,8 @@ describe('ScenarioMenu._onSaveToAzure', () => {
       { type: 'create', group: child },
     ]);
     mockCreateGroup
-      .mockResolvedValueOnce({ id: 'real-p' })
-      .mockResolvedValueOnce({ id: 'real-c' });
+      .mockResolvedValueOnce({ ok: true, data: { id: 'real-p' } })
+      .mockResolvedValueOnce({ ok: true, data: { id: 'real-c' } });
     mockOpenAzureDevopsModal.mockResolvedValue({
       features: [],
       groupChanges: [
@@ -289,7 +370,7 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     mockScenarioGetScenarios.mockReturnValue([scenario]);
     mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
     mockPendingGroupChanges.mockReturnValue(changes);
-    mockCreateGroup.mockResolvedValue({ id: 'real-group' });
+    mockCreateGroup.mockResolvedValue({ ok: true, data: { id: 'real-group' } });
     mockOpenAzureDevopsModal.mockResolvedValue({ features: [], groupChanges: changes });
 
     await menu._onSaveToAzure(makeEvent(), scenario);
@@ -328,12 +409,14 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     const menu = makeMenu({ scenarios: [scenario] });
 
     mockOpenAzureDevopsModal.mockResolvedValue({ features: [{ id: '44', state: 'Done' }], groupChanges: [] });
-    mockPublishBaseline.mockResolvedValue({ ok: false, updated: 1, errors: ['99: bad'] });
+    mockPublishBaseline.mockResolvedValue({ ok: true, data: { ok: false, updated: 1, errors: ['99: bad'] } });
 
     await menu._onSaveToAzure(makeEvent(), scenario);
 
     expect(mockPublishBaseline).toHaveBeenCalledOnce();
     expect(mockRefreshBaseline).toHaveBeenCalledOnce();
+    expect(mockSaveScenario).not.toHaveBeenCalled();
+    expect(scenario.overrides).toEqual({ '44': { state: 'Done' } });
   });
 
   it('does not propagate a refreshBaseline() failure to the caller', async () => {

@@ -64,8 +64,8 @@ function asFailure(bus, phase, error) {
   return failure;
 }
 
-async function callStrict(dataService, methodName, ...args) {
-  const result = await dataService.callRestResult(methodName, ...args);
+async function callStrict(call, methodName) {
+  const result = await call();
   if (!result.ok) {
     return { ok: false, error: toError(result, methodName) };
   }
@@ -139,17 +139,17 @@ export function createDataCommands(store, bus, dataService) {
 
       const projectsResult = hasPreloaded ?
         { ok: true, data: preloaded.projects }
-      : await callStrict(dataService, 'getProjects');
+      : await callStrict(() => dataService.getProjects(), 'getProjects');
       if (!projectsResult.ok) return asFailure(bus, 'baseline', projectsResult.error);
 
       const teamsResult = hasPreloaded ?
         { ok: true, data: preloaded.teams }
-      : await callStrict(dataService, 'getTeams');
+      : await callStrict(() => dataService.getTeams(), 'getTeams');
       if (!teamsResult.ok) return asFailure(bus, 'baseline', teamsResult.error);
 
       const featuresResult = hasPreloaded ?
         { ok: true, data: preloaded.features }
-      : await callStrict(dataService, 'getFeatures');
+      : await callStrict(() => dataService.getFeatures(), 'getFeatures');
       if (!featuresResult.ok) return asFailure(bus, 'baseline', featuresResult.error);
 
       const iterationsResult = hasPreloaded ?
@@ -162,7 +162,7 @@ export function createDataCommands(store, bus, dataService) {
               : preloaded.iterationsByProject,
           },
         }
-      : await callStrict(dataService, 'getIterationsConfig');
+      : await callStrict(() => dataService.getIterationsConfig(), 'getIterationsConfig');
       if (!iterationsResult.ok) return asFailure(bus, 'baseline', iterationsResult.error);
 
       if (!(projectsResult.data instanceof Array)) {
@@ -224,9 +224,7 @@ export function createDataCommands(store, bus, dataService) {
       const teams = teamsResult.data;
       const features = featuresResult.data;
 
-      const colorMappings = typeof dataService.getColorMappings === 'function'
-        ? await dataService.getColorMappings()
-        : { projectColors: {}, teamColors: {} };
+      const colorMappings = await dataService.getColorMappings();
       const projectColorMap = colorMappings.projectColors;
       const teamColorMap = colorMappings.teamColors;
 
@@ -316,7 +314,7 @@ export function createDataCommands(store, bus, dataService) {
       const hasPreloadedItems = Object.prototype.hasOwnProperty.call(options, 'preloadedItems');
       const scenariosResult = hasPreloadedItems ?
         { ok: true, data: options.preloadedItems }
-      : await callStrict(dataService, 'loadAllScenarios');
+      : await callStrict(() => dataService.loadAllScenarios(), 'loadAllScenarios');
       if (!scenariosResult.ok) {
         return asFailure(bus, 'scenarios', scenariosResult.error);
       }

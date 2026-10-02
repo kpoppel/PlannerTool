@@ -14,8 +14,6 @@ from planner_lib.middleware.session import SessionManager
 from planner_lib.migrations.contracts import TARGET_REVISION, schema_state
 from planner_lib.migrations.revisions import initialize
 
-REAL_CREATE = SessionManager.create
-REAL_GET = SessionManager.get
 ACCOUNT_ID = '11111111-1111-4111-8111-111111111111'
 
 
@@ -262,8 +260,6 @@ def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path
     from planner_lib.session.auth import AuthManager
     from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     source = DiskCacheStorage(tmp_path / 'source')
     target = DiskCacheStorage(tmp_path / 'target')
     initialize(source)
@@ -323,7 +319,6 @@ def test_account_restore_reinstates_older_key_and_admin_reset_recovers_access(tm
     from planner_lib.session.auth import AuthManager
     from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     storage = DiskCacheStorage(tmp_path)
     initialize(storage)
     try:
@@ -448,8 +443,6 @@ def test_selective_restore_without_accounts_preserves_current_credentials(tmp_pa
     from planner_lib.admin.config_manager import ConfigManager
     from planner_lib.session.auth import AuthManager
     from planner_lib.storage.diskcache_backend import DiskCacheStorage
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     storage = DiskCacheStorage(tmp_path)
     try:
         accounts = AccountManager(storage)

@@ -46,12 +46,14 @@ describe('ProviderREST /api/session tests', () => {
     }
   });
 
-  it('rejects failed group fetches instead of treating them as empty groups', async () => {
+  it('preserves failed group fetch Results instead of treating them as empty groups', async () => {
     const list = vi.spyOn(dataService.providers.rest, 'listGroups').mockResolvedValue({
       ok: false, error: { message: 'Group fetch failed' },
     });
     try {
-      await expectVitest(dataService.listGroups()).rejects.toThrow('Group fetch failed');
+      await expectVitest(dataService.listGroups()).resolves.toEqual({
+        ok: false, error: { message: 'Group fetch failed' },
+      });
     } finally {
       list.mockRestore();
     }

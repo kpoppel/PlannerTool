@@ -1,34 +1,12 @@
 import pytest
 
-from planner_lib.middleware.session import SessionManager, get_session_id_from_request
-
-
-REAL_CREATE = SessionManager.create
-REAL_GET = SessionManager.get
-REAL_SESSION_ID = get_session_id_from_request
-
-
-@pytest.fixture
-def authenticated_client(client, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
-    monkeypatch.setattr('planner_lib.middleware.session.get_session_id_from_request', REAL_SESSION_ID)
-    assert client.post('/api/auth/enroll', json={
-        'email': 'view-owner@example.com', 'name': 'View Owner',
-    }).status_code == 200
-    return client
-
-
 @pytest.mark.parametrize('endpoint, namespace', [
     ('view', 'views'),
     ('scenario', 'scenarios'),
 ])
 def test_user_data_is_owned_by_account_id_after_delete_and_reenroll(
-    client, monkeypatch, endpoint, namespace,
+    client, endpoint, namespace,
 ):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
-    monkeypatch.setattr('planner_lib.middleware.session.get_session_id_from_request', REAL_SESSION_ID)
     enrollment = {'email': 'owner@example.com', 'name': 'Original Owner'}
     assert client.post('/api/auth/enroll', json=enrollment).status_code == 200
     accounts = client.app.state.container.get('account_manager')

@@ -20,9 +20,9 @@ def _make_task_repository(updated=2, errors=None):
     return repo
 
 
-def _make_session_mgr(client):
+def _make_session_mgr(authenticated_client):
     from tests.helpers import register_service_on_client
-    register_service_on_client(client, 'account_manager',
+    register_service_on_client(authenticated_client, 'account_manager',
                                SimpleNamespace(load=lambda email: {'pat': 'fake-pat'}))
     mgr = MagicMock()
     mgr.get.return_value = {'account_id': 'test-account-id',
@@ -40,58 +40,58 @@ def _make_cache_coordinator(ok=True):
     return coordinator
 
 
-def test_tasks_update_does_not_invalidate_cache_on_success(client):
+def test_tasks_update_does_not_invalidate_cache_on_success(authenticated_client):
     """POST /api/tasks must NOT call coordinator.invalidate_all() after a write."""
     from tests.helpers import register_service_on_client
 
     task_repo = _make_task_repository(updated=1)
     coordinator = _make_cache_coordinator()
-    session_mgr = _make_session_mgr(client)
+    session_mgr = _make_session_mgr(authenticated_client)
 
-    register_service_on_client(client, 'task_repository', task_repo)
-    register_service_on_client(client, 'cache_coordinator', coordinator)
-    register_service_on_client(client, 'session_manager', session_mgr)
+    register_service_on_client(authenticated_client, 'task_repository', task_repo)
+    register_service_on_client(authenticated_client, 'cache_coordinator', coordinator)
+    register_service_on_client(authenticated_client, 'session_manager', session_mgr)
 
     payload = [{'id': 42, 'start': '2026-01-01', 'end': '2026-03-31'}]
-    r = client.post('/api/tasks', json=payload, headers={'Cookie': 'sessionId=test-session'})
+    r = authenticated_client.post('/api/tasks', json=payload)
 
     assert r.status_code == 200
     assert r.json().get('ok') is True
     coordinator.invalidate_all.assert_not_called()
 
 
-def test_tasks_update_does_not_invalidate_cache_with_partial_errors(client):
+def test_tasks_update_does_not_invalidate_cache_with_partial_errors(authenticated_client):
     """Cache must NOT be fully invalidated even when some items have errors."""
     from tests.helpers import register_service_on_client
 
     task_repo = _make_task_repository(updated=1, errors=['99: bad state'])
     coordinator = _make_cache_coordinator()
-    session_mgr = _make_session_mgr(client)
+    session_mgr = _make_session_mgr(authenticated_client)
 
-    register_service_on_client(client, 'task_repository', task_repo)
-    register_service_on_client(client, 'cache_coordinator', coordinator)
-    register_service_on_client(client, 'session_manager', session_mgr)
+    register_service_on_client(authenticated_client, 'task_repository', task_repo)
+    register_service_on_client(authenticated_client, 'cache_coordinator', coordinator)
+    register_service_on_client(authenticated_client, 'session_manager', session_mgr)
 
     payload = [{'id': 42}, {'id': 99}]
-    r = client.post('/api/tasks', json=payload, headers={'Cookie': 'sessionId=test-session'})
+    r = authenticated_client.post('/api/tasks', json=payload)
 
     assert r.status_code == 200
     coordinator.invalidate_all.assert_not_called()
 
 
-def test_tasks_update_skips_cache_invalidation_when_nothing_updated(client):
+def test_tasks_update_skips_cache_invalidation_when_nothing_updated(authenticated_client):
     """If no items were actually updated, cache invalidation must not be called."""
     from tests.helpers import register_service_on_client
 
     task_repo = _make_task_repository(updated=0)
     coordinator = _make_cache_coordinator()
-    session_mgr = _make_session_mgr(client)
+    session_mgr = _make_session_mgr(authenticated_client)
 
-    register_service_on_client(client, 'task_repository', task_repo)
-    register_service_on_client(client, 'cache_coordinator', coordinator)
-    register_service_on_client(client, 'session_manager', session_mgr)
+    register_service_on_client(authenticated_client, 'task_repository', task_repo)
+    register_service_on_client(authenticated_client, 'cache_coordinator', coordinator)
+    register_service_on_client(authenticated_client, 'session_manager', session_mgr)
 
-    r = client.post('/api/tasks', json=[], headers={'Cookie': 'sessionId=test-session'})
+    r = authenticated_client.post('/api/tasks', json=[])
 
     assert r.status_code == 200
     coordinator.invalidate_all.assert_not_called()

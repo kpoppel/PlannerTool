@@ -95,10 +95,10 @@ def _make_task_repository():
     return MockTaskRepo()
 
 
-def _make_fake_session_manager(client):
+def _make_fake_session_manager(authenticated_client):
     """Create a fake session manager for tests."""
     from types import SimpleNamespace
-    register_service_on_client(client, 'account_manager',
+    register_service_on_client(authenticated_client, 'account_manager',
                                SimpleNamespace(load=lambda email: {'pat': 'test-token'}))
     class FakeSessionMgr:
         def get(self, sid):
@@ -111,18 +111,18 @@ def _make_fake_session_manager(client):
     return FakeSessionMgr()
 
 
-def test_history_api_happy_path(client):
+def test_history_api_happy_path(authenticated_client):
     """Test the history API endpoint successfully returns task history."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager(client)
+    session_mgr = _make_fake_session_manager(authenticated_client)
 
-    register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_repository', task_repo)
-    register_service_on_client(client, 'history_repository', history_repo)
+    register_service_on_client(authenticated_client, 'session_manager', session_mgr)
+    register_service_on_client(authenticated_client, 'task_repository', task_repo)
+    register_service_on_client(authenticated_client, 'history_repository', history_repo)
 
     # Make the request
-    r = client.get('/api/history/tasks', headers={'Cookie': 'sessionId=test-session'})
+    r = authenticated_client.get('/api/history/tasks')
 
     assert r.status_code == 200
     data = r.json()
@@ -136,19 +136,18 @@ def test_history_api_happy_path(client):
     assert len(data['tasks'][0]['history']) == 3
 
 
-def test_history_api_with_project_filter(client):
+def test_history_api_with_project_filter(authenticated_client):
     """Test the history API with project filter."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager(client)
+    session_mgr = _make_fake_session_manager(authenticated_client)
 
-    register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_repository', task_repo)
-    register_service_on_client(client, 'history_repository', history_repo)
+    register_service_on_client(authenticated_client, 'session_manager', session_mgr)
+    register_service_on_client(authenticated_client, 'task_repository', task_repo)
+    register_service_on_client(authenticated_client, 'history_repository', history_repo)
 
-    r = client.get(
-        '/api/history/tasks?project=project-test',
-        headers={'Cookie': 'sessionId=test-session'}
+    r = authenticated_client.get(
+        '/api/history/tasks?project=project-test'
     )
 
     assert r.status_code == 200
@@ -156,19 +155,18 @@ def test_history_api_with_project_filter(client):
     assert 'tasks' in data
 
 
-def test_history_api_with_plan_filter(client):
+def test_history_api_with_plan_filter(authenticated_client):
     """Test the history API with plan filter."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager(client)
+    session_mgr = _make_fake_session_manager(authenticated_client)
 
-    register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_repository', task_repo)
-    register_service_on_client(client, 'history_repository', history_repo)
+    register_service_on_client(authenticated_client, 'session_manager', session_mgr)
+    register_service_on_client(authenticated_client, 'task_repository', task_repo)
+    register_service_on_client(authenticated_client, 'history_repository', history_repo)
 
-    r = client.get(
-        '/api/history/tasks?plan=plan_1',
-        headers={'Cookie': 'sessionId=test-session'}
+    r = authenticated_client.get(
+        '/api/history/tasks?plan=plan_1'
     )
 
     assert r.status_code == 200
@@ -176,19 +174,18 @@ def test_history_api_with_plan_filter(client):
     assert data['tasks'][0]['plan_id'] == 'plan_1'
 
 
-def test_history_api_with_date_range(client):
+def test_history_api_with_date_range(authenticated_client):
     """Test the history API with date range filters."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager(client)
+    session_mgr = _make_fake_session_manager(authenticated_client)
 
-    register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_repository', task_repo)
-    register_service_on_client(client, 'history_repository', history_repo)
+    register_service_on_client(authenticated_client, 'session_manager', session_mgr)
+    register_service_on_client(authenticated_client, 'task_repository', task_repo)
+    register_service_on_client(authenticated_client, 'history_repository', history_repo)
 
-    r = client.get(
-        '/api/history/tasks?since=2026-01-01&until=2026-12-31',
-        headers={'Cookie': 'sessionId=test-session'}
+    r = authenticated_client.get(
+        '/api/history/tasks?since=2026-01-01&until=2026-12-31'
     )
 
     assert r.status_code == 200
@@ -200,19 +197,18 @@ def test_history_api_with_date_range(client):
             assert entry['changed_at'].startswith('2026')
 
 
-def test_history_api_pagination(client):
+def test_history_api_pagination(authenticated_client):
     """Test the history API pagination parameters."""
     history_repo = _make_history_repository_with_data()
     task_repo = _make_task_repository()
-    session_mgr = _make_fake_session_manager(client)
+    session_mgr = _make_fake_session_manager(authenticated_client)
 
-    register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_repository', task_repo)
-    register_service_on_client(client, 'history_repository', history_repo)
+    register_service_on_client(authenticated_client, 'session_manager', session_mgr)
+    register_service_on_client(authenticated_client, 'task_repository', task_repo)
+    register_service_on_client(authenticated_client, 'history_repository', history_repo)
 
-    r = client.get(
-        '/api/history/tasks?page=2&per_page=50',
-        headers={'Cookie': 'sessionId=test-session'}
+    r = authenticated_client.get(
+        '/api/history/tasks?page=2&per_page=50'
     )
 
     assert r.status_code == 200
@@ -221,7 +217,7 @@ def test_history_api_pagination(client):
     assert data['per_page'] == 50
 
 
-def test_history_api_no_pat(client):
+def test_history_api_no_pat(authenticated_client):
     """Test the history API without PAT returns 401."""
     from fastapi.testclient import TestClient
     from types import SimpleNamespace
@@ -231,13 +227,14 @@ def test_history_api_no_pat(client):
         def get(self, sid):
             return {'account_id': 'test-account-id', 'email': 'test@example.com'}
 
-    register_service_on_client(client, 'session_manager', NoPATSessionMgr())
-    register_service_on_client(client, 'account_manager',
+    register_service_on_client(authenticated_client, 'session_manager', NoPATSessionMgr())
+    register_service_on_client(authenticated_client, 'account_manager',
                                SimpleNamespace(load=lambda email: {'pat': None}))
 
-    # Create a client that doesn't raise server exceptions
-    c = TestClient(client.app, raise_server_exceptions=False)
-    r = c.get('/api/history/tasks', headers={'Cookie': 'sessionId=test-session'})
+    # Create a client that doesn't raise server exceptions.
+    c = TestClient(authenticated_client.app, raise_server_exceptions=False,
+                   cookies=authenticated_client.cookies)
+    r = c.get('/api/history/tasks')
 
     assert r.status_code == 401
 

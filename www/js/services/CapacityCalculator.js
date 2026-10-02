@@ -150,7 +150,6 @@ export class CapacityCalculator {
         totalOrgDailyCapacity: cached.totalOrgDaily,
         totalOrgDailyPerTeamAvg,
       };
-      result.totalOrgDaily = cached.totalOrgDaily;
       this.bus.emit(CapacityEvents.UPDATED);
       return result;
     }
@@ -189,8 +188,6 @@ export class CapacityCalculator {
       totalOrgDailyCapacity: totalOrgDaily,
       totalOrgDailyPerTeamAvg,
     };
-    // Backwards-compatible alias expected by some callers/tests
-    result.totalOrgDaily = totalOrgDaily;
 
     // Cache result for incremental updates
     this._lastResultCache = {

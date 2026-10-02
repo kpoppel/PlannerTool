@@ -6,9 +6,20 @@ import {
   ViewEvents,
 } from '../../../www/js/core/EventRegistry.js';
 import { createInitialAppState } from '../../../www/js/application/createInitialAppState.js';
-import { createViewRestoreCommands } from '../../../www/js/application/commands/viewRestoreCommands.js';
+import { createViewRestoreCommands as createViewRestoreCommandsImpl } from '../../../www/js/application/commands/viewRestoreCommands.js';
 import { createViewCommands } from '../../../www/js/application/commands/viewCommands.js';
 import { store } from '../../../www/js/application/store.js';
+
+function createViewRestoreCommands(storeApi, payloadMocks, ...dependencies) {
+  for (const methodName of Object.keys(payloadMocks)) {
+    const resolvePayload = payloadMocks[methodName];
+    payloadMocks[methodName] = vi.fn(async (...args) => ({
+      ok: true,
+      data: await resolvePayload(...args),
+    }));
+  }
+  return createViewRestoreCommandsImpl(storeApi, payloadMocks, ...dependencies);
+}
 
 describe('application/commands/viewRestoreCommands', () => {
   beforeEach(() => {
@@ -42,6 +53,15 @@ describe('application/commands/viewRestoreCommands', () => {
 
     expect(dataService.listViews).toHaveBeenCalled();
     expect(dataService.saveView).toHaveBeenCalled();
+  });
+
+  it('loadViews rejects failed Results without replacing them with an empty view list', async () => {
+    const failure = { ok: false, error: { message: 'views_unavailable', status: 503 } };
+    const dataService = { listViews: vi.fn(async () => failure) };
+    const cmd = createViewRestoreCommandsImpl(store, dataService);
+
+    await expect(cmd.loadViews()).rejects.toMatchObject({ cause: failure.error });
+    expect(store.getState().view.saved).toEqual([]);
   });
 
   it('saveCurrentView captures full state from store including Context', async () => {

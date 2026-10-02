@@ -94,8 +94,8 @@ describe('plugin cost pluginState seam', () => {
     );
     const sidebar = { selectedTaskTypes: new Set(['Epic', 'Feature']) };
     const querySelector = vi.spyOn(document, 'querySelector').mockReturnValue(sidebar);
-    const getCost = vi.spyOn(dataService, 'getCost').mockResolvedValue({ projects: [] });
-    vi.spyOn(dataService, 'getCostTeams').mockResolvedValue({ teams: [] });
+    const getCost = vi.spyOn(dataService, 'getCost').mockResolvedValue({ ok: true, data: { projects: [] } });
+    vi.spyOn(dataService, 'getCostTeams').mockResolvedValue({ ok: true, data: { teams: [] } });
 
     const plugin = new PluginCostComponent();
     await plugin.loadData();
@@ -105,6 +105,7 @@ describe('plugin cost pluginState seam', () => {
       'child',
     ]);
     expect(getCost.mock.calls[0][0].features[0].capacity).toBe(child.capacity);
+    expect(plugin.data).toEqual({ projects: {} });
 
     const contextFeature = {
       id: 'context-feature',
@@ -121,6 +122,11 @@ describe('plugin cost pluginState seam', () => {
     expect(getCost.mock.calls[1][0].features[0].capacity).toBe(contextFeature.capacity);
     expect(mockSel.scope.getContextFeatures).toHaveBeenCalledTimes(2);
     expect(mockSel.scope.getVisibleFeatures).not.toHaveBeenCalled();
+    const previousData = plugin.data;
+    getCost.mockResolvedValue({ ok: false, error: { message: 'cost_unavailable', status: 503 } });
+    await plugin.loadData();
+    expect(plugin.error).toBe('cost_unavailable');
+    expect(plugin.data).toBe(previousData);
     querySelector.mockRestore();
   });
 

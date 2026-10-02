@@ -11,7 +11,20 @@ import { getActiveScenario } from '../shared/scenarioMutations.js';
 function getBaselineGroupsForPlan(state, planId) {
   const byPlanId = state.groups.byPlanId;
   const key = String(planId);
+  if (!state.groups.loadedPlanIds.includes(key)) {
+    throw new Error(`Baseline groups for plan ${key} are not loaded`);
+  }
   return byPlanId[key];
+}
+
+function getBaselineGroupById(state, groupId) {
+  const key = String(groupId);
+  for (const planId of state.groups.loadedPlanIds) {
+    const groups = state.groups.byPlanId[planId];
+    const found = groups.find((group) => String(group.id) === key);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -42,6 +55,10 @@ export function createGroupSelectors(store) {
       return derivePendingGroupChanges(scenario);
     },
 
+    getBaselineGroupById(groupId) {
+      return getBaselineGroupById(store.getState(), groupId);
+    },
+
     getGroupById(groupId) {
       const key = String(groupId);
       const state = store.getState();
@@ -65,8 +82,7 @@ export function createGroupSelectors(store) {
     },
 
     hasPlanLoaded(planId) {
-      const byPlanId = store.getState().groups.byPlanId;
-      return Object.prototype.hasOwnProperty.call(byPlanId, String(planId));
+      return store.getState().groups.loadedPlanIds.includes(String(planId));
     },
   };
 }

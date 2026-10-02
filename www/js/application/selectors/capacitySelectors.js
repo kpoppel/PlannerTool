@@ -4,34 +4,6 @@ function toArray(value) {
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
-export function createLegacyCapacitySelectors(state) {
-  return {
-    getCapacityDates() {
-      return toArray(state?.capacityDates);
-    },
-
-    getTeamDailyCapacity() {
-      return toArray(state?.teamDailyCapacity);
-    },
-
-    getTeamDailyCapacityMap() {
-      return toArray(state?.teamDailyCapacityMap);
-    },
-
-    getProjectDailyCapacity() {
-      return toArray(state?.projectDailyCapacity);
-    },
-
-    getProjectDailyCapacityMap() {
-      return toArray(state?.projectDailyCapacityMap);
-    },
-
-    getTotalOrgDailyPerTeamAvg() {
-      return toArray(state?.totalOrgDailyPerTeamAvg);
-    },
-  };
-}
-
 /**
  * @param {StoreApi} store
  * @returns {object}

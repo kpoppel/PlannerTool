@@ -1,126 +1,56 @@
-import asyncio
 from types import SimpleNamespace
+
 import pytest
-from planner_lib.cost.api import api_cost_post, api_cost_get, api_cost_teams
-from planner_lib.cost.service import build_cost_schema
-from fastapi import HTTPException
+from starlette.exceptions import HTTPException
 
 
-def make_request_with_container(container, sid='s1'):
-    accounts = SimpleNamespace(load=lambda email: {'pat': None})
-    services = SimpleNamespace(get=lambda name: accounts if name == 'account_manager' else container.get(name))
-    app = SimpleNamespace(state=SimpleNamespace(container=services))
-    headers = {}
-    cookies = {'sessionId': sid}
-    return SimpleNamespace(headers=headers, cookies=cookies, app=app, url=SimpleNamespace(path='/'))
-
-
-class SimpleSessionMgr:
-    def __init__(self, ctx=None):
-        self._ctx = ctx or {}
-        self._ctx['email'] = 'test@example.com'
-        self._ctx['account_id'] = '11111111-1111-4111-8111-111111111111'
-    def exists(self, sid):
-        return True
-    def get(self, sid):
-        return dict(self._ctx)
-    def set(self, sid, ctx):
-        self._ctx = ctx
-
-
-def test_api_cost_post_with_features():
-    # prepare services
-    cost_raw = {'projects': {'project-1': {'1': {'internal_cost': 100}}}, 'project_types': {}}
-    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: cost_raw)
-    container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr(), 'cost_service': cost_svc}.get(name))
-    req = make_request_with_container(container)
-
-    payload = {'features': [{'id': '1', 'project': 'project-1', 'start': '2020-01-01', 'end': '2020-02-01'}]}
-    # call wrapped function to bypass decorator (require_session already validated)
-    res = asyncio.run(api_cost_post.__wrapped__(req, payload=payload))
-    assert isinstance(res, dict)
-    assert 'projects' in res
-    assert any(p['id'] == 'project-1' for p in res['projects'])
-
-
-def test_api_cost_post_without_features_uses_task_repository():
-    # task repository returns tasks which are converted to features
-    tasks = [
-        {'id': '10', 'project': 'project-A', 'start': None, 'end': None, 'capacity': [1,2], 'title':'T','type':'Feature','state':'Active','relations':[]}
-    ]
-    task_repo = SimpleNamespace(read=lambda credential=None: tasks)
-    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {'project-A': {'10': {'internal_cost': 5}}}, 'project_types': {}})
-    container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr(), 'task_repository': task_repo, 'cost_service': cost_svc}.get(name))
-    req = make_request_with_container(container)
-    res = asyncio.run(api_cost_post.__wrapped__(req, payload={}))
-    assert isinstance(res, dict)
-    assert any(p['id'] == 'project-A' for p in res['projects'])
-
-
-def test_api_cost_post_scenario_overrides():
-    # test that scenario overrides are applied
-    features = [{'id': '7', 'project': 'project-X', 'start': '2020-01-01', 'end': '2020-01-10', 'capacity': []}]
-    task_svc = SimpleNamespace(list_tasks=lambda pat=None: [])
-    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {'project-X': {'7': {'internal_cost': 1}}}, 'project_types': {}})
-    scenario_repo = SimpleNamespace(
-        get_scenario=lambda user_id, scenario_id: {'overrides': {'7': {'start': '2020-02-01', 'capacity': [3]}}}
-    )
-    container = SimpleNamespace(get=lambda name: {
-        'session_manager': SimpleSessionMgr({'email': ''}),
-        'task_service': task_svc,
-        'cost_service': cost_svc,
-        'scenario_repository': scenario_repo,
-    }.get(name))
-    req = make_request_with_container(container)
-
-    res = asyncio.run(api_cost_post.__wrapped__(req, payload={'features': features, 'scenarioId': 's1'}))
-    # ensure meta contains applied_overrides
-    assert res.get('meta') and res['meta'].get('scenario_id') == 's1'
-
-
-def test_api_cost_post_scenario_not_found(monkeypatch):
-    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {}, 'project_types': {}})
-    def _raise(user_id, scenario_id):
-        raise KeyError('not found')
-    scenario_repo = SimpleNamespace(get_scenario=_raise)
-    container = SimpleNamespace(get=lambda name: {
-        'session_manager': SimpleSessionMgr({'email': ''}),
-        'cost_service': cost_svc,
-        'scenario_repository': scenario_repo,
-    }.get(name))
-    req = make_request_with_container(container)
-
-    with pytest.raises(HTTPException) as ei:
-        asyncio.run(api_cost_post.__wrapped__(req, payload={'features': [], 'scenarioId': 'missing'}))
-    assert ei.value.status_code == 404
-
-
-def test_api_cost_get_no_session_is_rejected():
-    class SessMgr(SimpleSessionMgr):
-        def exists(self, sid):
-            return False
-    container = SimpleNamespace(get=lambda name: {'session_manager': SessMgr()}.get(name))
-    app = SimpleNamespace(state=SimpleNamespace(container=container))
-    req = SimpleNamespace(headers={}, cookies={}, app=app, url=SimpleNamespace(path='/'))
-
+def test_legacy_cost_post_is_not_registered(authenticated_client):
     with pytest.raises(HTTPException) as error:
-        asyncio.run(api_cost_get.__wrapped__(req))
-    assert error.value.status_code == 401
+        authenticated_client.post('/api/cost', json={'features': []})
+
+    assert error.value.status_code == 405
 
 
-def test_api_cost_teams_aggregates():
-    cost_cfg = {'working_hours': {'HQ': {'internal': 10}}, 'internal_cost': {'default_hourly_rate': 20}, 'external_cost': {'external': {'Eve': 50}, 'default_hourly_rate': 30}}
-    cost_svc = SimpleNamespace(get_cost_config=lambda: cost_cfg)
-    people_repo = SimpleNamespace(list_people=lambda: [
-        {'name': 'Alice', 'team_name': 'Dev', 'site': 'HQ', 'external': False},
-        {'name': 'Eve', 'team': 'Dev', 'site': 'HQ', 'external': True},
-    ])
-    container = SimpleNamespace(get=lambda name: {
-        'cost_service': cost_svc,
-        'people_repository': people_repo,
-    }.get(name))
-    req = make_request_with_container(container)
-    res = asyncio.run(api_cost_teams.__wrapped__(req))
-    assert 'teams' in res
-    teams = res['teams']
-    assert any(t['id'].startswith('team-') for t in teams)
+def test_cost_get_remains_available(authenticated_client):
+    container = authenticated_client.app.state.container
+    container.register_singleton('task_repository', SimpleNamespace(read=lambda credential=None: []))
+
+    response = authenticated_client.get('/api/cost')
+
+    assert response.status_code == 200
+    assert 'projects' in response.json()
+
+
+def test_cost_get_requires_authentication(client):
+    response = client.get('/api/cost')
+
+    assert response.status_code == 401
+
+
+def test_cost_teams_aggregates(authenticated_client):
+    cost_config = {
+        'working_hours': {'HQ': {'internal': 10}},
+        'internal_cost': {'default_hourly_rate': 20},
+        'external_cost': {
+            'external': {'Eve': 50},
+            'default_hourly_rate': 30,
+        },
+    }
+    container = authenticated_client.app.state.container
+    container.register_singleton(
+        'cost_service', SimpleNamespace(get_cost_config=lambda: cost_config)
+    )
+    container.register_singleton(
+        'people_repository',
+        SimpleNamespace(list_people=lambda: [
+            {'name': 'Alice', 'team_name': 'Dev', 'site': 'HQ', 'external': False},
+            {'name': 'Eve', 'team': 'Dev', 'site': 'HQ', 'external': True},
+        ]),
+    )
+
+    response = authenticated_client.get('/api/cost/teams')
+
+    assert response.status_code == 200
+    team = response.json()['teams'][0]
+    assert team['totals']['internal_count'] == 1
+    assert team['totals']['external_count'] == 1

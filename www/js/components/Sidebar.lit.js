@@ -12,7 +12,6 @@ import {
   ViewManagementEvents,
   FilterEvents,
   StateFilterEvents,
-  TimelineEvents,
   FeatureEvents,
   BoardEvents,
 } from '../core/EventRegistry.js';
@@ -1056,7 +1055,6 @@ export class SidebarLit extends LitElement {
     this.foldableCount = 0;
     this.canCollapse = false;
     // Global popover styles are provided by TopMenu; no sidebar-specific injection needed
-    this._didRestoreSidebarState = false;
 
     // Reactive properties
     this.projects = [];
@@ -1269,23 +1267,11 @@ export class SidebarLit extends LitElement {
       this._scheduleTaskTypesRecompute();
     };
     bus.on(FeatureEvents.UPDATED, this._onFeaturesForTypes);
-    // Listen for view option changes to trigger sidebar state save
-    const onViewOptionChange = () => {
-      /* auto-save removed - use View feature instead */
-    };
-    bus.on(ViewEvents.CONDENSED, onViewOptionChange);
-    bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
     bus.on(ViewEvents.CAPACITY_MODE, () => {
       // Sync local _graphType when capacity mode changes
       this._graphType = sel.view.getCapacityViewMode();
       this.requestUpdate();
-      onViewOptionChange();
     });
-    bus.on(ViewEvents.SORT_MODE, onViewOptionChange);
-    bus.on(FilterEvents.CHANGED, onViewOptionChange);
-    bus.on(StateFilterEvents.CHANGED, onViewOptionChange);
-    bus.on(TimelineEvents.SCALE_CHANGED, onViewOptionChange); // Save when timeline zoom changes
-    this._viewOptionChangeHandler = onViewOptionChange;
     // Initialize reactive properties from current state in case events were
     // emitted before this element was connected. This ensures the component
     // renders current projects/teams immediately instead of waiting for
@@ -1331,8 +1317,6 @@ export class SidebarLit extends LitElement {
       const toggleSection = () => {
         const isCollapsed = contentWrapper.classList.toggle('sidebar-section-collapsed');
         if (chevron) chevron.textContent = isCollapsed ? '▲' : '▼';
-        // Save sidebar state when section is toggled
-        // Auto-save removed - use View feature instead
       };
 
       const onHeaderClick = () => toggleSection();
@@ -1359,8 +1343,6 @@ export class SidebarLit extends LitElement {
       PluginEvents.DEACTIVATED,
     ].forEach((evt) => bus.on(evt, onPluginsChanged));
 
-    // Sidebar state restore removed - views are now the primary persistence mechanism
-    // Last active view is restored through the store-backed view commands on app init
   }
 
   disconnectedCallback() {
@@ -1376,17 +1358,6 @@ export class SidebarLit extends LitElement {
       bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     }
 
-    // Clean up view option change listeners
-    const viewHandler = this._viewOptionChangeHandler;
-    if (viewHandler) {
-      bus.off(ViewEvents.CONDENSED, viewHandler);
-      bus.off(ViewEvents.DEPENDENCIES, viewHandler);
-      bus.off(ViewEvents.CAPACITY_MODE, viewHandler);
-      bus.off(ViewEvents.SORT_MODE, viewHandler);
-      bus.off(FilterEvents.CHANGED, viewHandler);
-      bus.off(StateFilterEvents.CHANGED, viewHandler);
-      bus.off(TimelineEvents.SCALE_CHANGED, viewHandler);
-    }
     if (this._scheduleDataFunnelRecompute) {
       bus.off(FeatureEvents.UPDATED, this._scheduleDataFunnelRecompute);
       bus.off(FilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
@@ -1463,7 +1434,6 @@ export class SidebarLit extends LitElement {
     cmd.filter.toggleTaskFilter(dimension, option);
     this.taskFilters = sel.filter.getTaskFilters();
     if (this._recomputeDataFunnelNow) this._recomputeDataFunnelNow();
-    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
@@ -1725,14 +1695,6 @@ export class SidebarLit extends LitElement {
 
   // Project/team/view rendering and menu actions moved to TopMenu and small menu components.
 
-  /**
-   * Save current sidebar state to localStorage (debounced)
-   * DEPRECATED: Views are now the only persistence mechanism.
-   */
-  _saveSidebarState() {
-    // No-op: This method is deprecated - use View feature to save settings
-  }
-
   // Handlers for Taskboard Options
   _setTimelineScale(scale) {
     try {
@@ -1740,7 +1702,6 @@ export class SidebarLit extends LitElement {
     } catch (e) {
       console.warn('[Sidebar] setTimelineScale failed', e);
     }
-    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
@@ -1750,7 +1711,6 @@ export class SidebarLit extends LitElement {
     } catch (e) {
       console.warn('[Sidebar] toggleCondensed failed', e);
     }
-    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
@@ -1760,7 +1720,6 @@ export class SidebarLit extends LitElement {
     } catch (e) {
       console.warn('[Sidebar] setFeatureSortMode failed', e);
     }
-    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
@@ -1802,36 +1761,23 @@ export class SidebarLit extends LitElement {
     this.requestUpdate();
   }
 
-  /**
-   * Restore sidebar state from localStorage
-  * DEPRECATED: Views are restored through the store-backed view commands.
-   */
-  async _restoreSidebarState() {
-    // No-op: This method is deprecated - views restored automatically
-  }
-
   async refreshServerStatus() {
     try {
-      if (!dataService || typeof dataService.checkHealth !== 'function') {
-        this.serverStatus = 'unknown';
+      const result = await dataService.checkHealth();
+      if (!result.ok) {
+        console.error('[Sidebar] Health check failed', result.error);
+        this.serverStatus = 'Server: error';
         this.requestUpdate();
         return;
       }
-      const h = await dataService.checkHealth();
-      const status = (h && (h.status || (h.ok ? 'ok' : null))) || 'error';
-      this.serverName = (h && (h.server_name || h.server)) || this.serverName;
-      const ups = Number(h && h.uptime_seconds);
-      const uptimeStr =
-        Number.isNaN(ups) ? '' : (
-          (() => {
-            const totalMinutes = Math.floor(ups / 60);
-            const hours = Math.floor(totalMinutes / 60);
-            const minutes = totalMinutes % 60;
-            return ` - Uptime: ${hours}h ${minutes}m`;
-          })()
-        );
-      this.serverStatus = `${h.version} | Server: ${status}${uptimeStr}`;
-    } catch (e) {
+      const h = result.data;
+      this.serverName = h.server_name;
+      const totalMinutes = Math.floor(h.uptime_seconds / 60);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      this.serverStatus = `${h.version} | Server: ${h.status} - Uptime: ${hours}h ${minutes}m`;
+    } catch (error) {
+      console.error('[Sidebar] Failed to refresh server status', error);
       this.serverStatus = 'Server: error';
     }
     this.requestUpdate();

@@ -340,9 +340,8 @@ export class ScenarioMenuLit extends LitElement {
     e.stopPropagation();
     try {
       const fullScenarios = sel.scenario.getScenarios();
-      const fullScenario = fullScenarios.find((s) => s.id === scenario.id) || scenario;
-
-      const overrides = fullScenario.overrides || {};
+      const fullScenario = fullScenarios.find((s) => s.id === scenario.id);
+      const overrides = fullScenario.overrides;
       const pendingGroupChanges = sel.group.getPendingGroupChanges();
       const hasFeatureChanges = Object.keys(overrides).length > 0;
       const hasGroupChanges = pendingGroupChanges.length > 0;
@@ -370,84 +369,86 @@ export class ScenarioMenuLit extends LitElement {
       const affectedPlanIds = new Set();
       // Sub-groups created in the same batch reference their parent by temp id.
       const realIdByTempId = new Map();
-      for (const op of groupChanges) {
-        if (op.type === 'create' && op.group) {
-          // op.group is the original scenarioGroups entry; op.group.members is already
-          // the filtered (selected) list produced by _onSave in the modal.
-          const committedMembers = new Set((op.group.members || []).map(String));
-          // All members originally in the scenario group, including any that were
-          // deselected in the modal and therefore not in committedMembers.
-          const activeScen = sel.scenario.getActiveScenario();
-          const originalMembers = (
-            (activeScen?.scenarioGroups || []).find((g) => String(g.id) === String(op.group.id))
-              ?.members || []
-          ).map(String);
+      try {
+        for (const op of groupChanges) {
+          if (op.type === 'create' && op.group) {
+            // op.group.members is the selected list produced by the publishing modal.
+            const committedMembers = new Set(op.group.members.map(String));
+            // Original members include those deselected in the publishing modal.
+            const originalGroup = pendingGroupChanges.find((change) =>
+              change.type === 'create' && String(change.group.id) === String(op.group.id)
+            ).group;
+            const originalMembers = originalGroup.members.map(String);
 
-          const parentId = op.group.parent_id;
-          const payload = {
-            plan_id: op.group.plan_id,
-            name: op.group.name,
-            color: op.group.color || null,
-            rank: op.group.rank,
-            parent_id: parentId === null || parentId === undefined
-              ? null
-              : (realIdByTempId.get(String(parentId)) || String(parentId)),
-            members: [...committedMembers],
-          };
-          const created = await dataService.createGroup(payload);
-          if (created) {
-            const realId = String(created.id);
+            const parentId = op.group.parent_id;
+            const payload = {
+              plan_id: op.group.plan_id,
+              name: op.group.name,
+              color: op.group.color === undefined ? null : op.group.color,
+              rank: op.group.rank,
+              parent_id: parentId === null || parentId === undefined
+                ? null
+                : (realIdByTempId.has(String(parentId))
+                  ? realIdByTempId.get(String(parentId)) : String(parentId)),
+              members: [...committedMembers],
+            };
+            const created = await dataService.createGroup(payload);
+            if (!created.ok) throw new Error(created.error.message);
+            const realId = String(created.data.id);
             realIdByTempId.set(String(op.group.id), realId);
-            // Members that were in the scenario group but NOT committed stay pending
-            // as memberDeltas against the now-real group.
+            // Uncommitted members stay pending against the now-real group.
             const uncommittedMembers = originalMembers.filter((tid) => !committedMembers.has(tid));
             cmd.group.promoteGroupToBaseline(op.group.id, realId, uncommittedMembers);
-            if (op.group.plan_id) affectedPlanIds.add(String(op.group.plan_id));
-          }
-        } else if (op.type === 'update' && op.groupId) {
-          const updatePayload = { ...(op.fields || {}) };
-          const memberDeltas = op.memberDeltas === undefined ? [] : op.memberDeltas;
+            affectedPlanIds.add(String(op.group.plan_id));
+          } else if (op.type === 'update' && op.groupId) {
+            const updatePayload = { ...op.fields };
+            const memberDeltas = op.memberDeltas === undefined ? [] : op.memberDeltas;
 
-          // Apply any committed member deltas to compute the new full members list.
-          if (memberDeltas.length > 0) {
-            const baseGroup = sel.group.getGroupById(op.groupId);
-            const baseMembers = new Set((baseGroup?.members || []).map(String));
-            for (const { taskId, op: delta } of memberDeltas) {
-              if (delta === 'add') baseMembers.add(String(taskId));
-              else baseMembers.delete(String(taskId));
+            // Apply accepted deltas to baseline membership, not the effective override.
+            if (memberDeltas.length > 0) {
+              const baseGroup = sel.group.getBaselineGroupById(op.groupId);
+              const baseMembers = new Set(baseGroup.members.map(String));
+              for (const { taskId, op: delta } of memberDeltas) {
+                if (delta === 'add') baseMembers.add(String(taskId));
+                else baseMembers.delete(String(taskId));
+              }
+              updatePayload.members = [...baseMembers];
             }
-            updatePayload.members = [...baseMembers];
+
+            const updated = await dataService.updateGroup(op.groupId, updatePayload);
+            if (!updated.ok) throw new Error(updated.error.message);
+
+            // Drop only committed deltas; other pending edits stay.
+            cmd.group.clearGroupOverride(op.groupId, memberDeltas.map((delta) => String(delta.taskId)));
+            const group = sel.group.getBaselineGroupById(op.groupId);
+            affectedPlanIds.add(String(group.plan_id));
+          } else if (op.type === 'delete' && op.groupId) {
+            const group = sel.group.getBaselineGroupById(op.groupId);
+            const deleted = await dataService.deleteGroup(op.groupId);
+            if (!deleted.ok) throw new Error(deleted.error.message);
+            affectedPlanIds.add(String(group.plan_id));
+            cmd.group.clearGroupOverride(op.groupId, null);
           }
-
-          await dataService.updateGroup(op.groupId, updatePayload);
-
-          // Drop only the deltas that were committed; other pending edits stay.
-          cmd.group.clearGroupOverride(op.groupId, memberDeltas.map((d) => String(d.taskId)));
-
-          const g = sel.group.getGroupById(op.groupId);
-          if (g && g.plan_id) affectedPlanIds.add(String(g.plan_id));
-        } else if (op.type === 'delete' && op.groupId) {
-          const g = sel.group.getGroupById(op.groupId);
-          if (g && g.plan_id) affectedPlanIds.add(String(g.plan_id));
-          await dataService.deleteGroup(op.groupId);
-          cmd.group.clearGroupOverride(op.groupId, null);
+          const saved = await cmd.scenario.saveScenario(scenario.id);
+          if (!saved.ok) throw new Error(saved.error.message);
         }
-      }
-
-      if (groupChanges.length > 0) {
-        console.log('[ScenarioMenu] Persisted group changes', groupChanges);
-
-        // Evict and reload GroupService cache for affected plans so the board
-        // sees the authoritative server state (real UUIDs, up-to-date members/names).
-        for (const planId of affectedPlanIds) {
-          groupService.evictPlan(planId);
+      } finally {
+        if (affectedPlanIds.size > 0) {
+          for (const planId of affectedPlanIds) {
+            groupService.evictPlan(planId);
+          }
+          await groupService.loadGroupsForPlans([...affectedPlanIds]);
         }
-        await groupService.loadGroupsForPlans([...affectedPlanIds]);
       }
 
       // 2. Persist accepted feature overrides.
       if (features.length > 0) {
-        await dataService.publishBaseline(features);
+        const published = await dataService.publishBaseline(features);
+        if (!published.ok) throw new Error(published.error.message);
+        if (!published.data.ok) {
+          if (published.data.updated > 0) await cmd.scenario.refreshBaseline();
+          throw new Error(`Feature publishing failed: ${published.data.errors.join('; ')}`);
+        }
         console.log('[ScenarioMenu] Saved feature changes', features);
       }
 
@@ -455,8 +456,9 @@ export class ScenarioMenuLit extends LitElement {
       //    stored overrides and pendingGroupChanges reflect the new data.
       //    This prevents stale temp IDs, already-deleted groups, and already-
       //    committed overrides from reappearing after a page reload.
-      if (features.length > 0 || groupChanges.length > 0) {
-        await cmd.scenario.saveScenario(scenario.id);
+      if (features.length > 0) {
+        const saved = await cmd.scenario.saveScenario(scenario.id);
+        if (!saved.ok) throw new Error(saved.error.message);
       }
 
       // 4. Refresh baseline so the board reflects the now-persisted data.

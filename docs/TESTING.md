@@ -83,9 +83,9 @@ I/O is the requirement; incidental internal helper-call order is not.
 
 This is not a claim that every retained assertion is a contract. Prioritize:
 
-1. Root Python fixtures share a session-scoped app and patch authentication for
-     legacy suites. Mark new security tests `real_auth`; migrate legacy fixtures
-     toward explicit, function-scoped service ownership.
+1. Keep root Python fixtures function-scoped and isolated. HTTP tests must use
+    anonymous `client` or explicitly enrolled `authenticated_client`; do not
+    reintroduce global authentication patches or shared service restoration.
 2. Some components still use private handlers; the UTC date suite retains a
      copied drag-conversion simulation. Replace those with DOM interactions or
      the actual exported drag entry point rather than another implementation copy.
@@ -124,11 +124,11 @@ below 75% of sequential duration. Correctness runs do not depend on that budget.
 
 coverage report dropped in `coverage/htmlcov`
 
-Authentication-sensitive Python suites must use `pytestmark = pytest.mark.real_auth`
-or mark individual tests with `@pytest.mark.real_auth`. This disables the legacy
-`ensure_test_sessions` bypass; enroll through `/api/auth/enroll` and use the issued
-cookies. Handler-only unit tests may register explicit session stubs, but must send
-cookie headers and provide the session fields consumed by the handler.
+Every HTTP test uses production cookie authentication. The function-scoped `client`
+is anonymous; `authenticated_client` enrolls an isolated account through
+`/api/auth/enroll` and uses its issued cookies. Security suites may retain the
+`real_auth` marker for selection, but no marker changes authentication behavior.
+Handler-only unit tests may register explicit identity and credential dependencies.
 
 ## JavaScript unit tests
 
@@ -228,9 +228,10 @@ npx playwright test --config=tests/playwright.auth.config.js
 # Cost scenario
 Practical client-side rules (what you should send)
 
-To calculate a server-stored scenario: POST { "scenarioId": "<id>" }
-This lets the server load the scenario and apply overrides, and response meta will show scenario_id and applied_overrides.
-To calculate a local/unsaved scenario (temporary overrides applied on the client): POST { "features": [ ...effective features with overrides...] }
+To calculate a saved or local scenario, derive its effective features on the client
+and POST { "features": [ ...effective features with overrides...] } to
+`/api/cost/features`. The legacy POST `/api/cost` route and override-array request
+format have been removed; `scenarioId` alone no longer requests recalculation.
 Send the full features list where each item has keys: id, project, start, end, capacity, plus optional title, type, state.
 
 **IMPORTANT**: `capacity` must be a list of team allocations: `[{"team": "team-name", "capacity": 80}, ...]`
@@ -238,7 +239,6 @@ Send the full features list where each item has keys: id, project, start, end, c
 - Float values like `1.0` are **NOT** valid and will cause `'float' object is not iterable` error
 - The backend `list_tasks()` always returns capacity as a list
 
-Response meta.scenario_id will be null (unless you also pass a scenarioId).
 GET /api/cost is fine for baseline cached result when session is authenticated.
 
 

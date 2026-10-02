@@ -5,6 +5,7 @@ import PluginMarkers from '../../www/js/plugins/PluginMarkers.js';
 import { PluginMarkersComponent } from '../../www/js/plugins/PluginMarkersComponent.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginEvents, TimelineEvents } from '../../www/js/core/EventRegistry.js';
+import { dataService } from '../../www/js/services/dataService.js';
 
 const mockSel = vi.hoisted(() => ({
   selection: {
@@ -61,6 +62,7 @@ describe('PluginMarkers', () => {
 
 describe('PluginMarkersComponent marker filtering', () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     mockSel.selection.getSelectedProjectIds.mockReset();
     mockSel.selection.getSelectedTeamIds.mockReset();
   });
@@ -136,5 +138,46 @@ describe('PluginMarkersComponent marker filtering', () => {
 
     expect(scheduleRender.called).to.be.true;
     el.disconnectedCallback();
+  });
+
+  it('uses marker data from a successful Result and preserves legend output', async () => {
+    const markers = [{
+      project: 'proj-A',
+      team_id: 'team-1',
+      plan_id: 'plan-1',
+      plan_name: 'Plan 1',
+      marker: { date: '2026-01-01', label: 'M1', color: '#ff0000' },
+    }];
+    const getMarkersStub = vi.spyOn(dataService, 'getMarkers').mockResolvedValue({
+      ok: true,
+      data: markers,
+    });
+    const el = new PluginMarkersComponent();
+
+    await el.refresh();
+
+    expect(getMarkersStub.mock.calls).to.have.length(1);
+    expect(el.markers).to.equal(markers);
+    expect(el._getPlansLegend()).to.deep.equal([{
+      plan_id: 'plan-1',
+      plan_name: 'Plan 1',
+      color: '#ff0000',
+      count: 1,
+    }]);
+  });
+
+  it('logs a failed marker Result and clears displayed marker data', async () => {
+    const getMarkersStub = vi.spyOn(dataService, 'getMarkers').mockResolvedValue({
+      ok: false,
+      error: { message: 'markers unavailable' },
+    });
+    const errorStub = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const el = new PluginMarkersComponent();
+
+    await el.refresh();
+
+    expect(getMarkersStub.mock.calls).to.have.length(1);
+    expect(errorStub.mock.calls).to.have.length(1);
+    expect(el.markers).to.deep.equal([]);
   });
 });

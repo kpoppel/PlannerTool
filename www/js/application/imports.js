@@ -21,46 +21,10 @@ import { createScenarioSelectors } from './selectors/scenarioSelectors.js';
 import { createGroupSelectors } from './selectors/groupSelectors.js';
 import { createScopeSelectors } from './selectors/scopeSelectors.js';
 import { dataService } from '../services/dataService.js';
-import { groupService } from '../services/GroupService.js';
-import { DataEvents, GroupEvents } from '../core/EventRegistry.js';
+import { DataEvents } from '../core/EventRegistry.js';
 
 /** @typedef {import('./types.js').AppState} AppState */
 /** @typedef {import('./types.js').StoreApi} StoreApi */
-
-/**
- * @returns {void}
- */
-function syncGroupsFromService() {
-  const nextByPlanId = {};
-  for (const [planId, groups] of groupService._groupsByPlan.entries()) {
-    nextByPlanId[String(planId)] = Array.isArray(groups) ? groups : [];
-  }
-
-  store.setState(
-    (state) => {
-      const currentGroups = state?.groups ?? { byPlanId: {} };
-      const currentByPlanId = Object.prototype.hasOwnProperty.call(currentGroups, 'byPlanId')
-        && currentGroups.byPlanId && typeof currentGroups.byPlanId === 'object'
-        ? currentGroups.byPlanId
-        : {};
-
-      return {
-        ...state,
-        groups: {
-          ...currentGroups,
-          byPlanId: {
-            ...currentByPlanId,
-            ...Object.fromEntries(
-              Object.entries(nextByPlanId).map(([planId, groups]) => [String(planId), Array.isArray(groups) ? groups : []])
-            ),
-          },
-        },
-      };
-    },
-    false,
-    'group.syncGroupsFromService'
-  );
-}
 
 /**
  * @param {any[]|{scenarios?: any[]}|null|undefined} payload
@@ -138,8 +102,6 @@ function syncScenariosFromServer(payload) {
 
 bus.on(DataEvents.SCENARIOS_CHANGED, syncScenariosFromServer);
 bus.on(DataEvents.SCENARIOS_DATA, syncScenariosFromServer);
-bus.on(GroupEvents.LOADED, syncGroupsFromService);
-bus.on(GroupEvents.CHANGED, syncGroupsFromService);
 
 const pluginStateCommands = createPluginStateCommands(store);
 
@@ -175,7 +137,7 @@ stateStoreCommands.feature = createFeatureCommands(
   bus,
   () => stateStoreCommands.data.recomputeCapacity()
 );
-stateStoreCommands.scenario = createScenarioCommands(store, bus, null, {
+stateStoreCommands.scenario = createScenarioCommands(store, bus, {
   hydrateBaseline: () => stateStoreCommands.data.hydrateBaseline(),
   recomputeCapacity: () => stateStoreCommands.data.recomputeCapacity(),
   invalidateCache: () => dataService.invalidateCache(),

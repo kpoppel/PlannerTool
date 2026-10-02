@@ -121,12 +121,6 @@ class SessionManager:
             if record['account_id'] == account_id:
                 self._storage.delete('auth_sessions', key)
 
-def create_session(email: str, request: Request) -> str:
-    """Internal session issuance; HTTP handlers must authenticate first."""
-    mgr = resolve_service(request, 'session_manager')
-    return mgr.create(email)
-
-
 def get_session_context_from_request(request: Request) -> dict[str, Any]:
     """Validate and resolve identity once for this request, without credentials."""
     sid = request.cookies.get(SESSION_COOKIE)
@@ -165,14 +159,12 @@ def get_session_id_from_request(request: Request) -> str:
 class SessionMiddleware(BaseHTTPMiddleware):
     """Middleware that converts a helper response header into a Set-Cookie.
 
-    Route handlers may set `x-set-session-id` on the Response to instruct
-    the middleware to set the session cookie centrally.
+    Route handlers may set `x-set-session-id` on the Response; the required
+    session manager validates existing cookies and refreshes them centrally.
     """
 
-    def __init__(self, app, session_manager: Optional[SessionManager] = None):
+    def __init__(self, app, session_manager: SessionManager):
         super().__init__(app)
-        # Prefer an explicitly provided manager; otherwise middleware doesn't
-        # need it for dispatch but other helpers should look up app.state.
         self.session_manager = session_manager
 
     async def dispatch(self, request: Request, call_next):

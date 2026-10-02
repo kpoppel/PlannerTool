@@ -73,19 +73,3 @@ export async function asResult(promiseFn) {
     return fail(err);
   }
 }
-
-/**
- * @template T
- * @param {{ ok?: boolean, data?: T }|null|undefined} result
- * @param {T} fallback
- * @returns {T}
- */
-export function dataOr(result, fallback) {
-  if (!result || result.ok !== true) {
-    return fallback;
-  }
-  if (!Object.prototype.hasOwnProperty.call(result, 'data')) {
-    return fallback;
-  }
-  return result.data === undefined ? fallback : result.data;
-}

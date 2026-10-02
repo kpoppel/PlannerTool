@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ok, fail, asResult, dataOr, normalizeError } from '../../www/js/services/result.js';
+import { ok, fail, asResult, normalizeError } from '../../www/js/services/result.js';
 
 describe('result helpers', () => {
   it('ok wraps successful data', () => {
@@ -50,12 +50,4 @@ describe('result helpers', () => {
     ).resolves.toEqual({ ok: false, error: { message: 'sync boom' } });
   });
 
-  it('dataOr unwraps success and applies fallback on failure', () => {
-    expect(dataOr({ ok: true, data: [1, 2] }, [])).toEqual([1, 2]);
-    expect(dataOr({ ok: false, error: { message: 'x' } }, [])).toEqual([]);
-    expect(dataOr(null, 'fallback')).toBe('fallback');
-    expect(dataOr(undefined, 'fallback')).toBe('fallback');
-    expect(dataOr({ ok: true }, 'fallback')).toBe('fallback');
-    expect(dataOr({ ok: true, payload: 1 }, 'fallback')).toBe('fallback');
-  });
 });

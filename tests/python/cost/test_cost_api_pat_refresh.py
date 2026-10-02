@@ -71,7 +71,7 @@ def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monk
 
     with caplog.at_level(logging.ERROR, logger="planner_lib.cost.api"):
         if method == 'post':
-            response = client.post('/api/cost', json={'features': []},
+            response = client.post('/api/cost/features', json={'features': []},
                                    headers={'Accept': 'application/json'})
         else:
             response = client.get('/api/cost', headers={

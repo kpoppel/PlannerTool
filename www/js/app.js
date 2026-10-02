@@ -5,6 +5,17 @@ import { AppEvents, SessionEvents } from './core/EventRegistry.js';
 import { mergePluginConfig } from './core/pluginConfigMerge.js';
 import { initKeyboardShortcuts } from './services/KeyboardShortcuts.js';
 
+export async function loadPluginConfiguration(dataService, modulesConfig) {
+  const runtimeConfigResult = await dataService.getPluginsConfig();
+  if (!runtimeConfigResult.ok) throw new Error(runtimeConfigResult.error.message);
+
+  const pluginSchemasResult = await dataService.getPluginsSchemas();
+  if (!pluginSchemasResult.ok) throw new Error(pluginSchemasResult.error.message);
+
+  window.APP_PLUGIN_SCHEMAS = pluginSchemasResult.data;
+  return mergePluginConfig(modulesConfig, runtimeConfigResult.data.plugins);
+}
+
 async function init() {
   // Register typed events and optional runtime behaviors
   if (featureFlags.LOG_STRING_EVENTS) {
@@ -80,13 +91,7 @@ async function init() {
     if (!res.ok) throw new Error(`Failed to fetch modules config: ${res.status}`);
     const cfg = await res.json();
 
-    const runtimeConfig = await dataService.getPluginsConfig();
-
-    // Fetch plugin schemas for all plugins (non-fatal: continues without schemas if unavailable)
-    const pluginSchemas = await dataService.getPluginsSchemas().catch(() => ({}));
-    window.APP_PLUGIN_SCHEMAS = pluginSchemas || {};
-
-    const mergedCfg = mergePluginConfig(cfg, runtimeConfig.plugins);
+    const mergedCfg = await loadPluginConfiguration(dataService, cfg);
     await pluginManager.loadFromConfig(mergedCfg);
     console.log('[App] PluginManager loaded modules');
 

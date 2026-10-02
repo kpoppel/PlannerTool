@@ -90,11 +90,10 @@ function withScenarioChangedIds(state, scenarioId, changed) {
 /**
  * @param {StoreApi} store
  * @param {EventBusLike} bus
- * @param {any} [_legacyState]
  * @param {{ hydrateBaseline?: Function, recomputeCapacity?: Function, invalidateCache?: Function }} [deps]
  * @returns {object}
  */
-export function createScenarioCommands(store, bus, _legacyState = null, deps = {}) {
+export function createScenarioCommands(store, bus, deps = {}) {
   const hydrateBaseline = deps.hydrateBaseline;
   const recomputeCapacity = deps.recomputeCapacity;
   const invalidateCache = deps.invalidateCache;
@@ -312,9 +311,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
       }
 
       const result = await dataService.saveScenario(scenario);
-      if (result && Object.prototype.hasOwnProperty.call(result, 'ok') && result.ok === false) {
-        return result;
-      }
+      if (!result.ok) return result;
 
       store.setState(
         (state) => ({
@@ -331,7 +328,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
       bus.emit(ScenarioEvents.SAVED, { scenarioId: scenario.id });
       bus.emit(ScenarioEvents.UPDATED);
 
-      return result ?? { ok: true, data: scenario };
+      return result;
     },
 
     async refreshBaseline() {

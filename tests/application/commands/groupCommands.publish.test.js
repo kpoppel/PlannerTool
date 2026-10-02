@@ -22,7 +22,7 @@ function seedStore(scenarioGroups, groupOverrides, baselineGroups = []) {
         },
       ],
     },
-    groups: { byPlanId: { p1: baselineGroups } },
+    groups: { byPlanId: { p1: baselineGroups }, loadedPlanIds: ['p1'] },
   };
 }
 
@@ -52,6 +52,21 @@ describe('groupCommands — publishing to baseline', () => {
     expect(commands.promoteGroupToBaseline('tmp_1', 'real-1')).toBe(true);
 
     expect(store.getState().scenarios.items[0].scenarioGroups).toEqual([]);
+  });
+
+  it('rewrites a pending child parent id durably when its parent is published', () => {
+    const parent = tempGroup('tmp_parent');
+    const child = { ...tempGroup('tmp_child'), parent_id: parent.id };
+    store.setState(seedStore([parent, child], {}), true, 'test.reset');
+
+    commands.promoteGroupToBaseline(parent.id, 'real-parent');
+
+    expect(store.getState().scenarios.items[0].scenarioGroups).toEqual([
+      { ...child, parent_id: 'real-parent' },
+    ]);
+    expect(selectors.getPendingGroupChanges()).toEqual([
+      expect.objectContaining({ type: 'create', group: expect.objectContaining({ parent_id: 'real-parent' }) }),
+    ]);
   });
 
   it('keeps members that were not committed as pending deltas on the real group', () => {

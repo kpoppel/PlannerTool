@@ -1,6 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { groupService } from '../services/GroupService.js';
 import { cmd, sel } from '../application/imports.js';
 
 /** Field names supported in feature-override rows, in display order. */
@@ -249,14 +248,13 @@ export class AzureDevopsModal extends LitElement {
 
   /**
    * Resolve a group id to a display name.
-   * Checks the GroupService cache first, then create-ops in groupOps.
+   * Checks baseline metadata first, then create-ops in groupOps.
    */
   _resolveGroupName(id, groupOps) {
     if (!id) return '—';
     const sid = String(id);
-    const fromCache =
-      sel.group?.getGroupById?.(sid)?.name || groupService.getGroupById(sid)?.name;
-    if (fromCache) return fromCache;
+    const baselineGroup = sel.group.getBaselineGroupById(sid);
+    if (baselineGroup && baselineGroup.name) return baselineGroup.name;
     const fromPending = (groupOps || [])
       .find((op) => op.group?.id && String(op.group.id) === sid)?.group?.name;
     if (fromPending) return fromPending;
@@ -577,8 +575,7 @@ export class AzureDevopsModal extends LitElement {
               const resolvedGroup = op.group
                 ??
                   (op.groupId ?
-                    (sel.group?.getGroupById?.(String(op.groupId)) ||
-                      groupService.getGroupById(String(op.groupId)))
+                    sel.group.getBaselineGroupById(String(op.groupId))
                   : null);
               const planId = resolvedGroup?.plan_id || op.planId;
               const planName = planId

@@ -1,30 +1,40 @@
-def test_feature_endpoint_like_flow(fake_services, cache_storage):
+def test_feature_endpoint_returns_cost_schema(
+    authenticated_client, fake_services, cache_storage,
+):
     storage = fake_services['storage']
     people_repository = fake_services['people_repository']
     project_repository = fake_services['project_repository']
     team_repository = fake_services['team_repository']
 
-    from planner_lib.cost.service import CostService, build_cost_schema
-    import json, os, yaml
+    from planner_lib.cost.service import CostService
+    import json
+    import os
 
-    svc = CostService(storage=storage, project_repository=project_repository, team_repository=team_repository, people_repository=people_repository, cache_storage=cache_storage)
+    cost_service = CostService(
+        storage=storage,
+        project_repository=project_repository,
+        team_repository=team_repository,
+        people_repository=people_repository,
+        cache_storage=cache_storage,
+    )
 
     fixtures_dir = storage.base_path
     path = os.path.join(fixtures_dir, 'session_features.json')
     with open(path, 'r', encoding='utf-8') as f:
         payload = json.load(f)
 
-    session = {'features': payload['features']}
-    raw = svc.estimate_costs(session).get('projects', {})
-    schema = build_cost_schema(raw, mode='full', session_features=session['features'], project_types={})
+    container = authenticated_client.app.state.container
+    container.register_singleton('cost_service', cost_service)
+    response = authenticated_client.post(
+        '/api/cost/features', json={'features': payload['features']},
+    )
 
-    # Basic assertions on schema shape
+    assert response.status_code == 200, response.text
+    schema = response.json()
     assert 'projects' in schema
-    # Ensure parent-child behavior: feature with id 3 (parent) should have has_project_parent flag on child 4
     proj_map = {p['id']: p for p in schema['projects']}
-    # project-2 should exist and contain features
     p2 = proj_map.get('project-2')
     assert p2 is not None
-    # Find feature 3 & 4 in project features
-    ids = {f['id'] for f in p2['features']}
-    assert '3' in ids or '4' in ids
+    features = {feature['id']: feature for feature in p2['features']}
+    assert features['3']['title'] == 'Parent'
+    assert features['4']['title'] == 'Child of 3'

@@ -231,12 +231,20 @@ export class EventsPanel extends LitElement {
 
   async _load() {
     this.loading = true;
-    const [events, categories] = await Promise.all([
+    const [eventsResult, categoriesResult] = await Promise.all([
       dataService.getEvents(this.planId),
       dataService.getEventCategories(),
     ]);
-    this.events = events || [];
-    this.categories = categories || [];
+    if (!eventsResult.ok) {
+      this.loading = false;
+      return eventsResult;
+    }
+    if (!categoriesResult.ok) {
+      this.loading = false;
+      return categoriesResult;
+    }
+    this.events = eventsResult.data;
+    this.categories = categoriesResult.data;
     this.loading = false;
   }
 
@@ -269,18 +277,23 @@ export class EventsPanel extends LitElement {
       end_date: this._editEndDate ?? '',
     };
     const updated = await dataService.updateEvent(this._editId, payload);
-    if (updated) {
-      await this._load();
-      bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
-      this._cancelEdit();
+    if (!updated.ok) {
+      this._saving = false;
+      return updated;
     }
+    await this._load();
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    this._cancelEdit();
     this._saving = false;
+    return updated;
   }
 
   async _deleteEvent(eventId) {
-    await dataService.deleteEvent(eventId);
+    const deleted = await dataService.deleteEvent(eventId);
+    if (!deleted.ok) return deleted;
     await this._load();
     bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    return deleted;
   }
 
   async _addEvent() {
@@ -294,15 +307,18 @@ export class EventsPanel extends LitElement {
     };
     if (this._newEndDate) payload.end_date = this._newEndDate;
     const created = await dataService.createEvent(payload);
-    if (created) {
-      await this._load();
-      bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
-      this._newDate = '';
-      this._newEndDate = '';
-      this._newTitle = '';
-      this._newCategory = '';
+    if (!created.ok) {
+      this._saving = false;
+      return created;
     }
+    await this._load();
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    this._newDate = '';
+    this._newEndDate = '';
+    this._newTitle = '';
+    this._newCategory = '';
     this._saving = false;
+    return created;
   }
 
   _renderEventRow(ev) {

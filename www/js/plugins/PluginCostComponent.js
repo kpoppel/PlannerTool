@@ -734,7 +734,9 @@ export class PluginCostComponent extends LitElement {
       }));
 
       // Fetch cost data
-      const json = await dataService.getCost({ features: featuresPayload });
+      const costResult = await dataService.getCost({ features: featuresPayload });
+      if (!costResult.ok) throw new Error(costResult.error.message, { cause: costResult.error });
+      const json = costResult.data;
 
       // Normalize projects structure: backend returns an array of projects
       // while older clients expect an object keyed by project id. Convert
@@ -773,12 +775,9 @@ export class PluginCostComponent extends LitElement {
       this.data = json;
 
       // Fetch cost teams metadata (members + sites) to enable per-site breakdowns
-      try {
-        const ct = await dataService.getCostTeams();
-        this.costTeams = ct && ct.teams ? ct : { teams: [] };
-      } catch (e) {
-        this.costTeams = { teams: [] };
-      }
+      const teamsResult = await dataService.getCostTeams();
+      if (!teamsResult.ok) throw new Error(teamsResult.error.message, { cause: teamsResult.error });
+      this.costTeams = teamsResult.data;
 
       // Start with project sections expanded for all selected projects
       try {

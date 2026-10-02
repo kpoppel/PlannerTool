@@ -138,34 +138,35 @@ describe('application/imports', () => {
     expect(mod.sel.scenario.getChangedScenarioIds()).toEqual(['scen_123', 'scen_456']);
   });
 
-  it('syncs loaded group cache into the canonical store slice', async () => {
+  it('writes loaded groups directly to the canonical store slice', async () => {
     vi.resetModules();
 
-    const mod = await import('../../www/js/application/imports.js?group_store_sync=1');
-    const { bus } = await import('../../www/js/core/EventBus.js');
-    const { GroupEvents } = await import('../../www/js/core/EventRegistry.js');
+    const mod = await import('../../www/js/application/imports.js?group_store_owned=1');
+    const { dataService } = await import('../../www/js/services/dataService.js');
     const { store } = await import('../../www/js/application/store.js');
     const { groupService } = await import('../../www/js/services/GroupService.js');
+    const listGroups = vi.spyOn(dataService, 'listGroups').mockResolvedValue({
+      ok: true,
+      data: [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }],
+    });
 
-    groupService._groupsByPlan.clear();
-    groupService._groupsByPlan.set('p1', [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }]);
-
-    bus.emit(GroupEvents.LOADED);
+    await groupService.loadGroupsForPlans(['p1']);
 
     expect(store.getState().groups.byPlanId).toEqual({
       p1: [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }],
     });
+    expect(store.getState().groups.loadedPlanIds).toEqual(['p1']);
     expect(mod.sel.group.getEffectiveGroups('p1')).toEqual([
       expect.objectContaining({ id: 'g1', plan_id: 'p1' }),
     ]);
+    listGroups.mockRestore();
   });
 
-  it('preserves existing plan entries when only a subset of groups loads', async () => {
+  it('preserves hydration placeholders without marking them loaded', async () => {
     vi.resetModules();
 
-    const mod = await import('../../www/js/application/imports.js?group_store_sync_partial=1');
-    const { bus } = await import('../../www/js/core/EventBus.js');
-    const { GroupEvents } = await import('../../www/js/core/EventRegistry.js');
+    const mod = await import('../../www/js/application/imports.js?group_store_placeholder=1');
+    const { dataService } = await import('../../www/js/services/dataService.js');
     const { store } = await import('../../www/js/application/store.js');
     const { groupService } = await import('../../www/js/services/GroupService.js');
 
@@ -174,19 +175,22 @@ describe('application/imports', () => {
       groups: {
         ...store.getState().groups,
         byPlanId: {
-          p1: [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }],
           p2: [],
         },
+        loadedPlanIds: [],
       },
     }, true, 'test.seed.partialGroups');
 
-    groupService._groupsByPlan.clear();
-    groupService._groupsByPlan.set('p1', [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }]);
-
-    bus.emit(GroupEvents.LOADED);
+    const listGroups = vi.spyOn(dataService, 'listGroups').mockResolvedValue({
+      ok: true,
+      data: [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }],
+    });
+    await groupService.loadGroupsForPlans(['p1']);
 
     expect(store.getState().groups.byPlanId.p2).toEqual([]);
-    expect(mod.sel.group.getEffectiveGroups('p2')).toEqual([]);
+    expect(mod.sel.group.hasPlanLoaded('p2')).toBe(false);
+    expect(mod.sel.group.hasPlanLoaded('p1')).toBe(true);
+    listGroups.mockRestore();
   });
 
 });

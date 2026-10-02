@@ -306,7 +306,9 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
   async refresh() {
     this.loading = true;
     try {
-      this.markers = (await dataService.getMarkers()) || [];
+      const markersResult = await dataService.getMarkers();
+      if (!markersResult.ok) throw new Error(markersResult.error.message);
+      this.markers = markersResult.data;
       // Initialize selected colors - all colors selected by default
       this._initializeColorSelection();
     } catch (err) {

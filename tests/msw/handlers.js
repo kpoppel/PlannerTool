@@ -827,12 +827,6 @@ export const handlers = [
     return HttpResponse.json(costData, { status: 200 });
   }),
 
-  http.post('/api/cost', async ({ request }) => {
-    const body = await request.json();
-    // Return cost data (possibly computed from overrides or features payload)
-    return HttpResponse.json(costData, { status: 200 });
-  }),
-
   http.post('/api/cost/features', async ({ request }) => {
     const body = await request.json();
     // Return cost data computed from features

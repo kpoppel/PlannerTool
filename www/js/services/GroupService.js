@@ -20,14 +20,16 @@
 import { bus } from '../core/EventBus.js';
 import { GroupEvents, SessionEvents } from '../core/EventRegistry.js';
 import { dataService } from './dataService.js';
+import { store } from '../application/store.js';
 
 export class GroupService {
-  constructor() {
-    /** @type {Map<string, Array>} planId → groups array */
-    this._groupsByPlan = new Map();
+  constructor(storeApi, dataServiceApi = dataService, eventBus = bus) {
+    this._store = storeApi;
+    this._dataService = dataServiceApi;
+    this._bus = eventBus;
     this._pendingLoads = new Map();
     this._batchRequest = null;
-    bus.on(SessionEvents.CHANGED, () => this.clear());
+    this._bus.on(SessionEvents.CHANGED, () => this.clear());
   }
 
   // ---------------------------------------------------------------------------
@@ -36,7 +38,8 @@ export class GroupService {
 
   /** Return all cached groups for a plan (synchronous, may be empty before load). */
   getGroupsForPlan(planId) {
-    return this._groupsByPlan.get(String(planId)) || [];
+    const groups = this._store.getState().groups.byPlanId[String(planId)];
+    return groups === undefined ? [] : groups;
   }
 
   /**
@@ -47,16 +50,7 @@ export class GroupService {
    * @returns {boolean}
    */
   hasPlanLoaded(planId) {
-    return this._groupsByPlan.has(String(planId));
-  }
-
-  /** Find a cached group by id across all plans. */
-  getGroupById(groupId) {
-    for (const groups of this._groupsByPlan.values()) {
-      const found = groups.find((g) => String(g.id) === String(groupId));
-      if (found) return found;
-    }
-    return null;
+    return this._store.getState().groups.loadedPlanIds.includes(String(planId));
   }
 
   // ---------------------------------------------------------------------------
@@ -71,7 +65,8 @@ export class GroupService {
       if (this.hasPlanLoaded(key)) continue;
       let request = this._pendingLoads.get(key);
       if (!request) {
-        if (this._batchRequest) {
+        if (this._batchRequest && !this._batchRequest.resolving
+          && !this._batchRequest.revokedPlanIds.has(key)) {
           request = this._batchRequest;
           request.planIds.add(key);
           this._pendingLoads.set(key, request);
@@ -85,18 +80,42 @@ export class GroupService {
   }
 
   _startLoad(planIds) {
-    const request = { planIds: new Set(planIds), promise: Promise.resolve() };
+    const request = {
+      planIds: new Set(planIds),
+      revokedPlanIds: new Set(),
+      resolving: false,
+      promise: Promise.resolve(),
+    };
     for (const key of planIds) this._pendingLoads.set(key, request);
     this._batchRequest = request;
-    request.promise = dataService.listGroups().then((groups) => {
-      let changed = false;
-      for (const key of request.planIds) {
-        // Eviction or account changes revoke an old response's right to populate this plan.
-        if (this._pendingLoads.get(key) !== request || this.hasPlanLoaded(key)) continue;
-        this._groupsByPlan.set(key, groups.filter((group) => String(group.plan_id) === key));
-        changed = true;
+    request.promise = this._dataService.listGroups().then((result) => {
+      if (!result.ok) {
+        throw new Error(`Failed to load groups: ${result.error.message}`);
       }
-      if (changed) bus.emit(GroupEvents.LOADED);
+
+      request.resolving = true;
+      let changed = false;
+      this._store.setState(
+        (state) => {
+          const byPlanId = { ...state.groups.byPlanId };
+          const loadedPlanIds = [...state.groups.loadedPlanIds];
+          for (const key of request.planIds) {
+            // Eviction or account changes revoke an old response's right to populate this plan.
+            if (this._pendingLoads.get(key) !== request || loadedPlanIds.includes(key)) continue;
+            byPlanId[key] = result.data.filter((group) => String(group.plan_id) === key);
+            loadedPlanIds.push(key);
+            changed = true;
+          }
+          if (!changed) return state;
+          return {
+            ...state,
+            groups: { ...state.groups, byPlanId, loadedPlanIds },
+          };
+        },
+        false,
+        'group.loadGroupsForPlans'
+      );
+      if (changed) this._bus.emit(GroupEvents.LOADED);
     }).catch((err) => {
       console.error('[GroupService] loadGroupsForPlans error', planIds, err);
       throw err;
@@ -112,18 +131,42 @@ export class GroupService {
   /** Evict the cache for a plan (e.g. when the plan is deselected). */
   evictPlan(planId) {
     const key = String(planId);
-    this._groupsByPlan.delete(key);
+    const request = this._pendingLoads.get(key);
+    if (request) request.revokedPlanIds.add(key);
     this._pendingLoads.delete(key);
-    if (this._batchRequest && this._batchRequest.planIds.has(key)) this._batchRequest = null;
+    this._store.setState(
+      (state) => {
+        const byPlanId = { ...state.groups.byPlanId };
+        delete byPlanId[key];
+        return {
+          ...state,
+          groups: {
+            ...state.groups,
+            byPlanId,
+            loadedPlanIds: state.groups.loadedPlanIds.filter((id) => id !== key),
+          },
+        };
+      },
+      false,
+      'group.evictPlan'
+    );
+    this._bus.emit(GroupEvents.CHANGED);
   }
 
   /** Clear account-local state and invalidate every outstanding response. */
   clear() {
-    this._groupsByPlan.clear();
     this._pendingLoads.clear();
     this._batchRequest = null;
-    bus.emit(GroupEvents.CHANGED);
+    this._store.setState(
+      (state) => ({
+        ...state,
+        groups: { ...state.groups, byPlanId: {}, loadedPlanIds: [] },
+      }),
+      false,
+      'group.clear'
+    );
+    this._bus.emit(GroupEvents.CHANGED);
   }
 }
 
-export const groupService = new GroupService();
+export const groupService = new GroupService(store);

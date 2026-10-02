@@ -1,32 +1,5 @@
 // dataService.js
-// Centralized data access facade with pluggable BackendProvider.
-// Default provider is an in-memory MockBackendProvider.
-
-// ---------------- Provider Interface & Selection -----------------
-/**
- * BackendProvider typedef (JSDoc)
- * @typedef {object} BackendProvider
- * @property {(() => Promise<void>)=} init
- * @property {() => Promise<object>} fetchConfig
- * @property {(pat: string) => Promise<{ token: string }>} submitPat
- * @property {() => Promise<object>} loadAll
- * @property {() => Promise<any[]>} loadProjects
- * @property {() => Promise<any[]>} loadTeams
- * @property {() => Promise<any[]>} loadFeatures
- * @property {(id: string, start: string, end: string) => Promise<object>} updateFeatureDates
- * @property {(id: string, field: string, value: any) => Promise<object>} updateFeatureField
- * @property {(updates: Array<{ id: string, start: string, end: string }>) => Promise<object[]>} batchUpdateFeatureDates
- * @property {(tasks: Array<{ id: string, start?: string, end?: string, capacity?: any[] }>) => Promise<object>} updateTasksWithCapacity
- * @property {(scenario: object) => Promise<object>} saveScenario
- * @property {(id: string, tags: string[]) => Promise<object>} annotateScenario
- * @property {(id: string) => Promise<boolean>} deleteScenario
- * @property {() => Promise<any[]>} listScenarios
- * @property {() => Promise<{ projectColors: object, teamColors: object }>} getColorMappings
- * @property {(id: string, color: string) => Promise<void>} updateProjectColor
- * @property {(id: string, color: string) => Promise<void>} updateTeamColor
- * @property {() => Promise<object>} capabilities
- * @property {() => Promise<{ ok: boolean }>} health
- */
+// REST methods preserve Result envelopes; browser preferences remain local values.
 
 import { ProviderMock } from './providerMock.js';
 import { ProviderLocalStorage } from './providerLocalStorage.js';
@@ -37,31 +10,6 @@ class DataService {
     this.providers = providers;
   }
 
-  // Boundary policy:
-  // - Public dataService methods keep legacy unwrapped return contracts for compatibility.
-  // - `callRestResult` exposes raw Result envelopes for migration/callers that need error details.
-  async callRestResult(methodName, ...args) {
-    const fn = this.providers['rest'][methodName];
-    if (typeof fn !== 'function') {
-      return { ok: false, error: { message: `Unknown REST method: ${methodName}` } };
-    }
-    return fn.apply(this.providers['rest'], args);
-  }
-
-  _unwrapOrFallback(methodName, result, fallback) {
-    if (result && result.ok === true) {
-      return result.data;
-    }
-
-    const message = result && result.error && result.error.message
-      ? result.error.message
-      : 'request_failed';
-    console.warn(`[dataService] ${methodName} using fallback after provider failure`, {
-      error: result && result.error ? result.error : { message },
-    });
-    return fallback;
-  }
-
   async init() {
     if (this.providers['rest'] && typeof this.providers['rest'].init === 'function') {
       await this.providers['rest'].init();
@@ -69,8 +17,7 @@ class DataService {
   }
   // Service health and capabilities
   async checkHealth() {
-    const result = await this.providers['rest'].checkHealth();
-    return this._unwrapOrFallback('checkHealth', result, { status: 'error' });
+    return this.providers['rest'].checkHealth();
   }
   async getCapabilities() {
     return this.providers['mock'].getCapabilities();
@@ -111,21 +58,17 @@ class DataService {
   }
   // --- Feature Data Management ---
   async getProjects() {
-    const result = await this.providers['rest'].getProjects();
-    return this._unwrapOrFallback('getProjects', result, []);
+    return this.providers['rest'].getProjects();
   }
   async getIterationsConfig() {
-    const result = await this.providers['rest'].getIterationsConfig();
-    return this._unwrapOrFallback('getIterationsConfig', result, { iterationSetsById: {} });
+    return this.providers['rest'].getIterationsConfig();
   }
 
   async getIterationSets() {
-    const result = await this.providers['rest'].getIterationSets();
-    return this._unwrapOrFallback('getIterationSets', result, {});
+    return this.providers['rest'].getIterationSets();
   }
   async getTeams() {
-    const result = await this.providers['rest'].getTeams();
-    return this._unwrapOrFallback('getTeams', result, []);
+    return this.providers['rest'].getTeams();
   }
   /**
    * Fetch history entries for a project.
@@ -133,84 +76,66 @@ class DataService {
    * @param {{per_page?:number, invalidate_cache?:boolean}} [opts]
    */
   async getHistory(projectId, opts) {
-    const result = await this.providers['rest'].getHistory(projectId, opts);
-    return this._unwrapOrFallback('getHistory', result, { tasks: [] });
+    return this.providers['rest'].getHistory(projectId, opts);
   }
   async getCostTeams() {
-    if (!this.providers['rest'].getCostTeams) return [];
-    const result = await this.providers['rest'].getCostTeams();
-    return this._unwrapOrFallback('getCostTeams', result, []);
+    return this.providers['rest'].getCostTeams();
   }
   async getFeatures() {
-    const result = await this.providers['rest'].getFeatures();
-    return this._unwrapOrFallback('getFeatures', result, []);
+    return this.providers['rest'].getFeatures();
   }
   async getCost(overrides) {
-    const result = await this.providers['rest'].getCost(overrides);
-    return this._unwrapOrFallback('getCost', result, { projects: [], months: [], teams: [] });
+    return this.providers['rest'].getCost(overrides);
   }
   async getMarkers() {
-    const result = await this.providers['rest'].getMarkers();
-    return this._unwrapOrFallback('getMarkers', result, []);
+    return this.providers['rest'].getMarkers();
   }
   async getPluginsConfig() {
-    const result = await this.providers['rest'].getPluginsConfig();
-    if (!result.ok) throw new Error('Loading plugin settings failed', { cause: result.error });
-    return result.data;
+    return this.providers['rest'].getPluginsConfig();
   }
 
   async getPluginsSchemas() {
-    const result = await this.providers['rest'].getPluginsSchemas();
-    return this._unwrapOrFallback('getPluginsSchemas', result, {});
+    return this.providers['rest'].getPluginsSchemas();
   }
   /** @param {string} [planId] */
   async getEvents(planId) {
-    const result = await this.providers['rest'].getEvents(planId);
-    return this._unwrapOrFallback('getEvents', result, []);
+    return this.providers['rest'].getEvents(planId);
   }
   /** @param {{date:string, title:string, plan_id:string}} data */
   async createEvent(data) {
-    const result = await this.providers['rest'].createEvent(data);
-    return this._unwrapOrFallback('createEvent', result, null);
+    return this.providers['rest'].createEvent(data);
   }
   /**
    * @param {string} eventId
    * @param {{date?:string, title?:string, plan_id?:string}} data
    */
   async updateEvent(eventId, data) {
-    const result = await this.providers['rest'].updateEvent(eventId, data);
-    return this._unwrapOrFallback('updateEvent', result, null);
+    return this.providers['rest'].updateEvent(eventId, data);
   }
   /** @param {string} eventId */
   async deleteEvent(eventId) {
-    const result = await this.providers['rest'].deleteEvent(eventId);
-    return this._unwrapOrFallback('deleteEvent', result, false);
+    return this.providers['rest'].deleteEvent(eventId);
   }
   async getEventCategories() {
-    const result = await this.providers['rest'].getEventCategories();
-    return this._unwrapOrFallback('getEventCategories', result, []);
+    return this.providers['rest'].getEventCategories();
   }
   /** @param {{name: string, is_special?: boolean}} data */
   async createEventCategory(data) {
-    const result = await this.providers['rest'].createEventCategory(data);
-    return this._unwrapOrFallback('createEventCategory', result, null);
+    return this.providers['rest'].createEventCategory(data);
   }
   /**
    * @param {string} categoryId
    * @param {{name?: string, is_special?: boolean}} data
    */
   async updateEventCategory(categoryId, data) {
-    const result = await this.providers['rest'].updateEventCategory(categoryId, data);
-    return this._unwrapOrFallback('updateEventCategory', result, null);
+    return this.providers['rest'].updateEventCategory(categoryId, data);
   }
   /** @param {string} categoryId */
   async deleteEventCategory(categoryId) {
-    const result = await this.providers['rest'].deleteEventCategory(categoryId);
-    return this._unwrapOrFallback('deleteEventCategory', result, false);
+    return this.providers['rest'].deleteEventCategory(categoryId);
   }
   async invalidateCache() {
-    const result = await this.providers['rest'].invalidateCache();
-    return this._unwrapOrFallback('invalidateCache', result, { ok: false, error: { message: 'request_failed' } });
+    return this.providers['rest'].invalidateCache();
   }
   /**
    * Update tasks with optional dates and/or capacity data.
@@ -229,8 +154,7 @@ class DataService {
    * ]);
    */
   async updateTasksWithCapacity(updates) {
-    const result = await this.providers['rest'].updateTasksWithCapacity(updates);
-    return this._unwrapOrFallback('updateTasksWithCapacity', result, { ok: false, error: { message: 'request_failed' } });
+    return this.providers['rest'].updateTasksWithCapacity(updates);
   }
   /**
    * Update capacity for a specific work item.
@@ -244,29 +168,24 @@ class DataService {
    * ]);
    */
   async updateWorkItemCapacity(workItemId, capacity) {
-    const result = await this.providers['rest'].updateWorkItemCapacity(workItemId, capacity);
-    return this._unwrapOrFallback('updateWorkItemCapacity', result, { ok: false, error: { message: 'request_failed' } });
+    return this.providers['rest'].updateWorkItemCapacity(workItemId, capacity);
   }
   // --- Scenario Management ---
   async publishBaseline(selectedOverrides) {
     const result = await this.providers['rest'].publishBaseline(selectedOverrides);
-    return this._unwrapOrFallback('publishBaseline', result, { ok: false, error: { message: 'request_failed' } });
+    return result;
   }
   async listScenarios() {
-    const result = await this.providers['rest'].listScenarios();
-    return this._unwrapOrFallback('listScenarios', result, []);
+    return this.providers['rest'].listScenarios();
   }
   async getScenario(id) {
-    const result = await this.providers['rest'].getScenario(id);
-    return this._unwrapOrFallback('getScenario', result, null);
+    return this.providers['rest'].getScenario(id);
   }
   async loadAllScenarios() {
-    const result = await this.providers['rest'].loadAllScenarios();
-    return this._unwrapOrFallback('loadAllScenarios', result, []);
+    return this.providers['rest'].loadAllScenarios();
   }
   async deleteScenario(id) {
-    const result = await this.providers['rest'].deleteScenario(id);
-    return this._unwrapOrFallback('deleteScenario', result, false);
+    return this.providers['rest'].deleteScenario(id);
   }
   async saveScenario(scenario) {
     const payload = {
@@ -280,55 +199,44 @@ class DataService {
       pluginData: scenario.pluginData,
     };
 
-    const result = await this.providers['rest'].saveScenario(payload);
-    return this._unwrapOrFallback('saveScenario', result, { ok: false, error: { message: 'request_failed' } });
+    return this.providers['rest'].saveScenario(payload);
   }
   // --- View Management ---
   async listViews() {
-    const result = await this.providers['rest'].listViews();
-    return this._unwrapOrFallback('listViews', result, []);
+    return this.providers['rest'].listViews();
   }
   async getView(id) {
-    const result = await this.providers['rest'].getView(id);
-    return this._unwrapOrFallback('getView', result, null);
+    return this.providers['rest'].getView(id);
   }
   async saveView(view) {
-    const result = await this.providers['rest'].saveView(view);
-    return this._unwrapOrFallback('saveView', result, { ok: false, error: { message: 'request_failed' } });
+    return this.providers['rest'].saveView(view);
   }
   async renameView(id, name) {
-    const result = await this.providers['rest'].renameView(id, name);
-    return this._unwrapOrFallback('renameView', result, { ok: false, error: { message: 'request_failed' } });
+    return this.providers['rest'].renameView(id, name);
   }
   async deleteView(id) {
-    const result = await this.providers['rest'].deleteView(id);
-    return this._unwrapOrFallback('deleteView', result, false);
+    return this.providers['rest'].deleteView(id);
   }
 
   // --- Group Management ---
   /** @param {string} [planId] */
   async listGroups(planId) {
-    const result = await this.providers['rest'].listGroups(planId);
-    if (!result.ok) {
-      console.error('[dataService] listGroups failed', { planId, error: result.error });
-      throw new Error(result.error.message);
-    }
-    return result.data;
+    return this.providers['rest'].listGroups(planId);
   }
   /** @param {{ plan_id:string, name:string, color?:string, rank?:number }} payload */
   async createGroup(payload) {
     const result = await this.providers['rest'].createGroup(payload);
-    return this._unwrapOrFallback('createGroup', result, null);
+    return result;
   }
   /** @param {string} groupId @param {{ name?:string, color?:string }} fields */
   async updateGroup(groupId, fields) {
     const result = await this.providers['rest'].updateGroup(groupId, fields);
-    return this._unwrapOrFallback('updateGroup', result, null);
+    return result;
   }
   /** @param {string} groupId */
   async deleteGroup(groupId) {
     const result = await this.providers['rest'].deleteGroup(groupId);
-    return this._unwrapOrFallback('deleteGroup', result, false);
+    return result;
   }
 }
 

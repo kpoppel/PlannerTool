@@ -6,9 +6,15 @@ const mockCmd = vi.hoisted(() => ({
   },
 }));
 
+const mockSel = vi.hoisted(() => ({
+  group: {
+    getBaselineGroupById: vi.fn(),
+  },
+}));
+
 vi.mock('../../www/js/application/imports.js', () => ({
   cmd: mockCmd,
-  sel: {},
+  sel: mockSel,
 }));
 
 import { AzureDevopsModal } from '../../www/js/components/AzureDevopsModal.lit.js';
@@ -26,5 +32,13 @@ describe('AzureDevopsModal feature seam', () => {
     expect(modal._selected.has('f-1:end')).toBe(false);
     expect(modal._selected.has('f-2:state')).toBe(true);
     expect(modal.requestUpdate).toHaveBeenCalled();
+  });
+
+  it('resolves deleted group names from baseline metadata', () => {
+    mockSel.group.getBaselineGroupById.mockReturnValue({ name: 'Operations' });
+    const modal = new AzureDevopsModal();
+
+    expect(modal._resolveGroupName('g-1', [])).toBe('Operations');
+    expect(mockSel.group.getBaselineGroupById).toHaveBeenCalledWith('g-1');
   });
 });

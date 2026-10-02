@@ -57,6 +57,7 @@ export function createInitialAppState() {
     },
     groups: {
       byPlanId: {},
+      loadedPlanIds: [],
     },
     pluginState: {},
     capacity: {

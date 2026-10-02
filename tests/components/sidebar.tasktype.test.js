@@ -13,12 +13,21 @@ import '../../www/js/components/Sidebar.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { BoardEvents, FilterEvents, FeatureEvents } from '../../www/js/core/EventRegistry.js';
+import { dataService } from '../../www/js/services/dataService.js';
 
 describe('Sidebar task-type filter', () => {
   let sidebar;
+  let originalCheckHealth;
 
   beforeEach(async () => {
     await customElements.whenDefined('app-sidebar');
+    originalCheckHealth = dataService.checkHealth;
+    dataService.checkHealth = async () => ({
+      ok: true,
+      data: {
+        status: 'ok', server_name: 'Test server', version: '1.2.3', uptime_seconds: 0,
+      },
+    });
     sidebar = document.createElement('app-sidebar');
     document.body.appendChild(sidebar);
     await sidebar.updateComplete;
@@ -30,6 +39,38 @@ describe('Sidebar task-type filter', () => {
   afterEach(() => {
     cmd.view.setTaskViewMode('plan');
     if (sidebar && sidebar.isConnected) sidebar.remove();
+    dataService.checkHealth = originalCheckHealth;
+  });
+
+  it('renders health version, server name, and uptime from the successful result data', async () => {
+    dataService.checkHealth = async () => ({
+      ok: true,
+      data: {
+        status: 'ok', server_name: 'Planner API', version: '4.5.6', uptime_seconds: 3661,
+      },
+    });
+
+    await sidebar.refreshServerStatus();
+
+    expect(sidebar.serverName).to.equal('Planner API');
+    expect(sidebar.serverStatus).to.equal('4.5.6 | Server: ok - Uptime: 1h 1m');
+  });
+
+  it('logs the health error status when the result fails', async () => {
+    const error = { status: 503, message: 'Health check unavailable' };
+    const originalConsoleError = console.error;
+    const loggedErrors = [];
+    dataService.checkHealth = async () => ({ ok: false, error });
+    console.error = (...args) => loggedErrors.push(args);
+
+    try {
+      await sidebar.refreshServerStatus();
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    expect(sidebar.serverStatus).to.equal('Server: error');
+    expect(loggedErrors).to.deep.equal([['[Sidebar] Health check failed', error]]);
   });
 
   it('switches the team drill-down task view from Plan overview to Team focus', async () => {

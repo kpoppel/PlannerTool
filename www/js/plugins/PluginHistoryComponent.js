@@ -88,9 +88,13 @@ export class PluginHistoryComponent extends LitElement {
         this.currentPlanId = project.id;
         this.requestUpdate();
         try {
-          const data = await dataService.getHistory(project.id, {
+          const historyResult = await dataService.getHistory(project.id, {
             per_page: 500,
           });
+          if (!historyResult.ok) {
+            throw new Error(historyResult.error.message, { cause: historyResult.error });
+          }
+          const data = historyResult.data;
           if (data && data.tasks && data.tasks.length) {
             newTasks.push(...data.tasks);
             this.tasksInvestigated = (this.tasksInvestigated || 0) + data.tasks.length;
@@ -501,10 +505,14 @@ export class PluginHistoryComponent extends LitElement {
         this.currentPlanId = project.id;
         this.requestUpdate();
         try {
-          const data = await dataService.getHistory(project.id, {
+          const historyResult = await dataService.getHistory(project.id, {
             per_page: 500,
             invalidate_cache: !!invalidateCache,
           });
+          if (!historyResult.ok) {
+            throw new Error(historyResult.error.message, { cause: historyResult.error });
+          }
+          const data = historyResult.data;
           if (data && data.tasks && data.tasks.length > 0) {
             newTasks.push(...data.tasks);
             this.tasksInvestigated += data.tasks.length;

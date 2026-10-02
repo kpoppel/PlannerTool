@@ -1,16 +1,9 @@
-from fastapi.testclient import TestClient
-
 from planner_lib.main import create_app, Config
-from planner_lib.middleware.session import SessionManager
 
 
-REAL_CREATE = SessionManager.create
-REAL_GET = SessionManager.get
 
 
-def test_post_config_and_persistence(client, app, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
+def test_post_config_and_persistence(client, app):
     assert client.post('/api/auth/enroll', json={
         'email': 'test@example.com', 'name': 'Test User',
     }).status_code == 200

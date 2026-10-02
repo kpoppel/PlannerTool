@@ -507,12 +507,20 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
   async refresh() {
     this.loading = true;
-    const [events, categories] = await Promise.all([
+    const [eventsResult, categoriesResult] = await Promise.all([
       dataService.getEvents(),
       dataService.getEventCategories(),
     ]);
-    this.events = events || [];
-    this.categories = categories || [];
+    if (!eventsResult.ok) {
+      this.loading = false;
+      return eventsResult;
+    }
+    if (!categoriesResult.ok) {
+      this.loading = false;
+      return categoriesResult;
+    }
+    this.events = eventsResult.data;
+    this.categories = categoriesResult.data;
     this.loading = false;
     this._renderSvg();
     this.requestUpdate();
@@ -551,18 +559,23 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       end_date: this._editEndDate ?? '',
     };
     const updated = await dataService.updateEvent(this._editId, payload);
-    if (updated) {
-      await this.refresh();
-      bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
-      this._cancelEdit();
+    if (!updated.ok) {
+      this._saving = false;
+      return updated;
     }
+    await this.refresh();
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    this._cancelEdit();
     this._saving = false;
+    return updated;
   }
 
   async _deleteEvent(eventId) {
-    await dataService.deleteEvent(eventId);
+    const deleted = await dataService.deleteEvent(eventId);
+    if (!deleted.ok) return deleted;
     await this.refresh();
     bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    return deleted;
   }
 
   async _addEvent(planId) {
@@ -575,16 +588,19 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     const payload = { date, title, plan_id: planId, category };
     if (endDate) payload.end_date = endDate;
     const created = await dataService.createEvent(payload);
-    if (created) {
-      this._newDates = { ...this._newDates, [planId]: '' };
-      this._newEndDates = { ...this._newEndDates, [planId]: '' };
-      this._newTitles = { ...this._newTitles, [planId]: '' };
-      this._newCategories = { ...this._newCategories, [planId]: '' };
-      this._addOpenPlanIds = { ...this._addOpenPlanIds, [planId]: false };
-      await this.refresh();
-      bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    if (!created.ok) {
+      this._saving = false;
+      return created;
     }
+    this._newDates = { ...this._newDates, [planId]: '' };
+    this._newEndDates = { ...this._newEndDates, [planId]: '' };
+    this._newTitles = { ...this._newTitles, [planId]: '' };
+    this._newCategories = { ...this._newCategories, [planId]: '' };
+    this._addOpenPlanIds = { ...this._addOpenPlanIds, [planId]: false };
+    await this.refresh();
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
     this._saving = false;
+    return created;
   }
 
   // ---------------------------------------------------------------------------
@@ -605,32 +621,42 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     if (!this._editCatName.trim()) return;
     this._catSaving = true;
     const updated = await dataService.updateEventCategory(this._editCatId, { name: this._editCatName.trim() });
-    if (updated) {
-      await this.refresh();
-      this._cancelCatEdit();
+    if (!updated.ok) {
+      this._catSaving = false;
+      return updated;
     }
+    await this.refresh();
+    this._cancelCatEdit();
     this._catSaving = false;
+    return updated;
   }
 
   async _toggleSpecial(cat) {
-    await dataService.updateEventCategory(cat.id, { is_special: !cat.is_special });
+    const updated = await dataService.updateEventCategory(cat.id, { is_special: !cat.is_special });
+    if (!updated.ok) return updated;
     await this.refresh();
+    return updated;
   }
 
   async _addCategory() {
     if (!this._newCatName.trim()) return;
     this._catSaving = true;
     const created = await dataService.createEventCategory({ name: this._newCatName.trim() });
-    if (created) {
-      this._newCatName = '';
-      await this.refresh();
+    if (!created.ok) {
+      this._catSaving = false;
+      return created;
     }
+    this._newCatName = '';
+    await this.refresh();
     this._catSaving = false;
+    return created;
   }
 
   async _deleteCategory(categoryId) {
-    await dataService.deleteEventCategory(categoryId);
+    const deleted = await dataService.deleteEventCategory(categoryId);
+    if (!deleted.ok) return deleted;
     await this.refresh();
+    return deleted;
   }
 
   _toggleCategoryVisibility(catName) {

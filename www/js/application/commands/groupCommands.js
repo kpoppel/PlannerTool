@@ -520,7 +520,8 @@ export function createGroupCommands(store, bus) {
       const mutation = withActiveScenario(snapshot, (scenario) => {
         const scenarioGroups = scenario.scenarioGroups.filter(
           (group) => String(group.id) !== String(tempId) && String(group.id) !== String(realId)
-        );
+        ).map((group) => String(group.parent_id) === String(tempId)
+          ? { ...group, parent_id: String(realId) } : group);
         if (uncommittedMemberIds.length === 0) {
           return { ...scenario, scenarioGroups };
         }

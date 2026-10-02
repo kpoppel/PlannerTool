@@ -10,17 +10,23 @@ import { DataEvents, StateFilterEvents } from '../../../www/js/core/EventRegistr
 
 function makeDataServiceMock(overrides = {}) {
   const getColorMappings = vi.fn(async () => ({ projectColors: {}, teamColors: {} }));
+  const defaults = {
+    getProjects: { ok: true, data: [] },
+    getTeams: { ok: true, data: [] },
+    getFeatures: { ok: true, data: [] },
+    getIterationsConfig: { ok: true, data: { iterationSetsById: {} } },
+    loadAllScenarios: { ok: true, data: [] },
+  };
+  const resultFor = (methodName) =>
+    Object.prototype.hasOwnProperty.call(overrides, methodName)
+      ? overrides[methodName]
+      : defaults[methodName];
   return {
-    callRestResult: vi.fn(async (methodName) => {
-      const map = {
-        getProjects: { ok: true, data: [] },
-        getTeams: { ok: true, data: [] },
-        getFeatures: { ok: true, data: [] },
-        getIterationsConfig: { ok: true, data: { iterationSetsById: {} } },
-        loadAllScenarios: { ok: true, data: [] },
-      };
-      return methodName in overrides ? overrides[methodName] : map[methodName];
-    }),
+    getProjects: vi.fn(async () => resultFor('getProjects')),
+    getTeams: vi.fn(async () => resultFor('getTeams')),
+    getFeatures: vi.fn(async () => resultFor('getFeatures')),
+    getIterationsConfig: vi.fn(async () => resultFor('getIterationsConfig')),
+    loadAllScenarios: vi.fn(async () => resultFor('loadAllScenarios')),
     getColorMappings,
   };
 }
@@ -425,7 +431,10 @@ describe('application/commands/dataCommands', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(dataService.callRestResult).not.toHaveBeenCalled();
+    expect(dataService.getProjects).not.toHaveBeenCalled();
+    expect(dataService.getTeams).not.toHaveBeenCalled();
+    expect(dataService.getFeatures).not.toHaveBeenCalled();
+    expect(dataService.getIterationsConfig).not.toHaveBeenCalled();
     expect(store.getState().baseline.projects).toEqual([
       { id: 'p10', color: expect.any(String), state_display_sequence: [] },
     ]);
@@ -443,7 +452,7 @@ describe('application/commands/dataCommands', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(dataService.callRestResult).not.toHaveBeenCalled();
+    expect(dataService.loadAllScenarios).not.toHaveBeenCalled();
     expect(store.getState().scenarios.items).toEqual([
       {
         id: 'baseline',
@@ -518,7 +527,10 @@ describe('application/commands/dataCommands', () => {
     );
     expect(store.getState().baseline).toEqual(beforeBaseline);
     expect(store.getState().lifecycle).toEqual(beforeLifecycle);
-    expect(dataService.callRestResult).not.toHaveBeenCalled();
+    expect(dataService.getProjects).not.toHaveBeenCalled();
+    expect(dataService.getTeams).not.toHaveBeenCalled();
+    expect(dataService.getFeatures).not.toHaveBeenCalled();
+    expect(dataService.getIterationsConfig).not.toHaveBeenCalled();
     expect(bus.emit).toHaveBeenCalledWith(
       DataCommandEvents.HYDRATION_FAILED,
       expect.objectContaining({ phase: 'baseline' })
@@ -536,7 +548,7 @@ describe('application/commands/dataCommands', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(dataService.callRestResult).not.toHaveBeenCalled();
+    expect(dataService.loadAllScenarios).not.toHaveBeenCalled();
     expect(store.getState().scenarios.items).toEqual([
       {
         id: 'baseline',

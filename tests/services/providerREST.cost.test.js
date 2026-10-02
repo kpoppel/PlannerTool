@@ -2,73 +2,70 @@ import { expect } from '@esm-bundle/chai';
 import { ProviderREST } from '../../www/js/services/providerREST.js';
 
 describe('ProviderREST cost endpoints', () => {
-  it('getCost() with no payload returns cost data', async () => {
+  it('rejects malformed and legacy payloads before making a request', async () => {
     const pr = new ProviderREST();
-    const cost = await pr.getCost();
-    expect(cost.ok).to.equal(true);
-    expect(cost.data).to.have.property('projects');
-    expect(cost.data).to.have.property('months');
-    expect(cost.data).to.have.property('teams');
-    expect(Array.isArray(cost.data.projects)).to.equal(true);
-    expect(Array.isArray(cost.data.months)).to.equal(true);
-    expect(Array.isArray(cost.data.teams)).to.equal(true);
-    expect(cost.data.projects.length).to.be.at.least(1);
-    const proj = cost.data.projects[0];
-    expect(proj).to.have.property('project_id');
-    expect(proj).to.have.property('total_cost');
-    expect(proj).to.have.property('months');
+    let requestCount = 0;
+    pr._requestJson = async () => {
+      requestCount += 1;
+      return { ok: true, data: {} };
+    };
+
+    const malformedPayloads = [undefined, null, [], {}, { overrides: [] }, { features: null }];
+    for (const payload of malformedPayloads) {
+      let error;
+      try {
+        await pr.getCost(payload);
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).to.be.instanceOf(TypeError);
+    }
+    expect(requestCount).to.equal(0);
   });
 
-  it('getCost(overrides) with array payload returns cost data', async () => {
-    const pr = new ProviderREST();
-    const overrides = [
-      { id: '100', capacity: [{ team: 'team-t1', capacity: 50 }] },
-    ];
-    const cost = await pr.getCost(overrides);
-    expect(cost.ok).to.equal(true);
-    expect(cost.data).to.have.property('projects');
-    expect(cost.data).to.have.property('months');
-    expect(cost.data).to.have.property('teams');
-  });
-
-  it('getCost(payload) with features array returns cost data', async () => {
+  it('posts a valid features payload to the feature cost endpoint', async () => {
     const pr = new ProviderREST();
     const payload = {
       features: [
         { id: '100', start: '2026-01-01', end: '2026-02-01', capacity: [] },
       ],
     };
+    const result = { ok: true, data: { projects: [], months: [], teams: [] } };
+    let request;
+    pr._requestJson = async (url, options) => {
+      request = { url, options };
+      return result;
+    };
+
     const cost = await pr.getCost(payload);
-    expect(cost.ok).to.equal(true);
-    expect(cost.data).to.have.property('projects');
-    expect(cost.data).to.have.property('months');
-    expect(cost.data).to.have.property('teams');
+    expect(request.url).to.equal('/api/cost/features');
+    expect(request.options.method).to.equal('POST');
+    expect(request.options.headers['Content-Type']).to.equal('application/json');
+    expect(request.options.body).to.equal(JSON.stringify(payload));
+    expect(cost).to.equal(result);
   });
 
   it('getCost(payload) with empty features array returns minimal schema', async () => {
     const pr = new ProviderREST();
     const payload = { features: [] };
+    let requestCount = 0;
+    pr._requestJson = async () => {
+      requestCount += 1;
+      return { ok: true, data: {} };
+    };
+
     const cost = await pr.getCost(payload);
-    // Should return minimal schema without calling backend
     expect(cost.ok).to.equal(true);
-    expect(cost.data).to.have.property('projects');
-    expect(cost.data).to.have.property('months');
-    expect(cost.data).to.have.property('teams');
-    expect(Array.isArray(cost.data.projects)).to.equal(true);
-    expect(cost.data.projects.length).to.equal(0);
+    expect(cost.data).to.deep.equal({ projects: [], months: [], teams: [] });
+    expect(requestCount).to.equal(0);
   });
 
-  it('getCostTeams() returns team cost configuration', async () => {
+  it('returns canonical request failures unchanged', async () => {
     const pr = new ProviderREST();
-    const data = await pr.getCostTeams();
-    expect(data.ok).to.equal(true);
-    expect(data.data).to.have.property('teams');
-    expect(Array.isArray(data.data.teams)).to.equal(true);
-    expect(data.data.teams.length).to.be.at.least(1);
-    const t = data.data.teams[0];
-    expect(t).to.have.property('id');
-    expect(t).to.have.property('name');
-    expect(t).to.have.property('members');
-    expect(t).to.have.property('totals');
+    const failure = { ok: false, error: { message: 'network unavailable' } };
+    pr._requestJson = async () => failure;
+
+    const cost = await pr.getCost({ features: [{ id: '100' }] });
+    expect(cost).to.equal(failure);
   });
 });

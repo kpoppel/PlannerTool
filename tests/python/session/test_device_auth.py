@@ -7,13 +7,9 @@ from planner_lib.session.auth import AuthManager
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
 
-REAL_CREATE = SessionManager.create
-REAL_GET = SessionManager.get
 
 
 def test_account_key_enrollment_rotates_and_preserves_other_browsers(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     with closing(DiskCacheStorage(tmp_path)) as storage:
         accounts = AccountManager(storage)
         sessions = SessionManager(accounts, storage)
@@ -35,8 +31,6 @@ def test_account_key_enrollment_rotates_and_preserves_other_browsers(tmp_path, m
 
 
 def test_key_authorized_deletion_removes_owned_data_and_preserves_other_accounts(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     with closing(DiskCacheStorage(tmp_path)) as storage:
         accounts = AccountManager(storage)
         sessions = SessionManager(accounts, storage)
@@ -72,8 +66,6 @@ def test_key_authorized_deletion_removes_owned_data_and_preserves_other_accounts
 
 
 def test_enrollment_and_account_keys_survive_restart(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     storage = DiskCacheStorage(tmp_path)
     accounts = AccountManager(storage)
     sessions = SessionManager(accounts, storage)
@@ -109,8 +101,6 @@ def test_enrollment_and_account_keys_survive_restart(tmp_path, monkeypatch):
 
 
 def test_session_idle_and_absolute_expiry(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     storage = DiskCacheStorage(tmp_path)
     accounts = AccountManager(storage)
     sessions = SessionManager(accounts, storage)
@@ -128,8 +118,6 @@ def test_session_idle_and_absolute_expiry(tmp_path, monkeypatch):
 
 
 def test_absolute_session_limit_is_not_extended_by_activity(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     storage = DiskCacheStorage(tmp_path)
     accounts = AccountManager(storage)
     sessions = SessionManager(accounts, storage)
@@ -145,7 +133,6 @@ def test_absolute_session_limit_is_not_extended_by_activity(tmp_path, monkeypatc
 
 
 def test_enrollment_race_has_one_winner(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     from concurrent.futures import ThreadPoolExecutor
     storage = DiskCacheStorage(tmp_path)
     accounts = AccountManager(storage)
@@ -165,7 +152,6 @@ def test_enrollment_race_has_one_winner(tmp_path, monkeypatch):
 
 
 def test_reset_invalidates_only_the_accounts_key_and_devices(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     storage = DiskCacheStorage(tmp_path)
     try:
         accounts = AccountManager(storage)
@@ -185,8 +171,6 @@ def test_reset_invalidates_only_the_accounts_key_and_devices(tmp_path, monkeypat
 
 
 def test_sessions_are_bound_to_account_id_not_reused_email(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
-    monkeypatch.setattr(SessionManager, 'get', REAL_GET)
     storage = DiskCacheStorage(tmp_path)
     try:
         accounts = AccountManager(storage)
@@ -235,7 +219,6 @@ def test_attempt_throttle(tmp_path):
 
 def test_account_key_race_has_one_winner(tmp_path, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     with closing(DiskCacheStorage(tmp_path)) as storage:
         accounts = AccountManager(storage)
         auth = AuthManager(storage, accounts, SessionManager(accounts, storage))
@@ -256,7 +239,6 @@ def test_account_key_race_has_one_winner(tmp_path, monkeypatch):
 
 
 def test_final_admin_deletion_keeps_current_key(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     with closing(DiskCacheStorage(tmp_path)) as storage:
         accounts = AccountManager(storage)
         auth = AuthManager(storage, accounts, SessionManager(accounts, storage))
@@ -268,7 +250,6 @@ def test_final_admin_deletion_keeps_current_key(tmp_path, monkeypatch):
 
 def test_enrollment_racing_deletion_has_one_winner(tmp_path, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     with closing(DiskCacheStorage(tmp_path)) as storage:
         accounts = AccountManager(storage)
         auth = AuthManager(storage, accounts, SessionManager(accounts, storage))
@@ -294,7 +275,6 @@ def test_enrollment_racing_deletion_has_one_winner(tmp_path, monkeypatch):
 
 def test_concurrent_admin_deletion_preserves_a_final_admin(tmp_path, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     with closing(DiskCacheStorage(tmp_path)) as storage:
         accounts = AccountManager(storage)
         auth = AuthManager(storage, accounts, SessionManager(accounts, storage))
@@ -322,7 +302,6 @@ def test_concurrent_admin_deletion_preserves_a_final_admin(tmp_path, monkeypatch
 
 
 def test_failed_deletion_rolls_back_credentials_and_owned_data(tmp_path, monkeypatch):
-    monkeypatch.setattr(SessionManager, 'create', REAL_CREATE)
     with closing(DiskCacheStorage(tmp_path)) as storage:
         accounts = AccountManager(storage)
         auth = AuthManager(storage, accounts, SessionManager(accounts, storage))

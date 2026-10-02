@@ -367,53 +367,26 @@ export class ProviderREST extends RestProviderBase {
     return ok(payloadResult.data.iterationSetsById || {});
   }
 
-  // Fetch cost data (GET) or request a recalculation with payload (POST)
+  // Request cost data for a required feature payload.
   async getCost(payload) {
-    try {
-      // Guard: if caller provided an explicit features list that's empty,
-      // avoid calling the backend and return a minimal cost schema.
-      if (
-        payload &&
-        typeof payload === 'object' &&
-        Array.isArray(payload.features) &&
-        payload.features.length === 0
-      ) {
-        console.log(
-          'providerREST:getCost - empty features payload, skipping backend call'
-        );
-        return ok({ projects: [], months: [], teams: [] });
-      }
-      // If no payload provided, GET cached cost for session (or schema when unauthenticated)
-      if (!payload) {
-        return this._requestJson('/api/cost');
-      }
-
-      // If payload is an array, treat as legacy overrides array
-      if (Array.isArray(payload)) {
-        return this._requestJson('/api/cost', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ overrides: payload }),
-        });
-      }
-
-      // If payload is an object, forward it to the new feature-focused endpoint
-      // when it contains a `features` array; otherwise fall back to legacy /api/cost
-      if (typeof payload === 'object') {
-        const url =
-          payload && Array.isArray(payload.features) ? '/api/cost/features' : '/api/cost';
-        return this._requestJson(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
-
-      // Fallback to GET
-      return this._requestJson('/api/cost');
-    } catch (err) {
-      return fail(err);
+    if (
+      payload === null ||
+      typeof payload !== 'object' ||
+      payload instanceof Array ||
+      !(payload.features instanceof Array)
+    ) {
+      throw new TypeError('getCost requires a payload with a features array');
     }
+
+    if (payload.features.length === 0) {
+      return ok({ projects: [], months: [], teams: [] });
+    }
+
+    return this._requestJson('/api/cost/features', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
   }
 
   async getCostTeams() {

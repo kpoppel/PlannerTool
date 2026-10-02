@@ -13,6 +13,7 @@ function seedStore() {
           { id: 'g2', plan_id: 'p1', name: 'Ops', members: [] },
         ],
       },
+      loadedPlanIds: ['p1'],
     },
     scenarios: {
       activeId: 's1',
@@ -70,6 +71,14 @@ describe('application/selectors/groupSelectors', () => {
     expect(selectors.getGroupById('g2')).toBeNull();
   });
 
+  it('exposes baseline metadata even when the active scenario deletes the group', () => {
+    const selectors = createGroupSelectors(store);
+
+    expect(selectors.getBaselineGroupById('g2')).toEqual(
+      expect.objectContaining({ id: 'g2', name: 'Ops' })
+    );
+  });
+
   it('store selectors ignore null scenario state when baseline is active', () => {
     store.setState(
       {
@@ -100,6 +109,21 @@ describe('application/selectors/groupSelectors', () => {
     expect(() => selectors.getEffectiveGroups('missing-plan')).toThrow();
     expect(selectors.getGroupById('missing-group')).toBeNull();
     expect(selectors.hasPlanLoaded('missing-plan')).toBe(false);
+  });
+
+  it('does not treat an unrequested hydration placeholder as loaded', () => {
+    store.setState({
+      ...seedStore(),
+      groups: {
+        byPlanId: { p1: [], placeholder: [] },
+        loadedPlanIds: ['p1'],
+      },
+    }, true, 'test.reset.hydrationPlaceholder');
+
+    const selectors = createGroupSelectors(store);
+
+    expect(selectors.hasPlanLoaded('placeholder')).toBe(false);
+    expect(() => selectors.getEffectiveGroups('placeholder')).toThrow(/not loaded/);
   });
 
   it('store selectors require explicit scenario group metadata', () => {
