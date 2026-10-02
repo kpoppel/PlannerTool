@@ -189,7 +189,7 @@ The plugin is registered in `www/js/modules.config.json`:
 
 ## Testing
 
-Unit tests are located in `tests/unit/test_history_api.py`:
+Unit tests are located in `tests/python/repository/test_history_api.py`:
 
 - API endpoint tests with various filters
 - History service deduplication logic
@@ -198,7 +198,7 @@ Unit tests are located in `tests/unit/test_history_api.py`:
 
 Run tests with:
 ```bash
-pytest tests/unit/test_history_api.py -v
+pytest tests/python/repository/test_history_api.py -v
 ```
 
 ## Azure Permissions

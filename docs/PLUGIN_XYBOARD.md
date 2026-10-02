@@ -33,7 +33,7 @@ a kanban board since a generalised board changing any two properties is an advan
 `planner_lib/domain/tasks.py`
 - Adding support for a "fields" field which holds all fields not already part of the basic set.
 
-`tests/backend/test_extra_fields.py`
+`tests/python/projects/test_extra_fields.py`
 - test the extra fields from ADC are retrieved
 
 `tests/plugins/xyBoardUtils.test.js`

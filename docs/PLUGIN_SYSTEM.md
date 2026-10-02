@@ -73,7 +73,9 @@ diagnostic tool rather than the workflow's source of truth.
 
 ## Upgrade
 
-Run `python3 scripts/migrate.py --apply` before using an existing installation.
+The server upgrades existing installations before opening an HTTP listener; no
+manual migration command is required. Stop older server processes before first
+adoption and follow [the database upgrade guidance](MIGRATIONS.md).
 Migration 0033 renames `activated`, removes numeric `order`, and initializes
 menu placement while preserving array sequence, enabled flags, and custom config.
 Existing nonempty v1 payloads are rejected by the v2 API until migrated.
