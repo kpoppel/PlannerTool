@@ -2,7 +2,7 @@ import { expect } from '@esm-bundle/chai';
 import { vi } from 'vitest';
 import '../../www/js/components/HelpModal.lit.js';
 
-describe('HelpModal expanded tests', () => {
+describe('HelpModal document loading and onboarding', () => {
   it('loads a document from index and renders markdown content', async () => {
     const originalFetch = global.fetch;
     global.fetch = vi.fn(async (url) => {

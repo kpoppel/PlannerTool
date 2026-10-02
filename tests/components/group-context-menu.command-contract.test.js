@@ -48,7 +48,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
 
 import { GroupContextMenu } from '../../www/js/components/GroupContextMenu.lit.js';
 
-describe('GroupContextMenu phase 5 seam migration', () => {
+describe('GroupContextMenu application contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

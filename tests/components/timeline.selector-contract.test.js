@@ -23,7 +23,7 @@ import {
   getMonthWidthForScale,
 } from '../../www/js/components/Timeline.lit.js';
 
-describe('Timeline Phase 4 selector seam', () => {
+describe('Timeline selector seam', () => {
   beforeEach(() => {
     _resetTimelineState();
     document.body.innerHTML = '';

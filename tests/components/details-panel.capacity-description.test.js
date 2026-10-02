@@ -3,7 +3,7 @@ import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 
-describe('DetailsPanel helper coverage', () => {
+describe('DetailsPanel behavior', () => {
   beforeEach(async () => {
     await customElements.whenDefined('details-panel');
   });

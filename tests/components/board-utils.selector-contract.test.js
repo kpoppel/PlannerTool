@@ -18,7 +18,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
 
 import { laneHeight, getBoardZoom, setBoardZoom } from '../../www/js/components/board-utils.js';
 
-describe('board-utils Phase 4 selector seam', () => {
+describe('board-utils selector seam', () => {
   beforeEach(() => {
     mockView.condensedCards = false;
     setBoardZoom(1);

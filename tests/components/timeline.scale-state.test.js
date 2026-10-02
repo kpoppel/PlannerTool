@@ -7,7 +7,7 @@ import {
 } from '../../www/js/components/Timeline.lit.js';
 import { boardCoords } from '../../www/js/services/BoardCoordinateService.js';
 
-describe('Timeline expanded tests', () => {
+describe('Timeline scale, state and panning', () => {
   it('getMonthWidthForScale returns configured widths and falls back', () => {
     expect(getMonthWidthForScale('weeks')).to.equal(240);
     expect(getMonthWidthForScale('months')).to.equal(120);

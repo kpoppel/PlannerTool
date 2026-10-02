@@ -69,7 +69,7 @@ function wireModal(instance, refs) {
   });
 }
 
-describe('scenario modal phase 5 command migration', () => {
+describe('scenario modal command contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

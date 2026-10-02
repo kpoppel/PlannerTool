@@ -6,7 +6,7 @@ import {
   collectAllDescendants,
 } from '../../www/js/components/dragManager.js';
 
-describe('dragManager helpers coverage', () => {
+describe('dragManager hierarchy updates', () => {
   it('computeMoveUpdates shifts children when epic moved', () => {
     const epic = {
       id: 'e1',

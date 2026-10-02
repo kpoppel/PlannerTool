@@ -64,7 +64,7 @@ vi.mock('../../www/js/services/BoardCoordinateService.js', () => ({
 
 import '../../www/js/components/MainGraph.lit.js';
 
-describe('MainGraph Phase 4 selector seam', () => {
+describe('MainGraph selector seam', () => {
   const originalRaf = globalThis.requestAnimationFrame;
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
 

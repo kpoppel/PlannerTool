@@ -1,4 +1,4 @@
-// tests/unit/test-mainGraph-geometry.test.js
+// MainGraph bar and hover geometry contracts.
 // Unit tests for mainGraph geometry computations
 
 import { expect } from '@open-wc/testing';

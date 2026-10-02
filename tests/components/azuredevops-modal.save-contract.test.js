@@ -13,7 +13,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
 
 import { AzureDevopsModal } from '../../www/js/components/AzureDevopsModal.lit.js';
 
-describe('AzureDevopsModal phase 5 feature seam', () => {
+describe('AzureDevopsModal feature seam', () => {
   it('reverts through cmd.feature and clears selected feature cells', () => {
     const modal = new AzureDevopsModal();
     modal.requestUpdate = vi.fn();

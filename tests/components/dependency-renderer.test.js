@@ -32,7 +32,7 @@ import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents } from '../../www/js/core/EventRegistry.js';
 
 /**
- * The global 00-setup.test.js creates:
+ * The global tests/setup/dom.js creates:
  *
  *   <timeline-board>
  *     <feature-board id="feature-board">

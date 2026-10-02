@@ -1,7 +1,7 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import '../../www/js/components/FeatureBoard.lit.js';
 
-describe('FeatureBoard helper coverage', () => {
+describe('FeatureBoard behavior', () => {
   beforeEach(async () => {
     await customElements.whenDefined('feature-board');
   });

@@ -11,7 +11,7 @@ import {
   _test_resetCache,
 } from '../../www/js/components/board-utils.js';
 
-describe('Utility helpers coverage', () => {
+describe('Utility hierarchy updates', () => {
   it('parseDate handles null, Date, and string', () => {
     expect(parseDate(null)).to.equal(null);
     const d = new Date(2025, 0, 2);

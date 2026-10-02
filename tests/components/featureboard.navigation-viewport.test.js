@@ -6,7 +6,7 @@ import '../../www/js/components/FeatureBoard.lit.js';
 if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
   Element.prototype.scrollTo = function () {};
 }
-describe('FeatureBoard navigation, insertion, ordering and viewport behavior', () => {
+describe('FeatureBoard navigation, insertion and viewport behavior', () => {
   beforeEach(async () => {
     await customElements.whenDefined('feature-board');
   });

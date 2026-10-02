@@ -28,7 +28,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
 
 import { PlanMenuLit } from '../../www/js/components/PlanMenu.lit.js';
 
-describe('PlanMenu Phase 4 command seam', () => {
+describe('PlanMenu command seam', () => {
   beforeEach(() => {
     mockSelectionCommands.setProjectSelected.mockReset();
     mockSelectionCommands.setProjectsSelectedBulk.mockReset();

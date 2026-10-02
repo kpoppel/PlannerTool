@@ -66,7 +66,7 @@ function wireModal(instance, refs) {
   });
 }
 
-describe('view modals phase 5 seam migration', () => {
+describe('view modals application contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

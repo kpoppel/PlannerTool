@@ -116,7 +116,7 @@ describe('admin-plugins', () => {
     it('blocks saving when runtime settings require migration', async () => {
       await flush(comp);
       server.use(http.get('/admin/v1/plugins-config', () => HttpResponse.json({
-        error: 'invalid_payload', message: 'Run scripts/migrate.py --apply',
+        error: 'invalid_payload', message: 'Plugin settings require schema_version 2',
       }, { status: 400 })));
       await comp._load();
       await comp.updateComplete;

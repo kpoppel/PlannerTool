@@ -2,7 +2,7 @@ import { expect } from '@esm-bundle/chai';
 import { vi } from 'vitest';
 import '../../www/js/components/OnboardingModal.lit.js';
 
-describe('OnboardingModal expanded tests', () => {
+describe('OnboardingModal lifecycle and preferences', () => {
   beforeEach(() => {
     // ensure clean localStorage
     try {
