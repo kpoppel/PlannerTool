@@ -1083,7 +1083,11 @@ class AzureDataset:
                         "include_states": _STATE_NAMES,
                         "display_states": _STATE_NAMES,
                     })
-        self.storage.save("config", "projects", {"project_map": project_map})
+        if self.storage.exists("config", "projects"):
+            projects_config = self.storage.load("config", "projects")
+        else:
+            projects_config = {"schema_version": 3, "container_types": ["project", "team"]}
+        self.storage.save("config", "projects", {**projects_config, "project_map": project_map})
 
         # teams config
         teams_data = {"teams": []}

@@ -77,7 +77,11 @@ def _populate_mock_config(storage):
 
     This replaces what would normally come from projects.yml, teams.yml, people.yml.
     """
-    storage.save("config", "projects", {"project_map": _MOCK_PROJECT_MAP})
+    storage.save("config", "projects", {
+        "schema_version": 3,
+        "container_types": ["project", "team"],
+        "project_map": _MOCK_PROJECT_MAP,
+    })
     storage.save("config", "teams", {
         "teams": [
             {"name": "Architecture", "short_name": "ARC"},
@@ -97,6 +101,34 @@ def _populate_mock_config(storage):
 # ---------------------------------------------------------------------------
 # GeneratorConfig
 # ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_generated_projects_retain_valid_container_configuration(tmp_path, configured):
+    from planner_lib.backend.config import ConfigBackend
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
+
+    storage = DiskCacheStorage(str(tmp_path / "cache"))
+    try:
+        if configured:
+            _populate_mock_config(storage)
+            expected_config = storage.load("config", "projects")
+        dataset = AzureDataset(storage=storage, data_dir=str(tmp_path),
+                               config_dict=_MULTI_CONFIG_DICT)
+        dataset.build()
+        dataset.populate_storage()
+        saved_config = storage.load("config", "projects")
+        if configured:
+            assert saved_config == expected_config
+        assert saved_config["schema_version"] == 3
+        assert saved_config["container_types"] == ["project", "team"]
+        projects = ConfigBackend(storage).fetch_projects()
+        assert projects
+        assert {project["name"] for project in projects} == {
+            project["name"] for project in saved_config["project_map"]
+        }
+    finally:
+        storage.close()
+
 
 class TestGeneratorConfig:
     def test_defaults_applied(self):
