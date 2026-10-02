@@ -10,11 +10,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Module mocks — must come before importing GroupService
 // ---------------------------------------------------------------------------
 
-vi.mock('../www/js/core/EventBus.js', () => ({
+vi.mock('../../www/js/core/EventBus.js', () => ({
   bus: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
 }));
 
-vi.mock('../www/js/services/dataService.js', () => ({
+vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: {
     listGroups: vi.fn(),
     createGroup: vi.fn(),
@@ -23,10 +23,10 @@ vi.mock('../www/js/services/dataService.js', () => ({
   },
 }));
 
-import { GroupService } from '../www/js/services/GroupService.js';
-import { bus } from '../www/js/core/EventBus.js';
-import { dataService } from '../www/js/services/dataService.js';
-import { GroupEvents } from '../www/js/core/EventRegistry.js';
+import { GroupService } from '../../www/js/services/GroupService.js';
+import { bus } from '../../www/js/core/EventBus.js';
+import { dataService } from '../../www/js/services/dataService.js';
+import { GroupEvents } from '../../www/js/core/EventRegistry.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

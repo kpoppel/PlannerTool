@@ -3,7 +3,7 @@ import {
   assignFeatureToSwimlane,
   buildSwimlaneList,
   isSwimlaneMode,
-} from '../www/js/services/SwimlaneService.js';
+} from '../../www/js/services/SwimlaneService.js';
 
 const mkProject = (id, selected, color = '#aaa') => ({ id, name: id, color, selected });
 const mkFeature = (id, project, parentId = null) => ({ id, project, parentId, capacity: [] });

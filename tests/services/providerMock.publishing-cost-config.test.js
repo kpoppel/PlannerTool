@@ -1,7 +1,7 @@
 import { expect } from '@esm-bundle/chai';
 import { ProviderMock } from '../../www/js/services/providerMock.js';
 
-describe('ProviderMock extra coverage', () => {
+describe('ProviderMock publishing, cost and configuration', () => {
   let prov;
   beforeEach(() => {
     prov = new ProviderMock();

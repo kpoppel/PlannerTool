@@ -3,7 +3,7 @@ import { ProviderLocalStorage } from '../../www/js/services/providerLocalStorage
 import { dataService } from '../../www/js/services/dataService.js';
 import { vi } from 'vitest';
 
-describe('ProviderLocalStorage coverage', () => {
+describe('ProviderLocalStorage contracts', () => {
   let prov;
   beforeEach(() => {
     localStorage.clear();
