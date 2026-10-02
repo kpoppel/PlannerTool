@@ -1,5 +1,5 @@
 // Global setup for browser tests - create expected DOM elements and simple mocks
-// This module intentionally runs before other tests (filename prefix 00-)
+// Runner setupFiles determines execution order; this module is not a test suite.
 const ids = ['featureBoard', 'sidebar', 'timeline', 'detailsPanel', 'featureCard'];
 for (const id of ids) {
   if (!document.getElementById(id)) {

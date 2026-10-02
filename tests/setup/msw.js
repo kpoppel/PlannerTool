@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll } from 'vitest';
-import { initServer, resetHandlers, closeServer } from './msw/server.js';
+import { initServer, resetHandlers, closeServer } from '../msw/server.js';
 
 // Start MSW server before any tests run, reset handlers after each test,
 // and close the server once tests finish. Tests can scope handlers by calling

@@ -14,7 +14,7 @@ and returns 404 for unhandled requests to surface missing handlers.
 npm install msw --save-dev
 ```
 
-2. `vitest.config.js` is already updated to include `tests/setup-msw.js`.
+2. The Vitest DOM project includes `tests/setup/msw.js`; the Node project has no DOM/MSW setup.
 
 ## Usage patterns
 

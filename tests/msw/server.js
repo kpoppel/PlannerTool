@@ -4,7 +4,7 @@ import { handlers } from './handlers.js';
 // to override or add handlers for specific cases.
 export const server = setupServer(...handlers);
 
-// Used in tests/setup-msw.js to control server lifecycle, but also exported for tests that want to override
+// Used in tests/setup/msw.js to control server lifecycle, but also exported for tests that want to override
 export function initServer() {
   // error when a request is performed without a handler so tests fail fast
   //console.log('Starting MSW server with handlers:', handlers.map(h => h.info));
