@@ -138,4 +138,12 @@ describe('admin-utilities Result handling', () => {
     await comp.handleRestore();
     expect(restore).not.toHaveBeenCalled();
   });
+
+  it('preserves schema revision when selectively restoring config', async () => {
+    comp.restoreData = { schema_revision: 32, config: {}, accounts: { users: {} } };
+    comp.restoreOptions = { config: true, accounts: false, views: false, scenarios: false };
+    const restore = vi.spyOn(adminProvider, 'restoreBackup').mockResolvedValue({ ok: true, data: {} });
+    await comp.handleRestore();
+    expect(restore).toHaveBeenCalledWith({ schema_revision: 32, config: {} });
+  });
 });

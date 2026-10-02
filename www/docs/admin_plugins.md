@@ -25,4 +25,4 @@ Click Save to persist all changes to the plugin table atomically; click Reload t
 - Per-plugin configuration edited here is the same "admin/global config" scope described for administrators; it is distinct from a user's own personal view settings, which users control themselves inside the main application.
 - After saving changes, users should reload the main application to see the updated menus.
 - Sample Menu ships disabled. Enable it to display a planning-scope summary and counter. Its initial counter value is configurable; closing and reopening the menu retains the counter until the application reloads.
-- Existing installations must run `python3 scripts/migrate.py --apply` to upgrade plugin settings to schema v2.
+- The server upgrades existing plugin settings to schema v2 during startup, before opening an HTTP listener; no manual migration command is required.

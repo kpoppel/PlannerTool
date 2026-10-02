@@ -369,6 +369,9 @@ export class AdminUtilities extends LitElement {
     this.restoreType = 'info';
 
     const dataToRestore = {};
+    if (Object.hasOwn(this.restoreData, 'schema_revision')) {
+      dataToRestore.schema_revision = this.restoreData.schema_revision;
+    }
     for (const key in this.restoreOptions) {
       if (this.restoreOptions[key] && Object.hasOwn(this.restoreData, key)) {
         dataToRestore[key] = this.restoreData[key];
