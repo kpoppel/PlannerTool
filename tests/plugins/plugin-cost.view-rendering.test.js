@@ -26,6 +26,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
     },
     filter: {
       getTaskFilters: () => ({ schedule: { unplanned: true } }),
+      getSelectedTaskTypeNames: () => ['Feature'],
     },
   },
 }));

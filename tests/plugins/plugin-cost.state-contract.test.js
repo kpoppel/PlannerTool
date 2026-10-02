@@ -21,6 +21,7 @@ const mockSel = vi.hoisted(() => ({
   },
   filter: {
     getAvailableFeatureStates: vi.fn(() => []),
+    getSelectedTaskTypeNames: vi.fn(() => ['Epic', 'Feature']),
     getTaskFilters: vi.fn(() => ({ schedule: { unplanned: true } })),
     featurePassesFilters: vi.fn(() => true),
   },
@@ -40,6 +41,8 @@ vi.mock('../../www/js/application/imports.js', () => ({
 
 import { PluginCostComponent } from '../../www/js/plugins/PluginCostComponent.js';
 import { dataService } from '../../www/js/services/dataService.js';
+import { renderCountingBanner } from '../../www/js/plugins/PluginCostShared.js';
+import { render } from '../../www/js/vendor/lit.js';
 
 describe('plugin cost pluginState seam', () => {
   beforeEach(() => {
@@ -92,8 +95,7 @@ describe('plugin cost pluginState seam', () => {
     mockSel.feature.getChildrenByParentMap.mockReturnValue(
       new Map([['parent', ['child']]])
     );
-    const sidebar = { selectedTaskTypes: new Set(['Epic', 'Feature']) };
-    const querySelector = vi.spyOn(document, 'querySelector').mockReturnValue(sidebar);
+    const querySelector = vi.spyOn(document, 'querySelector');
     const getCost = vi.spyOn(dataService, 'getCost').mockResolvedValue({ ok: true, data: { projects: [] } });
     vi.spyOn(dataService, 'getCostTeams').mockResolvedValue({ ok: true, data: { teams: [] } });
 
@@ -122,12 +124,22 @@ describe('plugin cost pluginState seam', () => {
     expect(getCost.mock.calls[1][0].features[0].capacity).toBe(contextFeature.capacity);
     expect(mockSel.scope.getContextFeatures).toHaveBeenCalledTimes(2);
     expect(mockSel.scope.getVisibleFeatures).not.toHaveBeenCalled();
+    expect(querySelector).not.toHaveBeenCalledWith('app-sidebar');
     const previousData = plugin.data;
     getCost.mockResolvedValue({ ok: false, error: { message: 'cost_unavailable', status: 503 } });
     await plugin.loadData();
     expect(plugin.error).toBe('cost_unavailable');
     expect(plugin.data).toBe(previousData);
     querySelector.mockRestore();
+  });
+
+  it('renders the selected type counting rules without a mounted Sidebar', () => {
+    const querySelector = vi.spyOn(document, 'querySelector');
+    const root = document.createElement('div');
+    render(renderCountingBanner(), root);
+    expect(root.textContent).toContain('Epic, Feature');
+    expect(root.textContent).toContain('Children (lowest-level) are authoritative');
+    expect(querySelector).not.toHaveBeenCalledWith('app-sidebar');
   });
 
   it('does not call the cost endpoint when Context is empty', async () => {

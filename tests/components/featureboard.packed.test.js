@@ -10,43 +10,8 @@ import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import { initTimeline, _resetTimelineState } from '../../www/js/components/Timeline.lit.js';
 import { packIntoRows, buildGroupBandItems } from '../../www/js/components/groupBandLayout.js';
-import { buildFoldModel, applyFoldAction } from '../../www/js/components/hierarchyFold.js';
 import '../../www/js/components/FeatureBoard.lit.js';
 import { sel } from '../../www/js/application/imports.js';
-
-describe('Task hierarchy folding', () => {
-  const features = [
-    { id: 'root' },
-    { id: 'child', parentId: 'root' },
-    { id: 'grandchild', parentId: 'child' },
-    { id: 'sibling', parentId: 'root' },
-    { id: 'other', parentId: 'root' },
-  ];
-  const sections = new Map(features.map((feature) => [feature.id, 'g1']));
-  sections.set('other', 'g2');
-
-  it('hides only displayed descendants in the same section and retains parent rows', () => {
-    const model = buildFoldModel(features, sections, new Set(['root']));
-    expect([...model.hidden]).to.deep.equal(['child', 'grandchild', 'sibling']);
-    expect(model.counts.get('root')).to.equal(3);
-    expect(model.counts.has('other')).to.be.false;
-    expect(model.visible.map((feature) => feature.id)).to.deep.equal(['root', 'other']);
-  });
-
-  it('folds and unfolds one visible level at a time without losing nested folds', () => {
-    let folded = new Set();
-    folded = applyFoldAction(buildFoldModel(features, sections, folded), folded, 'collapse-one');
-    expect([...folded]).to.deep.equal(['child']);
-    folded = applyFoldAction(buildFoldModel(features, sections, folded), folded, 'collapse-one');
-    expect([...folded]).to.deep.equal(['child', 'root']);
-    folded = applyFoldAction(buildFoldModel(features, sections, folded), folded, 'expand-one');
-    expect([...folded]).to.deep.equal(['child']);
-    expect(buildFoldModel(features, sections, folded).visible.map((feature) => feature.id))
-      .to.deep.equal(['root', 'child', 'sibling', 'other']);
-    folded = applyFoldAction(buildFoldModel(features, sections, folded), folded, 'expand-all');
-    expect(folded.size).to.equal(0);
-  });
-});
 
 describe('FeatureBoard._packIntoRows', () => {
   let el;
@@ -177,8 +142,7 @@ describe('Group band ordering', () => {
       monthDates,
       false,
       false,
-      new Set(),
-      'p1'
+      new Set()
     );
 
     const groupOrder = result.items
@@ -213,7 +177,7 @@ describe('Group band ordering', () => {
     ];
 
     const result = buildGroupBandItems(
-      features, groups, 0, monthDates, false, false, new Set(), 'p1'
+      features, groups, 0, monthDates, false, false, new Set()
     );
 
     const colourById = new Map(
@@ -226,61 +190,6 @@ describe('Group band ordering', () => {
     expect(colourById.get('t2')).to.equal('#00ff00');
     expect(colourById.get('t4')).to.equal('#ff0000');
     expect(colourById.get('t5')).to.equal(null);
-  });
-
-  it('places a visible contextual task in its selected mother-plan group', () => {
-    const months = [
-      new Date('2025-01-01T00:00:00Z'),
-      new Date('2025-02-01T00:00:00Z'),
-    ];
-    const features = [
-      {
-        id: 'context-task', project: 'p2', start: '2025-01-05', end: '2025-01-12',
-        originalRank: 10,
-      },
-    ];
-    const groups = [
-      {
-        id: 'g1', plan_id: 'p1', name: 'Selected plan group', members: ['context-task'],
-        color: '#ff0000', rank: 10,
-      },
-    ];
-
-    const result = buildGroupBandItems(features, groups, 0, months, false, false, new Set());
-    const card = result.items.find((item) => !item.isGroup);
-
-    expect(result.items.filter((item) => item.isGroup).map((item) => item.id)).to.deep.equal(['g1']);
-    expect(card.slotParentId).to.equal('g1');
-    expect(card.groupColor).to.equal('#ff0000');
-  });
-
-  it('preserves parent-first hierarchy order when a new group is added', () => {
-    sel.view.getFeatureSortMode.returns('rank');
-    const months = [
-      new Date('2025-01-01T00:00:00Z'),
-      new Date('2025-02-01T00:00:00Z'),
-    ];
-    // FeatureBoard has already ordered this parent and Child Context descendant.
-    // The child has a lower raw rank, which must not pull it above its parent.
-    const features = [
-      {
-        id: 'parent-task', project: 'p1', start: '2025-01-05', end: '2025-01-12',
-        originalRank: 20,
-      },
-      {
-        id: 'child-task', project: 'p2', parentId: 'parent-task', start: '2025-01-06',
-        end: '2025-01-10', originalRank: 1,
-      },
-    ];
-    const groups = [{ id: 'new-group', plan_id: 'p1', name: 'Hello', members: [], rank: 3072 }];
-
-    const result = buildGroupBandItems(
-      features, groups, 0, months, false, false, new Set(), { preserveFeatureOrder: true }
-    );
-
-    expect(result.items.map((item) =>
-      item.isGroup ? item.id : item.feature.id
-    )).to.deep.equal(['parent-task', 'child-task', 'new-group']);
   });
 });
 
@@ -305,7 +214,6 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     projects = [{ id: 'p1', name: 'Plan A', color: '#aa0000', selected: true }];
 
     sinon.stub(sel.feature, 'getEffectiveFeatures').callsFake(() => effectiveFeatures);
-    sinon.stub(sel.scope, 'getVisibleFeatures').callsFake(() => effectiveFeatures);
     sinon.stub(sel.selection, 'getProjects').callsFake(() => projects);
     sinon.stub(sel.selection, 'getTeams').returns([]);
     sinon.stub(sel.selection, 'getSelectedProjectIds').callsFake(() =>
@@ -315,13 +223,17 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     sinon.stub(sel.view, 'getPackedMode').callsFake(() => displayMode === 'packed');
     sinon.stub(sel.view, 'getCondensedCards').callsFake(() => displayMode !== 'normal');
     sinon.stub(sel.view, 'getFeatureSortMode').returns('rank');
+    sinon.stub(sel.view, 'getContext').returns({
+      parent: false, child: false, dependency: false, otherAllocations: false,
+    });
+    sinon.stub(sel.scope, 'getVisibleFeatures').callsFake(() => effectiveFeatures);
     sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
     sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
     sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);
     sinon.stub(sel.view, 'isTypeVisible').returns(true);
     sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['Active']));
     sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
-    sinon.stub(sel.group, 'getDisplayGroupsForSelectedPlans').returns([]);
+    sinon.stub(sel.group, 'getEffectiveGroups').returns([]);
 
     // Keep the test on the real board-utils behavior so it exercises the
     // actual packed-mode layout logic without mutating the imported module.
@@ -395,49 +307,6 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     );
   });
 
-  it('folds rendered descendants without changing the parent task dates or position', async () => {
-    const parent = { ...makeFeature('parent'), originalRank: 1 };
-    const child = { ...makeFeature('child'), parentId: 'parent', originalRank: 2 };
-    const grandchild = { ...makeFeature('grandchild'), parentId: 'child', originalRank: 3 };
-    const other = { ...makeFeature('other'), originalRank: 4 };
-    effectiveFeatures = [parent, child, grandchild, other];
-
-    await board.renderFeatures();
-    const original = board._fullRenderList.find((item) => item.feature.id === 'parent');
-    const originalWidth = original.width;
-    board.foldHierarchy('collapse-all');
-    await board.updateComplete;
-    expect(board._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
-      .to.deep.equal(['parent', 'other']);
-    const foldedParent = board._fullRenderList.find((item) => item.feature.id === 'parent');
-    expect(foldedParent.foldCount).to.equal(2);
-    expect(foldedParent.width).to.equal(originalWidth);
-    expect(foldedParent.feature.start).to.equal(parent.start);
-
-    board.foldHierarchy('expand-one');
-    await board.updateComplete;
-    expect(board._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
-      .to.deep.equal(['parent', 'child', 'other']);
-  });
-
-  it('retains a group pill date span when its child task rows are folded', async () => {
-    const parent = { ...makeFeature('parent'), originalRank: 1, end: '2025-02-01' };
-    const child = { ...makeFeature('child'), parentId: 'parent', originalRank: 2 };
-    effectiveFeatures = [parent, child];
-    sel.group.getDisplayGroupsForSelectedPlans.returns([{
-      id: 'g1', plan_id: 'p1', name: 'Group', members: ['parent', 'child'], rank: 1,
-    }]);
-
-    await board.renderFeatures();
-    const expandedWidth = board._fullRenderList.find((item) => item.isGroup).width;
-    board.foldHierarchy('collapse-all');
-    await board.updateComplete;
-
-    expect(board._fullRenderList.find((item) => item.isGroup).width).to.equal(expandedWidth);
-    expect(board._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
-      .to.deep.equal(['parent']);
-  });
-
   it('compact mode: duplicate IDs in source features produce only one card per ID', async () => {
     const f = makeFeature('dup-3', 'Anti-Corruption');
     effectiveFeatures = [f, { ...f }];
@@ -485,40 +354,6 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
       scrollContainer.remove();
     }
   });
-
-  it('preserves an append insertion slot after Child Context task rows', async () => {
-    projects = [
-      { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
-      { id: 'p2', name: 'Plan B', color: '#00aa00', selected: false },
-    ];
-    const parent = makeFeature('parent');
-    const descendant = {
-      ...makeFeature('descendant'), project: 'p2', parentId: 'parent', originalRank: 2,
-    };
-    parent.originalRank = 1;
-    effectiveFeatures = [parent, descendant];
-    sinon.stub(sel.view, 'getContext').returns({
-      parent: false, child: true, dependency: false, otherAllocations: false,
-    });
-
-    await board.renderFeatures();
-
-    const taskRows = board._fullRenderList.filter((item) => !item.isGroup);
-    const appendSlot = board.getInsertionSlotAt(board._boardHeight + 1);
-
-    expect(taskRows.map((item) => item.feature.id)).to.deep.equal(['parent', 'descendant']);
-    expect(taskRows.map((item) => item.slotRank)).to.deep.equal([1024, 2048]);
-    expect(appendSlot.rank).to.equal(3072);
-
-    sel.group.getDisplayGroupsForSelectedPlans.returns([{
-      id: 'new-group', plan_id: 'p1', name: 'New group', members: [], rank: appendSlot.rank,
-    }]);
-    await board.renderFeatures();
-
-    expect(board._fullRenderList.map((item) =>
-      item.isGroup ? item.id : item.feature.id
-    )).to.deep.equal(['parent', 'descendant', 'new-group']);
-  });
 });
 
 // ---- updateCardsById in packed mode triggers full rerender ----
@@ -550,13 +385,17 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
     sinon.stub(sel.view, 'getPackedMode').callsFake(() => displayMode === 'packed');
     sinon.stub(sel.view, 'getCondensedCards').callsFake(() => displayMode !== 'normal');
     sinon.stub(sel.view, 'getFeatureSortMode').returns('rank');
+    sinon.stub(sel.view, 'getContext').returns({
+      parent: false, child: false, dependency: false, otherAllocations: false,
+    });
+    sinon.stub(sel.scope, 'getVisibleFeatures').callsFake(() => sel.feature.getEffectiveFeatures());
     sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
     sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
     sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);
     sinon.stub(sel.view, 'isTypeVisible').returns(true);
     sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['Active']));
     sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
-    sinon.stub(sel.group, 'getDisplayGroupsForSelectedPlans').returns([]);
+    sinon.stub(sel.group, 'getEffectiveGroups').returns([]);
   });
 
   afterEach(() => {

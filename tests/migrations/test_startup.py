@@ -55,4 +55,4 @@ def test_closed_database_handle_cannot_reopen_storage_for_unleased_writes(tmp_pa
 
 
 def test_isolated_app_fixture_keeps_current_schema(app):
-    assert app.state.container.get('storage').load('system', 'schema_state')['schema_revision'] == 33
+    assert app.state.container.get('storage').load('system', 'schema_state')['schema_revision'] == 34

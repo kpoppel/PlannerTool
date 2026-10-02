@@ -16,29 +16,21 @@ import { sel } from '../application/imports.js';
  * @returns {import('lit').TemplateResult|string}
  */
 export function renderCountingBanner() {
-  try {
-    const sidebar = document.querySelector('app-sidebar');
-    const taskFilters = sel.filter.getTaskFilters?.() || null;
-    const showUnplanned = taskFilters ? !!taskFilters.schedule.unplanned : true;
-    const selectedTypes =
-      sidebar && sidebar.selectedTaskTypes ?
-        Array.from(sidebar.selectedTaskTypes).map((s) => String(s))
-      : [];
+    const taskFilters = sel.filter.getTaskFilters();
+    const showUnplanned = taskFilters.schedule.unplanned;
+    const selectedTypes = sel.filter.getSelectedTaskTypeNames();
     const typesLabel =
-      selectedTypes.length === 0 ? 'All task types' : selectedTypes.join(', ');
+      selectedTypes.length === 0 ? 'No task types' : selectedTypes.join(', ');
     const levelMsg =
       selectedTypes.length > 1 ? 'Children (lowest-level) are authoritative'
       : selectedTypes.length === 1 ? `${selectedTypes[0]} selected`
-      : 'All task types';
+      : 'No task types';
     const msg = `${typesLabel} · ${showUnplanned ? 'Counting Unplanned work' : 'Excluding Unplanned work'} · ${levelMsg}`;
     return html`<div
       style="margin-bottom:8px;padding:8px;border-radius:6px;background:#fffbe6;border:1px solid #f0e6b6;color:#333;font-size:13px;"
     >
       ${msg}
     </div>`;
-  } catch (e) {
-    return '';
-  }
 }
 
 /**

@@ -99,7 +99,7 @@ try:
     response = urllib.request.urlopen('http://127.0.0.1:' + str(port) + '/', timeout=5)
     assert response.status == 200
     assert b'<base href="/static/">' in response.read()
-    assert Database('/app/data').status()['active_revision'] == 33
+    assert Database('/app/data').status()['active_revision'] == 34
     assert not Path('/app/scripts/migrate.py').exists()
     assert not Path('/app/cache').exists()
     assert Path('/app/data/config/database.yaml').read_text() == 'external-input'
@@ -128,7 +128,7 @@ def test_runtime_image_rejects_unsupported_schema_before_http(tmp_path):
 
     storage = DiskCacheStorage(tmp_path / 'cache')
     storage.save('system', 'schema_state', {
-        'schema_revision': 34, 'last_applied_migration': None, 'initialized_at_revision': 34,
+        'schema_revision': 35, 'last_applied_migration': None, 'initialized_at_revision': 35,
     })
     storage.close()
     process = subprocess.run([
@@ -194,7 +194,7 @@ with log.open('w') as output:
         process.wait(timeout=15)
 assert process.returncode in (0, -signal.SIGTERM), log.read_text()
 Database('/app/data', lock_timeout=0).prune()
-assert Database('/app/data').status()['active_revision'] == 33
+assert Database('/app/data').status()['active_revision'] == 34
 '''
     process = subprocess.run([
         'docker', 'run', '--rm', '-e', 'PLANNER_SECRET_KEY=isolated-image-test-only',

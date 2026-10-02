@@ -26,6 +26,84 @@ describe('application/commands/viewRestoreCommands', () => {
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
+  it('captures visible default task types before a Sidebar is mounted', async () => {
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: [{ id: '1', type: 'epic' }, { id: '2', type: 'feature' }],
+    } }));
+    let saved;
+    const commands = createViewRestoreCommands(store, {
+      saveView: async (payload) => { saved = payload; return { id: 'v1' }; },
+      listViews: async () => [],
+    });
+    await commands.saveCurrentView('Defaults');
+    expect(saved.viewOptions.selectedTaskTypes).toEqual(['epic', 'feature']);
+    expect(store.getState().selection.taskTypeNames).toEqual([]);
+  });
+
+  it('restores task-type selection and visibility atomically before mount', async () => {
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: [{ id: '1', type: 'epic' }, { id: '2', type: 'feature' }],
+    } }));
+    const commands = createViewRestoreCommands(store, {
+      getView: async () => ({ id: 'v1', selectedProjects: {}, selectedTeams: {},
+        viewOptions: { selectedTaskTypes: ['feature'], hiddenTypes: ['feature'] },
+      }),
+    }, null, vi.fn());
+    await commands.loadAndApplyView('v1');
+    expect(store.getState().selection.taskTypeNames).toEqual(['feature']);
+    expect(store.getState().view.options.hiddenTypes).toEqual(['epic']);
+  });
+
+  it('does not mutate the current filters while restoring a packed view', async () => {
+    const before = store.getState().selection.taskFilters;
+    const schedule = before.schedule;
+    const commands = createViewRestoreCommands(store, {
+      getView: async () => ({ id: 'v1', selectedProjects: {}, selectedTeams: {},
+        viewOptions: { displayMode: 'packed', packedModeUnplannedPreference: true },
+      }),
+    }, null, vi.fn());
+    await commands.loadAndApplyView('v1');
+    expect(before.schedule).toBe(schedule);
+    expect(before.schedule.unplanned).toBe(true);
+    expect(store.getState().selection.taskFilters.schedule.unplanned).toBe(false);
+  });
+
+  it('rejects a packed saved view missing its migrated preference', async () => {
+    const before = store.getState();
+    const commands = createViewRestoreCommands(store, {
+      getView: async () => ({ id: 'v1', selectedProjects: {}, selectedTeams: {},
+        viewOptions: { displayMode: 'packed' },
+      }),
+    }, null, vi.fn());
+    await expect(commands.loadAndApplyView('v1')).rejects.toThrow('packedModeUnplannedPreference');
+    expect(store.getState()).toBe(before);
+  });
+
+  it.each([true, false])('round-trips packed mode and restores Unplanned preference %s', async (preference) => {
+    let savedView;
+    const dataService = {
+      saveView: async (payload) => {
+        savedView = { ...payload, id: 'packed-view' };
+        return { id: 'packed-view' };
+      },
+      listViews: async () => [savedView],
+      getView: async () => savedView,
+    };
+    store.setState((state) => ({ ...state, selection: { ...state.selection,
+      taskFilters: { ...state.selection.taskFilters, schedule: { planned: true, unplanned: preference } },
+    } }));
+    const commands = createViewCommands(store, bus);
+    const restore = createViewRestoreCommands(store, dataService, null, vi.fn());
+    commands.setDisplayMode('packed');
+    await restore.saveCurrentView('Packed');
+    store.setState(createInitialAppState(), true);
+    await restore.loadAndApplyView('packed-view');
+    expect(store.getState().selection.taskFilters.schedule.unplanned).toBe(false);
+    expect(store.getState().view.options.packedModeUnplannedPreference).toBe(preference);
+    commands.setDisplayMode('normal');
+    expect(store.getState().selection.taskFilters.schedule.unplanned).toBe(preference);
+  });
+
   it('store commands load and save views through dataService', async () => {
     const dataService = {
       listViews: vi.fn(async () => [{ id: 'v1', name: 'One' }]),
@@ -68,6 +146,9 @@ describe('application/commands/viewRestoreCommands', () => {
     store.setState(
       (state) => ({
         ...state,
+        baseline: { ...state.baseline, features: [
+          { id: 'f1', type: 'feature' }, { id: 'f2', type: 'epic' },
+        ] },
         selection: {
           ...state.selection,
           projectIds: ['p1', 'p3'],

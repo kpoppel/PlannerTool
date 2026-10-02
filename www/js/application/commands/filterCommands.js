@@ -1,6 +1,6 @@
 import { FeatureEvents, FilterEvents, StateFilterEvents } from '../../core/EventRegistry.js';
 import { normalizeTaskFilters } from '../shared/taskFilters.js';
-import { deriveAvailableFeatureStates } from '../shared/stateDerivations.js';
+import { deriveAvailableFeatureStates, deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -22,10 +22,41 @@ export function createFilterCommands(store, bus) {
             ...state.selection,
             taskTypeNames,
           },
+          view: {
+            ...state.view,
+            options: {
+              ...state.view.options,
+              hiddenTypes: deriveAvailableTaskTypes(state.baseline.features)
+                .filter((type) => !taskTypeNames.includes(type)),
+            },
+          },
         }),
         false,
         'filter.setSelectedTaskTypes'
       );
+      if (!options.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
+      }
+    },
+
+    setTaskTypeSelected(type, selected, options = {}) {
+      const key = String(type);
+      store.setState((state) => {
+        const hidden = new Set(state.view.options.hiddenTypes);
+        if (selected) hidden.delete(key);
+        else hidden.add(key);
+        const available = new Set([
+          ...deriveAvailableTaskTypes(state.baseline.features), ...state.selection.taskTypeNames, key,
+        ]);
+        return {
+          ...state,
+          selection: { ...state.selection,
+            taskTypeNames: [...available].filter((name) => !hidden.has(name)),
+          },
+          view: { ...state.view, options: { ...state.view.options, hiddenTypes: [...hidden] } },
+        };
+      }, false, 'filter.setTaskTypeSelected');
       if (!options.suppressEvents) {
         bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);
@@ -173,6 +204,10 @@ export function createFilterCommands(store, bus) {
 
     setTaskFilter(dimension, option, selected, options = {}) {
       const nextSelected = Boolean(selected);
+      if (dimension === 'schedule' && option === 'unplanned' && nextSelected &&
+        store.getState().view.options.displayMode === 'packed') {
+        throw new Error('Unplanned tasks cannot be enabled in packed mode');
+      }
       let nextTaskFilters = {};
       store.setState(
         (state) => {

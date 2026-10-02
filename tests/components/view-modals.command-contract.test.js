@@ -21,6 +21,14 @@ const {
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
+  sel: {
+    selection: {
+      getSelectedProjects: () => [{ id: 'p1', name: 'Plan' }],
+      getSelectedTeams: () => [{ id: 't1', name: 'Team' }],
+    },
+    filter: { getSelectedTaskTypeNames: () => ['Task'] },
+    view: { getCapacityViewMode: () => 'project' },
+  },
   cmd: {
     viewRestore: {
       saveCurrentView: mockSaveCurrentView,
@@ -104,6 +112,15 @@ describe('view modals application contract', () => {
     expect(modal.shadowRoot.textContent).not.toContain('Expansion Options');
     expect(modal.shadowRoot.textContent).not.toContain('Expand Team Allocated');
     modal.remove();
+  });
+
+  it('captures type and graph preview from selectors without a mounted Sidebar', () => {
+    const modal = new ViewSaveModal();
+    modal._capturePreviewData();
+    expect(modal.previewData.taskTypes).toEqual(['Task']);
+    expect(modal.previewData.graphType).toBe('project');
+    expect(modal.previewData.selectedProjects).toEqual(['Plan']);
+    expect(modal.previewData.selectedTeams).toEqual(['Team']);
   });
 
   it('ViewRenameModal uses cmd.viewRestore.renameView', async () => {

@@ -1,5 +1,22 @@
 import { html } from '../../vendor/lit.js';
 
+/** Bounds from effective children; missing children or unplanned dates do not contribute. */
+export function getDetailsPanelChildDateBounds(children) {
+  let earliest = null;
+  let latest = null;
+  for (const child of children) {
+    if (!child) continue;
+    const start = child.start ? Date.parse(child.start) : NaN;
+    const end = child.end ? Date.parse(child.end) : NaN;
+    if (!Number.isNaN(start) && (earliest === null || start < earliest)) earliest = start;
+    if (!Number.isNaN(end) && (latest === null || end > latest)) latest = end;
+  }
+  return {
+    start: earliest === null ? null : new Date(earliest).toISOString().slice(0, 10),
+    end: latest === null ? null : new Date(latest).toISOString().slice(0, 10),
+  };
+}
+
 /** Project scheduling presentation; today is explicit to make grouping deterministic. */
 export function buildDetailsPanelSchedulingModel({ feature, iterations, childrenByParent, orig, today }) {
   const startOrig = orig === undefined ? undefined : orig.start;

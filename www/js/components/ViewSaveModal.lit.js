@@ -21,11 +21,7 @@ export class ViewSaveModal extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     // Capture current state for preview
-    try {
-      this._capturePreviewData();
-    } catch (e) {
-      /* ignore preview capture errors */
-    }
+    this._capturePreviewData();
   }
 
   firstUpdated() {
@@ -81,34 +77,26 @@ export class ViewSaveModal extends LitElement {
       graphType: 'team',
     };
 
-    this.previewData.selectedProjects = (sel.selection.getSelectedProjects() || []).map(
-      (project) => project.name || project.id
+    this.previewData.selectedProjects = sel.selection.getSelectedProjects().map(
+      (project) => project.name ? project.name : project.id
     );
-    this.previewData.selectedTeams = (sel.selection.getSelectedTeams() || []).map(
-      (team) => team.name || team.id
+    this.previewData.selectedTeams = sel.selection.getSelectedTeams().map(
+      (team) => team.name ? team.name : team.id
     );
 
     // Get view options
     {
       const vo = cmd.viewRestore.captureCurrentView();
       this.previewData.viewOptions = {
-        timelineScale: vo.timelineScale || 'months',
-        condensedCards: vo.displayMode || (vo.condensedCards ? 'compact' : 'normal'),
-        sortMode: vo.featureSortMode || 'rank',
+        timelineScale: vo.timelineScale,
+        condensedCards: vo.displayMode,
+        sortMode: vo.featureSortMode,
         showDependencies: vo.showDependencies ? 'Yes' : 'No',
       };
     }
 
-    // Get task types from sidebar
-    const sidebarElement = document.querySelector('app-sidebar');
-    if (sidebarElement && sidebarElement.selectedTaskTypes) {
-      this.previewData.taskTypes = Array.from(sidebarElement.selectedTaskTypes || []);
-    }
-
-    // Get graph type from sidebar
-    if (sidebarElement && sidebarElement._graphType) {
-      this.previewData.graphType = sidebarElement._graphType;
-    }
+    this.previewData.taskTypes = sel.filter.getSelectedTaskTypeNames();
+    this.previewData.graphType = sel.view.getCapacityViewMode();
 
     this.requestUpdate();
   }

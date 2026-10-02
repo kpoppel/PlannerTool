@@ -16,7 +16,10 @@ import yaml
 from diskcache import Disk
 
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
-from .contracts import SchemaError, TARGET_REVISION, schema_state, validate_registry, validate_schema_state
+from .contracts import (
+    BASELINE_REVISION, MIGRATION_IDS, SchemaError, TARGET_REVISION,
+    schema_state, validate_registry, validate_schema_state,
+)
 from .revisions import (
     REGISTRY, admit_legacy, initialize, validate_candidate, validate_records,
 )
@@ -235,7 +238,8 @@ class Database:
             return None
         if (not isinstance(journal, dict) or journal.get('phase') not in PHASES
                 or not isinstance(journal.get('build'), str)
-                or journal.get('target_revision') != TARGET_REVISION
+            or type(journal.get('target_revision')) is not int
+            or journal['target_revision'] not in {BASELINE_REVISION, *MIGRATION_IDS}
                 or type(journal.get('legacy_server_config')) is not bool):
             raise SchemaError('Invalid database operation journal')
         self._generation(journal.get('candidate'))

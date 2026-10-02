@@ -9,17 +9,32 @@
  */
 
 import { expect } from '@open-wc/testing';
+import sinon from 'sinon';
 import '../../www/js/components/Sidebar.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { BoardEvents, FilterEvents, FeatureEvents } from '../../www/js/core/EventRegistry.js';
 import { dataService } from '../../www/js/services/dataService.js';
+import { store } from '../../www/js/application/store.js';
+import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
+import { render } from '../../www/js/vendor/lit.js';
+import { SIDEBAR_STYLES } from '../../www/js/components/sidebar/Sidebar.styles.lit.js';
+import { renderSidebarTaskFilters } from '../../www/js/components/sidebar/SidebarTaskFilters.lit.js';
 
 describe('Sidebar task-type filter', () => {
   let sidebar;
   let originalCheckHealth;
 
   beforeEach(async () => {
+    const state = createInitialAppState();
+    state.lifecycle.status = 'ready';
+    state.baseline.features = ['epic', 'feature'].map((type) => ({
+      id: type, type, project: 'p1', state: 'New', capacity: [], relations: [], parentId: null,
+    }));
+    state.baseline.projects = [{ id: 'p1', name: 'Plan', type: 'project',
+      state_categories: { New: 'Proposed' }, state_display_sequence: [], task_type_hierarchy: [], }];
+    state.selection.projectIds = ['p1'];
+    store.setState(state, true);
     await customElements.whenDefined('app-sidebar');
     originalCheckHealth = dataService.checkHealth;
     dataService.checkHealth = async () => ({
@@ -40,6 +55,7 @@ describe('Sidebar task-type filter', () => {
     cmd.view.setTaskViewMode('plan');
     if (sidebar && sidebar.isConnected) sidebar.remove();
     dataService.checkHealth = originalCheckHealth;
+    sinon.restore();
   });
 
   it('renders health version, server name, and uptime from the successful result data', async () => {
@@ -54,6 +70,35 @@ describe('Sidebar task-type filter', () => {
 
     expect(sidebar.serverName).to.equal('Planner API');
     expect(sidebar.serverStatus).to.equal('4.5.6 | Server: ok - Uptime: 1h 1m');
+  });
+
+  it('keeps its extracted stylesheet in the existing shadow root', () => {
+    expect(sidebar.constructor.styles).to.equal(SIDEBAR_STYLES);
+    expect(SIDEBAR_STYLES.cssText).to.include('.team-drilldown-grid');
+    expect(SIDEBAR_STYLES.cssText).to.include('.sidebar-footer-box');
+    expect(sidebar.shadowRoot).to.exist;
+  });
+
+  it('renders filter models and value actions without a host or store', () => {
+    const actions = { toggleFilter: sinon.spy(), toggleState: sinon.spy(), toggleType: sinon.spy() };
+    const root = document.createElement('div');
+    render(renderSidebarTaskFilters({ model: {
+      dimensions: [{ key: 'schedule', title: 'Schedule', options: [
+        { key: 'planned', label: 'Planned', active: true, disabled: false },
+        { key: 'unplanned', label: 'Unplanned', active: false, disabled: true },
+      ] }],
+      states: [{ name: 'New', color: '#ffffff', active: true, disabled: false }],
+      types: [{ name: 'Task', active: true, disabled: true }],
+    }, actions }), root);
+    const options = root.querySelectorAll('.filter-option');
+    options[0].click();
+    options[1].click();
+    options[2].click();
+    options[3].click();
+    expect(actions.toggleFilter.calledOnceWithExactly('schedule', 'planned')).to.be.true;
+    expect(actions.toggleState.calledOnceWithExactly('New')).to.be.true;
+    expect(actions.toggleType.called).to.be.false;
+    expect(options[3].getAttribute('aria-disabled')).to.equal('true');
   });
 
   it('logs the health error status when the result fails', async () => {
@@ -71,6 +116,52 @@ describe('Sidebar task-type filter', () => {
 
     expect(sidebar.serverStatus).to.equal('Server: error');
     expect(loggedErrors).to.deep.equal([['[Sidebar] Health check failed', error]]);
+  });
+
+  it('toggles state filters through the existing application command', async () => {
+    cmd.filter.setSelectedStates(['New']);
+    sidebar._toggleState('New');
+    expect(sel.filter.getSelectedFeatureStateNames()).to.deep.equal([]);
+    sidebar._toggleState('New');
+    expect(sel.filter.getSelectedFeatureStateNames()).to.deep.equal(['New']);
+  });
+
+  it('projects hydrated teams when a mounted Sidebar becomes ready', async () => {
+    sidebar.remove();
+    store.setState((state) => ({ ...state,
+      lifecycle: { ...state.lifecycle, status: 'bootstrapping' },
+      baseline: { ...state.baseline, teams: [{ id: 't1', name: 'Alpha', color: '#ffffff' }],
+        features: state.baseline.features.map((feature) => ({ ...feature,
+          capacity: [{ team: 't1', capacity: 10 }],
+        })),
+      },
+    }));
+    sidebar.teams = [];
+    document.body.appendChild(sidebar);
+    await sidebar.updateComplete;
+    store.setState((state) => ({ ...state, lifecycle: { ...state.lifecycle, status: 'ready' } }));
+    await sidebar.updateComplete;
+    expect(sidebar.teams.map((team) => team.id)).to.deep.equal(['t1']);
+    expect(sidebar.shadowRoot.textContent).to.include('Alpha');
+  });
+
+  it('unions packed-mode restrictions with plugin restrictions without replacing them', async () => {
+    const restrictions = { taskFilters: { schedule: ['planned'] },
+      states: ['New'], taskTypes: ['feature'] };
+    cmd.filter.setSidebarDisabledElements(restrictions);
+    cmd.view.setDisplayMode('packed');
+    await sidebar.updateComplete;
+    const options = sidebar.shadowRoot.querySelectorAll('.filter-dimensions .filter-option');
+    expect(options[0].getAttribute('aria-disabled')).to.equal('true');
+    expect(options[1].getAttribute('aria-disabled')).to.equal('true');
+    options[1].click();
+    expect(sel.filter.getTaskFilters().schedule.unplanned).to.equal(false);
+    cmd.view.setDisplayMode('normal');
+    await sidebar.updateComplete;
+    expect(options[0].getAttribute('aria-disabled')).to.equal('true');
+    expect(options[1].getAttribute('aria-disabled')).to.equal('false');
+    expect(sel.filter.getTaskFilters().schedule.unplanned).to.equal(true);
+    expect(store.getState().selection.sidebarDisabled).to.equal(restrictions);
   });
 
   it('switches the team drill-down task view from Plan overview to Team focus', async () => {
@@ -130,39 +221,16 @@ describe('Sidebar task-type filter', () => {
     expect(sidebar.shadowRoot.querySelector('.hierarchy-fold-group')).to.exist;
   });
 
-  // -------------------------------------------------------------------------
-  // Bug 1: _taskTypesInitialized must not lock when no types are available yet
-  // -------------------------------------------------------------------------
-  it('_taskTypesInitialized stays false when _computeAvailableTaskTypes runs with no types', () => {
-    // Simulate a fresh sidebar where baseline has no features
-    sidebar._taskTypesInitialized = false;
-    sidebar.availableTaskTypes = [];
-    sidebar._computeAvailableTaskTypes.call(
-      Object.assign(Object.create(Object.getPrototypeOf(sidebar)), sidebar, {
-        availableTaskTypes: [],
-      })
-    );
-    // The real sidebar's _computeAvailableTaskTypes should not have set init to true when empty
-    // We test the real implementation on the live element:
-    sidebar._taskTypesInitialized = false;
-    const origGetBaseline = sel.feature.getBaselineFeatures;
-    sel.feature.getBaselineFeatures = () => [];
-    sidebar._computeAvailableTaskTypes();
-    sel.feature.getBaselineFeatures = origGetBaseline;
-    expect(sidebar._taskTypesInitialized).to.equal(false,
-      '_taskTypesInitialized must stay false when no types are available');
-  });
-
-  it('_computeAvailableTaskTypes sets _taskTypesInitialized=true only when types are available', async () => {
-    sidebar._taskTypesInitialized = false;
-    sidebar.selectedTaskTypes = new Set();
-    const origGetBaseline = sel.feature.getBaselineFeatures;
-    sel.feature.getBaselineFeatures = () => [{ id: 'f1', type: 'epic' }, { id: 'f2', type: 'feature' }];
-    sidebar._computeAvailableTaskTypes();
-    sel.feature.getBaselineFeatures = origGetBaseline;
-    expect(sidebar._taskTypesInitialized).to.equal(true);
-    expect(sidebar.selectedTaskTypes.has('epic')).to.equal(true);
-    expect(sidebar.selectedTaskTypes.has('feature')).to.equal(true);
+  it('renders hydrated types without mutating restored visibility during mounting', async () => {
+    sidebar.remove();
+    cmd.filter.setSelectedTaskTypes(['feature']);
+    const selection = store.getState().selection.taskTypeNames;
+    const options = store.getState().view.options;
+    document.body.appendChild(sidebar);
+    await sidebar.updateComplete;
+    expect(sel.filter.getSelectedTaskTypeNames()).to.deep.equal(['feature']);
+    expect(store.getState().selection.taskTypeNames).to.equal(selection);
+    expect(store.getState().view.options).to.equal(options);
   });
 
   // -------------------------------------------------------------------------
@@ -181,7 +249,7 @@ describe('Sidebar task-type filter', () => {
     expect(sel.view.isTypeVisible('feature')).to.equal(false,
       'feature should be hidden after toggle when it was visible');
     // selectedTaskTypes should reflect the new state
-    expect(sidebar.selectedTaskTypes.has('feature')).to.equal(false);
+    expect(sel.filter.getSelectedTaskTypeNames()).to.not.include('feature');
   });
 
   it('_toggleTaskType re-shows a hidden type', () => {
@@ -193,7 +261,7 @@ describe('Sidebar task-type filter', () => {
 
     expect(sel.view.isTypeVisible('feature')).to.equal(true,
       'feature should be visible after toggling from hidden state');
-    expect(sidebar.selectedTaskTypes.has('feature')).to.equal(true);
+    expect(sel.filter.getSelectedTaskTypeNames()).to.include('feature');
   });
 
   // -------------------------------------------------------------------------
@@ -255,8 +323,7 @@ describe('Sidebar task-type filter', () => {
     expect(sel.view.isTypeVisible('feature')).to.equal(false,
       'feature should be hidden after selector update');
     expect(sel.view.isTypeVisible('epic')).to.equal(true);
-    expect(sidebar.selectedTaskTypes.has('feature')).to.equal(false);
-    expect(sidebar._taskTypesInitialized).to.equal(true);
+    expect(sel.filter.getSelectedTaskTypeNames()).to.not.include('feature');
   });
 
   it('FilterEvents.CHANGED with all visible types syncs local selectedTaskTypes', () => {
@@ -268,7 +335,7 @@ describe('Sidebar task-type filter', () => {
 
     expect(sel.view.isTypeVisible('epic')).to.equal(true);
     expect(sel.view.isTypeVisible('feature')).to.equal(true);
-    expect(sidebar.selectedTaskTypes.has('feature')).to.equal(true);
+    expect(sel.filter.getSelectedTaskTypeNames()).to.include('feature');
   });
 
   it('does not render moved Scope or display controls', async () => {
@@ -353,5 +420,50 @@ describe('Sidebar task-type filter', () => {
 
     expect(receivedOptions.displayOnly).to.equal(true);
     cmd.selection.setTeamSelected = originalSetTeamSelected;
+  });
+
+  it('ignores a pending health response after disconnection', async () => {
+    let resolve;
+    dataService.checkHealth = () => new Promise((done) => { resolve = done; });
+    const previous = sidebar.serverStatus;
+    const pending = sidebar.refreshServerStatus();
+    sidebar.remove();
+    resolve({ ok: true, data: {
+      status: 'ok', server_name: 'Obsolete', version: '9.9.9', uptime_seconds: 0,
+    } });
+    await pending;
+    expect(sidebar.serverStatus).to.equal(previous);
+    expect(sidebar.serverName).to.not.equal('Obsolete');
+  });
+
+  it('cancels pending frames and cleans up board subscriptions across reconnects', async () => {
+    const callbacks = [];
+    const schedule = sinon.stub(window, 'requestAnimationFrame').callsFake((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    const originalCancel = window.cancelAnimationFrame;
+    const cancel = sinon.spy();
+    window.cancelAnimationFrame = cancel;
+    bus.emit(FeatureEvents.UPDATED);
+    sidebar.remove();
+    const update = sinon.spy(sidebar, 'requestUpdate');
+    for (const callback of callbacks) callback();
+    expect(update.called).to.be.false;
+    expect(cancel.called).to.be.true;
+    schedule.restore();
+    window.cancelAnimationFrame = originalCancel;
+    document.body.appendChild(sidebar);
+    await sidebar.updateComplete;
+    bus.emit(BoardEvents.FOLD_STATE, {
+      active: true, foldedCount: 1, foldableCount: 2, canCollapse: true,
+    });
+    await sidebar.updateComplete;
+    expect(sidebar.foldedCount).to.equal(1);
+    sidebar.remove();
+    bus.emit(BoardEvents.FOLD_STATE, {
+      active: true, foldedCount: 2, foldableCount: 2, canCollapse: false,
+    });
+    expect(sidebar.foldedCount).to.equal(1);
   });
 });

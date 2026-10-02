@@ -72,9 +72,10 @@ function toSelectedIds(selectionMap) {
     .map(([id]) => String(id));
 }
 
-function toViewContext(existingContext, options = {}) {
-  const current = existingContext || {};
-  const incoming = options.context || {};
+function toViewContext(existingContext, options) {
+  const current = existingContext;
+  // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+  const incoming = options.context === undefined ? {} : options.context;
   return {
     parent: incoming.parent !== undefined ? Boolean(incoming.parent) : Boolean(current.parent),
     child: incoming.child !== undefined ? Boolean(incoming.child) : Boolean(current.child),
@@ -90,10 +91,11 @@ function toSelectedMap(ids) {
 }
 
 function buildViewSnapshotOptions(snapshot, pluginState = {}) {
+  const hidden = new Set(snapshot.view.options.hiddenTypes);
   return {
     ...cloneValue(snapshot.view.options),
     selectedFeatureStates: Array.from(snapshot.selection.featureStateNames),
-    selectedTaskTypes: Array.from(snapshot.selection.taskTypeNames),
+    selectedTaskTypes: deriveDefaultTaskTypes(snapshot).filter((type) => !hidden.has(type)),
     taskFilters: cloneValue(snapshot.selection.taskFilters),
     context: cloneValue(snapshot.view.context),
     ...pluginState,
@@ -184,6 +186,10 @@ export function createViewRestoreCommands(
     const isDefault = String(viewId) === 'default';
 
     const viewOptions = cloneValue(viewData.viewOptions);
+    if (!isDefault && viewOptions.displayMode === 'packed' &&
+      typeof viewOptions.packedModeUnplannedPreference !== 'boolean') {
+      throw new Error('Saved packed view requires packedModeUnplannedPreference');
+    }
 
     const defaultProjectSelections = Object.fromEntries(
       snapshot.baseline.projects.map((project) => [String(project.id), true])
@@ -210,14 +216,6 @@ export function createViewRestoreCommands(
           deriveDefaultFeatureStates(snapshot)
         : snapshot.selection.featureStateNames);
 
-    const selectedTaskTypes =
-      viewOptions.selectedTaskTypes instanceof Array ?
-        Array.from(viewOptions.selectedTaskTypes)
-      :
-        (isDefault ?
-          deriveDefaultTaskTypes(snapshot)
-        : snapshot.selection.taskTypeNames);
-
     const nextViewOptions = isDefault ?
       createDefaultViewOptions()
     : {
@@ -226,6 +224,12 @@ export function createViewRestoreCommands(
         taskViewMode: createDefaultViewOptions().taskViewMode,
         ...viewOptions,
       };
+
+    const availableTaskTypes = deriveDefaultTaskTypes(snapshot);
+    const selectedTaskTypes = viewOptions.selectedTaskTypes instanceof Array ?
+      Array.from(viewOptions.selectedTaskTypes) :
+      availableTaskTypes.filter((type) => !nextViewOptions.hiddenTypes.includes(type));
+    nextViewOptions.hiddenTypes = availableTaskTypes.filter((type) => !selectedTaskTypes.includes(type));
 
     const nextTaskFilters =
       viewOptions.taskFilters && typeof viewOptions.taskFilters === 'object' ?
@@ -237,7 +241,14 @@ export function createViewRestoreCommands(
         (isDefault ?
           getAllTaskFiltersEnabled()
         :
-          snapshot.selection.taskFilters);
+          { ...snapshot.selection.taskFilters });
+
+    if (nextViewOptions.displayMode === 'packed') {
+      if (typeof nextViewOptions.packedModeUnplannedPreference !== 'boolean') {
+        throw new Error('Saved packed view requires packedModeUnplannedPreference');
+      }
+      nextTaskFilters.schedule = { ...nextTaskFilters.schedule, unplanned: false };
+    }
 
     store.setState(
       (state) => ({
@@ -280,8 +291,7 @@ export function createViewRestoreCommands(
       viewOptions: toActiveViewOptions(snapshot, viewData.viewOptions),
     };
 
-    // Keep the sidebar and board UI in sync with the newly-applied saved view.
-    // These events are what the sidebar listens to for task filters and graph type.
+    // Compatibility signals notify event-based board and timeline consumers.
     bus.emit(ProjectEvents.CHANGED);
     bus.emit(TeamEvents.CHANGED);
     bus.emit(FilterEvents.CHANGED);

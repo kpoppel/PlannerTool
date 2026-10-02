@@ -1,8 +1,27 @@
 import { describe, it, expect } from 'vitest';
 import { createFilterSelectors } from '../../../www/js/application/selectors/filterSelectors.js';
 import { ColorService } from '../../../www/js/services/ColorService.js';
+import { createInitialAppState } from '../../../www/js/application/createInitialAppState.js';
 
 describe('application/selectors/filterSelectors', () => {
+  it('projects visible types and unions packed restrictions with plugin restrictions', () => {
+    const state = createInitialAppState();
+    state.baseline.features = [{ id: 'a', type: 'Epic' }, { id: 'b', type: 'Task' }];
+    state.view.options.hiddenTypes = ['Epic'];
+    state.view.options.displayMode = 'packed';
+    const pluginRestrictions = { taskFilters: { schedule: ['planned'] }, states: ['Done'] };
+    state.selection.sidebarDisabled = pluginRestrictions;
+    const selectors = createFilterSelectors({ getState: () => state });
+    expect(selectors.getSelectedTaskTypeNames()).toEqual(['Task']);
+    expect(selectors.isSidebarControlDisabled('taskFilter', 'schedule', 'planned')).toBe(true);
+    expect(selectors.isSidebarControlDisabled('taskFilter', 'schedule', 'unplanned')).toBe(true);
+    expect(selectors.isSidebarControlDisabled('state', 'Done')).toBe(true);
+    state.view.options.displayMode = 'normal';
+    expect(selectors.isSidebarControlDisabled('taskFilter', 'schedule', 'unplanned')).toBe(false);
+    expect(selectors.isSidebarControlDisabled('taskFilter', 'schedule', 'planned')).toBe(true);
+    expect(state.selection.sidebarDisabled).toBe(pluginRestrictions);
+  });
+
   it('store selectors read selected states from selection slice', () => {
     const store = {
       getState: () => ({

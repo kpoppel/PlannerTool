@@ -363,6 +363,13 @@ class ConfigManager:
                     'expandRelations', 'expandTeamAllocated', 'expandParentChild'
                 )):
                     raise ValueError('Saved-view backup requires current Context fields')
+                if namespace == 'views':
+                    options = payload.get('viewOptions', {})
+                    if type(options.get('packedModeUnplannedPreference')) is not bool:
+                        raise ValueError('Saved-view backup requires a boolean packed-mode preference')
+                    if (options.get('displayMode') == 'packed'
+                            and options.get('taskFilters', {}).get('schedule', {}).get('unplanned') is not False):
+                        raise ValueError('Packed saved-view backup must exclude Unplanned tasks')
                 if namespace == 'scenarios' and any(
                     not isinstance(payload.get(field), list if field == 'scenarioGroups' else dict)
                     for field in ('overrides', 'filters', 'view', 'groupOverrides', 'scenarioGroups')

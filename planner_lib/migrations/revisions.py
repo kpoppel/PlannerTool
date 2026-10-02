@@ -182,12 +182,24 @@ def upgrade_33(storage):
         {'schema_version': 2, 'plugins': migrated}))
 
 
+def upgrade_34(storage):
+    for key, view in _payloads(storage, 'views'):
+        options = dict(view.get('viewOptions', {}))
+        filters = dict(options.get('taskFilters', {}))
+        schedule = dict(filters.get('schedule', {}))
+        if 'packedModeUnplannedPreference' not in options:
+            options['packedModeUnplannedPreference'] = schedule.get('unplanned', True)
+        if options.get('displayMode') == 'packed':
+            options['taskFilters'] = {**filters, 'schedule': {**schedule, 'unplanned': False}}
+        storage.save('views', key, {**view, 'viewOptions': options})
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
         (26, 24, upgrade_26), (27, 26, upgrade_27), (28, 27, upgrade_28),
         (29, 28, upgrade_29), (30, 29, upgrade_30), (31, 30, upgrade_31),
-        (32, 31, upgrade_32), (33, 32, upgrade_33),
+        (32, 31, upgrade_32), (33, 32, upgrade_33), (34, 33, upgrade_34),
     )
 )
 
@@ -305,6 +317,13 @@ def validate_records(storage, revision, *, server_config=None):
                         'expandRelations', 'expandTeamAllocated', 'expandParentChild'
                     )):
                         raise SchemaError('Saved-view metadata disagrees with the ledger')
+                if namespace == 'views' and revision >= 34:
+                    options = payload['viewOptions']
+                    if type(options['packedModeUnplannedPreference']) is not bool:
+                        raise SchemaError('Saved view requires a boolean packed-mode preference')
+                    if (options.get('displayMode') == 'packed'
+                            and options['taskFilters']['schedule']['unplanned'] is not False):
+                        raise SchemaError('Packed views must exclude Unplanned tasks')
             register_key = 'view_register' if namespace == 'views' else 'scenario_register'
             if storage.exists(namespace, register_key):
                 for key, entry in storage.load(namespace, register_key).items():

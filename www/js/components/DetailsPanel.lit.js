@@ -1,48 +1,29 @@
 import { LitElement, html } from '../vendor/lit.js';
 import { DETAILS_PANEL_STYLES } from './details-panel/DetailsPanel.styles.lit.js';
 import { bus } from '../core/EventBus.js';
-import { UIEvents, FeatureEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
+import { UIEvents } from '../core/EventRegistry.js';
 import { cmd, sel } from '../application/imports.js';
+import { DetailsPanelController } from './details-panel/DetailsPanelController.js';
 import { renderDetailsPanelHeader } from './details-panel/DetailsPanelHeader.lit.js';
-import {
-  buildDetailsPanelSchedulingModel,
-  renderDetailsPanelScheduling,
-} from './details-panel/DetailsPanelScheduling.lit.js';
-import {
-  buildDetailsPanelCapacityModel,
-  renderDetailsPanelCapacity,
-} from './details-panel/DetailsPanelCapacity.lit.js';
-import { renderDetailsPanelTags } from './details-panel/DetailsPanelTags.lit.js';
-import {
-  buildDetailsPanelRelationsModel,
-  renderDetailsPanelRelations,
-} from './details-panel/DetailsPanelRelations.lit.js';
-
-/**
- * Azure DevOps state category → CSS background-color mapping.
- * Categories: Proposed | InProgress | Resolved | Completed | Removed
- */
-const CATEGORY_COLORS = {
-  Proposed:   '#f3f4f6',   // light gray   — not started
-  InProgress: '#dbeafe',   // light blue   — active work
-  Resolved:   '#fef3c7',   // light amber  — awaiting validation
-  Completed:  '#dcfce7',   // light green  — done
-  Removed:    '#fee2e2',   // light rose   — discarded
-};
+import { renderDetailsPanelScheduling } from './details-panel/DetailsPanelScheduling.lit.js';
+import { renderDetailsPanelCapacity } from './details-panel/DetailsPanelCapacity.lit.js';
+import { parseDetailsPanelTags, renderDetailsPanelTags } from './details-panel/DetailsPanelTags.lit.js';
+import { renderDetailsPanelRelations } from './details-panel/DetailsPanelRelations.lit.js';
 
 export class DetailsPanelLit extends LitElement {
   static properties = {
     feature: { type: Object },
     open: { type: Boolean },
     iterations: { type: Array },
-    editingCapacityTeam: { type: String },
-    showAddTeamPopover: { type: Boolean },
+    editingCapacityTeam: { type: String, noAccessor: true },
+    showAddTeamPopover: { type: Boolean, noAccessor: true },
   };
 
   static styles = DETAILS_PANEL_STYLES;
 
   constructor() {
     super();
+    this._controller = new DetailsPanelController(this);
     this.feature = null;
     this.open = false;
     this.iterations = [];
@@ -51,12 +32,24 @@ export class DetailsPanelLit extends LitElement {
     this.editingState = false;
     this._stateEditValue = null;
     this._newTagText = '';
-    this._onShow = this._onShow.bind(this);
-    this._onFeatureUpdatedBound = this._onFeatureUpdated.bind(this);
-    this._onCapacityUpdatedBound = this._onCapacityUpdated.bind(this);
-    this._onProjectsChangedBound = this._onProjectsChanged.bind(this);
-    this._onTeamsChangedBound = this._onTeamsChanged.bind(this);
   }
+
+  get editingCapacityTeam() { return this._controller.editor.editingCapacityTeam; }
+  set editingCapacityTeam(value) {
+    this._controller.editor.editingCapacityTeam = value;
+    this.requestUpdate();
+  }
+  get showAddTeamPopover() { return this._controller.editor.showAddTeamPopover; }
+  set showAddTeamPopover(value) {
+    this._controller.editor.showAddTeamPopover = value;
+    this.requestUpdate();
+  }
+  get editingState() { return this._controller.editor.editingState; }
+  set editingState(value) { this._controller.editor.editingState = value; }
+  get _stateEditValue() { return this._controller.editor.stateEditValue; }
+  set _stateEditValue(value) { this._controller.editor.stateEditValue = value; }
+  get _newTagText() { return this._controller.editor.newTagText; }
+  set _newTagText(value) { this._controller.editor.newTagText = value; }
 
   // Note: use component's shadow DOM (default) so component styles apply correctly
 
@@ -76,144 +69,16 @@ export class DetailsPanelLit extends LitElement {
     return cleaned;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    bus.on(UIEvents.DETAILS_SHOW, this._onShow);
-    bus.on(FeatureEvents.SELECTED, this._onShow);
-    bus.on(FeatureEvents.UPDATED, this._onFeatureUpdatedBound);
-    bus.on(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdatedBound);
-    bus.on(ProjectEvents.CHANGED, this._onProjectsChangedBound);
-    bus.on(TeamEvents.CHANGED, this._onTeamsChangedBound);
-    //TODO: Should the side panel receive update if it is shown and the feature is changed?
-    //TODO: Should standardise what is sent on events (full feature vs id only)
-
-    // Record mousedown when it starts on <feature-board>, compare on click.
-    this._boardMouseDown = null;
-    this._onBodyMouseDown = (e) => {
-      // Record mousedown when it starts on the board area or feature-board
-      // Use composedPath() to detect shadow-root-hosted elements like #board-area
-      try {
-        const path = e.composedPath ? e.composedPath() : [e.target];
-        const hit = path.find((n) => {
-          if (!n || !n.tagName) return false;
-          if (n.tagName && n.tagName.toLowerCase() === 'feature-board') return true;
-          if (n.id && n.id === 'board-area') return true;
-          return false;
-        });
-        if (hit) this._boardMouseDown = { x: e.clientX, y: e.clientY };
-      } catch (err) {
-        if (e.target?.tagName?.toLowerCase() === 'feature-board') {
-          this._boardMouseDown = { x: e.clientX, y: e.clientY };
-        }
-      }
-    };
-
-    this._onBodyClick = (e) => {
-      // Noop if panel not open
-      if (!this.open) return;
-      // If the board did not move since mouseDown, close the panel.
-      if (
-        this._boardMouseDown &&
-        this._boardMouseDown.x == e.x &&
-        this._boardMouseDown.y == e.y
-      ) {
-        this.hide();
-      }
-    };
-
-    document.body.addEventListener('mousedown', this._onBodyMouseDown);
-    document.body.addEventListener('click', this._onBodyClick);
-  }
-
-  async _onCapacityUpdated(data) {
-    const { featureId, capacity } = data;
-    if (!featureId || !capacity) return;
-
-    try {
-      // Extract the numeric work item ID from the feature ID
-      // Feature IDs are typically in format like "J_688051" or just the number
-      const workItemId = String(featureId).replace(/^[A-Za-z_]+/, '');
-
-      // Import dataService dynamically to avoid circular dependencies
-      const { dataService } = await import('../services/dataService.js');
-
-      // Call the API to update capacity in Azure DevOps
-      const result = await dataService.updateWorkItemCapacity(workItemId, capacity);
-
-      if (!result.ok) {
-        console.error('Failed to update capacity:', result.error);
-        // TODO: Show user-facing error notification
-      } else {
-        console.log('Successfully updated capacity for work item', workItemId);
-      }
-    } catch (error) {
-      console.error('Error updating capacity:', error);
-      // TODO: Show user-facing error notification
-    }
-  }
-
   _onFeatureUpdated(payload) {
-    // Refresh feature data if the currently displayed feature was updated
-    if (!this.open || !this.feature) return;
-
-    const ids = payload?.ids;
-    const isGlobalRefresh = !Array.isArray(ids);
-    const currentId = String(this.feature.id);
-    const normalizedIds = Array.isArray(ids) ? ids.map((id) => String(id)) : [];
-    if (isGlobalRefresh || normalizedIds.includes(currentId)) {
-      // Get fresh feature data from state
-      const updated = sel.feature.getEffectiveFeatureById(this.feature.id);
-      if (updated) {
-        this.feature = updated;
-        this._loadIterationsForFeature();
-        this.requestUpdate();
-      }
-    }
-  }
-
-  _onProjectsChanged() {
-    // Iteration groups are keyed by configured project id and can change after
-    // baseline/admin refreshes; when panel is open, reload options for current feature.
-    if (!this.open || !this.feature) return;
-    this._loadIterationsForFeature();
-  }
-
-  _onTeamsChanged() {
-    // orgLoad is derived from the team selection, so re-read the projected feature.
-    if (!this.open || !this.feature) return;
-    const updated = sel.feature.getEffectiveFeatureById(this.feature.id);
-    if (!updated) return;
-    this.feature = updated;
-    this.requestUpdate();
-  }
-
-  disconnectedCallback() {
-    bus.off(UIEvents.DETAILS_SHOW, this._onShow);
-    bus.off(FeatureEvents.SELECTED, this._onShow);
-    bus.off(FeatureEvents.UPDATED, this._onFeatureUpdatedBound);
-    bus.off(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdatedBound);
-    bus.off(ProjectEvents.CHANGED, this._onProjectsChangedBound);
-    bus.off(TeamEvents.CHANGED, this._onTeamsChangedBound);
-    document.body.removeEventListener('mousedown', this._onBodyMouseDown);
-    document.body.removeEventListener('click', this._onBodyClick);
-    super.disconnectedCallback();
+    this._controller.refresh(payload);
   }
 
   _onShow() {
-    const feature = sel.feature.getSelectedFeature();
-    if (!feature) return;
-    this.feature = feature;
-    this._newTagText = '';
-    this.open = true;
-    this.requestUpdate();
+    this._controller.show();
   }
 
   _parseTags(tagsValue) {
-    if (!tagsValue || typeof tagsValue !== 'string') return [];
-    return tagsValue
-      .split(';')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
+    return parseDetailsPanelTags(tagsValue);
   }
 
   _normaliseTags(tagsValue) {
@@ -221,7 +86,7 @@ export class DetailsPanelLit extends LitElement {
   }
 
   _tagsToString(tags) {
-    return (tags || []).join('; ');
+    return tags.join('; ');
   }
 
   _onTagInput(value) {
@@ -237,7 +102,7 @@ export class DetailsPanelLit extends LitElement {
 
   _addTag() {
     if (!this.feature) return;
-    const newTag = (this._newTagText || '').trim().replace(/;+$/g, '');
+    const newTag = this._newTagText.trim().replace(/;+$/g, '');
     if (!newTag) return;
     const current = this._parseTags(this.feature.tags);
     const existingNorm = new Set(current.map((tag) => tag.toLowerCase()));
@@ -251,7 +116,7 @@ export class DetailsPanelLit extends LitElement {
 
   _removeTag(tagToRemove) {
     if (!this.feature) return;
-    const removeNorm = String(tagToRemove || '').toLowerCase();
+    const removeNorm = String(tagToRemove).toLowerCase();
     const remaining = this._parseTags(this.feature.tags).filter(
       (tag) => tag.toLowerCase() !== removeNorm
     );
@@ -265,47 +130,20 @@ export class DetailsPanelLit extends LitElement {
 
   _getChildIds(parentId) {
     const childrenByParent = sel.feature.getChildrenByParentMap();
-    if (!(childrenByParent instanceof Map)) return [];
-    const key = String(parentId);
-    return childrenByParent.get(key) || childrenByParent.get(parentId) || [];
+    const ids = childrenByParent.get(String(parentId));
+    return ids === undefined ? [] : ids;
   }
 
   async _shrinkwrapEpic(e) {
     e && e.stopPropagation();
     if (!this.feature) return;
     const f = this.feature;
-    // shrinkwrap applies to any parent item (has children in the hierarchy)
-    const childIds = this._getChildIds(f.id);
-    if (!childIds || !childIds.length) return;
-
-    // Use effective feature dates (respecting active scenario overrides)
-    let minStartMs = null;
-    let maxEndMs = null;
-    for (const cid of childIds) {
-      const eff = sel.feature.getEffectiveFeatureById(cid);
-      if (!eff) continue;
-      const s = eff.start;
-      const e = eff.end;
-      if (s) {
-        const sMs = Date.parse(s);
-        if (!isNaN(sMs) && (minStartMs === null || sMs < minStartMs)) minStartMs = sMs;
-      }
-      if (e) {
-        const eMs = Date.parse(e);
-        if (!isNaN(eMs) && (maxEndMs === null || eMs > maxEndMs)) maxEndMs = eMs;
-      }
-    }
-    if (minStartMs === null || maxEndMs === null) return;
-
-    const toIsoDate = (ms) => new Date(ms).toISOString().slice(0, 10);
-    const newStart = toIsoDate(minStartMs);
-    const newEnd = toIsoDate(maxEndMs);
-
-    // Use state.updateFeatureDates to update both start and end together
+    const { start, end } = this._controller.getChildDateBounds();
+    if (start === null || end === null) return;
     cmd.feature.updateFeatureDates([{
       id: f.id,
-      start: newStart,
-      end: newEnd,
+      start,
+      end,
       shiftChildren: false,
     }]);
   }
@@ -317,22 +155,12 @@ export class DetailsPanelLit extends LitElement {
     e && e.stopPropagation();
     if (!this.feature) return;
     const f = this.feature;
-    const childIds = this._getChildIds(f.id);
-    if (!childIds || !childIds.length) return;
-    let minStartMs = null;
-    for (const cid of childIds) {
-      const eff = sel.feature.getEffectiveFeatureById(cid);
-      if (!eff || !eff.start) continue;
-      const ms = Date.parse(eff.start);
-      if (!isNaN(ms) && (minStartMs === null || ms < minStartMs)) minStartMs = ms;
-    }
-    if (minStartMs === null) return;
-    const newStart = new Date(minStartMs).toISOString().slice(0, 10);
-    const currentEnd = f.end || null;
+    const { start } = this._controller.getChildDateBounds();
+    if (start === null) return;
     cmd.feature.updateFeatureDates([{
       id: f.id,
-      start: newStart,
-      end: currentEnd,
+      start,
+      end: f.end ? f.end : null,
       shiftChildren: false,
     }]);
   }
@@ -344,22 +172,12 @@ export class DetailsPanelLit extends LitElement {
     e && e.stopPropagation();
     if (!this.feature) return;
     const f = this.feature;
-    const childIds = this._getChildIds(f.id);
-    if (!childIds || !childIds.length) return;
-    let maxEndMs = null;
-    for (const cid of childIds) {
-      const eff = sel.feature.getEffectiveFeatureById(cid);
-      if (!eff || !eff.end) continue;
-      const ms = Date.parse(eff.end);
-      if (!isNaN(ms) && (maxEndMs === null || ms > maxEndMs)) maxEndMs = ms;
-    }
-    if (maxEndMs === null) return;
-    const newEnd = new Date(maxEndMs).toISOString().slice(0, 10);
-    const currentStart = f.start || null;
+    const { end } = this._controller.getChildDateBounds();
+    if (end === null) return;
     cmd.feature.updateFeatureDates([{
       id: f.id,
-      start: currentStart,
-      end: newEnd,
+      start: f.start ? f.start : null,
+      end,
       shiftChildren: false,
     }]);
   }
@@ -382,6 +200,7 @@ export class DetailsPanelLit extends LitElement {
   }
 
   hide() {
+    this._controller.resetEditors();
     this.open = false;
     this.requestUpdate();
     bus.emit(UIEvents.DETAILS_HIDE);
@@ -389,9 +208,7 @@ export class DetailsPanelLit extends LitElement {
 
   hideAndEmit() {
     // Close panel and emit a global hide event so other components can respond
-    this.open = false;
-    this.requestUpdate();
-    bus.emit(UIEvents.DETAILS_HIDE);
+    this.hide();
   }
 
   _handleCapacityClick(teamId, e) {
@@ -421,7 +238,8 @@ export class DetailsPanelLit extends LitElement {
   }
 
   _saveCapacityEdit(teamId, newValue) {
-    const capacity = parseInt(newValue) || 0;
+    const parsed = parseInt(newValue, 10);
+    const capacity = Number.isNaN(parsed) ? 0 : parsed;
     const clampedCapacity = Math.max(0, Math.min(100, capacity));
 
     // Create a new capacity array to avoid mutating the baseline
@@ -495,13 +313,14 @@ export class DetailsPanelLit extends LitElement {
     e && e.stopPropagation();
     if (!this.feature) return;
     this.editingState = true;
-    this._stateEditValue = this.feature.state || '';
+    this._stateEditValue = this.feature.state;
     this.requestUpdate();
     // focus select after render
-    setTimeout(() => {
-      const sel = this.shadowRoot && this.shadowRoot.querySelector('.state-select');
-      if (sel) {
-        sel.focus();
+    this._controller.defer(() => {
+      // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+      const select = this.shadowRoot.querySelector('.state-select');
+      if (select instanceof HTMLSelectElement) {
+        select.focus();
       }
     }, 10);
   }
@@ -521,7 +340,7 @@ export class DetailsPanelLit extends LitElement {
 
   _onStateBlur(e) {
     // small timeout to allow click to register
-    setTimeout(() => {
+    this._controller.defer(() => {
       if (this.editingState) this._saveStateEdit();
     }, 150);
   }
@@ -552,7 +371,7 @@ export class DetailsPanelLit extends LitElement {
   }
 
   updated(changedProps) {
-    if (changedProps.has && (changedProps.has('feature') || changedProps.has('open'))) {
+    if (changedProps.has('feature') || changedProps.has('open')) {
       // load iterations whenever the panel opens or the feature changes.
       // Checking 'open' ensures we reload when the same card is reopened after
       // the panel was closed — in that case 'feature' hasn't changed reference
@@ -562,30 +381,12 @@ export class DetailsPanelLit extends LitElement {
   }
 
   async _loadIterationsForFeature() {
-    try {
-      const f = this.feature;
-      if (!f) {
-        this.iterations = [];
-        return;
-      }
-
-      const projectId = f.project ? String(f.project).trim() : '';
-      this.iterations = sel.feature.getIterationsForProject(projectId);
-      // Lit's property-binding diff skips re-setting `.value` on the <select>
-      // when `selectedPath` hasn't changed between renders (same card reopened).
-      // Waiting for updateComplete ensures <option> elements exist, then we
-      // imperatively sync the select value to bypass Lit's stale cache.
-      await this.updateComplete;
-      const iterationSelect = this.shadowRoot?.querySelector('.iteration-select');
-      if (iterationSelect) iterationSelect.value = f.iterationPath || '';
-    } catch (e) {
-      console.warn('Failed to load iterations from selectors', e);
-    }
+    return this._controller.loadIterations();
   }
 
   _formatIterationLabel(it) {
     if (!it) return '';
-    const name = it.name || this._stripIterationPrefix(it.path);
+    const name = it.name ? it.name : this._stripIterationPrefix(it.path);
     const start = it.startDate ? it.startDate.slice(0, 10) : null;
     const end = it.finishDate ? it.finishDate.slice(0, 10) : null;
 
@@ -609,7 +410,7 @@ export class DetailsPanelLit extends LitElement {
   _onStartDateChange(value) {
     const val = value === '' ? null : value;
     if (!this.feature) return;
-    const end = this.feature.end || null;
+    const end = this.feature.end ? this.feature.end : null;
     try {
       cmd.feature.updateFeatureDates([{ id: this.feature.id, start: val, end }]);
     } catch (err) {
@@ -620,7 +421,7 @@ export class DetailsPanelLit extends LitElement {
   _onEndDateChange(value) {
     const val = value === '' ? null : value;
     if (!this.feature) return;
-    const start = this.feature.start || null;
+    const start = this.feature.start ? this.feature.start : null;
     try {
       cmd.feature.updateFeatureDates([{ id: this.feature.id, start, end: val }]);
     } catch (err) {
@@ -674,45 +475,17 @@ export class DetailsPanelLit extends LitElement {
         html` <span class="original-date" title="Original">(was ${original})</span>`
       : '';
     return html`<div class="details-label">${label}:</div>
-      <div class="${cls}">${value || '—'}${originalSpan}</div>`;
+      <div class="${cls}">${value == null || value === '' ? '—' : value}${originalSpan}</div>`;
   }
 
   render() {
     if (!this.open || !this.feature) return html`<div class="panel closed"></div>`;
     const feature = this.feature;
-    const projects = sel.selection.getProjects();
-    const teams = sel.selection.getTeams();
-    const childrenByParent = sel.feature.getChildrenByParentMap();
-    const stateColors = sel.filter.getFeatureStateColors();
-    const availableFeatureStates = sel.filter.getAvailableFeatureStates();
-    const stateOrig = feature && feature.original ? feature.original.state : undefined;
-    const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;
-    const planObj = projects.find((p) => p.id === feature.project);
-    const planName = planObj ? planObj.name : null;
-
-    const capacityModel = buildDetailsPanelCapacityModel({
-      capacity: feature.capacity,
-      orgLoad: feature.orgLoad,
-      teams,
-      showAddTeamPopover: this.showAddTeamPopover,
-    });
-    const schedulingModel = buildDetailsPanelSchedulingModel({
-      feature,
-      iterations: this.iterations,
-      childrenByParent,
-      orig: feature.original,
-      today: new Date().toISOString().slice(0, 10),
-    });
+    const model = this._controller.getPresentationModel(new Date().toISOString().slice(0, 10));
 
     // Strip capacity section from description
     const cleanDescription = this._stripCapacityFromDescription(feature.description);
-    const parsedTags = this._parseTags(feature.tags);
-    const tagsOrig = feature && feature.original ? feature.original.tags : undefined;
-    const tagsChanged = tagsOrig !== undefined &&
-      JSON.stringify(this._normaliseTags(feature.tags)) !==
-        JSON.stringify(this._normaliseTags(tagsOrig));
-
-    const changedSet = new Set(feature.changedFields || []);
+    const changedSet = new Set(feature.changedFields);
     const changedBanner =
       changedSet.size ?
         html`<div class="details-change-banner">
@@ -730,46 +503,22 @@ export class DetailsPanelLit extends LitElement {
         </div>`
       : '';
 
-    const linkedFeatures = new Map();
-    const stateCategories = new Map();
-    for (const relation of feature.relations) {
-      const id = String(relation.id);
-      const linked = sel.feature.getBaselineFeatureById(id);
-      if (linked) {
-        linkedFeatures.set(id, linked);
-        stateCategories.set(linked.state, sel.filter.getFeatureStateCategory(linked.state));
-      }
-    }
-    const relationsModel = buildDetailsPanelRelationsModel({
-      relations: feature.relations,
-      projectId: feature.project,
-      featureUrl: feature.url,
-      projects,
-      linkedFeatures,
-      stateColors,
-      stateCategories,
-    });
-
     return html`
       <div class="panel">
         ${renderDetailsPanelHeader({
-          model: {
-            feature, planName, stateChanged, originalState: stateOrig,
-            stateColors, availableFeatureStates,
-            editingState: this.editingState, stateEditValue: this._stateEditValue,
-          },
-          actions: {
+          model: model.header,
+          actions: this._controller.bindActions({
             close: () => this.hide(),
             startStateEdit: () => this._onStateClick(),
             blurState: () => this._onStateBlur(),
             selectState: (value) => this._onStateChipSelect(value),
-          },
+          }),
         })}
         <div class="details-content">
           ${this._renderField('Assignee', 'assignee', feature.assignee)}
           ${renderDetailsPanelScheduling({
-            model: schedulingModel,
-            actions: {
+            model: model.scheduling,
+            actions: this._controller.bindActions({
               selectIteration: (path) => this._onIterationChange(path),
               changeStart: (value) => this._onStartDateChange(value),
               changeEnd: (value) => this._onEndDateChange(value),
@@ -777,12 +526,12 @@ export class DetailsPanelLit extends LitElement {
               snapEnd: () => this._snapEndDate(),
               fitChildren: () => this._shrinkwrapEpic(),
               clearDates: () => this._clearDates(),
-            },
+            }),
           })}
 
           ${renderDetailsPanelCapacity({
-            model: capacityModel,
-            actions: {
+            model: model.capacity,
+            actions: this._controller.bindActions({
               changeCapacity: (teamId, value) => this._saveCapacityEdit(teamId, value),
               removeTeam: (teamId) => this._handleDeleteCapacity(teamId),
               toggleAddTeam: () => this._handleAddTeamClick(),
@@ -792,24 +541,21 @@ export class DetailsPanelLit extends LitElement {
                 this.editingCapacityTeam = null;
                 this.requestUpdate();
               },
-            },
+            }),
           })}
 
           ${renderDetailsPanelTags({
-            model: {
-              tags: parsedTags, changed: tagsChanged, originalTags: tagsOrig,
-              newTagText: this._newTagText,
-            },
-            actions: {
+            model: model.tags,
+            actions: this._controller.bindActions({
               changeDraft: (value) => this._onTagInput(value),
               addTag: () => this._addTag(),
               removeTag: (tag) => this._removeTag(tag),
-            },
+            }),
           })}
 
           <div class="details-label">Description</div>
-          <div class="details-value" .innerHTML=${cleanDescription || '—'}></div>
-          ${renderDetailsPanelRelations({ model: relationsModel })}
+          <div class="details-value" .innerHTML=${cleanDescription === '' ? '—' : cleanDescription}></div>
+          ${renderDetailsPanelRelations({ model: model.relations })}
           ${changedBanner}
         </div>
       </div>

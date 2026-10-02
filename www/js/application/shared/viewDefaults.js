@@ -17,6 +17,7 @@ export function createDefaultViewOptions() {
     focusedPlanId: '',
     displayMode: 'normal',
     packedMode: false,
+    packedModeUnplannedPreference: true,
     showUnassignedCards: true,
     showUnplannedWork: true,
     showOnlyProjectHierarchy: false,

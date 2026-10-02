@@ -120,6 +120,10 @@ flowchart TD
 
 For the main UI, reactivity flows Cmd → Store (write) and, separately, Cmd → Bus → listener → Lit update (repaint signal). A listener either requests an update or assigns reactive properties from selectors; rendering then uses the refreshed data. There is no general store subscription that automatically repaints every component. Plugin-state commands have their own subscriber notifications, and some plugin-local stores have a separate update path; not every store mutation emits a bus event. See §14 Known Sharp Edges.
 
+DetailsPanel and Sidebar use managed `StoreController` subscriptions in their dedicated
+controllers, alongside explicit event subscriptions. This is local component reactivity,
+not a replacement for the compatibility signals used by other consumers.
+
 ### 5.1 DetailsPanel section contracts
 
 `DetailsPanel.lit.js` composes five section render modules under `components/details-panel/`:
@@ -133,13 +137,39 @@ Capacity, Relations, and Scheduling export pure model builders. Capacity project
 allocation rows and summary segments without mutating source allocations. Relations
 groups and sorts explicit baseline-feature lookups, preserving unloaded targets and
 cross-plan parent labels. Scheduling receives an explicit current date for deterministic
-iteration grouping. The panel supplies selector data and adapts actions to its existing
-command handlers; lifecycle subscriptions and temporary editor state remain panel-owned.
+iteration grouping. Scheduling also computes child date bounds, and Tags parses and
+compares normalized tags without mutating inputs. `DetailsPanelController` supplies
+selector data, manages subscriptions and temporary editor state, and guards section
+actions and delayed work against feature, scenario, close, and disconnect changes.
+The shell adapts named actions to application commands. Iteration-select synchronization
+also rejects obsolete requests after awaiting the current render.
 
 `DetailsPanel.styles.lit.js` exports the panel's unchanged CSS result. All sections render
 inside the existing `details-panel` shadow root, preserving the stylesheet cascade and
 DOM hooks. Tests that render icon-bearing sections directly use the bundled Lit renderer
 to match the directive implementation used by the application.
+
+### 5.2 Sidebar section contracts
+
+`Sidebar.lit.js` composes Team Drill-down, Hierarchy Controls, Task Filters, and Footer
+renderers under `components/sidebar/`. Renderers receive explicit `{ model, actions }`
+values and do not read selectors, subscribe, or call host methods. The shell preserves
+`app-sidebar`, its shadow root, layout, and programmatic command adapters.
+`Sidebar.styles.lit.js` preserves the original CSS order and cascade.
+
+`SidebarController` projects presentation from stable store dependencies, manages board
+fold-state notifications, and owns health requests and queued animation frames.
+Disconnect cancels queued frames, removes subscriptions, and invalidates asynchronous
+responses; reconnect establishes one fresh set of subscriptions. Mounting or becoming
+ready does not initialize, reset, or otherwise mutate restored application state.
+
+Task-type commands atomically update selected names and hidden types. Selectors expose
+effective selected names without requiring a mounted Sidebar; Cost and saved-view
+capture consume these application contracts instead of Sidebar fields or DOM queries.
+Packed-mode transitions atomically snapshot `packedModeUnplannedPreference`, disable
+Unplanned, and restore the snapshot when leaving packed mode. Saving and restoring views
+preserves that preference. Intrinsic packed-mode restrictions are unioned with plugin
+restrictions by a selector, without changing the plugin-owned restrictions map.
 
 ## 6. State Architecture
 
@@ -319,7 +349,7 @@ This creates a clear split between durable server state and volatile remote-data
 
 ### 11.1 Database preparation and ownership
 
-Before logging, schema-dependent configuration reads, or service construction, `create_app` calls `Database(config.data_dir).prepare()` for disk-backed installations. Fresh databases initialize the current schema (revision 33); admitted historical databases are upgraded and validated in an independent candidate generation. Unsupported or unverifiable layouts fail before HTTP startup. In-memory test storage must already satisfy the current schema contract.
+Before logging, schema-dependent configuration reads, or service construction, `create_app` calls `Database(config.data_dir).prepare()` for disk-backed installations. Fresh databases initialize the current schema (revision 34); admitted historical databases are upgraded and validated in an independent candidate generation. Unsupported or unverifiable layouts fail before HTTP startup. In-memory test storage must already satisfy the current schema contract.
 
 `DATA_DIR` is the installation root. `active-generation.json` selects `generations/<id>/cache/`, which contains the complete authoritative DiskCache; `upgrade-state.json` records preparation and recovery phases. Current workers retain a shared lifetime lease; preparation and offline maintenance require exclusive ownership. Validated candidates are durably published and activated before predecessor cleanup, and successful upgrades retain no automatic backup. Shutdown closes database/cache handles and releases ownership. See [Migrations](MIGRATIONS.md) for admission, locks, recovery, and operator backups.
 

@@ -5,6 +5,7 @@ import {
   ViewEvents,
 } from '../../core/EventRegistry.js';
 import { pluginManager } from '../../core/PluginManager.js';
+import { createFilterCommands } from './filterCommands.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -26,25 +27,34 @@ export async function syncDependencyContext(context) {
   await pluginManager[method]('plugin-dependencies');
 }
 
-function toUniqueStringArray(values) {
-  if (!Array.isArray(values)) return [];
-  const out = [];
-  const seen = new Set();
-  for (const value of values) {
-    const key = String(value);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(key);
-  }
-  return out;
-}
-
 /**
  * @param {StoreApi} store
  * @param {EventBusLike} bus
  * @returns {object}
  */
 export function createViewCommands(store, bus) {
+  function applyDisplayMode(mode, actionName) {
+    if (!['normal', 'compact', 'packed'].includes(mode)) throw new Error(`Unknown display mode: ${mode}`);
+    store.setState((state) => {
+      const wasPacked = state.view.options.displayMode === 'packed';
+      const packed = mode === 'packed';
+      const schedule = state.selection.taskFilters.schedule;
+      const preference = packed && !wasPacked ? schedule.unplanned :
+        state.view.options.packedModeUnplannedPreference;
+      return {
+        ...state,
+        view: { ...state.view, options: {
+          ...state.view.options, displayMode: mode, packedMode: packed, condensedCards: mode !== 'normal',
+          packedModeUnplannedPreference: preference,
+        } },
+        selection: { ...state.selection, taskFilters: {
+          ...state.selection.taskFilters,
+          schedule: { ...schedule, unplanned: packed ? false : wasPacked ? preference : schedule.unplanned },
+        } },
+      };
+    }, false, actionName);
+  }
+
   function setViewOptions(updater, actionName) {
     store.setState(
       (state) => ({
@@ -103,18 +113,11 @@ export function createViewCommands(store, bus) {
 
     setCondensedCards(condensed, runtimeOptions = {}) {
       const nextMode = condensed ? 'compact' : 'normal';
-      setViewOptions(
-        (options) => ({
-          ...options,
-          condensedCards: Boolean(condensed),
-          displayMode: nextMode,
-          packedMode: false,
-        }),
-        'view.setCondensedCards'
-      );
-      if (!runtimeOptions?.suppressEvents) {
+      applyDisplayMode(nextMode, 'view.setCondensedCards');
+      if (!runtimeOptions.suppressEvents) {
         bus.emit(ViewEvents.CONDENSED);
         bus.emit(ViewEvents.DISPLAY_MODE);
+        bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);
       }
     },
@@ -168,46 +171,17 @@ export function createViewCommands(store, bus) {
     },
 
     setDisplayMode(mode, runtimeOptions = {}) {
-      const packedMode = mode === 'packed';
-      const condensedCards = mode !== 'normal';
-      setViewOptions(
-        (options) => ({
-          ...options,
-          displayMode: mode,
-          packedMode,
-          condensedCards,
-        }),
-        'view.setDisplayMode'
-      );
-      if (!runtimeOptions?.suppressEvents) {
+      applyDisplayMode(mode, 'view.setDisplayMode');
+      if (!runtimeOptions.suppressEvents) {
         bus.emit(ViewEvents.CONDENSED);
         bus.emit(ViewEvents.DISPLAY_MODE);
+        bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);
       }
     },
 
     setTypeVisibility(typeName, visible, runtimeOptions = {}) {
-      const key = String(typeName);
-      const shouldShow = Boolean(visible);
-      let nextHiddenTypes = [];
-      setViewOptions(
-        (options) => {
-          const currentHidden = toUniqueStringArray(options.hiddenTypes || []);
-          const hiddenSet = new Set(currentHidden);
-          if (shouldShow) hiddenSet.delete(key);
-          else hiddenSet.add(key);
-          nextHiddenTypes = Array.from(hiddenSet);
-          return {
-            ...options,
-            hiddenTypes: nextHiddenTypes,
-          };
-        },
-        'view.setTypeVisibility'
-      );
-      if (!runtimeOptions?.suppressEvents) {
-        bus.emit(FilterEvents.CHANGED);
-        bus.emit(FeatureEvents.UPDATED);
-      }
+      createFilterCommands(store, bus).setTaskTypeSelected(typeName, Boolean(visible), runtimeOptions);
     },
 
     setHighlightFeatureRelationMode(enabled, runtimeOptions = {}) {

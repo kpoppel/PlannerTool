@@ -90,7 +90,7 @@ def test_fresh_initialization_is_current_without_upgrades(tmp_path):
     try:
         initialize(storage)
         validate_candidate(storage)
-        assert storage.load('system', 'schema_state')['initialized_at_revision'] == 33
+        assert storage.load('system', 'schema_state')['initialized_at_revision'] == 34
         assert storage.load('system', 'schema_state')['last_applied_migration'] is None
     finally:
         storage.close()

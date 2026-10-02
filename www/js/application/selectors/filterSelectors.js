@@ -2,6 +2,7 @@ import { DEFAULT_STATE_COLOR_MAP, PALETTE } from '../../services/ColorService.js
 import { normalizeTaskFilters } from '../shared/taskFilters.js';
 import {
   deriveConfiguredStateSequence,
+  deriveAvailableTaskTypes,
   deriveOrderedFeatureStateNames,
 } from '../shared/stateDerivations.js';
 
@@ -132,6 +133,25 @@ export function createFilterSelectors(store) {
   }
 
   const selectors = {
+    getSelectedTaskTypeNames() {
+      const state = store.getState();
+      const hidden = new Set(state.view.options.hiddenTypes);
+      return deriveAvailableTaskTypes(state.baseline.features).filter((type) => !hidden.has(type));
+    },
+
+    isSidebarControlDisabled(kind, key, option) {
+      const state = store.getState();
+      const disabled = state.selection.sidebarDisabled;
+      if (kind === 'taskFilter') {
+        if (key === 'schedule' && option === 'unplanned' &&
+          state.view.options.displayMode === 'packed') return true;
+        return Object.hasOwn(disabled, 'taskFilters') &&
+          Object.hasOwn(disabled.taskFilters, key) && disabled.taskFilters[key].includes(option);
+      }
+      const group = kind === 'taskType' ? 'taskTypes' : kind === 'state' ? 'states' : null;
+      return group !== null && Object.hasOwn(disabled, group) && disabled[group].includes(key);
+    },
+
     getSelectedFeatureStateSet() {
       return toStateSet(store.getState().selection.featureStateNames);
     },

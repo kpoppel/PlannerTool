@@ -36,17 +36,34 @@ config. The v4.2.1 server config can still be the owned writable
 used as a runtime fallback. Its `people` record may lack a schema-version field.
 
 The explicit post-baseline chain is `24 -> 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
--> 33`; there was no migration 25. Revisions preserve their historical IDs.
+-> 33 -> 34`; there was no migration 25. Revisions preserve their historical IDs.
 Revision 26 drops disposable remote records, 27 fills scenario metadata, 28 adds
 account IDs, 29 converts view Context flags, 30 adds plan container types, 31
 prepares device enrollment, 32 changes ownership to account IDs, and 33 harmonizes
-plugin settings using a fixed packaged menu resource. The server registry has no
+plugin settings using a fixed packaged menu resource. Revision 34 persists packed-mode
+Unplanned preferences in saved views. The server registry has no
 pre-v4.2.1 migrations or reverse functions; older IDs are admission evidence only.
 
-Fresh installations initialize revision 33 directly and invoke no upgrades.
+Fresh installations initialize revision 34 directly and invoke no upgrades.
 External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
+
+### Revision 34 saved-view contract
+
+`0034.persist-packed-mode-unplanned-preference` adds the boolean
+`viewOptions.packedModeUnplannedPreference` to every saved view. Missing values are
+initialized from the saved `taskFilters.schedule.unplanned` value, or `true` when
+that optional preference was not saved. Packed views retain that snapshot while their
+effective `schedule.unplanned` value is forced to `false`. Other saved values are
+preserved, and repeating the migration does not replace an existing snapshot.
+
+Older versions kept the pre-packed preference only in Sidebar memory. If an old packed
+view already saved `unplanned: false`, its earlier value cannot be recovered; revision
+34 deterministically retains the stored value. New save requests normalize the field
+at the persistence boundary. Startup and logical-backup validation require a boolean
+snapshot and reject packed views whose effective Unplanned filter is not disabled;
+runtime read paths do not repair old records.
 
 ## Development iterations
 
@@ -187,8 +204,9 @@ JSON exports include `schema_revision`, not schema-state records or pointer file
 Versioned payloads must match the current revision. Existing unversioned selective
 payloads are admitted only when their established contracts are current: account-ID
 ownership, complete authentication, Context view flags, scenario metadata, ordered
-project containers, and schema-v2 plugin config. The established plaintext-PAT
-marker remains accepted. Unsupported older payloads are rejected before writes;
+project containers, schema-v2 plugin config, and saved views satisfying the
+revision-34 packed-mode preference contract. The established plaintext-PAT marker
+remains accepted. Unsupported older payloads are rejected before writes;
 live request handlers never migrate them. Selective restores preserve schema state
 and forward the revision even when accounts are excluded. Credential warnings and
 session invalidation remain in effect. JSON backups contain plaintext PATs.

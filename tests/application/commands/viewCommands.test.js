@@ -102,4 +102,20 @@ describe('application/commands/viewCommands', () => {
       packedMode: false,
     });
   });
+
+  it.each([true, false])('restores the Unplanned preference %s without a mounted Sidebar', (preference) => {
+    store.setState((state) => ({ ...state, selection: { ...state.selection,
+      taskFilters: { ...state.selection.taskFilters, schedule: { planned: true, unplanned: preference } },
+      sidebarDisabled: { taskFilters: { schedule: ['unplanned'] } },
+    } }));
+    const commands = createViewCommands(store, { emit: vi.fn() });
+    commands.setDisplayMode('packed', { suppressEvents: true });
+    expect(store.getState().selection.taskFilters.schedule.unplanned).toBe(false);
+    expect(store.getState().view.options.packedModeUnplannedPreference).toBe(preference);
+    commands.setDisplayMode('packed');
+    expect(store.getState().view.options.packedModeUnplannedPreference).toBe(preference);
+    commands.setCondensedCards(false);
+    expect(store.getState().selection.taskFilters.schedule.unplanned).toBe(preference);
+    expect(store.getState().selection.sidebarDisabled).toEqual({ taskFilters: { schedule: ['unplanned'] } });
+  });
 });

@@ -547,12 +547,8 @@ export class PluginCostComponent extends LitElement {
     // Force all states selected via public State API
     cmd.filter.setAllStatesSelected(true);
 
-    // Ensure all task types are checked via public State API
-    // Prefer the sidebar's known available task types. The view store
-    // does not reliably expose the loaded task types at runtime.
-    // Read available task types from State service (preferred) or fall back
-    // to any saved view options. Do NOT query other components' internals.
-    const availableTaskTypes = sel.feature.getAvailableTaskTypes?.() || [];
+    // Select every loaded type through the atomic visibility/selection command.
+    const availableTaskTypes = sel.feature.getAvailableTaskTypes();
     cmd.filter.setSelectedTaskTypes(availableTaskTypes);
 
     // Now disable buttons
@@ -564,7 +560,7 @@ export class PluginCostComponent extends LitElement {
         relations: ['hasLinks', 'noLinks'],
       },
       taskTypes: [],
-      states: Array.from(sel.filter.getAvailableFeatureStates() || []),
+      states: sel.filter.getAvailableFeatureStates(),
     };
     cmd.filter.setSidebarDisabledElements(disabled);
   }
@@ -647,41 +643,24 @@ export class PluginCostComponent extends LitElement {
       }
 
       // Build features payload for cost API
-      // Honor sidebar-selected task types when present. If multiple types
+      // Honor selected task types. If multiple types
       // are selected, apply the "lowest level counts" rule: when a parent
       // item has children of a selected type, skip the parent so children
       // are authoritative.
-      let selectedTypes = null;
-      try {
-        const sidebar = document.querySelector('app-sidebar');
-        if (
-          sidebar &&
-          sidebar.selectedTaskTypes &&
-          typeof sidebar.selectedTaskTypes.values === 'function'
-        ) {
-          selectedTypes = new Set(
-            Array.from(sidebar.selectedTaskTypes).map((s) => String(s).toLowerCase())
-          );
-        }
-      } catch (e) {
-        selectedTypes = null;
-      }
+      const selectedTypes = new Set(
+        sel.filter.getSelectedTaskTypeNames().map((type) => type.toLowerCase())
+      );
 
       // Helper: determine if a feature has children according to selector hierarchy map.
+      const childrenByParent = sel.feature.getChildrenByParentMap();
       const hasChildren = (fid) => {
-        try {
-          const map = sel.feature.getChildrenByParentMap?.() || new Map();
-          const list = map.get(Number(fid)) || map.get(String(fid)) || [];
-          return Array.isArray(list) && list.length > 0;
-        } catch (e) {
-          return false;
-        }
+        const children = childrenByParent.get(String(fid));
+        return children !== undefined && children.length > 0;
       };
 
       const filteredFeatures = contextFeatures.filter((f) => {
         if (!f) return false;
-        if (!selectedTypes || selectedTypes.size === 0) return true;
-        const ftype = String(f.type || f.feature_type || '').toLowerCase();
+        const ftype = f.type.toLowerCase();
         if (!selectedTypes.has(ftype)) return false;
         // If multiple types selected, prefer lowest-level: skip parents
         if (selectedTypes.size > 1) {
@@ -696,7 +675,7 @@ export class PluginCostComponent extends LitElement {
       // filter out features that are truly unplanned. Some backends
       // set placeholder dates (today) for unplanned items which would
       // otherwise appear as "planned"; treat those as unplanned too.
-      const taskFilters = taskFilter.getTaskFilters?.() || { schedule: {} };
+      const taskFilters = taskFilter.getTaskFilters();
       if (taskFilters.schedule.unplanned === false) {
         const today = new Date().toISOString().slice(0, 10);
         const plannedFeatures = filteredFeatures.filter((f) => {

@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from planner_lib.migrations.contracts import SchemaError
+from planner_lib.migrations.contracts import SchemaError, schema_state
 from planner_lib.migrations.coordinator import Database, read_json
 from planner_lib.migrations.revisions import BASELINE_IDS
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
@@ -30,7 +30,7 @@ def test_external_inputs_only_initialize_without_migrations(tmp_path, monkeypatc
     database = Database(tmp_path)
     monkeypatch.setattr(database, '_upgrade', lambda *args: pytest.fail('fresh install ran upgrades'))
     handle = database.prepare()
-    assert handle.storage.load('system', 'schema_state')['schema_revision'] == 33
+    assert handle.storage.load('system', 'schema_state')['schema_revision'] == 34
     handle.close()
     assert external.read_text() == 'external'
     assert len(list((tmp_path / 'generations').iterdir())) == 1
@@ -92,6 +92,50 @@ def test_invalid_pointer_fails_without_opening_storage(tmp_path):
     assert not (tmp_path / 'cache').exists()
 
 
+@pytest.mark.parametrize('phase', ['complete', 'activated'])
+def test_previous_target_journal_allows_status_and_next_upgrade(tmp_path, phase):
+    database = Database(tmp_path)
+    handle = database.prepare()
+    previous_generation = handle.storage.data_dir.parent.name
+    view_key = '11111111-1111-4111-8111-111111111111_saved'
+    handle.storage.save('system', 'schema_state', schema_state(33, initialized=True))
+    handle.storage.save('views', view_key, {'name': 'Preserved', 'viewOptions': {}})
+    handle.close()
+    journal_path = tmp_path / 'upgrade-state.json'
+    journal = read_json(journal_path)
+    journal.update(target_revision=33, phase=phase, build='previous-build')
+    journal_path.write_text(json.dumps(journal))
+    previous_journal = journal_path.read_bytes()
+
+    assert database.status()['active_revision'] == 33
+    assert database.status()['phase'] == phase
+    assert journal_path.read_bytes() == previous_journal
+    handle = database.prepare()
+    try:
+        assert handle.storage.data_dir.parent.name != previous_generation
+        assert handle.storage.load('system', 'schema_state')['schema_revision'] == 34
+        assert handle.storage.load('views', view_key) == {
+            'name': 'Preserved', 'viewOptions': {'packedModeUnplannedPreference': True},
+        }
+    finally:
+        handle.close()
+    assert read_json(journal_path)['target_revision'] == 34
+    assert read_json(journal_path)['phase'] == 'complete'
+    assert len(list((tmp_path / 'generations').iterdir())) == 1
+
+
+@pytest.mark.parametrize('target', [None, True, '33', 33.0, 25, 35])
+def test_invalid_journal_target_is_rejected(tmp_path, target):
+    handle = Database(tmp_path).prepare()
+    handle.close()
+    journal_path = tmp_path / 'upgrade-state.json'
+    journal = read_json(journal_path)
+    journal['target_revision'] = target
+    journal_path.write_text(json.dumps(journal))
+    with pytest.raises(SchemaError, match='Invalid database operation journal'):
+        Database(tmp_path).status()
+
+
 def test_running_shared_writer_blocks_upgrade_and_prune(tmp_path):
     handle = Database(tmp_path).prepare()
     try:
@@ -111,7 +155,7 @@ def test_status_of_missing_installation_creates_nothing(tmp_path):
 @pytest.mark.parametrize('boundary', [
     'journal-preparing', 'copy-file', 'copy-complete', 'journal-migrating',
     'migration-26', 'migration-27', 'migration-28', 'migration-29',
-    'migration-30', 'migration-31', 'migration-32', 'migration-33',
+    'migration-30', 'migration-31', 'migration-32', 'migration-33', 'migration-34',
     'journal-validated', 'candidate-flushed', 'pointer-published',
     'journal-published', 'journal-activated', 'source-removed', 'journal-complete',
 ])
@@ -135,7 +179,7 @@ Database(sys.argv[1], fault=fault).prepare()
         source.close()
     handle = Database(tmp_path).prepare()
     assert handle.storage.load('opaque', 'large') == b'a' * 100_000
-    assert handle.storage.load('system', 'schema_state')['schema_revision'] == 33
+    assert handle.storage.load('system', 'schema_state')['schema_revision'] == 34
     handle.close()
     assert not (tmp_path / 'cache').exists()
     assert len(list((tmp_path / 'generations').iterdir())) == 1
@@ -219,9 +263,9 @@ def test_expiring_schema_metadata_is_rejected(tmp_path):
 def test_status_reports_newer_schema_without_service_compatibility(tmp_path):
     handle = Database(tmp_path).prepare()
     state = handle.storage.load('system', 'schema_state')
-    handle.storage.save('system', 'schema_state', {**state, 'schema_revision': 34})
+    handle.storage.save('system', 'schema_state', {**state, 'schema_revision': 35})
     handle.close()
-    assert Database(tmp_path).status()['active_revision'] == 34
+    assert Database(tmp_path).status()['active_revision'] == 35
     assert Database(tmp_path).status()['compatibility_error']
     with pytest.raises(SchemaError):
         Database(tmp_path).prepare()
@@ -426,4 +470,4 @@ def test_restore_over_legacy_yaml_cleans_owned_source_only(tmp_path):
     Database(root).restore(backup, confirmed=True)
     assert not owned.exists()
     assert external.read_text() == 'external-input'
-    assert Database(root).status()['active_revision'] == 33
+    assert Database(root).status()['active_revision'] == 34

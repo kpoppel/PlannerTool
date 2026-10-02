@@ -3,19 +3,147 @@ import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
 import {
   buildDetailsPanelSchedulingModel,
+  getDetailsPanelChildDateBounds,
   renderDetailsPanelScheduling,
 } from '../../www/js/components/details-panel/DetailsPanelScheduling.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents, ProjectEvents } from '../../www/js/core/EventRegistry.js';
+import { store } from '../../www/js/application/store.js';
 
 describe('DetailsPanel editing and scheduling commands', () => {
+  let initialStoreState;
   beforeEach(async () => {
+    initialStoreState = store.getState();
     await customElements.whenDefined('details-panel');
   });
 
   afterEach(() => {
     sinon.restore();
+    store.setState(initialStoreState, true);
+  });
+
+  it('invalidates pending status edits and drafts when another feature is selected', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const first = { id: 'first', state: 'New', capacity: [], orgLoad: '0%', relations: [] };
+    const selected = sinon.stub(sel.feature, 'getSelectedFeature').returns(first);
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    el._onShow();
+    await el.updateComplete;
+    const clock = sinon.useFakeTimers();
+    el._onStateClick();
+    el._stateEditValue = 'Done';
+    el._onStateBlur();
+    el._newTagText = 'unfinished';
+    el.showAddTeamPopover = true;
+    el.editingCapacityTeam = 't1';
+    selected.returns({ ...first, id: 'second' });
+    el._onShow();
+    await el.updateComplete;
+    clock.tick(200);
+    expect(update.called).to.be.false;
+    expect(el.editingState).to.be.false;
+    expect(el._stateEditValue).to.equal(null);
+    expect(el._newTagText).to.equal('');
+    expect(el.showAddTeamPopover).to.be.false;
+    expect(el.editingCapacityTeam).to.equal(null);
+  });
+
+  it('cancels pending status commits on close and disconnection', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const feature = { id: 'first', state: 'New', capacity: [], orgLoad: '0%', relations: [] };
+    sinon.stub(sel.feature, 'getSelectedFeature').returns(feature);
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    el._onShow();
+    await el.updateComplete;
+    const clock = sinon.useFakeTimers();
+    el._onStateClick();
+    el._stateEditValue = 'Done';
+    el._onStateBlur();
+    el.hide();
+    clock.tick(200);
+    expect(update.called).to.be.false;
+    el._onShow();
+    await el.updateComplete;
+    el._onStateClick();
+    el._stateEditValue = 'Done';
+    el._onStateBlur();
+    el.remove();
+    clock.tick(200);
+    expect(update.called).to.be.false;
+  });
+
+  it('refreshes once after reconnect and not at all while disconnected', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const feature = { id: 'first', state: 'New', capacity: [], orgLoad: '0%', relations: [] };
+    el.feature = feature;
+    el.open = true;
+    await el.updateComplete;
+    const projectRefresh = sinon.stub(el, '_loadIterationsForFeature').resolves();
+    const parent = el.parentNode;
+    el.remove();
+    bus.emit(ProjectEvents.CHANGED);
+    expect(projectRefresh.called).to.be.false;
+    parent.appendChild(el);
+    await el.updateComplete;
+    projectRefresh.resetHistory();
+    bus.emit(ProjectEvents.CHANGED);
+    expect(projectRefresh.calledOnce).to.be.true;
+  });
+
+  it('invalidates pending edits when switching scenarios on the same feature', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const feature = { id: 'first', state: 'New', capacity: [], orgLoad: '0%', relations: [] };
+    el.feature = feature;
+    el.open = true;
+    await el.updateComplete;
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    sinon.stub(sel.feature, 'getEffectiveFeatureById').returns({ ...feature, state: 'Active' });
+    const clock = sinon.useFakeTimers();
+    el._onStateClick();
+    el._stateEditValue = 'Done';
+    el._onStateBlur();
+    store.setState((state) => ({
+      ...state, scenarios: {
+        ...state.scenarios, activeId: 'another-scenario',
+        items: [...state.scenarios.items, { ...state.scenarios.items[0], id: 'another-scenario' }],
+      },
+    }));
+    clock.tick(200);
+    await el.updateComplete;
+    expect(update.called).to.be.false;
+    expect(el.feature.state).to.equal('Active');
+    expect(el.editingState).to.be.false;
+  });
+
+  it('ignores an allocation blur from a previously rendered feature', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    sinon.stub(sel.selection, 'getTeams').returns([{ id: 't1', name: 'Team', color: '#ffffff' }]);
+    const feature = { id: 'first', state: 'New', capacity: [{ team: 't1', capacity: 20 }],
+      orgLoad: '20%', relations: [] };
+    el.feature = feature;
+    el.open = true;
+    await el.updateComplete;
+    const input = el.shadowRoot.querySelector('.capacity-bar-input');
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    input.value = '80';
+    el.feature = { ...feature, id: 'second' };
+    input.dispatchEvent(new Event('blur'));
+    expect(update.called).to.be.false;
+    await el.updateComplete;
+  });
+
+  it('computes child date bounds independently, ignoring absent and invalid dates', () => {
+    const children = Object.freeze([
+      Object.freeze({ start: '2026-10-02', end: '2026-10-04' }),
+      Object.freeze({ start: '2026-10-01', end: 'invalid' }),
+      Object.freeze({ start: null, end: '2026-10-06' }),
+      null,
+    ]);
+    expect(getDetailsPanelChildDateBounds(children)).to.deep.equal({
+      start: '2026-10-01', end: '2026-10-06',
+    });
+    expect(getDetailsPanelChildDateBounds([])).to.deep.equal({ start: null, end: null });
   });
 
   it('groups current and future iterations separately from past iterations', async () => {

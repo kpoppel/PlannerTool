@@ -1,5 +1,20 @@
 import { html } from '../../vendor/lit.js';
 
+export function parseDetailsPanelTags(value) {
+  if (typeof value !== 'string') return [];
+  return value.split(';').map((tag) => tag.trim()).filter(Boolean);
+}
+
+export function buildDetailsPanelTagsModel({ tagsValue, originalTags, newTagText }) {
+  const tags = parseDetailsPanelTags(tagsValue);
+  const normalize = (items) => items.map((tag) => tag.toLowerCase());
+  return {
+    tags, originalTags, newTagText,
+    changed: originalTags !== undefined &&
+      JSON.stringify(normalize(tags)) !== JSON.stringify(normalize(parseDetailsPanelTags(originalTags))),
+  };
+}
+
 /** Render tag presentation and dispatch draft values through explicit actions. */
 export function renderDetailsPanelTags({ model, actions }) {
   const { tags, changed, originalTags, newTagText } = model;
