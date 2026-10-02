@@ -582,7 +582,9 @@ export class TopMenuBarLit extends LitElement {
           >
             Plan
             ${this.selectedProjectsCount ?
-              html`<span class="menu-count-badge">${this.selectedProjectsCount}</span>`
+              html`<span class="menu-count-badge">${this.selectedProjectsCount === 1
+                ? this.projects.find((project) => project.selected).name
+                : this.selectedProjectsCount}</span>`
             : ''}
           </div>
           <div

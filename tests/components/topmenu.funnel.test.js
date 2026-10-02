@@ -1,4 +1,5 @@
 import { expect } from '@open-wc/testing';
+import { vi } from 'vitest';
 import '../../www/js/components/TopMenu.lit.js';
 import { sel } from '../../www/js/application/imports.js';
 import { pluginManager } from '../../www/js/core/PluginManager.js';
@@ -17,6 +18,7 @@ describe('TopMenu Data Funnel', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (menu && menu.isConnected) menu.remove();
     for (const id of ['test-after-menu', 'test-before-menu', 'test-active-tool', 'plugin-reconciliation']) {
       await pluginManager.unregister(id);
@@ -30,6 +32,36 @@ describe('TopMenu Data Funnel', () => {
     await menu.updateComplete;
     return plugin;
   }
+
+  it('shows the selected plan name only when exactly one plan is selected', async () => {
+    const projects = [
+      { id: 'first', name: 'First plan', selected: false },
+      { id: 'second', name: 'Second plan', selected: false },
+    ];
+    vi.spyOn(sel.selection, 'getProjects').mockImplementation(() => [...projects]);
+
+    menu._onProjectsChanged();
+    await menu.updateComplete;
+    const trigger = menu.shadowRoot.querySelector('#planMenuBtn');
+    expect(trigger.querySelector('.menu-count-badge')).to.equal(null);
+
+    projects[0].selected = true;
+    projects[1].selected = true;
+    menu._onProjectsChanged();
+    await menu.updateComplete;
+    expect(trigger.querySelector('.menu-count-badge').textContent).to.equal('2');
+
+    projects[0].selected = false;
+    menu._onProjectsChanged();
+    await menu.updateComplete;
+    expect(trigger.querySelector('.menu-count-badge').textContent).to.equal('Second plan');
+
+    projects[0].selected = true;
+    projects[1].selected = false;
+    menu._onProjectsChanged();
+    await menu.updateComplete;
+    expect(trigger.querySelector('.menu-count-badge').textContent).to.equal('First plan');
+  });
 
   it('places plugin menus after Scope on both sides of Tools', async () => {
     await registerMenu('test-before-menu', 'before-tools');

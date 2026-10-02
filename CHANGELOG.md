@@ -29,6 +29,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- The Plan Menu shows the selected plan's name instead of a count when exactly one plan is selected.
 - Completed legacy runtime/test cleanup with explicit REST Results, store-owned groups, failure-aware publishing, feature-only cost recalculation, and isolated real-cookie test fixtures.
 - Removed legacy per-plan group loading, duplicate group mutation/projection APIs, and obsolete session storage and credential helpers.
 - Reduced repeated account loads by reusing encryption setup, resolving PATs only for credential-bearing requests, and batching browser-local group loads with account-change and stale-response invalidation.
