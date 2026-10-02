@@ -170,6 +170,12 @@ export class TopMenuBarLit extends LitElement {
       text-align: center;
       line-height: 1;
     }
+    .menu-selection-name {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   `;
 
   constructor() {
@@ -376,6 +382,15 @@ export class TopMenuBarLit extends LitElement {
   }
 
   render() {
+    const planLabel = this.selectedProjectsCount === 1
+      ? this.projects.find((project) => project?.selected).name
+      : this.selectedProjectsCount;
+    const teamLabel = this.selectedTeamsCount === 1
+      ? this.teams.find((team) => team?.selected).name
+      : this.selectedTeamsCount;
+    const planBadgeClass = this.selectedProjectsCount === 1 ? 'menu-selection-name' : '';
+    const teamBadgeClass = this.selectedTeamsCount === 1 ? 'menu-selection-name' : '';
+
     return html`
       <nav class="menu-bar" role="navigation" aria-label="Top menu">
         <div class="menu-left">
@@ -416,7 +431,10 @@ export class TopMenuBarLit extends LitElement {
           >
             Plan
             ${this.selectedProjectsCount ?
-              html`<span class="menu-count-badge">${this.selectedProjectsCount}</span>`
+              html`<span
+                class="menu-count-badge ${planBadgeClass}"
+                title=${planLabel}
+              >${planLabel}</span>`
             : ''}
           </div>
           <div
@@ -428,7 +446,10 @@ export class TopMenuBarLit extends LitElement {
           >
             Team
             ${this.selectedTeamsCount ?
-              html`<span class="menu-count-badge">${this.selectedTeamsCount}</span>`
+              html`<span
+                class="menu-count-badge ${teamBadgeClass}"
+                title=${teamLabel}
+              >${teamLabel}</span>`
             : ''}
           </div>
           <div
