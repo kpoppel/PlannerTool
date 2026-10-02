@@ -32,6 +32,8 @@ from typing import Any
 import httpx
 import pytest
 
+pytestmark = [pytest.mark.real_auth, pytest.mark.performance]
+
 DELAY = 0.1          # seconds — simulated ADO latency per request
 CONCURRENT = 4       # simultaneous requests
 CONCURRENCY_THRESHOLD = DELAY * 1.5  # 150 ms — must complete faster than this when parallel
@@ -49,59 +51,30 @@ _TASK = {
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope='module')
-def perf_app():
-    """Return a FastAPI app with SlowFakeBackend injected.
-
-    Uses module scope so the (expensive) app construction happens once per
-    module run and does not pollute the session-scoped app used by other tests.
-    """
-    import os
-    os.environ.setdefault('PLANNER_SECRET_KEY', 'test-only-secret-key-not-for-production')
-
-    from planner_lib.main import create_app, Config
-    from planner_lib.storage.memory_backend import MemoryStorage
+@pytest.fixture
+def perf_app(client):
+    """Use the shared test app with a delayed backend and an enrolled session."""
     from tests.fakes.fake_backend import SlowFakeBackend
 
-    # Shared in-memory storage so both storage backends see the same data.
-    shared = MemoryStorage()
-    shared.save('config', 'server_config', {})
-    shared.save('config', 'people', {'schema_version': 1, 'database_file': '', 'database': {'people': []}})
-    # Seed one project so TaskRepository.read() iterates the project_map
-    # and calls backend.fetch_tasks() for the test area.
-    shared.save('config', 'projects', {
-        'project_map': [{'name': 'PerfTest', 'area_path': _AREA}]
+    app = client.app
+    storage = app.state.container.get('storage')
+    storage.save('config', 'projects', {
+        'schema_version': 3,
+        'container_types': ['project', 'team'],
+        'project_map': [{'name': 'PerfTest', 'area_path': _AREA}],
     })
 
-    # Patch MemoryStorage to return the shared instance.
-    import planner_lib.storage.memory_backend as mem_mod
-    _orig = mem_mod.MemoryStorage
-    mem_mod.MemoryStorage = lambda: shared
-    try:
-        app = create_app(Config(storage_backend='memory', enable_brotli=False))
-    finally:
-        mem_mod.MemoryStorage = _orig
-
-    # Inject SlowFakeBackend — 'backend' singleton replaces the lazy factory
-    # so task_repository (still unresolved) will pick it up on first call.
     slow = SlowFakeBackend(delay=DELAY)
     slow.set_tasks(_AREA, [dict(_TASK)])
     slow.set_project_map([{'name': 'PerfTest', 'area_path': _AREA}])
     app.state.container.register_singleton('backend', slow)
 
-    # Create a real session so @require_session passes.
-    session_mgr = app.state.container.get('session_manager')
-    session_mgr._store['perf-test-session'] = {'email': 'perf@example.com', 'pat': 'fake-pat'}
-
+    response = client.post('/api/auth/enroll', json={
+        'email': 'perf@example.com', 'name': 'Performance Test',
+    })
+    assert response.status_code == 200
+    app.state.performance_cookies = dict(client.cookies)
     return app
-
-
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-
-def _auth_headers() -> dict:
-    return {'X-Session-Id': 'perf-test-session', 'Accept': 'application/json'}
 
 
 # ---------------------------------------------------------------------------
@@ -117,12 +90,13 @@ def test_sequential_baseline_sanity_check(perf_app):
     async def _run():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=perf_app),
-            base_url='http://test',
+            base_url='http://testserver',
             timeout=10.0,
+            cookies=perf_app.state.performance_cookies,
         ) as client:
             t0 = time.perf_counter()
             for _ in range(CONCURRENT):
-                r = await client.get('/api/tasks', headers=_auth_headers())
+                r = await client.get('/api/tasks')
                 assert r.status_code == 200, f'Expected 200, got {r.status_code}: {r.text}'
             elapsed = time.perf_counter() - t0
         return elapsed
@@ -146,12 +120,13 @@ def test_concurrent_get_tasks_completes_in_parallel(perf_app):
     async def _run():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=perf_app),
-            base_url='http://test',
+            base_url='http://testserver',
             timeout=10.0,
+            cookies=perf_app.state.performance_cookies,
         ) as client:
             t0 = time.perf_counter()
             responses = await asyncio.gather(*[
-                client.get('/api/tasks', headers=_auth_headers())
+                client.get('/api/tasks')
                 for _ in range(CONCURRENT)
             ])
             elapsed = time.perf_counter() - t0
@@ -187,15 +162,15 @@ def test_concurrent_scenario_writes_do_not_corrupt(perf_app):
     async def _run():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=perf_app),
-            base_url='http://test',
+            base_url='http://testserver',
             timeout=10.0,
+            cookies=perf_app.state.performance_cookies,
         ) as client:
             # Create CONCURRENT brand-new scenarios concurrently (no id → new UUID each time).
             save_responses = await asyncio.gather(*[
                 client.post(
                     '/api/scenario',
                     json={'op': 'save', 'data': {'name': f'perf-scenario-{i}', 'overrides': {}}},
-                    headers=_auth_headers(),
                 )
                 for i in range(CONCURRENT)
             ])
@@ -203,7 +178,7 @@ def test_concurrent_scenario_writes_do_not_corrupt(perf_app):
                 assert r.status_code == 200, f'Save failed: {r.status_code} {r.text}'
 
             # List all scenarios for this user — returns [{id, user, shared}, ...].
-            list_resp = await client.get('/api/scenario', headers=_auth_headers())
+            list_resp = await client.get('/api/scenario')
             assert list_resp.status_code == 200
             return list_resp.json()
 
