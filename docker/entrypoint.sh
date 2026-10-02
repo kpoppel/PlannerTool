@@ -10,22 +10,18 @@ if [ -z "$PLANNER_SECRET_KEY" ]; then
   exit 1
 fi
 
-# Set ownership of the data directory to the planner user.
-# This handles permissions for both bind mounts and named volumes at runtime.
-# Errors are ignored (|| true) to prevent failure when encountering read-only files (e.g., external_database mount).
-chown -R planner:planner /app/data 2>/dev/null || true
+# External config mounts are not server-owned and must remain untouched.
+data_root="${DATA_DIR:?DATA_DIR must be set}"
+mkdir -p "$data_root"
+chown planner:planner "$data_root"
+for name in cache generations remote_cache database.lock database-entry.lock active-generation.json upgrade-state.json migrations.json; do
+  if [ -e "$data_root/$name" ]; then
+    chown -R -h planner:planner "$data_root/$name"
+  fi
+done
 
-# Run migrations as the planner user before starting the application.
-# Migrations are applied automatically on container start to ensure data schemas are up-to-date.
-# The --apply flag is used to actually execute migrations (not just dry-run).
-if [ -f /app/scripts/migrate.py ]; then
-  echo "Running migrations..."
-  gosu planner python3 /app/scripts/migrate.py --apply || {
-    echo "WARNING: Migrations failed. Check logs for details."
-    echo "The application will start anyway, but some features may not work correctly."
-  }
-else
-  echo "Migration script not found, skipping migrations"
+if [ -d "$data_root/cache" ] && [ ! -e "$data_root/active-generation.json" ] && [ -f "$data_root/config/server_config.yml" ]; then
+  chown -h planner:planner "$data_root/config/server_config.yml"
 fi
 
 # Execute the command passed to this script as the 'planner' user

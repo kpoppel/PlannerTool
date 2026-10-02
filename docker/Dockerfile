@@ -74,8 +74,6 @@ COPY ./*.py ./
 COPY VERSION ./
 COPY docs ./docs
 COPY planner_lib ./planner_lib
-COPY scripts/migrate.py ./scripts/migrate.py
-COPY scripts/migrations ./scripts/migrations
 
 # Copy built frontend assets from nodebuilder — only dist/ is needed at runtime
 COPY --from=nodebuilder /build/dist ./dist

@@ -1,0 +1,31 @@
+{
+  "applied": [
+    "0000.initial-create-state",
+    "0001.add-schema-field-to-scenarios-and-users",
+    "0002.add-server-name-to-config",
+    "0003.move-accounts-to-data-accounts",
+    "0004.clear-azure-cache",
+    "0005.add-project-map-type",
+    "0006.split-server-config-into-projects-teams",
+    "0007.rename-db-and-update-projects",
+    "0008.remove-plugins-from-server-config",
+    "0009.clear-azure-cache-key-format",
+    "0010.teams-schema-v2-rename-team-map-to-teams",
+    "0011.move-database-path-to-people-config",
+    "0012.clear-cache-revision-tracking",
+    "0013.projects-schema-v3-add-display-states",
+    "0014.projects-states-capitalize",
+    "0015.migrate-pickle-to-diskcache",
+    "0016.add-memory-cache-config",
+    "0017.encrypt-pats",
+    "0018.permissions-field",
+    "0019.display-mode-field",
+    "0020.rename-enable-azure-cache-to-enable-cache",
+    "0021.internalize-config-to-diskcache",
+    "0022.migrate-people-to-diskcache",
+    "0023.clean-ado-config-and-server-config",
+    "0024.groups-members-and-pending-changes"
+  ],
+  "current_version": "v4.0.3",
+  "last_migration_version": "v4.0.3"
+}

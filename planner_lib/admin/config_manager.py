@@ -235,6 +235,7 @@ class ConfigManager:
         different ``PLANNER_SECRET_KEY``.
         """
         backup_data: dict = {
+            "schema_revision": self._storage.load('system', 'schema_state')['schema_revision'],
             "config": {},
             "accounts": {},
             "views": {},
@@ -312,11 +313,61 @@ class ConfigManager:
         sync_accounts_fn=None,
     ) -> dict:
         """Restore accounts and auth state atomically on diskcache storage."""
+        self._validate_compatibility(data)
         with self._transaction():
             return self._restore_backup(
                 data, current_admins=current_admins, current_user_email=current_user_email,
                 sync_accounts_fn=sync_accounts_fn,
             )
+
+    def _validate_compatibility(self, data):
+        from planner_lib.migrations.contracts import TARGET_REVISION
+        from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
+
+        if not isinstance(data, dict) or set(data) - {
+            'schema_revision', 'config', 'accounts', 'authentication', 'views', 'scenarios', '_meta'
+        }:
+            raise ValueError('Logical backups cannot restore recovery metadata or unknown sections')
+        if '_meta' in data and data['_meta'] != {'pat_format': 'plaintext'}:
+            raise ValueError('Unsupported logical backup metadata')
+        self._validate_user_data_ownership(data)
+        if 'schema_revision' in data and (
+            type(data['schema_revision']) is not int or data['schema_revision'] != TARGET_REVISION
+        ):
+            raise ValueError('Incompatible backup schema; use a matching server and independent full backup')
+        config = data.get('config', {})
+        if not isinstance(config, dict) or set(config) - set(self.CONFIG_KEYS):
+            raise ValueError('Logical backup contains unsupported configuration keys')
+        projects = config.get('projects')
+        if projects is not None and (
+            not isinstance(projects, dict) or 'container_types' not in projects
+        ):
+            raise ValueError('Projects backup requires the current container hierarchy')
+        plugins = config.get('plugin_runtime_config')
+        if plugins is not None and normalize_plugin_runtime_config(plugins) != plugins:
+            raise ValueError('Plugin backup requires the current canonical schema')
+        server = config.get('server_config')
+        if server is not None and 'enable_azure_cache' in server.get('feature_flags', {}):
+            raise ValueError('Server backup contains unsupported legacy flags')
+        for namespace in ('views', 'scenarios'):
+            records = data.get(namespace, {})
+            if not isinstance(records, dict):
+                raise ValueError('User-data backup must be an object')
+            register_key = 'view_register' if namespace == 'views' else 'scenario_register'
+            for key, payload in records.items():
+                if not isinstance(payload, dict):
+                    raise ValueError('User-data backup contains invalid records')
+                if key == register_key:
+                    continue
+                if namespace == 'views' and any(field in payload.get('viewOptions', {}) for field in (
+                    'expandRelations', 'expandTeamAllocated', 'expandParentChild'
+                )):
+                    raise ValueError('Saved-view backup requires current Context fields')
+                if namespace == 'scenarios' and any(
+                    not isinstance(payload.get(field), list if field == 'scenarioGroups' else dict)
+                    for field in ('overrides', 'filters', 'view', 'groupOverrides', 'scenarioGroups')
+                ):
+                    raise ValueError('Scenario backup requires current metadata')
 
     def _validate_authentication(self, data: dict) -> None:
         authentication = data.get('authentication')

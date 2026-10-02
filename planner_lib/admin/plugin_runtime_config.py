@@ -48,7 +48,7 @@ def normalize_plugin_runtime_config(
 
     schema_version = payload.get('schema_version')
     if type(schema_version) is not int or schema_version != DEFAULT_SCHEMA_VERSION:
-        raise ValueError('plugins config requires schema_version 2; run scripts/migrate.py --apply')
+        raise ValueError('plugins config requires schema_version 2; legacy payloads are incompatible')
 
     plugins = payload.get('plugins', [])
     if plugins is None:
@@ -85,7 +85,7 @@ def _normalize_plugin_entry(entry: Any, index: int) -> dict[str, Any]:
         raise ValueError('plugin id must be a non-empty string')
 
     if 'activated' in entry or 'order' in entry:
-        raise ValueError('legacy plugin settings require scripts/migrate.py --apply')
+        raise ValueError('legacy plugin settings are incompatible with the current schema')
 
     enabled = bool(entry.get('enabled', True))
     activated = bool(entry.get('activateOnStartup', False))

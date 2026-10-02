@@ -8,6 +8,31 @@ The application has two deployment methods:
 Whatever you do, using Docker is the most convenient for production.
 The Vite dev server is the recommended way to run the app during development.
 
+## Database preparation and upgrades
+
+The server initializes and upgrades its database before opening an HTTP listener;
+there is no manual migration prerequisite. `DATA_DIR` is the stable installation
+root (`data` locally, `/app/data` in Docker), not a cache or generation directory.
+Direct launch, Uvicorn factories, reload, and current multi-worker deployments use
+the same schema gate and lifetime leases. Shutdown releases storage ownership.
+
+For the first rollout, stop every old process and reload supervisor: older binaries
+do not honor the locks. Keep the existing encryption key, allow room for an
+independent candidate, and take your own full backup if older-binary recovery is
+required. A successful upgrade deletes its predecessor and retains no automatic
+upgrade backup. Failed preparation never starts HTTP; pending post-commit cleanup
+also blocks startup until completed. Do not delete lock or control files.
+
+External `config/` mounts and disposable `remote_cache/` are not upgrade generations.
+The entrypoint changes ownership only for server-owned paths, leaves external
+inputs alone, and never invokes historical migration scripts or continues after
+an upgrade failure. The v4.2.1 owned `config/server_config.yml` is a one-time
+admission exception: it enters the candidate and is deleted only after activation;
+read-only external config mounts are never adopted. Only supported local
+filesystems are suitable for generations.
+See [MIGRATIONS.md](MIGRATIONS.md) for admission, retry, offline restore/export,
+storage sizing, cleanup, and process-crash versus power-loss guarantees.
+
 In any situaion you need to have a secret encryption key.
 
 # Generate a 32 character secrey encryption key

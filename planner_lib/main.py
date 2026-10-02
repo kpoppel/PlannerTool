@@ -13,6 +13,7 @@ To create an app for production or local runs:
 Note: we intentionally do not create a global `app` at import time.
 """
 from dataclasses import dataclass, field
+import os
 from typing import Any, Dict, Tuple, cast
 
 from fastapi import FastAPI, HTTPException, Request
@@ -38,7 +39,7 @@ def _read_version() -> str:
 
 @dataclass
 class Config:
-    data_dir: str = "data"
+    data_dir: str = field(default_factory=lambda: os.environ.get('DATA_DIR', 'data'))
     storage_backend: str = "diskcache"  #"file"
     raw_serializer: str = "raw"
     enable_brotli: bool = False
@@ -406,7 +407,12 @@ def _build_app(
         try:
             yield
         finally:
-            pass
+            try:
+                if 'remote_cache_storage' in container._singletons:
+                    container._singletons['remote_cache_storage'].close()
+            finally:
+                if app.state.database_handle is not None:
+                    app.state.database_handle.close()
 
     app = FastAPI(title="AZ Planner Server", lifespan=lifespan)
     app.state.container = container
@@ -496,6 +502,38 @@ def _build_app(
 
 
 def create_app(config: Config) -> FastAPI:
+    """Prepare a compatible database before any schema-dependent application setup."""
+    from planner_lib.migrations.contracts import SchemaError, TARGET_REVISION, validate_schema_state
+    from planner_lib.migrations.coordinator import Database
+    from planner_lib.migrations.revisions import initialize, validate_records
+
+    handle = None
+    if config.raw_serializer != 'raw':
+        raise SchemaError('Server-owned database preparation requires raw authoritative storage')
+    if config.storage_backend == 'diskcache':
+        handle = Database(config.data_dir).prepare()
+        storage = handle.storage
+    elif config.storage_backend == 'memory':
+        storage = _build_storages(config)
+        if not storage.exists('system', 'schema_state'):
+            initialize(storage)
+        revision = validate_schema_state(storage.load('system', 'schema_state'))
+        if revision != TARGET_REVISION:
+            raise SchemaError('In-memory application fixtures must use the current schema')
+        validate_records(storage, revision)
+    else:
+        raise SchemaError('Application storage must be diskcache or isolated current-schema memory')
+    try:
+        app = _create_prepared_app(config, storage)
+        app.state.database_handle = handle
+        return app
+    except BaseException:
+        if handle is not None:
+            handle.close()
+        raise
+
+
+def _create_prepared_app(config: Config, storage_diskcache: StorageBackend) -> FastAPI:
     """Create and return a configured FastAPI application.
 
     Delegates to three focused helpers:
@@ -503,24 +541,9 @@ def create_app(config: Config) -> FastAPI:
       _build_services  — compose all services into a ServiceContainer
       _build_app       — create the FastAPI app, attach middleware and routes
     """
-    storage_diskcache = _build_storages(config)
-
     logger = configure_logging(storage_diskcache)
 
-    # Ensure default server_config exists in diskcache if not already present
-    try:
-        storage_diskcache.load('config', 'server_config')
-    except KeyError:
-        logger.info("server_config missing; creating default server_config")
-        default_cfg = {
-            'schema_version': 2,
-            'azure_devops_organization': None,
-            'log_level': 'INFO',
-            'feature_flags': {},
-        }
-        storage_diskcache.save('config', 'server_config', default_cfg)
-
-    server_cfg = storage_diskcache.load('config', 'server_config') or {}
+    server_cfg = storage_diskcache.load('config', 'server_config')
     feature_flags = server_cfg.get('feature_flags', {})
 
     container = _build_services(config, storage_diskcache, server_cfg, feature_flags, logger)

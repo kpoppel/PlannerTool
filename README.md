@@ -27,6 +27,13 @@
 Follow the instructions in `docs/DEPLOYMENT.md` for running the application.
 The standard development workflow is `./scripts/run_dev.sh` (Vite dev server + uvicorn backend).
 
+Database initialization and upgrades run inside server startup before HTTP is
+available. Set `DATA_DIR` to the installation root when using a custom location.
+Before first adoption, stop all old server processes and take an independent full
+backup if older-binary recovery is needed. Successful upgrades retain no predecessor.
+See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) for supported legacy admission and
+`python planner.py database status`, `retry`, `restore`, and `prune` operations.
+
 # Git hooks
 
 Install repository git hooks once after cloning:
@@ -84,7 +91,8 @@ database_path: ../shared-configs/database.yaml
 
 If neither key is present the server will fall back to `data/config/database.yaml`.
 
-The server will run a setup first time. If you need to run the setup again, either delete the diskcache data or run `python3 planner.py --setup`.
+Fresh installations initialize automatically. Do not delete database files while
+the server is running; use the documented offline recovery operations instead.
 
 # Testing
 

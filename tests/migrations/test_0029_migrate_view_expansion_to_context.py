@@ -1,24 +1,15 @@
 """Tests for migration 0029: move saved-view expansion flags into Context."""
-import importlib.util
-from pathlib import Path
 
+from planner_lib.migrations.revisions import upgrade_29
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
 
-MIGRATION_PATH = (
-    Path(__file__).resolve().parents[2]
-    / 'scripts'
-    / 'migrations'
-    / '0029_migrate_view_expansion_to_context.py'
-)
-
-
-def _load_migration(tmp_path):
-    spec = importlib.util.spec_from_file_location('migration_0029', MIGRATION_PATH)
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    migration._root = tmp_path
-    return migration
+def _upgrade_view(tmp_path):
+    storage = DiskCacheStorage(str(tmp_path / 'data' / 'cache'))
+    try:
+        upgrade_29(storage)
+    finally:
+        storage.close()
 
 
 def _seed_legacy_view(tmp_path):
@@ -56,8 +47,7 @@ def _load_view(tmp_path):
 def test_upgrade_migrates_expansion_to_context_and_removes_legacy_keys(tmp_path):
     _seed_legacy_view(tmp_path)
 
-    migration = _load_migration(tmp_path)
-    migration.upgrade()
+    _upgrade_view(tmp_path)
 
     view = _load_view(tmp_path)
     options = view['viewOptions']
@@ -73,11 +63,11 @@ def test_upgrade_migrates_expansion_to_context_and_removes_legacy_keys(tmp_path)
     assert 'expandTeamAllocated' not in options
 
 
-def test_upgrade_dry_run_does_not_change_saved_view(tmp_path):
+def test_upgrade_is_idempotent(tmp_path):
     _seed_legacy_view(tmp_path)
+    _upgrade_view(tmp_path)
     before = _load_view(tmp_path)
 
-    migration = _load_migration(tmp_path)
-    migration.upgrade(dry_run=True)
+    _upgrade_view(tmp_path)
 
     assert _load_view(tmp_path) == before

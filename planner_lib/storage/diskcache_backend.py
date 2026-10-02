@@ -20,6 +20,7 @@ class DiskCacheStorage(StorageBackend):
     def __init__(self, data_dir: str | Path = "./data/cache", size_limit: Optional[int] = None) -> None:
         self.data_dir = Path(data_dir)
         self.size_limit = size_limit
+        self._closed = False
         # Some diskcache versions expect a numeric size_limit; pass a large
         # integer when no explicit limit was requested to avoid comparisons
         # between int and None in diskcache internals.
@@ -29,9 +30,14 @@ class DiskCacheStorage(StorageBackend):
         self.file_extension: str = ""
 
     def _composite_key(self, namespace: str, key: str) -> str:
+        self._require_open()
         #safe_key = key.replace("::", "_::")
         safe_key = key.replace("/", "_").replace("\\", "_")
         return f"{namespace}::{safe_key}"
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise RuntimeError('DiskCache storage is closed')
 
     def save(self, namespace: str, key: str, value: Any, ttl_seconds=None) -> None:
         comp = self._composite_key(namespace, key)
@@ -60,6 +66,7 @@ class DiskCacheStorage(StorageBackend):
         self._cache.delete(comp)
 
     def list_keys(self, namespace: str) -> Iterable[str]:
+        self._require_open()
         prefix = f"{namespace}::"
         for k in self._cache.iterkeys():
             # keys are expected to be str-like; coerce defensively
@@ -75,6 +82,7 @@ class DiskCacheStorage(StorageBackend):
         return comp in self._cache
 
     def configure(self, **options) -> None:
+        self._require_open()
         # allow changing data_dir or size_limit by recreating cache
         new_dir = options.get("data_dir")
         new_size = options.get("size_limit", self.size_limit)
@@ -89,7 +97,6 @@ class DiskCacheStorage(StorageBackend):
             self._cache = Cache(directory=str(self.data_dir), size_limit=effective)
 
     def close(self) -> None:
-        try:
+        if not self._closed:
+            self._closed = True
             self._cache.close()
-        except Exception:
-            pass

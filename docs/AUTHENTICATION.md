@@ -5,7 +5,9 @@ email verification. Each installation has independent accounts and credentials.
 
 ## Enrollment and rollout
 
-Before upgrading, run `python3 scripts/migrate.py --apply --backup`. Migration
+Before first adoption, stop all older processes and retain an independent full
+backup if older-binary recovery is required. Server startup owns upgrades; see
+[MIGRATIONS.md](MIGRATIONS.md). Successful upgrades retain no predecessor. Migration
 0031 marks existing accounts unenrolled without changing their IDs, permissions,
 or encrypted Azure PATs. Existing sessions do not authenticate after the upgrade.
 
@@ -107,9 +109,11 @@ import sys
 from planner_lib.accounts.config import AccountManager
 from planner_lib.middleware.session import SessionManager
 from planner_lib.session.auth import AuthManager
-from planner_lib.storage.diskcache_backend import DiskCacheStorage
+from planner import Config
+from planner_lib.migrations.coordinator import Database
 
-storage = DiskCacheStorage('data/cache')
+handle = Database(Config().data_dir).prepare()
+storage = handle.storage
 try:
 	accounts = AccountManager(storage)
 	sessions = SessionManager(accounts, storage)
@@ -117,12 +121,13 @@ try:
 	email = sys.argv[1]
 	print(auth.reset(email))
 finally:
-	storage.close()
+	handle.close()
 PY
 ```
 
-Run from the repository root using the active installation's cache directory;
-adjust `data/cache` for other instances. This revokes every device and session
+Stop the server and run from the repository root with `DATA_DIR` set to the active
+installation root and its existing encryption key. The coordinator resolves and
+validates the selected generation rather than opening a new legacy cache. This revokes every device and session
 for the selected account but preserves its account ID, name, PAT, and permissions.
 The key is printed only to the local terminal for trusted handoff. Keep it outside
 the repository and logs. Open the planner, use Enrollment, and save the next key
@@ -151,6 +156,11 @@ and expiry dates, and the installation's first-admin bootstrap marker. It does
 not contain plaintext browser credentials or account keys. Backups still
 contain plaintext Azure PATs; protect them as sensitive files.
 
+Logical backups include a schema revision and never restore the server's schema
+state or generation pointer. Incompatible revisions and unsupported unversioned
+payload contracts are rejected before writes; live restore does not run migrations.
+Filesystem recovery and legacy-layout export are separate offline operations.
+
 Restore lets administrators independently select Config, User accounts, Views,
 and Scenarios. Leave **User accounts** unchecked to preserve current accounts,
 keys, PATs, permissions, and remembered-browser credentials. Accounts and their
@@ -168,7 +178,7 @@ time of the backup. Account restores without a complete authentication section
 or with old recovery-key fields are rejected before writes; create a new backup
 after upgrading rather than restoring a pre-feature account backup. Config-only restores remain
 supported. Backups containing email-owned views or scenarios are also rejected
-before writes; run migration 0032 and create a new backup after upgrading.
+before writes; create a new backup after the server-owned upgrade.
 
 Restoring historical authentication state can revive devices revoked since the
 backup, account keys consumed since then, and deleted accounts. Newer saved keys

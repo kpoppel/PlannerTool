@@ -63,6 +63,12 @@ access for users who cannot enroll, sign in again, or delete their account.
 Active sessions are cleared even when accounts are skipped. Backups contain
 plaintext PATs; the helper creates a private file and will not overwrite it.
 
+Logical exports now include `schema_revision`. Selective restore preserves it;
+unsupported revisions or old payload contracts are rejected without live migration.
+For complete filesystem recovery, use `python planner.py database` operations
+instead. See [the migration guide](../docs/MIGRATIONS.md). Successful automatic
+upgrades retain no predecessor; an older-binary return requires your own full backup.
+
 Run the cost endpoint helper as a module with `--cookies` as well:
 `python3 -m scripts.test_cost_endpoint --cookies "$HOME/planner-cookies.txt"`.
 
