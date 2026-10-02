@@ -10,6 +10,7 @@ import {
   TimelineEvents,
 } from '../core/EventRegistry.js';
 import { cmd, sel } from '../application/imports.js';
+import { isLowestContainer } from '../application/shared/ownership.js';
 import { findInBoard } from '../components/board-utils.js';
 import { pluginManager } from '../core/PluginManager.js';
 
@@ -540,7 +541,7 @@ export class PluginPlanHealthComponent extends LitElement {
    */
   _getTeamName(teamId) {
     try {
-      const teams = sel.selection.getTeams() || [];
+      const teams = sel.selection.getTeams();
       const team = teams.find((t) => String(t.id) === String(teamId));
       return team ? team.name : `Team ${teamId}`;
     } catch (e) {
@@ -549,33 +550,30 @@ export class PluginPlanHealthComponent extends LitElement {
   }
 
   /**
-   * Check for orphaned features/epics in team plans.
-   * - Epics that belong to a team plan but have no parent epic which is in a project plan
-   * - Features (non-epics) that belong to a team plan but have no parent epic
+   * Check for orphaned items in lowest-level container plans.
+   * - Root-level task types may have no parent.
+   * - Non-root task types need a parent item.
    */
   _checkOrphans(features, childrenByParent, visibleIds) {
     const issues = [];
 
     try {
-      const allFeatures = sel.feature?.getEffectiveFeatures?.() || [];
+      const allFeatures = sel.feature.getEffectiveFeatures();
       const featureMap = new Map(allFeatures.map((f) => [String(f.id), f]));
 
-      const projects = sel.selection.getProjects() || [];
-      const projectMap = new Map((projects || []).map((p) => [String(p.id), p]));
-
-      // Find all plan ids that are type 'team'
-      const teamPlanIds = new Set(
-        (projects || []).filter((p) => String(p.type) === 'team').map((p) => String(p.id))
+      const projects = sel.selection.getProjects();
+      const lowestContainerPlanIds = new Set(
+        projects.filter(isLowestContainer).map((p) => String(p.id))
       );
 
-      // Determine the minimum (top) hierarchy level present per team plan among visible
+      // Determine the minimum task-type level among visible items per lowest-level plan.
       // features.  Items at that level are the natural root of the plan and are never
       // flagged as orphans even when they have no parent.
       const planMinLevel = new Map(); // planId → min type-level number
       for (const feature of features) {
         if (!visibleIds.has(String(feature.id))) continue;
         const projectIdStr = feature.project ? String(feature.project) : null;
-        if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue;
+        if (!projectIdStr || !lowestContainerPlanIds.has(projectIdStr)) continue;
         const level = sel.feature.getTypeLevel(feature.type);
         const current = planMinLevel.get(projectIdStr);
         if (current === undefined || level < current) {
@@ -590,10 +588,10 @@ export class PluginPlanHealthComponent extends LitElement {
         if (!visibleIds.has(featureIdStr)) continue;
 
         const projectIdStr = feature.project ? String(feature.project) : null;
-        if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue;
+        if (!projectIdStr || !lowestContainerPlanIds.has(projectIdStr)) continue;
 
         const typeLevel = sel.feature.getTypeLevel(feature.type);
-        const topLevel = planMinLevel.get(projectIdStr) ?? 9999;
+        const topLevel = planMinLevel.get(projectIdStr);
 
         // Top-level type for this plan: not flagged as orphan
         if (typeLevel === topLevel) continue;
@@ -604,7 +602,7 @@ export class PluginPlanHealthComponent extends LitElement {
             feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
           : 'Item');
 
-        const parentId = feature.parentId || null;
+        const parentId = feature.parentId;
         if (!parentId) {
           issues.push({
             featureId: feature.id,
@@ -655,23 +653,23 @@ export class PluginPlanHealthComponent extends LitElement {
       const hierarchy = sel.feature.getTaskTypeHierarchy();
       if (!hierarchy || hierarchy.length === 0) return issues; // no hierarchy configured
 
-      const allFeatures = sel.feature?.getEffectiveFeatures?.() || [];
+      const allFeatures = sel.feature.getEffectiveFeatures();
       const featureMap = new Map(allFeatures.map((f) => [String(f.id), f]));
 
-      const projects = sel.selection.getProjects() || [];
-      const projectMap = new Map((projects || []).map((p) => [String(p.id), p]));
+      const projects = sel.selection.getProjects();
+      const projectMap = new Map(projects.map((p) => [String(p.id), p]));
 
-      const teamPlanIds = new Set(
-        (projects || []).filter((p) => String(p.type) === 'team').map((p) => String(p.id))
+      const lowestContainerPlanIds = new Set(
+        projects.filter(isLowestContainer).map((p) => String(p.id))
       );
 
-      // Determine the minimum (top) hierarchy level present per team plan among visible
-      // features.  Items at that level MUST be anchored to a project-type plan.
+      // Determine the minimum task-type level among visible items per lowest-level plan.
+      // Items at that level must be anchored to a higher-level plan.
       const planMinLevel = new Map(); // planId → min type-level number
       for (const feature of features) {
         if (!visibleIds.has(String(feature.id))) continue;
         const planId = feature.project ? String(feature.project) : null;
-        if (!planId || !teamPlanIds.has(planId)) continue;
+        if (!planId || !lowestContainerPlanIds.has(planId)) continue;
         const level = sel.feature.getTypeLevel(feature.type);
         const current = planMinLevel.get(planId);
         if (current === undefined || level < current) {
@@ -689,8 +687,8 @@ export class PluginPlanHealthComponent extends LitElement {
           sel.feature.getTypeDisplayName(feature.type) || feature.type || 'Item';
 
         // ----------------------------------------------------------------
-        // Check A: top-level item in a team plan must have a parent in a
-        // project-type plan.  Without it the team plan floats unanchored.
+        // Check A: a top-level item in a lowest-level plan needs a parent in a higher-level plan.
+        // Without it, the lowest-level plan floats unanchored.
         //
         // Only fires for items at the plan's minimum hierarchy level that
         // have no resolvable parent (no parentId, or parentId not in feature
@@ -698,22 +696,25 @@ export class PluginPlanHealthComponent extends LitElement {
         // parent) are handed off to Check B, which will flag the cross-type
         // violation there instead.
         // ----------------------------------------------------------------
-        let isTopLevelAnchoredToProject = false;
-        if (planId && teamPlanIds.has(planId)) {
-          const topLevel = planMinLevel.get(planId) ?? 9999;
+        let isTopLevelAnchored = false;
+        if (planId && lowestContainerPlanIds.has(planId)) {
+          const topLevel = planMinLevel.get(planId);
           if (typeLevel === topLevel) {
-            const parentId = feature.parentId || null;
+            const parentId = feature.parentId;
             const parent = parentId ? featureMap.get(String(parentId)) : null;
 
             if (parent) {
-              // Parent found — check if it's in a project-type plan.
-              // If yes, this is properly anchored; skip Check B (same-type
-              // cross-plan anchoring is intentional, not a hierarchy error).
-              // If no (parent is in a team plan etc.), let Check B flag it.
+              // A parent in a higher-level plan anchors this item.
+              // Same-type cross-plan anchoring is intentional, so skip Check B.
+              // Otherwise, Check B evaluates the task-type hierarchy.
+              // The parent plan is resolved from the parent's owning plan ID.
               const parentPlanId = parent.project ? String(parent.project) : null;
               const parentPlan = parentPlanId ? projectMap.get(parentPlanId) : null;
-              if (parentPlan != null && String(parentPlan.type) === 'project') {
-                isTopLevelAnchoredToProject = true;
+              if (
+                parentPlan != null &&
+                parentPlan.container_order < projectMap.get(planId).container_order
+              ) {
+                isTopLevelAnchored = true;
               }
               // else: parent in wrong plan type → Check B will catch it
             } else {
@@ -722,22 +723,22 @@ export class PluginPlanHealthComponent extends LitElement {
                 featureId: feature.id,
                 type: 'HierarchyViolation',
                 title: `Unanchored ${typeLabel}`,
-                description: `${typeLabel} is the top-level type in this team plan but has no parent in a project plan (the team plan is not connected to a project)`,
+                description: `${typeLabel} is the top-level type in this lowest-level plan but has no parent in a higher-level plan (the plan is not connected to a parent plan)`,
                 severity: 'warning',
               });
             }
           }
         }
 
-        // Skip Check B for top-level items correctly anchored to a project plan
-        // (e.g., team-Epic parented by a project-Epic — same type is expected).
-        if (isTopLevelAnchoredToProject) continue;
+        // Skip Check B for top-level items anchored to a higher-level plan.
+        // Cross-plan parenting of the same task type is intentional here.
+        if (isTopLevelAnchored) continue;
 
         // ----------------------------------------------------------------
         // Check B: items with a parent → validate parent type is higher in
         // the hierarchy (existing same-level / reverse-parenting checks).
         // ----------------------------------------------------------------
-        const parentId = feature.parentId || null;
+        const parentId = feature.parentId;
         if (!parentId) continue;
 
         const parent = featureMap.get(String(parentId));
@@ -1020,7 +1021,7 @@ export class PluginPlanHealthComponent extends LitElement {
       const board = findInBoard('feature-board');
 
       // Get full feature data from state (includes all properties like status)
-      const allFeatures = sel.feature?.getEffectiveFeatures?.() || [];
+      const allFeatures = sel.feature.getEffectiveFeatures();
 
       // Get IDs of visible features from board
       let visibleIds = new Set();
@@ -1152,7 +1153,7 @@ export class PluginPlanHealthComponent extends LitElement {
       const issueIdStr = String(issue.featureId);
 
       // Find and select the feature
-      const features = sel.feature?.getEffectiveFeatures?.() || [];
+      const features = sel.feature.getEffectiveFeatures();
       const feature = features.find((f) => String(f.id) === issueIdStr);
 
       if (feature) {

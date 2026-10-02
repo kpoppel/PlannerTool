@@ -75,7 +75,15 @@ let stateStubs = [];
 
 function stubState(features, projects) {
   stateStubs.push(sinon.stub(sel.feature, 'getEffectiveFeatures').returns(features));
-  stateStubs.push(sinon.stub(sel.selection, 'getProjects').returns(projects));
+  const configuredProjects = projects.map((project) => {
+    if (project.container_order !== undefined) return project;
+    return {
+      ...project,
+      container_order: project.type === 'team' ? 1 : 0,
+      container_types: ['project', 'team'],
+    };
+  });
+  stateStubs.push(sinon.stub(sel.selection, 'getProjects').returns(configuredProjects));
   stateStubs.push(sinon.stub(sel.feature, 'getTaskTypeHierarchy').returns(HIERARCHY));
   stateStubs.push(sinon.stub(sel.feature, 'getTypeLevel').callsFake(typeLevelFromHierarchy));
   stateStubs.push(
@@ -105,6 +113,24 @@ describe('PluginPlanHealthComponent._checkOrphans', () => {
     const visibleIds = new Set(['e1']);
     const issues = comp._checkOrphans([epic], new Map(), visibleIds);
     expect(issues).to.have.lengthOf(0);
+  });
+
+  it('checks orphaned items in a custom-named lowest-level container', () => {
+    const epic = mkEpic('e1', 'squad-plan', null);
+    const feature = mkFeatureFn('f1', 'squad-plan', null);
+    const projects = [{
+      id: 'squad-plan',
+      type: 'squad',
+      container_order: 1,
+      container_types: ['program', 'squad'],
+    }];
+    stubState([epic, feature], projects);
+
+    const visibleIds = new Set(['e1', 'f1']);
+    const issues = comp._checkOrphans([epic, feature], new Map(), visibleIds);
+    expect(issues).to.have.lengthOf(1);
+    expect(issues[0].featureId).to.equal('f1');
+    expect(issues[0].type).to.equal('Orphan');
   });
 
   it('does NOT flag a Feature that has a valid Epic parent', () => {
@@ -309,7 +335,28 @@ describe('PluginPlanHealthComponent._checkHierarchyViolations', () => {
     expect(issues).to.have.lengthOf(1);
     expect(issues[0].featureId).to.equal('e1');
     expect(issues[0].type).to.equal('HierarchyViolation');
-    expect(issues[0].description).to.include('project plan');
+    expect(issues[0].description).to.include('higher-level plan');
+  });
+
+  it('uses container order to recognize custom-named parent and child plans', () => {
+    const programEpic = mkEpic('pe1', 'program-plan', null);
+    const squadEpic = mkEpic('e1', 'squad-plan', 'pe1');
+    const unanchoredEpic = mkEpic('e2', 'squad-plan', null);
+    const projects = [
+      { id: 'program-plan', type: 'program', container_order: 0,
+        container_types: ['program', 'squad'] },
+      { id: 'squad-plan', type: 'squad', container_order: 1,
+        container_types: ['program', 'squad'] },
+    ];
+    stubState([programEpic, squadEpic, unanchoredEpic], projects);
+
+    const visibleIds = new Set(['pe1', 'e1', 'e2']);
+    const issues = comp._checkHierarchyViolations(
+      [programEpic, squadEpic, unanchoredEpic], visibleIds
+    );
+    expect(issues).to.have.lengthOf(1);
+    expect(issues[0].featureId).to.equal('e2');
+    expect(issues[0].description).to.include('higher-level plan');
   });
 
   it('skips top-level team-plan Epic that is properly anchored to a project plan', () => {
@@ -347,7 +394,7 @@ describe('PluginPlanHealthComponent._checkHierarchyViolations', () => {
     // e0 (top-level with no valid project-plan parent) fires the anchor issue
     const e0Issue = issues.find((i) => i.featureId === 'e0');
     expect(e0Issue, 'e0 should be flagged as unanchored').to.exist;
-    expect(e0Issue.description).to.include('project plan');
+    expect(e0Issue.description).to.include('higher-level plan');
   });
 
   it('flags top-level team-plan Epic whose parentId points to a missing feature', () => {
