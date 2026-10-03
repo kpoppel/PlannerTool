@@ -1080,6 +1080,7 @@ export class FeatureCardLit extends LitElement {
         : ''}
         <div class="drag-handle" data-drag-handle part="drag-handle"></div>
       </div>
+      <reconciliation-task-marker .featureId=${this.feature.id}></reconciliation-task-marker>
       <div
         class="ghost-title"
         aria-hidden="true"

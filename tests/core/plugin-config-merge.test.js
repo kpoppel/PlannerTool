@@ -1,4 +1,4 @@
-import { expect, describe, it, vi } from 'vitest';
+import { afterEach, expect, describe, it, vi } from 'vitest';
 import { mergePluginConfig } from '../../www/js/core/pluginConfigMerge.js';
 import PluginRegistry from '../../www/js/core/pluginRegistry.js';
 import modulesConfig from '../../www/js/modules.config.json';
@@ -42,6 +42,17 @@ const META = {
 };
 
 describe('mergePluginConfig', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it('retires Plan Health without warning on stored runtime configurations', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = mergePluginConfig(modulesConfig, [{ id: 'plugin-plan-health', enabled: true }]);
+    expect(result.modules.some((entry) => entry.id === 'plugin-plan-health')).to.equal(false);
+    expect(PluginRegistry).not.to.have.property('plugin-plan-health');
+    expect(result.modules.some((entry) => entry.id === 'plugin-reconciliation')).to.equal(true);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('exposes consistent registration metadata for every plugin', () => {
     for (const config of modulesConfig.modules) {
       const plugin = new PluginRegistry[config.id](config.id, config);

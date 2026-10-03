@@ -105,6 +105,19 @@ export class TopMenuBarLit extends LitElement {
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     }
     .menu-item:focus-visible { outline: 2px solid #8ec8ff; outline-offset: -2px; }
+    .menu-attention {
+      display: inline-grid;
+      place-items: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 3px;
+      box-sizing: border-box;
+      border-radius: 4px;
+      background: #f4c75b;
+      color: #292413;
+      font-weight: 700;
+      font-size: 12px;
+    }
 
     .menu-item {
       background: rgba(255, 255, 255, 0.06);
@@ -308,6 +321,7 @@ export class TopMenuBarLit extends LitElement {
     };
     bus.on(PluginEvents.REGISTERED, this._onPluginMenusChanged);
     bus.on(PluginEvents.UNREGISTERED, this._onPluginMenusChanged);
+    bus.on(PluginEvents.MENU_STATUS_CHANGED, this._onPluginMenusChanged);
     this._onPluginMenusChanged();
     this._onMenuResize = () => this._closeMenu(false);
     window.addEventListener('resize', this._onMenuResize);
@@ -397,6 +411,7 @@ export class TopMenuBarLit extends LitElement {
     }
     bus.off(PluginEvents.REGISTERED, this._onPluginMenusChanged);
     bus.off(PluginEvents.UNREGISTERED, this._onPluginMenusChanged);
+    bus.off(PluginEvents.MENU_STATUS_CHANGED, this._onPluginMenusChanged);
     if (this._onMenuResize) window.removeEventListener('resize', this._onMenuResize);
 
     // Clean up event listeners
@@ -512,7 +527,9 @@ export class TopMenuBarLit extends LitElement {
         aria-expanded=${this.openMenu === `plugin:${plugin.id}` ? 'true' : 'false'}
         title=${plugin.description}
         @click=${(event) => this._toggleMenu(`plugin:${plugin.id}`, event)}
-      >${plugin.name}</button>
+      >${plugin.name}${plugin.attentionCount > 0 ? html`
+        <span class="menu-attention" aria-label="${plugin.attentionCount} items need review">${plugin.attentionCount}</span>
+      ` : ''}</button>
     `);
   }
 

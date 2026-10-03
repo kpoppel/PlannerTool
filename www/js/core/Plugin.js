@@ -69,6 +69,7 @@ export class Plugin {
       persistent: this.config.persistent === true,
       fullscreen: this.isFullscreen,
       menuPosition: this.config.menuPosition,
+      attentionCount: 0,
     };
   }
 

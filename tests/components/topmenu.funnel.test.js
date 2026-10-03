@@ -6,6 +6,8 @@ import { pluginManager } from '../../www/js/core/PluginManager.js';
 import { SampleMenuPlugin } from '../../www/js/plugins/SampleMenuPlugin.js';
 import PluginReconciliation from '../../www/js/plugins/PluginReconciliation.js';
 import modulesConfig from '../../www/js/modules.config.json';
+import { bus } from '../../www/js/core/EventBus.js';
+import { PluginEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('TopMenu Data Funnel', () => {
   let menu;
@@ -73,7 +75,7 @@ describe('TopMenu Data Funnel', () => {
     ]);
   });
 
-  it('opens and closes a dropdown without deactivating the current tool', async () => {
+  it('opens a menu without a close button and dismisses with Escape', async () => {
     const tool = {
       id: 'test-active-tool', config: { dependencies: [], type: 'tool' },
       async init() {}, async activate() {}, async deactivate() {}, async destroy() {},
@@ -113,10 +115,12 @@ describe('TopMenu Data Funnel', () => {
     await menu.updateComplete;
     const content = menu.shadowRoot.querySelector('plugin-reconciliation-content');
     await content.updateComplete;
-    expect(content.shadowRoot.querySelectorAll('[data-queue]').length).to.equal(8);
+    expect(content.shadowRoot.querySelectorAll('[data-category]').length).to.equal(2);
+    expect(content.shadowRoot.querySelector('.close')).to.equal(null);
     expect(tool.active).to.equal(true);
     expect(plugin.active).to.equal(false);
-    content.shadowRoot.querySelector('.close').click();
+    menu.shadowRoot.querySelector('.plugin-menu-popover').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
     await menu.updateComplete;
     expect(menu.openMenu).to.equal(null);
     expect(menu.shadowRoot.activeElement).to.equal(trigger);
@@ -138,6 +142,21 @@ describe('TopMenu Data Funnel', () => {
     await menu.updateComplete;
     expect(menu.openMenu).to.equal(null);
     expect(menu.shadowRoot.querySelector('[data-plugin-id="test-before-menu"]')).to.equal(null);
+  });
+
+  it('updates a menu attention badge while its dropdown is closed', async () => {
+    const plugin = await registerMenu('test-before-menu', 'before-tools');
+    const metadata = plugin.getMetadata();
+    vi.spyOn(plugin, 'getMetadata').mockReturnValue({ ...metadata, attentionCount: 4 });
+    bus.emit(PluginEvents.MENU_STATUS_CHANGED, { id: plugin.id });
+    await menu.updateComplete;
+    const trigger = menu.shadowRoot.querySelector('[data-plugin-id="test-before-menu"]');
+    expect(trigger.querySelector('.menu-attention').textContent).to.equal('4');
+    expect(menu.openMenu).to.equal(null);
+    plugin.getMetadata.mockReturnValue({ ...metadata, attentionCount: 0 });
+    bus.emit(PluginEvents.MENU_STATUS_CHANGED, { id: plugin.id });
+    await menu.updateComplete;
+    expect(trigger.querySelector('.menu-attention')).to.equal(null);
   });
 
   it('renders canonical funnel metrics instead of a Team trigger', async () => {

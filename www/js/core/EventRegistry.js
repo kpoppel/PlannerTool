@@ -45,6 +45,7 @@ export const PluginEvents = {
   UNREGISTERED: Symbol('plugin:unregistered'),
   ACTIVATED: Symbol('plugin:activated'),
   DEACTIVATED: Symbol('plugin:deactivated'),
+  MENU_STATUS_CHANGED: Symbol('plugin:menu-status-changed'),
 };
 
 // Team-related events

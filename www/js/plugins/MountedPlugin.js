@@ -35,7 +35,6 @@ const pluginComponentLoaders = {
   './PluginHistoryComponent.js': () => import('./PluginHistoryComponent.js'),
   './PluginLinkEditorComponent.js': () => import('./PluginLinkEditorComponent.js'),
   './PluginMarkersComponent.js': () => import('./PluginMarkersComponent.js'),
-  './PluginPlanHealthComponent.js': () => import('./PluginPlanHealthComponent.js'),
   './PluginPortfolioComponent.lit.js': () => import('./PluginPortfolioComponent.lit.js'),
   './PluginXYBoardComponent.lit.js': () => import('./PluginXYBoardComponent.lit.js'),
   './SamplePluginComponent.lit.js': () => import('./SamplePluginComponent.lit.js'),

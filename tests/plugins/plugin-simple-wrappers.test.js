@@ -2,7 +2,6 @@ import { expect } from '@open-wc/testing';
 import { stub } from 'sinon';
 import PluginGraph from '../../www/js/plugins/PluginGraph.js';
 import PluginHistory from '../../www/js/plugins/PluginHistory.js';
-import PluginPlanHealth from '../../www/js/plugins/PluginPlanHealth.js';
 import PluginLinkEditor from '../../www/js/plugins/PluginLinkEditor.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginEvents } from '../../www/js/core/EventRegistry.js';
@@ -69,25 +68,6 @@ describe('Simple plugin wrappers lifecycle', () => {
     // if a futureMountedPlugin subclass adds `refresh()` that forwards to `_el.refresh`.
     // For now we verify activate/deactivate/destroy lifecycle only:
     expect(p._el).to.exist;
-
-    await p.deactivate();
-    expect(emitStub.calledTwice).to.be.true;
-
-    await p.destroy();
-  });
-
-  it('PluginPlanHealth lifecycle', async () => {
-    const p = new PluginPlanHealth('pph-test');
-    p._componentLoaded = true;
-    p._el = document.createElement('plugin-plan-health');
-    p._el.open = stub();
-    p._el.close = stub();
-    p._el.refresh = stub();
-    document.body.appendChild(p._el);
-
-    await p.activate();
-    expect(p.active).to.be.true;
-    expect(emitStub.calledOnce).to.be.true;
 
     await p.deactivate();
     expect(emitStub.calledTwice).to.be.true;

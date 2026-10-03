@@ -6,7 +6,7 @@
       "icon": "account_tree",
       "name": "Reconciliation",
       "version": "0.1.0",
-      "description": "Project-boundary reconciliation queue and workspace shell",
+      "description": "Live schedule conflicts and plan quality review",
       "enabled": true,
       "activateOnStartup": false,
       "exclusive": false,
@@ -65,19 +65,6 @@
       "activateOnStartup": false,
       "exclusive": false,
       "persistent": true,
-      "mountPoint": "feature-board",
-      "dependencies": []
-    },
-    {
-      "id": "plugin-plan-health",
-      "type": "tool",
-      "icon": "heartbeat",
-      "name": "Plan Health",
-      "version": "1.0.0",
-      "description": "Detect and highlight planning issues and anomalies",
-      "enabled": true,
-      "activateOnStartup": false,
-      "exclusive": true,
       "mountPoint": "feature-board",
       "dependencies": []
     },

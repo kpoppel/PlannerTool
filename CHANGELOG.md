@@ -30,6 +30,7 @@ Template - do not change :
 
 ### Changed
 - Consolidated cost calculation in the current calculator, moving shared month helpers and retiring unused v1 allocations and tests.
+- Replaced passive Plan Health with modular live Reconciliation detection, category-count menu summaries linking to focused issue review, and nonblocking baseline/scenario schedule warnings.
 - Generalized plan hierarchy, capacity graphs, cost ordering, admin validation, and generated plans to configured container types; lowest-level graphs use raw allocation lines.
 - Modularized DetailsPanel and Sidebar with managed controllers and explicit section contracts, removed Sidebar-owned workflow state, and persisted packed-mode Unplanned preferences through revision 34.
 - Modularized DetailsPanel rendering with explicit section models and actions, pure capacity/relation/scheduling projections, and an unchanged extracted stylesheet.
@@ -99,6 +100,7 @@ Template - do not change :
   without waiting for JavaScript, improving load time especially on first visit.
 
 ### Fixed
+- Plan Health checks now use configured container order, independent of container names.
 - FeatureBoard plan-filter parity: when all plans are deselected, card filtering now treats the empty selected-plan set as authoritative and renders an empty board instead of falling back to team-only matches.
 - Hardened Phase 3 hydration strictness: `hydrateBaseline`/`hydrateScenarioData` now reject invalid `ok` payload shapes with explicit `HYDRATION_FAILED` errors and no state mutation, and `application/imports.js` no longer exposes state-store data commands when `USE_STATE_STORE` is false.
 - Fixed admin config screens that were reading provider Result envelopes as raw payloads; groups/system/iterations/users/people/cost/area-mappings now consume `.data` correctly and display returned records, and Azure project browsing now reuses the saved ADO organization URL when calling `/api/azure/projects`.

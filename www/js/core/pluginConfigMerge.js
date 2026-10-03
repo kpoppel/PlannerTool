@@ -60,7 +60,7 @@
  */
 export function mergePluginConfig(modulesConfig, runtimeConfig) {
   const metaModules = modulesConfig.modules;
-  const deprecatedRuntimeIds = new Set(['plugin-cost-v1']);
+  const deprecatedRuntimeIds = new Set(['plugin-cost-v1', 'plugin-plan-health']);
 
   // Index metadata by id for fast lookup (skip entries without id)
   const metaById = new Map();

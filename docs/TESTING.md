@@ -143,6 +143,24 @@ Focused runs:
 Vitest runs jsdom/MSW component/domain suites and Node tooling with separate
 setup. Both projects participate in `npm test` and coverage.
 
+### Reconciliation Frontend
+
+Run the assessment, lifecycle, and component contracts:
+
+    npm test -- tests/plugins/reconciliation-assessment.test.js tests/plugins/reconciliation-controller.test.js tests/plugins/plugin-reconciliation.test.js tests/components/topmenu.funnel.test.js
+
+Run the isolated desktop browser flow:
+
+    npx playwright test --config tests/playwright.frontend.config.js --project chromium
+
+This suite starts a fresh Vite server on port 5175 and exercises the real frontend
+modules with in-memory fixtures. It needs no backend, account enrollment, cookie
+jar, or active deployment data. It covers native-module startup, a hidden-parent
+date conflict, baseline/scenario parity, dirty-state composition, menu sizing,
+review search, and keyboard focus restoration at desktop widths 1366 and 1024.
+It is separate from the backend-authenticated E2E configuration. Review screenshots
+are saved in the corresponding Playwright test output directories.
+
 With coverage:
     npm run test:coverage
     npm test -- --coverage
