@@ -16,6 +16,8 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Grouped reconciliation review findings into collapsible issue-type sections with instance counts and focused task details.
+- Added a Reconciliation menu toggle to show or hide feature-card markers without changing issue detection.
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`, ESLint guard rule `eslint-rules/no-runtime-state-violations.js`, inert `USE_STATE_STORE` flag in `config.js`); removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
 - Phase 1 migration scaffold landed: added Zustand vendor bundling (`src/vendor-entry-zustand.js` -> `www/js/vendor/zustand.js`), introduced `www/js/application/` + `core/StoreController.js` with initial command/selector seam, and removed dead `core/Container.js`/`core/ServiceRegistry.js` wiring.
 - Phase 3 completed: finalized strict-Result hydration commands (`hydrateBaseline`, `hydrateScenarioData`) and command coverage, added blocking legacy-parity integration coverage (`tests/application/hydrateBaseline.shadowParity.integration.test.js`), retired the temporary shadow harness (`SHADOW_HYDRATE_STORE`, `application/legacyBridge.js`, app shadow wiring), and confirmed regressions green (`npm test`, `npm run test:coverage`, `pytest`, Playwright smoke).

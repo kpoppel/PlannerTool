@@ -12,6 +12,7 @@ export function openReconciliationReview(category = 'all', selectedId = null) {
   if (review) {
     review.category = category;
     review.selectedId = selectedId;
+    review.selectedType = null;
     return;
   }
   review = document.createElement('reconciliation-review');
@@ -26,7 +27,7 @@ export function closeReconciliationReview() {
 
 export class ReconciliationReview extends LitElement {
   static properties = { snapshot: { state: true }, category: { state: true },
-    query: { state: true }, selectedId: { state: true } };
+    query: { state: true }, selectedId: { state: true }, selectedType: { state: true } };
 
   static styles = css`
     :host { color: var(--color-text, #222); font-family: inherit; }
@@ -48,6 +49,12 @@ export class ReconciliationReview extends LitElement {
     .workspace { display: grid; grid-template-columns: minmax(260px, 38%) minmax(0, 1fr); height: calc(100% - 160px); }
     .list, .detail { overflow: auto; padding: 16px 20px; }
     .list { border-right: 1px solid #ddd; }
+    .issue-group { border-top: 1px solid #ddd; padding: 10px 0; }
+    summary { cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1.5;
+      overflow-wrap: anywhere; }
+    summary:focus-visible { outline: 2px solid #167d69; outline-offset: 2px; }
+    .count { display: inline-block; margin-left: 6px; color: #58646c; font-weight: 400; }
+    .instances { padding-top: 10px; }
     .item { display: block; width: 100%; text-align: left; margin-bottom: 8px; overflow-wrap: anywhere; }
     .item[aria-pressed='true'] { border-color: #167d69; background: #eaf5f1; }
     .item strong, .item small { display: block; line-height: 1.5; }
@@ -64,6 +71,7 @@ export class ReconciliationReview extends LitElement {
     this.category = 'all';
     this.query = '';
     this.selectedId = null;
+    this.selectedType = null;
   }
 
   connectedCallback() {
@@ -115,11 +123,32 @@ export class ReconciliationReview extends LitElement {
   render() {
     const snapshot = this.snapshot;
     const query = this.query.trim().toLowerCase();
-    const groups = snapshot.groups.filter((group) =>
+    const groups = snapshot.groups.flatMap((group) => {
+      const types = new Map();
+      for (const issue of group.issues) {
+        if (!types.has(issue.type)) types.set(issue.type, []);
+        types.get(issue.type).push(issue);
+      }
+      return [...types].map(([type, issues]) => ({ ...group, type,
+        title: issues[0].title,
+        severity: issues.some((issue) => issue.severity === 'high') ? 'high' : issues[0].severity,
+        change: issues.some((issue) => issue.change === 'new') ? 'new'
+          : issues.some((issue) => issue.change === 'worsened') ? 'worsened' : issues[0].change,
+        issues }));
+    }).filter((group) =>
       (this.category === 'all' || group.category === this.category)
       && [taskLabel(snapshot, group.featureId), projectLabel(snapshot, group.featureId),
-        ...group.issues.map((issue) => issue.description)].join(' ').toLowerCase().includes(query));
-    const selected = groups.find((group) => group.id === this.selectedId);
+        group.title, ...group.issues.map((issue) => issue.description)]
+        .join(' ').toLowerCase().includes(query));
+    const types = new Map();
+    for (const group of groups) {
+      if (!types.has(group.type)) types.set(group.type, { title: group.title, groups: [], count: 0 });
+      const type = types.get(group.type);
+      type.groups.push(group);
+      type.count += group.issues.length;
+    }
+    const selected = groups.find((group) => group.id === this.selectedId
+      && (this.selectedType === null || group.type === this.selectedType));
     const current = selected === undefined ? groups[0] : selected;
     return html`<dialog aria-labelledby="review-heading" @cancel=${(event) => {
       event.preventDefault();
@@ -143,13 +172,18 @@ export class ReconciliationReview extends LitElement {
           <p role="status">${statusText(snapshot)}</p>
           ${groups.length === 0 && snapshot.status === 'ready' && snapshot.groups.length > 0
             ? html`<p>No matching issues.</p>` : ''}
-          ${groups.map((group) => html`<button class="item" aria-pressed=${current === group ? 'true' : 'false'}
-            @click=${() => { this.selectedId = group.id; }}>
-            <strong>${taskLabel(snapshot, group.featureId)}</strong>
-            <small>${projectLabel(snapshot, group.featureId)}</small>
-            <small>${group.title}</small>
-            <small>${group.severity === 'high' ? 'High impact - ' : ''}${changeLabel(group.change)}</small>
-          </button>`)}
+          ${[...types].map(([type, section]) => html`<details class="issue-group" data-issue-type=${type} open>
+            <summary>${section.title}<span class="count">${section.count}</span></summary>
+            <div class="instances">
+              ${section.groups.map((group) => html`<button class="item"
+                aria-pressed=${current === group ? 'true' : 'false'}
+                @click=${() => { this.selectedId = group.id; this.selectedType = group.type; }}>
+                <strong>${taskLabel(snapshot, group.featureId)}</strong>
+                <small>${projectLabel(snapshot, group.featureId)}</small>
+                <small>${group.severity === 'high' ? 'High impact - ' : ''}${changeLabel(group.change)}</small>
+              </button>`)}
+            </div>
+          </details>`)}
         </section>
         <section class="detail" aria-label="Issue details">
           ${current ? html`<h3>${taskLabel(snapshot, current.featureId)}</h3>

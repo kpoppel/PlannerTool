@@ -33,6 +33,9 @@ export class PluginReconciliationComponent extends LitElement {
     .category { display: flex; width: 100%; align-items: center; justify-content: space-between; }
     .count { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
     p { font-size: 12px; margin: 0 0 8px; overflow-wrap: anywhere; }
+    .marker-toggle { display: flex; align-items: center; gap: 8px; margin-top: 12px;
+      font-size: 12px; cursor: pointer; }
+    .marker-toggle input { flex-shrink: 0; margin: 0; }
   `;
 
   constructor() {
@@ -71,6 +74,11 @@ export class PluginReconciliationComponent extends LitElement {
           </button>`;
         })}
       </div>
+      <label class="marker-toggle">
+        <input type="checkbox" .checked=${snapshot.markersVisible}
+          @change=${(event) => reconciliation.setMarkersVisible(event.target.checked)}>
+        <span>Show markers on feature cards</span>
+      </label>
     `;
   }
 }

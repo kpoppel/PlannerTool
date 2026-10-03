@@ -5,7 +5,7 @@ function localDate(date) {
 }
 
 function emptySnapshot(status) {
-  return { status, scenarioName: '', issues: [], groups: [], visibleIds: new Set(),
+  return { status, markersVisible: true, scenarioName: '', issues: [], groups: [], visibleIds: new Set(),
     featuresById: new Map(), sourceById: new Map(), projectsById: new Map() };
 }
 
@@ -17,6 +17,7 @@ export class ReconciliationController {
     this.selectors = selectors;
     this.clock = clock;
     this.snapshot = emptySnapshot('inactive');
+    this._markersVisible = true;
     this._listeners = new Set();
     this._unsubscribe = null;
     this._timer = null;
@@ -47,8 +48,13 @@ export class ReconciliationController {
   }
 
   _publish(snapshot) {
-    this.snapshot = snapshot;
-    for (const listener of this._listeners) listener(snapshot);
+    this.snapshot = { ...snapshot, markersVisible: this._markersVisible };
+    for (const listener of this._listeners) listener(this.snapshot);
+  }
+
+  setMarkersVisible(visible) {
+    this._markersVisible = visible;
+    this._publish(this.snapshot);
   }
 
   issuesForFeature(featureId) {

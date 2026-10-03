@@ -81,7 +81,7 @@ for (const width of [1366, 1024]) {
       parentWidth: element.parentElement.clientWidth, scrollWidth: element.scrollWidth }));
     expect(fit.width).toBeLessThanOrEqual(fit.parentWidth);
     expect(fit.scrollWidth).toBeLessThanOrEqual(fit.parentWidth);
-    await menu.getByRole('button', { name: 'Review issues', exact: true }).click();
+    await menu.locator('[data-category="schedule"]').click();
     const dialog = page.locator('reconciliation-review dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText('12 days late');
@@ -112,7 +112,8 @@ test('scenario switching uses effective dates and restores the baseline assessme
   const trigger = page.locator('[data-plugin-id="plugin-reconciliation"]');
   await expect(trigger.locator('.menu-attention')).toHaveText('1');
   await trigger.click();
-  await expect(page.locator('plugin-reconciliation-content')).toContainText('Delivery alternative');
+  await page.locator('plugin-reconciliation-content [data-category="schedule"]').click();
+  await expect(page.locator('reconciliation-review dialog')).toContainText('Delivery alternative');
   await page.keyboard.press('Escape');
   await page.evaluate(async () => {
     const { store } = await import('/js/application/store.js');
@@ -120,4 +121,37 @@ test('scenario switching uses effective dates and restores the baseline assessme
   });
   await expect(trigger.locator('.menu-attention')).toHaveCount(0);
   await expect(page.locator('reconciliation-task-marker button')).toHaveCount(0);
+});
+
+test('reviews multiple tasks together in a collapsible issue-type group', async ({ page }, testInfo) => {
+  await editDates(page);
+  await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: [...state.baseline.features, { ...state.baseline.features[1],
+        id: 'second-delivery', title: 'Second customer delivery', end: '2026-10-24' }],
+    } }));
+  });
+  await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
+  await page.locator('plugin-reconciliation-content [data-category="schedule"]').click();
+  const dialog = page.locator('reconciliation-review dialog');
+  const group = dialog.locator('[data-issue-type="containment"]');
+  await expect(group.locator('summary')).toContainText('Task dates outside ancestor bounds');
+  await expect(group.locator('.count')).toHaveText('2');
+  await expect(group.locator('.item')).toHaveCount(2);
+  await group.locator('summary').click();
+  await expect(group.locator('.item').first()).toBeHidden();
+  await group.locator('summary').click();
+  await group.getByRole('button', { name: /Second customer delivery/ }).click();
+  await expect(dialog.locator('.detail h3')).toHaveText('Second customer delivery');
+  await expect(dialog.locator('.detail')).toContainText('14 days late');
+  for (const section of ['.list', '.detail']) {
+    const fits = await dialog.locator(section).evaluate((element) =>
+      element.scrollWidth <= element.clientWidth);
+    expect(fits).toBe(true);
+  }
+  await testInfo.attach('grouped-reconciliation-review', {
+    body: await page.screenshot({ path: testInfo.outputPath('grouped-review.png') }),
+    contentType: 'image/png',
+  });
 });

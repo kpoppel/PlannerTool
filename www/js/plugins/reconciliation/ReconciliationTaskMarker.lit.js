@@ -26,6 +26,7 @@ export class ReconciliationTaskMarker extends LitElement {
 
   render() {
     const snapshot = reconciliation.snapshot;
+    if (!snapshot.markersVisible) return html``;
     const id = String(this.featureId);
     const issues = reconciliation.issuesForFeature(id).filter((issue) => issue.category === 'schedule');
     if (!snapshot.visibleIds.has(id) || issues.length === 0) return html``;
