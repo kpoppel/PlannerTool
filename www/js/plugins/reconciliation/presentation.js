@@ -37,3 +37,52 @@ export function projectLabel(snapshot, featureId) {
   const project = snapshot.projectsById.get(String(feature.project));
   return project ? project.name : String(feature.project);
 }
+
+const CONSTRAINTS = {
+  containment: 'Task dates must stay within each scheduled ancestor\'s start and finish dates.',
+  'dependency-order': 'A successor must not start before its predecessor starts.',
+  'unavailable-dependency': 'Dependency start ordering requires both linked tasks to be loaded.',
+  'unavailable-dependency-dates': 'Dependency start ordering requires valid start dates on both tasks.',
+  'unavailable-ancestor': 'Hierarchy containment requires loaded tasks along the ancestor path.',
+  'unavailable-containment-dates': 'Hierarchy containment requires complete, valid date ranges on both tasks.',
+  'invalid-dates': 'Task dates must be valid, with start no later than finish.',
+  'past-unfinished': 'Work scheduled to finish in the past must be completed or rescheduled.',
+  'future-active': 'Active work must align with its scheduled start.',
+  'missing-parent': 'Non-root tasks need a parent at the configured hierarchy level.',
+  'unanchored-root': 'A lower-level plan root needs a link to a higher-level plan.',
+  'unavailable-parent': 'Parent alignment requires the linked parent to be loaded.',
+  'hierarchy-type': 'Parent links must follow configured task and plan hierarchy levels.',
+  'unplanned-child': 'Work under a scheduled parent needs a complete schedule for alignment review.',
+  'parent-state': 'Completed parents must not contain unfinished work.',
+  'hierarchy-cycle': 'Parent links must form an acyclic hierarchy.',
+  'team-allocation': 'Parent and child team allocations need to agree.',
+};
+
+export function findingExplanation(snapshot, issue) {
+  const constraint = CONSTRAINTS[issue.type];
+  if (constraint === undefined) throw new Error(`Unknown reconciliation rule ${issue.type}`);
+  const ids = new Set([issue.featureId, ...issue.path]);
+  if (issue.relatedId !== null) ids.add(issue.relatedId);
+  const plans = new Set();
+  let unavailable = false;
+  for (const id of ids) {
+    const feature = snapshot.featuresById.get(id);
+    if (feature === undefined) unavailable = true;
+    else plans.add(String(feature.project));
+  }
+  const affectedPlans = [...plans].map((id) => {
+    const project = snapshot.projectsById.get(id);
+    return project === undefined ? id : project.name;
+  });
+  if (unavailable) affectedPlans.push('Affected plan unavailable');
+  const contextual = issue.category === 'schedule' || issue.relatedId !== null
+    || ['missing-parent', 'unanchored-root', 'hierarchy-cycle', 'team-allocation'].includes(issue.type);
+  const impact = unavailable
+    ? 'Impact cannot be fully assessed until related task data is available.'
+    : plans.size > 1
+      ? 'Cross-plan impact: changing this task or link can affect commitments in related plans.'
+      : contextual
+        ? 'Related-work impact: review linked work before changing this task or its relationships.'
+        : 'Correction belongs to the owning plan; date or link changes still require related-work review.';
+  return { constraint, affectedPlans, impact };
+}

@@ -5,7 +5,8 @@ import { PluginEvents, UIEvents } from '../../core/EventRegistry.js';
 import { findInBoard } from '../../components/board-utils.js';
 import { SIDEBAR_STYLES } from '../../components/sidebar/Sidebar.styles.lit.js';
 import { reconciliation } from './runtime.js';
-import { categoryCounts, changeLabel, statusText, taskLabel, projectLabel } from './presentation.js';
+import { categoryCounts, changeLabel, statusText, taskLabel, projectLabel,
+  findingExplanation } from './presentation.js';
 
 let review = null;
 
@@ -104,7 +105,7 @@ export class ReconciliationReview extends LitElement {
     .muted { opacity: 0.8; font-size: 12px; }
     .relationship { border-top: 1px solid #ddd; padding: 12px 0; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-    dl { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 6px; font-size: 12px; }
+    dl { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 6px; font-size: 12px; }
     dt { opacity: 0.8; } dd { margin: 0; overflow-wrap: anywhere; }
   `];
 
@@ -283,7 +284,7 @@ export class ReconciliationReview extends LitElement {
     const source = this.snapshot.sourceById.get(featureId);
     const dates = (task) => `${task.start ? task.start : 'Unplanned'} to ${task.end ? task.end : 'Unplanned'}`;
     return html`<dl>
-      <dt>Project</dt><dd>${projectLabel(this.snapshot, featureId)}</dd>
+      <dt>Owning plan</dt><dd>${projectLabel(this.snapshot, featureId)}</dd>
       <dt>Effective dates</dt><dd>${dates(feature)}</dd>
       ${source ? html`<dt>Source dates</dt><dd>${dates(source)}</dd>` : ''}
     </dl>`;
@@ -294,25 +295,40 @@ export class ReconciliationReview extends LitElement {
       ${this._renderDates(current.featureId)}
       ${current.issues.length === 0 ? html`<p role="status">No remaining findings for this task in the current review scope.</p>` : ''}
       <div class="actions">
-        <button data-action="open-task" @click=${() => this._onTaskOpen(current.featureId)}>Open task</button>
+        <button data-action="open-task"
+          title=${`Open ${taskLabel(this.snapshot, current.featureId)} in ${projectLabel(this.snapshot, current.featureId)}; opening does not change task data.`}
+          @click=${() => this._onTaskOpen(current.featureId)}>Open task</button>
         <button data-action="locate-task"
           @click=${() => this._onLocate(current.featureId)}>Locate on board</button>
       </div>
       ${current.issues.filter((issue) => issue.type === issueType)
-        .map((issue) => html`<details class="relationship"
+        .map((issue) => {
+          const explanation = findingExplanation(this.snapshot, issue);
+          return html`<details class="relationship"
         data-issue-type=${issue.type} open>
         <summary @click=${() => this._onSelectIssue(issue)}>${issue.title}</summary>
         <p>${issue.description}</p>
-        <p class="muted">${issue.path.map((id) => taskLabel(this.snapshot, id)).join(' / ')}</p>
-        ${issue.category === 'schedule' ? html`<p>${issue.earlyDays} days early / ${issue.lateDays} days late</p>` : ''}
+        <dl>
+          <dt>Constraint</dt><dd>${explanation.constraint}</dd>
+          <dt>Owning plan</dt><dd>${projectLabel(this.snapshot, issue.featureId)}</dd>
+          <dt>Related work</dt><dd>${issue.path.map((id) => taskLabel(this.snapshot, id)).join(' / ')}</dd>
+          <dt>Affected plans</dt><dd>${explanation.affectedPlans.join(', ')}</dd>
+          ${issue.change !== undefined ? html`<dt>Change</dt><dd>${changeLabel(issue.change)}</dd>` : ''}
+          ${issue.severity === 'info' ? html`<dt>Assessment</dt><dd>Cannot assess</dd>` : ''}
+          ${issue.category === 'schedule' && issue.severity !== 'info' ? html`
+            <dt>Drift</dt><dd>${issue.earlyDays} days early / ${issue.lateDays} days late</dd>` : ''}
+          <dt>Impact</dt><dd>${explanation.impact} Opening or locating tasks does not change task data.</dd>
+        </dl>
         ${issue.relatedId !== null && this.snapshot.featuresById.has(issue.relatedId) ? html`
           ${this._renderDates(issue.relatedId)}
           <div class="actions">
-            <button @click=${() => this._onTaskOpen(issue.relatedId)}>Open related task</button>
+            <button title=${`Open ${taskLabel(this.snapshot, issue.relatedId)} in ${projectLabel(this.snapshot, issue.relatedId)}; opening does not change task data.`}
+              @click=${() => this._onTaskOpen(issue.relatedId)}>Open related task</button>
             <button
               @click=${() => this._onLocate(issue.relatedId)}>Locate related task</button>
           </div>` : ''}
-      </details>`)}
+      </details>`;
+        })}
     </div>`;
   }
 

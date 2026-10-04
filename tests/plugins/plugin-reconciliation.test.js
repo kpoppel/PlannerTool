@@ -423,6 +423,63 @@ describe('Reconciliation detection menu', () => {
     finishRender();
   });
 
+  it('explains incomplete dependency context without invented drift or related-task actions', async () => {
+    const { element } = await openMenu();
+    const state = createInitialAppState();
+    state.lifecycle.status = 'ready';
+    state.baseline.projects = [{ id: 'project', name: 'Delivery plan', type: 'project',
+      state_categories: { Working: 'InProgress' }, task_type_hierarchy: [{ types: ['Epic'] }] }];
+    state.baseline.features = [{ id: 'child', title: 'Delivery', type: 'Epic', project: 'project',
+      state: 'Working', start: '2026-10-01', end: '2026-10-10', parentId: null,
+      capacity: [], relations: [{ id: 'unloaded', type: 'Predecessor' }] }];
+    state.selection.projectIds = ['project'];
+    state.selection.featureStateNames = ['Working'];
+    store.setState(state, true);
+    openReconciliationReview('schedule', 'schedule:child');
+    await element.updateComplete;
+    const finding = element.shadowRoot.querySelector('.relationship');
+    expect(finding.textContent).toContain('Dependency context unavailable');
+    expect(finding.textContent).toContain('Cannot assess');
+    expect(finding.textContent).toContain('Delivery plan');
+    expect(finding.textContent).toContain('Task unloaded (not loaded)');
+    expect(finding.textContent).toContain('Affected plan unavailable');
+    expect(finding.textContent).not.toContain('undefined');
+    expect(finding.textContent).not.toContain('days early');
+    expect(finding.querySelector('button')).toBeNull();
+    expect(element.shadowRoot.querySelector('[data-action="open-task"]').title)
+      .toContain('Delivery plan');
+  });
+
+  it('shows constraint, affected plans and per-finding scenario status separately from drift', async () => {
+    const { element } = await openMenu();
+    const state = createInitialAppState();
+    const parent = { id: 'parent', title: 'Programme', type: 'Epic', project: 'programme',
+      state: 'Working', start: '2026-10-01', end: '2026-10-10', parentId: null,
+      capacity: [], relations: [] };
+    state.lifecycle.status = 'ready';
+    state.baseline.projects = ['programme', 'delivery'].map((id) => ({ id, name: `${id} plan`,
+      type: 'project', state_categories: { Working: 'InProgress' },
+      task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }));
+    state.baseline.features = [parent, { ...parent, id: 'child', title: 'Delivery',
+      project: 'delivery', type: 'Feature', parentId: 'parent' }];
+    state.selection.projectIds = ['delivery'];
+    state.selection.featureStateNames = ['Working'];
+    state.scenarios.items[0].overrides = { child: { end: '2026-10-22' } };
+    store.setState(state, true);
+    openReconciliationReview('schedule', 'schedule:child');
+    await element.updateComplete;
+    const finding = element.shadowRoot.querySelector('.relationship');
+    expect(finding.textContent).toContain('Constraint');
+    expect(finding.textContent).toContain('within');
+    expect(finding.textContent).toContain('Owning plan');
+    expect(finding.textContent).toContain('delivery plan');
+    expect(finding.textContent).toContain('programme plan');
+    expect(finding.textContent).toContain('12 days late');
+    expect(finding.textContent).toContain('New');
+    expect(finding.textContent).toContain('Cross-plan impact');
+    expect(finding.textContent).toContain('Opening or locating tasks does not change task data');
+  });
+
   it('opens a non-modal toolbox, retains hidden state and returns focus on dismissal', async () => {
     await openMenu();
     document.querySelector('reconciliation-review').close();

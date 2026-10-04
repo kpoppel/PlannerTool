@@ -339,6 +339,89 @@ test('auto-locates rendered context, reveals hidden ancestors and restores the b
   await expect.poll(boardIds).toEqual(['delivery', 'other']);
 });
 
+test('reveals filtered cross-plan dependency context without saving it or reverting hidden-toolbox edits', async ({ page }) => {
+  await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    const { initTimeline } = await import('/js/components/Timeline.lit.js');
+    await import('/js/components/FeatureBoard.lit.js');
+    store.setState((state) => ({ ...state,
+      baseline: { ...state.baseline, features: state.baseline.features.map((feature) =>
+        feature.id === 'delivery' ? { ...feature, relations: [{ id: 'programme', type: 'Predecessor' }] }
+          : { ...feature, start: '2026-10-05' }) },
+      selection: { ...state.selection, projectIds: ['delivery'] },
+      view: { ...state.view, context: { parent: false, child: false, dependency: false,
+        otherAllocations: false } },
+    }));
+    const root = document.createElement('timeline-board');
+    root.innerHTML = '<div id="scroll-container" style="position:relative;overflow:auto;height:600px;width:100%"><timeline-lit></timeline-lit><div id="board-area" style="position:relative;min-width:1800px"><feature-board></feature-board></div></div>';
+    document.querySelector('main').replaceChildren(root);
+    await initTimeline();
+    await root.querySelector('feature-board').renderFeatures();
+  });
+  const boardIds = () => page.evaluate(() => document.querySelector('feature-board')._fullRenderList
+    .filter((item) => !item.isGroup).map((item) => item.feature.id).sort());
+  await expect.poll(boardIds).toEqual(['delivery']);
+  const trigger = page.locator('[data-plugin-id="plugin-reconciliation"]');
+  await trigger.click();
+  await selectReviewTask(page, 'Integration', 'dependency-order');
+  await expect.poll(boardIds).toEqual(['delivery', 'programme']);
+  const finding = page.locator('reconciliation-review [data-issue-type="dependency-order"] .relationship');
+  await expect(finding).toContainText('must not start before its predecessor starts');
+  await expect(finding).toContainText('Cross-plan impact');
+  await expect(finding).toContainText('4 days early');
+  await expect(page.locator('feature-board [data-feature-id="delivery"]')).toHaveClass(/search-highlight/);
+  await page.getByRole('button', { name: 'Hide reconciliation toolbox', exact: true }).click();
+  await page.evaluate(async () => {
+    const { cmd, sel } = await import('/js/application/imports.js');
+    const { store } = await import('/js/application/store.js');
+    cmd.filter.setAllStatesSelected(false);
+    store.setState((state) => ({ ...state, scenarios: { ...state.scenarios,
+      items: state.scenarios.items.map((scenario) => ({ ...scenario,
+        overrides: { delivery: { end: '2026-10-09' } } })),
+    } }));
+    window.reviewSavedView = cmd.viewRestore.captureCurrentView();
+    window.reviewResolvedTasks = sel.scope.getResolvedFeatures();
+    await document.querySelector('feature-board').renderFeatures();
+  });
+  await expect.poll(boardIds).toEqual(['delivery', 'programme']);
+  await page.getByRole('button', { name: 'Show reconciliation toolbox', exact: true }).click();
+  await page.locator('reconciliation-review [data-context="all"]').click();
+  await expect.poll(boardIds).toEqual(['delivery', 'programme']);
+  await trigger.click();
+  await expect.poll(boardIds).toEqual([]);
+  const outcome = await page.evaluate(async () => {
+    const { cmd, sel } = await import('/js/application/imports.js');
+    const { store } = await import('/js/application/store.js');
+    return { savedViewUnchanged: JSON.stringify(cmd.viewRestore.captureCurrentView())
+        === JSON.stringify(window.reviewSavedView),
+      resolvedUnchanged: sel.scope.getResolvedFeatures() === window.reviewResolvedTasks,
+      projectIds: store.getState().selection.projectIds,
+      effectiveEnd: sel.feature.getEffectiveFeatureById('delivery').end,
+      sourceEnd: store.getState().baseline.features[1].end };
+  });
+  expect(outcome).toEqual({ savedViewUnchanged: true, resolvedUnchanged: true,
+    projectIds: ['delivery'], effectiveEnd: '2026-10-09', sourceEnd: '2026-10-10' });
+});
+
+test('shows incomplete relationship assessment without drift or unloaded-task editor actions', async ({ page }) => {
+  await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: state.baseline.features.map((feature) => feature.id === 'delivery'
+        ? { ...feature, relations: [{ id: 'missing-task', type: 'Predecessor' }] } : feature),
+    } }));
+  });
+  await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
+  await selectReviewTask(page, 'Integration', 'unavailable-dependency');
+  const finding = page.locator('reconciliation-review .relationship');
+  await expect(finding).toContainText('Cannot assess');
+  await expect(finding).toContainText('Task missing-task (not loaded)');
+  await expect(finding).toContainText('Affected plan unavailable');
+  await expect(finding).not.toContainText('days early');
+  await expect(finding.getByRole('button')).toHaveCount(0);
+  await expect(page.locator('reconciliation-review')).not.toContainText('No issues found');
+});
+
 test('keeps board and Sidebar interactive and removes hidden toolbox on plugin disable', async ({ page }) => {
   await editDates(page);
   await page.locator('[data-plugin-id="plugin-reconciliation"]').click();

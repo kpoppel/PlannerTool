@@ -2,7 +2,7 @@ import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import { store } from '../../www/js/application/store.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import { sel } from '../../www/js/application/imports.js';
+import { cmd, sel } from '../../www/js/application/imports.js';
 import { initTimeline, _resetTimelineState } from '../../www/js/components/Timeline.lit.js';
 import '../../www/js/components/FeatureBoard.lit.js';
 import '../../www/js/components/FeatureCard.lit.js';
@@ -96,6 +96,8 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
     await initTimeline();
     const el = await fixture(html`<feature-board></feature-board>`);
     const viewBefore = store.getState().view;
+    const savedViewBefore = cmd.viewRestore.captureCurrentView();
+    const resolvedBefore = sel.scope.getResolvedFeatures();
     const visibleBefore = sel.scope.getVisibleFeatures();
     el._foldedFeatures.add('parent');
     const groups = sinon.stub(sel.group, 'getDisplayGroupsForSelectedPlans').returns([
@@ -107,6 +109,8 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
     expect(el._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
       .to.deep.equal(['parent', 'child']);
     expect(sel.scope.getVisibleFeatures()).to.equal(visibleBefore);
+    expect(sel.scope.getResolvedFeatures()).to.equal(resolvedBefore);
+    expect(cmd.viewRestore.captureCurrentView()).to.deep.equal(savedViewBefore);
     expect(store.getState().view).to.equal(viewBefore);
     expect(el._foldedFeatures.has('parent')).to.be.true;
     expect(el.shadowRoot.querySelector('feature-group').collapsed).to.be.false;
@@ -118,6 +122,33 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
       .to.deep.equal(['other']);
     expect(el._collapsedGroups.has('review-group')).to.be.true;
     expect(el.shadowRoot.querySelector('feature-group').collapsed).to.be.true;
+
+    await el.setReconciliationContext({ filter: true, featureIds: new Set(['parent', 'child']) });
+    store.setState((current) => ({ ...current,
+      selection: { ...current.selection, teamIds: ['other-team'], featureStateNames: [] },
+      view: { ...current.view, context: { ...current.view.context, parent: false, child: false,
+        dependency: false }, options: { ...current.view.options, taskViewMode: 'team' } },
+      scenarios: { ...current.scenarios, items: current.scenarios.items.map((scenario) => ({
+        ...scenario, overrides: { child: { end: '2026-10-12' } },
+      })) },
+    }));
+    const changedView = cmd.viewRestore.captureCurrentView();
+    const changedSelection = store.getState().selection;
+    await el.renderFeatures();
+    expect(sel.scope.getVisibleFeatures()).to.have.length(0);
+    expect(el._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
+      .to.deep.equal(['parent', 'child']);
+    await el.setReconciliationContext({ filter: false, featureIds: new Set(['parent', 'child']) });
+    expect(el._fullRenderList.filter((item) => !item.isGroup).map((item) => item.feature.id))
+      .to.deep.equal(['parent', 'child']);
+    expect(cmd.viewRestore.captureCurrentView()).to.deep.equal(changedView);
+    await el.setReconciliationContext(null);
+    expect(el._fullRenderList.filter((item) => !item.isGroup)).to.have.length(0);
+    expect(store.getState().selection).to.equal(changedSelection);
+    expect(cmd.viewRestore.captureCurrentView()).to.deep.equal(changedView);
+    expect(sel.scope.getResolvedFeatures().find((feature) => feature.id === 'child').end)
+      .to.equal('2026-10-12');
+    expect(store.getState().baseline.features[1].end).to.equal('2026-10-10');
     groups.restore();
     store.setState(createInitialAppState(), true);
   });

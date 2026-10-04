@@ -19,6 +19,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Reconciliation Slice 2 documents isolated temporary board context, reports incomplete relationship data, and explains each finding's constraint, owning/affected plans, drift, scenario status, and navigation impact.
 - Grouped reconciliation review findings into collapsible issue-type sections with instance counts and focused task details.
 - Added a Reconciliation menu toggle to show or hide feature-card markers without changing issue detection.
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`, ESLint guard rule `eslint-rules/no-runtime-state-violations.js`, inert `USE_STATE_STORE` flag in `config.js`); removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
