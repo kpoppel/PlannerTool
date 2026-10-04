@@ -1,6 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { cmd, sel } from '../application/imports.js';
+import { projectPublication } from './scenarioPublication.js';
 
 /** Field names supported in feature-override rows, in display order. */
 const FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath', 'tags'];
@@ -34,12 +35,14 @@ const isStructuralOp = (op) =>
   op.type === 'create' || op.type === 'delete' ||
   (op.type === 'update' && op.fields && Object.keys(op.fields).length > 0);
 
-export class AzureDevopsModal extends LitElement {
+export class PublishScenarioModal extends LitElement {
   static properties = {
     overrides: { type: Object },
     state: { type: Object },
     /** Array<{ type:'create'|'update'|'delete', group?, groupId?, groupName?, fields? }> */
     pendingGroupChanges: { type: Array },
+    decisions: { type: Array },
+    publicationContext: { type: Object },
   };
 
   constructor() {
@@ -47,6 +50,9 @@ export class AzureDevopsModal extends LitElement {
     this.overrides = {};
     this.state = null;
     this.pendingGroupChanges = [];
+    this.decisions = [];
+    this.publicationContext = { source: [], referencePlanIds: [], projects: [], hierarchy: [],
+      today: new Date().toISOString().slice(0, 10) };
     this._selected = new Set();
   }
 
@@ -63,13 +69,13 @@ export class AzureDevopsModal extends LitElement {
 
   _formatRange(from, to) {
     // undefined → field not overridden, just show the original value
-    if (to === undefined) return from || '—';
-    const f = from || null;
-    const t = to || null; // normalise empty string to null
+    const f = from === undefined || from === null || from === '' ? null : from;
+    if (to === undefined) return f === null ? '—' : f;
+    const t = to === null || to === '' ? null : to;
     if (f === null && t === null) return '—';
-    if (t === null) return html`${f || '—'} \u2192 <em style="color:#c0392b">(cleared)</em>`;
+    if (t === null) return html`${f === null ? '—' : f} \u2192 <em style="color:#c0392b">(cleared)</em>`;
     if (f === t) return f;
-    return `${f || '—'} \u2192 ${t}`;
+    return `${f === null ? '—' : f} \u2192 ${t}`;
   }
 
   _parseTags(value) {
@@ -155,9 +161,9 @@ export class AzureDevopsModal extends LitElement {
       // Inline group-change cells on feature rows
       ...enrichedRows.filter((r) => r.groupDelta).map((r) => r.groupDelta.key),
       // Structural op rows — use original groupOps index
-      ...(groupOps || []).flatMap((op, i) => isStructuralOp(op) ? [`grp_${i}`] : []),
+      ...groupOps.flatMap((op, i) => isStructuralOp(op) ? [`grp_${i}`] : []),
       // Orphan member-only rows (tasks with group change but no field changes)
-      ...(orphanDeltaRows || []).map((d) => d.key),
+      ...orphanDeltaRows.map((d) => d.key),
     ];
     const anyUnselected = allKeys.some((k) => !this._selected.has(k));
     if (anyUnselected) allKeys.forEach((k) => this._selected.add(k));
@@ -181,8 +187,8 @@ export class AzureDevopsModal extends LitElement {
     const grpKeys = field === 'groupId'
       ? [
           ...enrichedRows.filter((r) => r.groupDelta).map((r) => r.groupDelta.key),
-          ...(groupOps || []).flatMap((op, i) => isStructuralOp(op) ? [`grp_${i}`] : []),
-          ...(orphanDeltaRows || []).map((d) => d.key),
+          ...groupOps.flatMap((op, i) => isStructuralOp(op) ? [`grp_${i}`] : []),
+          ...orphanDeltaRows.map((d) => d.key),
         ]
       : [];
     const keys = [...featureKeys, ...grpKeys];
@@ -205,7 +211,7 @@ export class AzureDevopsModal extends LitElement {
    *  Delete ops are atomic: one structural key, no individual member keys.
    */
   _onGrpCellClick(key) {
-    const groupOps = this.pendingGroupChanges || [];
+    const groupOps = this.pendingGroupChanges;
     const adding = !this._selected.has(key);
 
     const structuralMatch = key.match(/^grp_(\d+)$/);
@@ -214,8 +220,8 @@ export class AzureDevopsModal extends LitElement {
     if (structuralMatch) {
       const i  = Number(structuralMatch[1]);
       const op = groupOps[i];
-      if (op?.type === 'create') {
-        const memberKeys = (op.group?.members || []).map((t) => `grp_${i}_t_${t}`);
+      if (op.type === 'create') {
+        const memberKeys = op.group.members.map((taskId) => `grp_${i}_t_${taskId}`);
         if (adding) {
           // Selecting the create row does NOT auto-select members —
           // each member assignment is chosen independently.
@@ -231,7 +237,7 @@ export class AzureDevopsModal extends LitElement {
     } else if (memberMatch) {
       const i  = Number(memberMatch[1]);
       const op = groupOps[i];
-      if (op?.type === 'create' && adding) {
+      if (op.type === 'create' && adding) {
         // Can't assign to a group that isn't being created.
         this._selected.add(key);
         this._selected.add(`grp_${i}`);
@@ -255,9 +261,9 @@ export class AzureDevopsModal extends LitElement {
     const sid = String(id);
     const baselineGroup = sel.group.getBaselineGroupById(sid);
     if (baselineGroup && baselineGroup.name) return baselineGroup.name;
-    const fromPending = (groupOps || [])
-      .find((op) => op.group?.id && String(op.group.id) === sid)?.group?.name;
-    if (fromPending) return fromPending;
+    const fromPending = groupOps
+      .find((op) => op.type === 'create' && String(op.group.id) === sid);
+    if (fromPending !== undefined) return fromPending.group.name;
     return sid.length > 12 ? `${sid.slice(0, 8)}…` : sid;
   }
 
@@ -279,14 +285,14 @@ export class AzureDevopsModal extends LitElement {
    */
   _buildGroupChangeMaps(groupOps, featureSet) {
     const taskGroupMap = new Map();
-    for (const [i, op] of (groupOps || []).entries()) {
-      const groupName = op.group?.name ?? this._resolveGroupName(op.groupId, groupOps);
+    for (const [i, op] of groupOps.entries()) {
+      const groupName = op.type === 'create' ? op.group.name : this._resolveGroupName(op.groupId, groupOps);
       if (op.type === 'create') {
-        for (const taskId of (op.group?.members || []).map(String)) {
+        for (const taskId of op.group.members.map(String)) {
           if (!taskGroupMap.has(taskId))
             taskGroupMap.set(taskId, { opIdx: i, change: 'add', groupName, key: `grp_${i}_t_${taskId}` });
         }
-      } else if (op.memberDeltas?.length) {
+      } else if (op.memberDeltas !== undefined && op.memberDeltas.length > 0) {
         for (const { taskId, op: change } of op.memberDeltas) {
           const tid = String(taskId);
           if (!taskGroupMap.has(tid))
@@ -296,7 +302,7 @@ export class AzureDevopsModal extends LitElement {
     }
     const orphanDeltaRows = [];
     for (const [taskId, delta] of taskGroupMap.entries()) {
-      if (!(featureSet || new Set()).has(taskId))
+      if (!featureSet.has(taskId))
         orphanDeltaRows.push({ taskId, ...delta });
     }
     return { taskGroupMap, orphanDeltaRows };
@@ -324,8 +330,7 @@ export class AzureDevopsModal extends LitElement {
   _onSave() {
     // Feature overrides: only selected fields.
     const featuresOut = [];
-    for (const [id, ov] of Object.entries(this.overrides || {})) {
-      if (!ov || typeof ov !== 'object') continue;
+    for (const [id, ov] of Object.entries(this.overrides)) {
       const out = { id };
       for (const field of FIELDS) {
         if (this._selected.has(`${id}:${field}`) && field in ov) {
@@ -336,11 +341,11 @@ export class AzureDevopsModal extends LitElement {
     }
 
     // Group changes — each op type handled independently by original index.
-    const groupChanges = (this.pendingGroupChanges || []).reduce((acc, op, i) => {
+    const groupChanges = this.pendingGroupChanges.reduce((acc, op, i) => {
       if (op.type === 'create') {
         // Structural key must be selected — selecting any member auto-selects it (cascade).
         if (!this._selected.has(`grp_${i}`)) return acc;
-        const selectedMembers = (op.group?.members || []).map(String)
+        const selectedMembers = op.group.members.map(String)
           .filter((taskId) => this._selected.has(`grp_${i}_t_${taskId}`));
         acc.push({ ...op, group: { ...op.group, members: selectedMembers } });
       } else if (op.type === 'delete' && this._selected.has(`grp_${i}`)) {
@@ -348,7 +353,7 @@ export class AzureDevopsModal extends LitElement {
       } else if (op.type === 'update') {
         // Fields (name/color) and member deltas are independently selectable.
         const fieldsSel = op.fields && this._selected.has(`grp_${i}`);
-        const selectedDeltas = (op.memberDeltas || []).filter(
+        const selectedDeltas = (op.memberDeltas === undefined ? [] : op.memberDeltas).filter(
           ({ taskId }) => this._selected.has(`grp_${i}_t_${taskId}`)
         );
         if (fieldsSel || selectedDeltas.length > 0) {
@@ -363,7 +368,7 @@ export class AzureDevopsModal extends LitElement {
     }, []);
 
     this.dispatchEvent(
-      new CustomEvent('azure-save', {
+      new CustomEvent('scenario-publish', {
         detail: { features: featuresOut, groupChanges },
         bubbles: true,
         composed: true,
@@ -373,7 +378,40 @@ export class AzureDevopsModal extends LitElement {
   }
 
   _onCancel() {
+    this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
     this.remove();
+  }
+
+  _renderPublicationSummary() {
+    const impact = projectPublication({ ...this.publicationContext,
+      overrides: this.overrides, selected: this._selected });
+    const planName = (id) => {
+      const plan = this.publicationContext.projects.find((entry) => String(entry.id) === id);
+      return plan === undefined ? id : plan.name;
+    };
+    return html`
+      ${impact.localOnly.length > 0 ? html`<section aria-label="Local-only changes">
+        <h4>Local-only changes</h4>
+        ${impact.localOnly.map((entry) => html`<p>${entry.id}: ${entry.fields.join(', ')}</p>`)}
+      </section>` : ''}
+      ${impact.crossPlan.length > 0 ? html`<section aria-label="Cross-plan impact">
+        <h4>Cross-plan impact</h4>
+        ${impact.crossPlan.map((entry) => html`<p><strong>${entry.title}</strong>
+          (${planName(entry.project)}): ${entry.written ? 'Selected task write' : 'Affected only; no task write'}.
+          ${entry.findings.map((finding) => finding.title).join('; ')}</p>`)}
+      </section>` : ''}
+      ${impact.findings.length > 0 ? html`<section aria-label="Unresolved findings">
+        <h4>Unresolved findings</h4>
+        ${impact.findings.map((finding) => html`<p>${finding.title}: ${finding.description}</p>`)}
+      </section>` : ''}
+      ${this.decisions.length > 0 ? html`<section aria-label="Scenario exception decisions">
+        <h4>Scenario exception decisions</h4>
+        ${this.decisions.map((decision) => html`<p><strong>${decision.taskTitle}</strong>
+          (${decision.planName}): ${decision.findingTitle}.
+          ${decision.status === 'revoked' ? 'Revoked' : decision.saveStatus === 'saved'
+            ? 'Saved in this scenario; not published' : 'Acceptance not saved; not published'}.
+          ${decision.reason}</p>`)}
+      </section>` : ''}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -387,34 +425,35 @@ export class AzureDevopsModal extends LitElement {
    * @returns {Array<object>} rows with change flags and display data
    */
   _computeRows(entries) {
-    const normDate = (v) => v || null;
+    if (entries.length === 0) return [];
+    const normDate = (value) => value === undefined || value === '' ? null : value;
     // Build an id→feature map once so each row lookup is O(1) instead of O(n).
     const baselineById = new Map(
-      (this.state?.baselineFeatures || []).map((f) => [f.id, f])
+      this.state.baselineFeatures.map((feature) => [String(feature.id), feature])
     );
     return entries
-      .filter(([, ov]) => ov && typeof ov === 'object')
       .map(([id, ov]) => {
-        const base = baselineById.get(id) || {};
-        const origStart = base.start || '';
-        const origEnd = base.end || '';
-        const origCapacity = base.capacity || [];
-        const origState = base.state || '';
-        const origIterationPath = base.iterationPath || '';
-        const origTags = base.tags || '';
+        const base = baselineById.get(id);
+        if (base === undefined) throw new Error(`Source task ${id} is unavailable`);
+        const origStart = base.start;
+        const origEnd = base.end;
+        const origCapacity = base.capacity;
+        const origState = base.state;
+        const origIterationPath = base.iterationPath;
+        const origTags = base.tags;
         const startChanged = 'start' in ov && normDate(ov.start) !== normDate(origStart);
         const endChanged = 'end' in ov && normDate(ov.end) !== normDate(origEnd);
         const capacityChanged =
           ov.capacity && JSON.stringify(ov.capacity) !== JSON.stringify(origCapacity);
         const stateChanged = ov.state && ov.state !== origState;
         const iterationChanged =
-          'iterationPath' in ov && (ov.iterationPath || null) !== (origIterationPath || null);
+          'iterationPath' in ov && normDate(ov.iterationPath) !== normDate(origIterationPath);
         const tagsChanged = 'tags' in ov && this._tagsChanged(origTags, ov.tags);
 
         // Format capacity diff for display
         let capacityContent = '';
         if (capacityChanged) {
-          const teams = this.state?.teams || [];
+          const teams = this.state.teams;
           const origMap = new Map(origCapacity.map((c) => [c.team, c.capacity]));
           const newMap = new Map(ov.capacity.map((c) => [c.team, c.capacity]));
           const allTeams = new Set([...origMap.keys(), ...newMap.keys()]);
@@ -423,7 +462,8 @@ export class AzureDevopsModal extends LitElement {
             const origVal = origMap.get(teamId);
             const newVal = newMap.get(teamId);
             if (origVal === newVal) continue;
-            const name = teams.find((t) => t.id === teamId)?.name || teamId;
+            const team = teams.find((entry) => entry.id === teamId);
+            const name = team === undefined ? teamId : team.name;
             if (origVal === undefined)
               changes.push(html`<div><strong>${name}:</strong> +${newVal}%</div>`);
             else if (newVal === undefined)
@@ -551,15 +591,14 @@ export class AzureDevopsModal extends LitElement {
                     : html`<span style="font-size:0.9em;">—</span>`) : ''}
               ${showState ? tdFeature(r.stateChanged, r.id, 'state',
                   r.stateChanged
-                    ? html`<span style="font-size:0.9em;">${r.origState || '—'} → <strong>${r.ov.state}</strong></span>`
-                    : html`<span style="font-size:0.9em;">${r.origState || '—'}</span>`) : ''}
+                    ? html`<span style="font-size:0.9em;">${this._formatRange(r.origState, r.ov.state)}</span>`
+                    : html`<span style="font-size:0.9em;">${this._formatRange(r.origState, undefined)}</span>`) : ''}
               ${showIteration ? tdFeature(r.iterationChanged, r.id, 'iterationPath',
                   r.iterationChanged
                     ? html`<span style="font-size:0.9em;">
-                        ${r.origIterationPath || '—'} →
-                        <strong>${r.ov.iterationPath || html`<em style="color:#c0392b">(cleared)</em>`}</strong>
+                        ${this._formatRange(r.origIterationPath, r.ov.iterationPath)}
                       </span>`
-                    : html`<span style="font-size:0.9em;">${r.origIterationPath || '—'}</span>`) : ''}
+                    : html`<span style="font-size:0.9em;">${this._formatRange(r.origIterationPath, undefined)}</span>`) : ''}
               ${showTags ? tdFeature(r.tagsChanged, r.id, 'tags',
                   html`<span style="font-size:0.9em;line-height:1.4;">${this._formatTagsRange(r.origTags, r.ov.tags)}</span>`) : ''}
               ${showGroup
@@ -570,25 +609,25 @@ export class AzureDevopsModal extends LitElement {
             </tr>
           `)}
           ${
-            (groupOps || []).flatMap((op, i) => {
+            groupOps.flatMap((op, i) => {
               if (!isStructuralOp(op)) return [];
-              const resolvedGroup = op.group
-                ??
-                  (op.groupId ?
-                    sel.group.getBaselineGroupById(String(op.groupId))
-                  : null);
-              const planId = resolvedGroup?.plan_id || op.planId;
+              const resolvedGroup = op.type === 'create' ? op.group
+                : sel.group.getBaselineGroupById(String(op.groupId));
+              const planId = resolvedGroup.plan_id;
               const planName = planId
-                ? (this.state?.projects?.find((p) => String(p.id) === String(planId))?.name ?? planId)
+                ? (() => {
+                    const project = this.state.projects.find((entry) => String(entry.id) === String(planId));
+                    return project === undefined ? planId : project.name;
+                  })()
                 : '';
-              const grpName = op.group?.name ?? this._resolveGroupName(op.groupId, groupOps);
+              const grpName = op.type === 'create' ? op.group.name : this._resolveGroupName(op.groupId, groupOps);
               const itemLabel = planName
                 ? `Group '${grpName}' in ${planName}`
                 : `Group '${grpName}'`;
               const actionLabel =
                 op.type === 'create' ? html`<span style="color:#0a7c42;font-weight:600;">created</span>` :
                 op.type === 'delete' ? html`<span style="color:#c0392b;font-weight:600;">deleted</span>` :
-                html`renamed to '<strong>${op.fields?.name ?? '?'}</strong>'`;
+                html`updated: <strong>${Object.entries(op.fields).map(([field, value]) => `${field}: ${value}`).join(', ')}</strong>`;
               const key = `grp_${i}`;
               const sel = this._selected.has(key);
               return [html`
@@ -614,7 +653,7 @@ export class AzureDevopsModal extends LitElement {
           }
           ${
             /* Orphan rows: tasks with only a group change (no feature-field row above) */
-            (orphanDeltaRows || []).map((d) => html`
+            orphanDeltaRows.map((d) => html`
               <tr>
                 <td>
                   <input
@@ -643,10 +682,10 @@ export class AzureDevopsModal extends LitElement {
   }
 
   render() {
-    const groupOps = this.pendingGroupChanges || [];
+    const groupOps = this.pendingGroupChanges;
 
     // Compute feature-field rows.
-    const allRows = this._computeRows(Object.entries(this.overrides || {}));
+    const allRows = this._computeRows(Object.entries(this.overrides));
     const featureRows = allRows.filter((r) =>
       r.startChanged || r.endChanged || r.capacityChanged || r.stateChanged || r.iterationChanged || r.tagsChanged
     );
@@ -654,7 +693,8 @@ export class AzureDevopsModal extends LitElement {
 
     // Build group-change maps; enrich feature rows with inline group delta.
     const { taskGroupMap, orphanDeltaRows } = this._buildGroupChangeMaps(groupOps, featureSet);
-    const enrichedRows = featureRows.map((r) => ({ ...r, groupDelta: taskGroupMap.get(r.id) || null }));
+    const enrichedRows = featureRows.map((row) => ({ ...row,
+      groupDelta: taskGroupMap.has(row.id) ? taskGroupMap.get(row.id) : null }));
 
     const showStart     = enrichedRows.some((r) => r.startChanged);
     const showEnd       = enrichedRows.some((r) => r.endChanged);
@@ -669,7 +709,7 @@ export class AzureDevopsModal extends LitElement {
 
     return html`
       <modal-lit wide>
-        <div slot="header"><h3>Review and save changes</h3></div>
+        <div slot="header"><h3>Publish scenario</h3></div>
         <div>
           <style>
             p {
@@ -786,11 +826,12 @@ export class AzureDevopsModal extends LitElement {
               background: #e0e0e0;
             }
           </style>
-          ${!hasAny ?
-            html`<p style="color:#888;">No changes to save.</p>`
+          ${this._renderPublicationSummary()}
+          ${!hasAny && this.decisions.length === 0 ?
+            html`<p style="color:#888;">No changes to publish.</p>`
+          : !hasAny ? ''
           : html`
-              <p>Select which changes to persist:</p>
-              <p class="instruction">Select rows and/or cells to save by clicking a row checkbox or cell. Click a column header to toggle the whole column. Use the revert button to revert all changes to that task.</p>
+              <h4>Task and group writes</h4>
               <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
                 <button type="button" @click=${() => this._toggleAll(enrichedRows, groupOps, orphanDeltaRows)} class="btn">
                   Toggle All/None
@@ -805,7 +846,7 @@ export class AzureDevopsModal extends LitElement {
           <button class="btn" @click=${this._onCancel}>Cancel</button>
           ${hasAny ?
             html`<button class="btn primary" @click=${this._onSave}>
-              Save
+              Publish selected changes
             </button>`
           : ''}
         </div>
@@ -814,4 +855,4 @@ export class AzureDevopsModal extends LitElement {
   }
 }
 
-customElements.define('azure-devops-modal', AzureDevopsModal);
+customElements.define('publish-scenario-modal', PublishScenarioModal);

@@ -91,6 +91,34 @@ async function selectReviewTask(page, title, issueType = 'containment') {
 }
 
 for (const width of [1366, 1024]) {
+  test(`publication separates selected writes from cross-plan impact at desktop width ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const writes = [];
+    await page.route('**/api/tasks', (route) => {
+      if (route.request().method() === 'POST') writes.push(route.request().postDataJSON());
+      return route.fulfill({ json: [] });
+    });
+    await editDates(page, 'publication-review');
+    await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
+    await selectReviewTask(page, 'Integration');
+    await page.locator('reconciliation-review [data-action="publish-scenario"]').click();
+    const publication = page.locator('publish-scenario-modal');
+    await publication.getByRole('checkbox').check();
+    const impact = publication.locator('[aria-label="Cross-plan impact"]');
+    await expect(impact).toContainText('Programme');
+    await expect(impact).toContainText('Delivery team');
+    await expect(impact).toContainText('Affected only; no task write');
+    await expect(impact).toContainText('Selected task write');
+    await expect(publication.locator('[aria-label="Unresolved findings"]')).toContainText('Integration');
+    await testInfo.attach('selected-write-cross-plan-impact', {
+      body: await page.screenshot({ path: testInfo.outputPath('publication-impact.png') }),
+      contentType: 'image/png',
+    });
+    await publication.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(writes).toEqual([]);
+    await expect(page.locator('reconciliation-review .item[aria-pressed="true"]')).toContainText('Integration');
+  });
+
   test(`scenario acceptance saves separately from live findings at desktop width ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     const saves = [];
@@ -140,6 +168,23 @@ for (const width of [1366, 1024]) {
     expect(saves[0].data.overrides).toEqual({});
     expect(saves[0].data.pluginData['plugin-reconciliation'].decisions[0].reason).toBe('Agreed delivery window');
     await expect(review.locator('.exception-list')).toContainText('Saved in this scenario');
+    const retained = await review.evaluate((element) => ({ selectedId: element.selectedId,
+      selectedIssueId: element.selectedIssueId, reviewView: element.reviewView }));
+    await review.locator('[data-action="publish-scenario"]').click();
+    const publication = page.locator('publish-scenario-modal');
+    await expect(publication.locator('[aria-label="Scenario exception decisions"]'))
+      .toContainText('Saved in this scenario');
+    await expect(publication.locator('[aria-label="Scenario exception decisions"]'))
+      .toContainText('Agreed delivery window');
+    await testInfo.attach('scenario-publication-summary', {
+      body: await page.screenshot({ path: testInfo.outputPath('publication-summary.png') }),
+      contentType: 'image/png',
+    });
+    await publication.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(publication).toHaveCount(0);
+    expect(await review.evaluate((element) => ({ selectedId: element.selectedId,
+      selectedIssueId: element.selectedIssueId, reviewView: element.reviewView }))).toEqual(retained);
+    expect(saves).toHaveLength(1);
     await page.evaluate(async () => {
       const { cmd } = await import('/js/application/imports.js');
       cmd.scenario.activateScenario('baseline');

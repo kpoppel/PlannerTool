@@ -8,7 +8,7 @@ Workflow
 1. Clone baseline to create a new scenario.
 2. Make edits (move cards, update allocations, change dates).
 3. Save locally (unless autosave is enabled).
-4. Use "Save to Azure" to open the review modal and choose which changes to push.
+4. Use "Publish scenario" to open the review modal and choose which changes to push.
 
 Review modal
 - Lists changed fields and affected items.

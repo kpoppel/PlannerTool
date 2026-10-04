@@ -104,6 +104,14 @@ Slice 5 implementation and verification gates, not delivered Slice 4 behavior.
 
 ## Verification
 
+Slice 5 frontend review now lists scenario decisions, including acceptance-only
+scenarios, without making them live. PublishScenarioModal keeps selected task
+writes separate from cross-plan impacts and local-only changes. Toolbox save and
+publication entry retain issue context. An observed-source refresh preflight
+rejects changed review snapshots, but is not an atomic source/decision check.
+Live selection, publication and revocation remain gated on the server contract
+above; pending/saved scenario decisions are explicitly labelled not published.
+
 Focused regressions cover acceptance-only saves and failures, edits during saves,
 baseline/scenario separation, unrelated plugin edits, changes to either involved
 task, observed source updates while viewing Baseline, read-only/input guards,

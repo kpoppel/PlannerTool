@@ -1,4 +1,4 @@
-# Review Modal — Save to Azure
+# Review Modal — Publish scenario
 
 When pushing scenario changes back to Azure DevOps the application opens a Review Modal that lists proposed updates. This modal helps prevent accidental or broad overwrites.
 

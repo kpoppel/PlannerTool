@@ -17,11 +17,15 @@ vi.mock('../../www/js/application/imports.js', () => ({
   sel: mockSel,
 }));
 
-import { AzureDevopsModal } from '../../www/js/components/AzureDevopsModal.lit.js';
+import { PublishScenarioModal } from '../../www/js/components/PublishScenarioModal.lit.js';
 
-describe('AzureDevopsModal feature seam', () => {
+describe('PublishScenarioModal feature seam', () => {
+  it('registers the backend-neutral publication component', () => {
+    expect(customElements.get('publish-scenario-modal')).toBe(PublishScenarioModal);
+  });
+
   it('reverts through cmd.feature and clears selected feature cells', () => {
-    const modal = new AzureDevopsModal();
+    const modal = new PublishScenarioModal();
     modal.requestUpdate = vi.fn();
     modal._selected = new Set(['f-1:start', 'f-1:end', 'f-2:state']);
 
@@ -36,9 +40,29 @@ describe('AzureDevopsModal feature seam', () => {
 
   it('resolves deleted group names from baseline metadata', () => {
     mockSel.group.getBaselineGroupById.mockReturnValue({ name: 'Operations' });
-    const modal = new AzureDevopsModal();
+    const modal = new PublishScenarioModal();
 
     expect(modal._resolveGroupName('g-1', [])).toBe('Operations');
     expect(mockSel.group.getBaselineGroupById).toHaveBeenCalledWith('g-1');
+  });
+
+  it('summarizes scenario-only exceptions even without task edits', async () => {
+    const modal = new PublishScenarioModal();
+    modal.decisions = [{ id: 'finding:a', taskTitle: 'Task A', planName: 'Programme',
+      findingTitle: 'Invalid dates', status: 'active', saveStatus: 'saved', reason: 'Agreed window' }];
+    document.body.appendChild(modal);
+    await modal.updateComplete;
+    expect(modal.shadowRoot.textContent).toContain('Saved in this scenario');
+    expect(modal.shadowRoot.textContent).toContain('Agreed window');
+    expect(modal.shadowRoot.textContent).not.toContain('No changes to publish');
+    modal.remove();
+  });
+
+  it('cancels through the helper contract rather than leaving it unresolved', () => {
+    const modal = new PublishScenarioModal();
+    const closed = vi.fn();
+    modal.addEventListener('modal-close', closed);
+    modal._onCancel();
+    expect(closed).toHaveBeenCalledOnce();
   });
 });

@@ -13,7 +13,7 @@
   { "title": "Details Panel", "file": "details.md", "tags": ["details","edit"] },
   { "title": "Scenarios & Saving", "file": "scenarios.md", "tags": ["scenarios","save"] },
   { "title": "Iterations (timeboxes)", "file": "iterations.md", "tags": ["iterations","timebox"] },
-  { "title": "Review Modal (Save to Azure)", "file": "review_modal.md", "tags": ["save","review"] },
+  { "title": "Review Modal (Publish scenario)", "file": "review_modal.md", "tags": ["save","review"] },
   { "title": "Advanced Filtering (Examples)", "file": "advanced_filters.md", "tags": ["filters","advanced"] },
   { "title": "Keyboard Shortcuts", "file": "keyboard_shortcuts.md", "tags": ["shortcuts","keyboard","help"] },
   { "title": "Tools Overview", "file": "tools_overview.md", "tags": ["tools","overview","help"] },

@@ -73,6 +73,15 @@ export class ReconciliationController {
           revocationReason: 'Acceptance undone' } : decision) });
   }
 
+  decisionSummary(scenario) {
+    const decisions = exceptionDecisions(scenario);
+    const changed = this.store.getState().scenarios.changedIds.includes(scenario.id);
+    const saved = this._savedDecisions.get(scenario.id);
+    return decisions.map((decision) => ({ ...decision,
+      saveStatus: !changed || (saved !== undefined && saved.has(canonicalEvidence(decision)))
+        ? 'saved' : 'pending' }));
+  }
+
   subscribe(listener) {
     this._listeners.add(listener);
     return () => this._listeners.delete(listener);

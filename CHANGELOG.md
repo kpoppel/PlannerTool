@@ -19,6 +19,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Reconciliation Slice 5 frontend review adds backend-neutral scenario publication, selected-write cross-plan impact, scenario-only exception summaries, toolbox save/publish entry and stale-source rejection; the server live-register gate remains open.
 - DetailsPanel exposes a plugin-independent `focusSchedulingEditor()` API for opening the existing date editor from reconciliation.
 - Reconciliation Slice 4 stages reasoned scenario exceptions with pending/saved check-shield markers, an accepted-decisions view, task-evidence revocation and save-race protection; live publication remains Slice 5.
 - Reconciliation Slice 3 adds configured-state corrections, impact-reviewed date and recorded-dependency actions, read-only guards, and retained quality/scheduling warnings and selection through scenario edits and revert.

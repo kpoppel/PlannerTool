@@ -45,7 +45,7 @@ Recommended Workflows
   - After re-scheduling, verify capacity graphs (Capacity vs Allocation) using the Graph Type control.
 
 4. Preparing changes for Azure DevOps
-  - After editing a scenario, click `Save to Azure` to open the Review modal.
+  - After editing a scenario, click `Publish scenario` to open the Review modal.
   - Inspect proposed updates, deselect any changes you do not want to push, and confirm to write selected updates to Azure DevOps.
 
 5. Exporting or printing

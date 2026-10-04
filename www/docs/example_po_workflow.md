@@ -27,7 +27,7 @@ Priya has already configured her email and Personal Access Token (see [Getting S
 
 ## 5. Push changes back to Azure DevOps
 
-- Happy with the draft scenario, Priya opens the [Review Modal](review_modal.md) via "Save to Azure".
+- Happy with the draft scenario, Priya opens the [Review Modal](review_modal.md) via "Publish scenario".
 - She reviews the list of proposed date changes, deselects one story she is not ready to commit to yet, and confirms the rest.
 - The confirmed changes are written back to Azure DevOps as the source of truth for her team's board.
 

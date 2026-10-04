@@ -5,6 +5,7 @@ import { bus } from '../../core/EventBus.js';
 import { PluginEvents, UIEvents } from '../../core/EventRegistry.js';
 import { findInBoard } from '../../components/board-utils.js';
 import { SIDEBAR_STYLES } from '../../components/sidebar/Sidebar.styles.lit.js';
+import { publishScenario } from '../../components/scenarioPublication.js';
 import { reconciliation } from './runtime.js';
 import { categoryCounts, changeLabel, statusText, taskLabel, projectLabel,
   findingExplanation } from './presentation.js';
@@ -59,7 +60,7 @@ export class ReconciliationReview extends LitElement {
     _impactReview: { state: true }, _linkChoice: { state: true }, actionError: { state: true },
     _locateRevision: { state: true }, _taskRevealRevision: { state: true },
     reviewView: { state: true }, _exceptionReasons: { state: true }, _accepting: { state: true },
-    toolboxHidden: { state: true } };
+    toolboxHidden: { state: true }, _publishing: { state: true } };
 
   static styles = [SIDEBAR_STYLES, css`
     :host { position: fixed; top: 40px; left: 0; bottom: var(--app-footer-height, 64px);
@@ -151,6 +152,7 @@ export class ReconciliationReview extends LitElement {
     this.reviewView = 'findings';
     this._exceptionReasons = new Map();
     this._accepting = null;
+    this._publishing = false;
   }
 
   connectedCallback() {
@@ -310,6 +312,28 @@ export class ReconciliationReview extends LitElement {
 
   _onLocate(featureId) {
     findInBoard('feature-board').centerFeatureById(featureId);
+  }
+
+  async _onPublishScenario() {
+    this._requireEditable();
+    this._publishing = true;
+    this.actionError = '';
+    try {
+      const result = await publishScenario(sel.scenario.getActiveScenario());
+      if (!result.ok) this.actionError = result.error.message;
+    } finally {
+      this._publishing = false;
+      await this.updateComplete;
+      // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+      if (this.isConnected) this.shadowRoot.querySelector('[data-action="publish-scenario"]').focus();
+    }
+  }
+
+  async _onSaveScenario() {
+    this._requireEditable();
+    this.actionError = '';
+    const result = await cmd.scenario.saveScenario(sel.scenario.getActiveScenario().id);
+    if (!result.ok) this.actionError = result.error.message;
   }
 
   _renderDates(featureId) {
@@ -694,6 +718,15 @@ export class ReconciliationReview extends LitElement {
       <div class="filters expansion-section">
         <header><h2 class="section-title" id="review-heading"><span class="section-icon" aria-hidden="true">${'\u2699'}</span>Reconciliation</h2>
           <span class="scenario-name">${snapshot.scenarioName}</span></header>
+        <div class="actions">
+          <button data-action="save-scenario"
+            ?disabled=${sel.scenario.getActiveScenario().readonly === true || this._publishing}
+            @click=${() => this._onSaveScenario()}>Save scenario</button>
+          <button data-action="publish-scenario"
+            ?disabled=${sel.scenario.getActiveScenario().readonly === true || this._publishing}
+            @click=${() => this._onPublishScenario()}>Publish scenario</button>
+        </div>
+        ${this.actionError !== '' ? html`<p role="alert">${this.actionError}</p>` : ''}
         <div role="group" aria-labelledby="marker-label">
           <div class="group-label" id="marker-label">Board warning markers</div>
           <button class="marker-toggle" data-action="toggle-markers"
