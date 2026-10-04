@@ -4,6 +4,7 @@ import modulesConfig from '../../www/js/modules.config.json';
 import { store } from '../../www/js/application/store.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 import { reconciliation } from '../../www/js/plugins/reconciliation/runtime.js';
+import * as boardUtils from '../../www/js/components/board-utils.js';
 import { openReconciliationReview } from '../../www/js/plugins/reconciliation/ReconciliationReview.lit.js';
 import '../../www/js/plugins/reconciliation/ReconciliationTaskMarker.lit.js';
 
@@ -18,12 +19,15 @@ describe('Reconciliation detection menu', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-03T12:00:00'));
     store.setState(createInitialAppState(), true);
+    vi.spyOn(boardUtils, 'findInBoard').mockReturnValue({ centerFeatureById: vi.fn(),
+      setReconciliationContext: vi.fn(async () => {}), updateComplete: Promise.resolve(true) });
     HTMLDialogElement.prototype.showModal = vi.fn(function () { this.setAttribute('open', ''); });
     HTMLDialogElement.prototype.close = vi.fn(function () { this.removeAttribute('open'); });
   });
   afterEach(() => {
     for (const plugin of plugins.splice(0)) plugin.destroy();
     document.body.replaceChildren();
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -31,8 +35,8 @@ describe('Reconciliation detection menu', () => {
     const plugin = new PluginRegistry[config.id](config.id, config);
     plugins.push(plugin);
     await plugin.init();
-    const element = plugin.createMenuElement();
-    document.body.appendChild(element);
+    plugin.toggleMenu();
+    const element = document.querySelector('reconciliation-review');
     await element.updateComplete;
     return { plugin, element };
   }
@@ -62,9 +66,9 @@ describe('Reconciliation detection menu', () => {
     });
   });
 
-  it('requires initialization before creating its menu', () => {
+  it('requires initialization before toggling its toolbox', () => {
     const plugin = new PluginRegistry[config.id](config.id, config);
-    expect(() => plugin.createMenuElement()).toThrow('not initialized');
+    expect(() => plugin.toggleMenu()).toThrow('not initialized');
   });
 
   it('opens without activation and reports loading rather than a fabricated empty queue', async () => {
@@ -74,7 +78,7 @@ describe('Reconciliation detection menu', () => {
     expect(element.shadowRoot.querySelectorAll('[data-category]')).toHaveLength(2);
     expect(element.shadowRoot.querySelector('[role="status"]').textContent)
       .toContain('Loading');
-    expect(element.shadowRoot.querySelector('input[type="checkbox"]').checked).toBe(true);
+    expect(element.shadowRoot.querySelector('[data-action="toggle-markers"]').getAttribute('aria-pressed')).toBe('true');
     expect(element.shadowRoot.querySelectorAll('select')).toHaveLength(0);
     await expect(plugin.activate()).rejects.toThrow('not activated');
     await plugin.destroy();
@@ -102,26 +106,25 @@ describe('Reconciliation detection menu', () => {
     expect(plugin.getMetadata().attentionCount).toBe(1);
     document.body.appendChild(element);
     await element.updateComplete;
-    expect(element.shadowRoot.querySelector('h2')).toBeNull();
+    expect(element.shadowRoot.querySelector('h2').textContent).toContain('Reconciliation');
+    expect(element.shadowRoot.querySelector('h2 .section-icon').getAttribute('aria-hidden')).toBe('true');
     expect(element.shadowRoot.querySelector('.close')).toBeNull();
     expect(element.shadowRoot.querySelectorAll('.issue')).toHaveLength(0);
     expect(element.shadowRoot.querySelector('.review')).toBeNull();
-    expect(element.shadowRoot.textContent).not.toContain(reconciliation.snapshot.scenarioName);
+    expect(element.shadowRoot.textContent).toContain(reconciliation.snapshot.scenarioName);
     expect(element.shadowRoot.querySelector('[data-category="schedule"] .count').textContent)
       .toBe('1');
     expect(element.shadowRoot.querySelector('[data-category="quality"] .count').textContent)
       .toBe('0');
-    let closeEvent;
-    element.addEventListener('menu-close', (event) => { closeEvent = event; }, { once: true });
     element.shadowRoot.querySelector('[data-category="schedule"]').click();
-    expect(closeEvent.bubbles).toBe(true);
-    expect(closeEvent.composed).toBe(true);
     const categoryReview = document.querySelector('reconciliation-review');
     await categoryReview.updateComplete;
     expect(categoryReview.category).toBe('schedule');
-    expect(categoryReview.shadowRoot.querySelector('[aria-label="Issue category"]').value)
-      .toBe('schedule');
-    expect(categoryReview.shadowRoot.querySelector('.detail h3').textContent).toBe('Delivery');
+    expect(categoryReview.shadowRoot.querySelector('[data-category="schedule"]').getAttribute('aria-pressed'))
+      .toBe('true');
+    categoryReview.shadowRoot.querySelector('.item').click();
+    await categoryReview.updateComplete;
+    expect(categoryReview.shadowRoot.querySelector('.item[aria-pressed="true"] strong').textContent).toBe('Delivery');
     categoryReview.close();
     const marker = document.createElement('reconciliation-task-marker');
     marker.featureId = 'child';
@@ -143,9 +146,21 @@ describe('Reconciliation detection menu', () => {
     search.value = '';
     search.dispatchEvent(new Event('input'));
     await review.updateComplete;
+    const centerFeatureById = vi.fn();
+    vi.spyOn(boardUtils, 'findInBoard').mockReturnValue({ centerFeatureById,
+      setReconciliationContext: vi.fn(async () => {}), updateComplete: Promise.resolve(true) });
+    review.selectedId = review.snapshot.groups[0].id;
+    await review.updateComplete;
+    const selectedId = review.selectedId;
+    review._onLocate('child');
+    expect(centerFeatureById).toHaveBeenCalledWith('child');
+    expect(document.querySelector('reconciliation-review')).toBe(review);
+    expect(review.selectedId).toBe(selectedId);
+    expect(review.category).toBe('schedule');
+    expect(review.query).toBe('');
     review.shadowRoot.querySelector('[data-action="open-task"]').click();
     expect(store.getState().featureDisplay.selectedId).toBe('child');
-    expect(document.querySelector('reconciliation-review')).toBeNull();
+    expect(document.querySelector('reconciliation-review')).toBe(review);
     expect(store.getState().scenarios.items[0].overrides.child.end).toBe('2026-10-22');
   });
 
@@ -171,13 +186,13 @@ describe('Reconciliation detection menu', () => {
     await marker.updateComplete;
     await element.updateComplete;
     expect(marker.shadowRoot.querySelector('button')).not.toBeNull();
-    const toggle = element.shadowRoot.querySelector('input[type="checkbox"]');
-    expect(toggle.checked).toBe(true);
+    const toggle = element.shadowRoot.querySelector('[data-action="toggle-markers"]');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
     toggle.click();
     await marker.updateComplete;
     await element.updateComplete;
     expect(marker.shadowRoot.querySelector('button')).toBeNull();
-    expect(toggle.checked).toBe(false);
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
     expect(plugin.getMetadata().attentionCount).toBe(1);
     expect(element.shadowRoot.querySelector('[data-category="schedule"] .count').textContent).toBe('1');
     state.scenarios.items[0].overrides.child.end = '2026-10-23';
@@ -187,13 +202,13 @@ describe('Reconciliation detection menu', () => {
     element.remove();
     document.body.appendChild(element);
     await element.updateComplete;
-    expect(element.shadowRoot.querySelector('input[type="checkbox"]').checked).toBe(false);
-    element.shadowRoot.querySelector('input[type="checkbox"]').click();
+    expect(element.shadowRoot.querySelector('[data-action="toggle-markers"]').getAttribute('aria-pressed')).toBe('false');
+    element.shadowRoot.querySelector('[data-action="toggle-markers"]').click();
     await marker.updateComplete;
     expect(marker.shadowRoot.querySelector('button').title).toContain('13 days late');
   });
 
-  it('groups matching issue types with counts while keeping each task and relationship distinct', async () => {
+  it('lists tasks within their issue classes and retains resolved inline selections', async () => {
     await openMenu();
     const state = createInitialAppState();
     const parent = { id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
@@ -216,59 +231,247 @@ describe('Reconciliation detection menu', () => {
     openReconciliationReview('all', 'schedule:conflicted');
     const review = document.querySelector('reconciliation-review');
     await review.updateComplete;
-    const issueGroup = (type) => review.shadowRoot.querySelector(`[data-issue-type="${type}"]`);
-    expect(review.shadowRoot.querySelectorAll('[data-issue-type]')).toHaveLength(3);
-    expect(issueGroup('past-unfinished').querySelector('summary').textContent)
-      .toContain('Past finish date, still unfinished');
-    expect(issueGroup('past-unfinished').querySelector('.count').textContent).toBe('2');
-    expect(issueGroup('past-unfinished').querySelectorAll('.item')).toHaveLength(2);
+    const issueGroup = (type) => review.shadowRoot.querySelector(`.issue-class[data-issue-type="${type}"]`);
+    expect(review.shadowRoot.querySelectorAll('.list .item')).toHaveLength(4);
+    expect(issueGroup('containment').querySelector('summary').textContent)
+      .toContain('Task dates outside ancestor bounds');
+    expect(review.shadowRoot.querySelectorAll('.relationship')).toHaveLength(1);
     expect(issueGroup('containment').open).toBe(true);
-    expect(issueGroup('containment').textContent).toContain('High impact');
-    expect(issueGroup('dependency-order').textContent).not.toContain('High impact');
-    expect(review.shadowRoot.querySelector('.detail h3').textContent).toBe('Conflicted delivery');
+    expect(review.shadowRoot.querySelector('.item[aria-pressed="true"] strong').textContent).toBe('Conflicted delivery');
+    expect(review.shadowRoot.querySelectorAll('.task-detail .relationship')).toHaveLength(1);
+    expect(review.shadowRoot.querySelector('.task-detail').textContent).toContain('finishes 12 days late');
     issueGroup('dependency-order').querySelector('.item').click();
     await review.updateComplete;
-    expect(review.shadowRoot.querySelectorAll('.detail .relationship')).toHaveLength(1);
-    expect(review.shadowRoot.querySelector('.detail').textContent).toContain('before "Programme"');
-    expect(review.shadowRoot.querySelector('.detail').textContent).not.toContain('finishes 12 days late');
+    expect(review.shadowRoot.querySelector('.task-detail').textContent).toContain('before "Programme"');
+    expect(review.shadowRoot.querySelectorAll('.task-detail .relationship')).toHaveLength(1);
+    const secondGroup = review.snapshot.groups.find((group) => group.featureId === 'second');
+    review.shadowRoot.querySelector(`[data-task-id="${secondGroup.id}"]`).click();
+    await review.updateComplete;
+    expect(review.shadowRoot.querySelectorAll('.task-detail .relationship')).toHaveLength(1);
+    expect(review.shadowRoot.querySelector('.item[aria-pressed="true"] strong').textContent).toBe('Second delivery');
+    expect(review.shadowRoot.querySelector('.task-detail').textContent).not.toContain('finishes 12 days late');
     openReconciliationReview('schedule', 'schedule:conflicted');
     await review.updateComplete;
-    expect(review.shadowRoot.querySelector('.detail').textContent).toContain('finishes 12 days late');
-    openReconciliationReview();
+    expect(review.shadowRoot.querySelector('.task-detail').textContent).toContain('finishes 12 days late');
+    openReconciliationReview('quality');
 
     const search = review.shadowRoot.querySelector('input');
     search.value = 'Second delivery';
     search.dispatchEvent(new Event('input'));
     await review.updateComplete;
-    expect(review.shadowRoot.querySelectorAll('[data-issue-type]')).toHaveLength(1);
-    expect(issueGroup('past-unfinished').querySelector('.count').textContent).toBe('1');
-    expect(review.shadowRoot.querySelector('.detail h3').textContent).toBe('Second delivery');
+    review.shadowRoot.querySelector('.item').click();
+    await review.updateComplete;
+    expect(review.shadowRoot.querySelectorAll('.relationship')).toHaveLength(1);
+    expect(review.shadowRoot.querySelectorAll('.list .item')).toHaveLength(1);
+    expect(review.shadowRoot.querySelector('.item[aria-pressed="true"] strong').textContent).toBe('Second delivery');
     search.value = '';
     search.dispatchEvent(new Event('input'));
-    const category = review.shadowRoot.querySelector('select');
-    category.value = 'schedule';
-    category.dispatchEvent(new Event('change'));
+    review.shadowRoot.querySelector('[data-category="schedule"]').click();
     await review.updateComplete;
-    expect(review.shadowRoot.querySelectorAll('[data-issue-type]')).toHaveLength(2);
+    expect(review.shadowRoot.querySelectorAll('.list .item')).toHaveLength(2);
     expect(issueGroup('past-unfinished')).toBeNull();
-    store.setState({ ...state, baseline: { ...state.baseline,
-      features: [parent, { ...conflicted, start: '2026-10-01', end: '2026-10-10' }, first, second] } }, true);
+    openReconciliationReview('schedule', 'schedule:conflicted');
     await review.updateComplete;
-    expect(review.shadowRoot.querySelectorAll('[data-issue-type]')).toHaveLength(0);
-    expect(review.shadowRoot.textContent).toContain('No matching issues');
-    expect(review.shadowRoot.querySelector('.detail h3')).toBeNull();
+    store.setState({ ...state, baseline: { ...state.baseline,
+      features: [parent, { ...conflicted, start: '2026-10-01', end: '2026-10-10', relations: [] },
+        first, second, { ...conflicted, id: 'another-conflict', title: 'Another conflict' }] } }, true);
+    await review.updateComplete;
+    expect(review.shadowRoot.querySelectorAll('.relationship')).toHaveLength(0);
+    expect(review.shadowRoot.querySelectorAll('.list .item')).toHaveLength(2);
+    expect(review.shadowRoot.querySelector('.resolved-task h3').textContent).toBe('Conflicted delivery');
+    expect(review.shadowRoot.querySelector('.task-detail').textContent).toContain('No remaining findings');
+    expect(review.shadowRoot.querySelector('.item').getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('opens a searchable review dialog and removes it on keyboard dismissal', async () => {
+  it('groups issue classes, expands task details inline and places a marker toggle at the top', async () => {
+    const centerFeatureById = vi.fn();
+    vi.spyOn(boardUtils, 'findInBoard').mockReturnValue({
+      centerFeatureById, setReconciliationContext: vi.fn(async () => {}), updateComplete: Promise.resolve(true),
+    });
+    const { element } = await openMenu();
+    const state = createInitialAppState();
+    state.lifecycle.status = 'ready';
+    state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
+      state_categories: { Working: 'InProgress' },
+      task_type_hierarchy: [{ types: ['Feature'] }] }];
+    state.baseline.features = ['first', 'second'].map((id) => ({ id, title: id,
+      project: 'project', type: 'Feature', state: 'Working', start: '2026-10-01',
+      end: '2026-10-02', parentId: null, capacity: [], relations: [] }));
+    state.selection.projectIds = ['project'];
+    state.selection.featureStateNames = ['Working'];
+    store.setState(state, true);
+    await element.updateComplete;
+    const issueClass = element.shadowRoot.querySelector('.issue-class[data-issue-type="past-unfinished"]');
+    expect(issueClass).not.toBeNull();
+    expect(issueClass.querySelector('summary').textContent).toContain('2');
+    expect(element.shadowRoot.querySelector('.detail')).toBeNull();
+    const toggle = element.shadowRoot.querySelector('.filters [data-action="toggle-markers"]');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    toggle.click();
+    await element.updateComplete;
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    issueClass.open = true;
+    const second = element.snapshot.groups.find((group) => group.featureId === 'second');
+    issueClass.querySelector(`[data-task-id="${second.id}"]`).click();
+    await element.updateComplete;
+    await element._presentationComplete;
+    const selectedTask = issueClass.querySelector(`[data-task-id="${second.id}"]`).parentElement;
+    expect(selectedTask.querySelector('.task-detail')).not.toBeNull();
+    expect(selectedTask.querySelector('[data-action="open-task"]')).not.toBeNull();
+    expect(element.shadowRoot.querySelectorAll('.task-detail')).toHaveLength(1);
+    expect(centerFeatureById).toHaveBeenCalledWith('second');
+    expect(element.shadowRoot.querySelector('.filters header #review-heading')).not.toBeNull();
+    expect(toggle.closest('[role="group"]').getAttribute('aria-labelledby')).toBe('marker-label');
+    expect(element.shadowRoot.querySelector('#marker-label').textContent).toBe('Board warning markers');
+    expect(element.shadowRoot.querySelector('.categories').getAttribute('aria-labelledby')).toBe('issue-category-label');
+    expect(element.shadowRoot.querySelector('.categories .category').classList.contains('segment-btn')).toBe(true);
+    expect(element.shadowRoot.querySelector('.list > .section-title').textContent).toContain('Issues & actions');
+    expect(selectedTask.querySelector('.item').textContent).not.toContain('1 finding');
+    const calls = centerFeatureById.mock.calls.length;
+    selectedTask.querySelector('.item').click();
+    await element.updateComplete;
+    await element._presentationComplete;
+    expect(centerFeatureById).toHaveBeenCalledTimes(calls + 1);
+    selectedTask.querySelector('.relationship summary').click();
+    await element.updateComplete;
+    await element._presentationComplete;
+    expect(centerFeatureById).toHaveBeenCalledTimes(calls + 2);
+    selectedTask.querySelector('.relationship summary').click();
+    await element.updateComplete;
+    await element._presentationComplete;
+    expect(centerFeatureById).toHaveBeenCalledTimes(calls + 3);
+  });
+
+  it('counts multiple constraints within a class rather than other findings on the task', async () => {
+    const { element } = await openMenu();
+    const state = createInitialAppState();
+    const task = { title: 'Delivery', project: 'project', state: 'Working',
+      start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [] };
+    state.lifecycle.status = 'ready';
+    state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
+      state_categories: { Working: 'InProgress' }, task_type_hierarchy: [
+        { types: ['Initiative'] }, { types: ['Epic'] }, { types: ['Feature'] },
+      ] }];
+    state.baseline.features = [
+      { ...task, id: 'root', title: 'Programme', type: 'Initiative', parentId: null },
+      { ...task, id: 'parent', title: 'Parent', type: 'Epic', parentId: 'root' },
+      { ...task, id: 'child', type: 'Feature', parentId: 'parent', start: '2026-09-30', end: '2026-10-22',
+        relations: [{ type: 'Predecessor', id: 'parent' }] },
+    ];
+    state.selection.projectIds = ['project'];
+    state.selection.featureStateNames = ['Working'];
+    state.selection.taskTypeNames = ['Feature'];
+    store.setState(state, true);
+    openReconciliationReview('schedule', 'schedule:child');
+    await element.updateComplete;
+    const containment = element.shadowRoot.querySelector('.issue-class[data-issue-type="containment"]');
+    expect(containment.querySelector('.finding-count').textContent).toBe('2 findings in this class');
+    expect(containment.querySelectorAll('.task-detail .relationship')).toHaveLength(2);
+    expect(containment.querySelector('summary .count').textContent).toBe('1');
+    const dependency = element.shadowRoot.querySelector('.issue-class[data-issue-type="dependency-order"]');
+    expect(dependency).not.toBeNull();
+    expect(dependency.querySelector('.finding-count')).toBeNull();
+  });
+
+  it('renders relevant context before auto-locating, keeps counts stable and clears it on close', async () => {
+    const centerFeatureById = vi.fn();
+    let finishRender;
+    const board = { centerFeatureById, updateComplete: Promise.resolve(true),
+      setReconciliationContext: vi.fn(() => new Promise((resolve) => { finishRender = resolve; })) };
+    vi.spyOn(boardUtils, 'findInBoard').mockReturnValue(board);
+    const { element, plugin } = await openMenu();
+    const state = createInitialAppState();
+    const parent = { id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
+      state: 'Working', start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [], parentId: null };
+    state.lifecycle.status = 'ready';
+    state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
+      state_categories: { Working: 'InProgress' },
+      task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }];
+    state.baseline.features = [parent, { ...parent, id: 'child', type: 'Feature', parentId: 'parent', end: '2026-10-22' }];
+    state.selection.projectIds = ['project'];
+    state.selection.featureStateNames = ['Working'];
+    store.setState(state, true);
+    openReconciliationReview('schedule', 'schedule:child');
+    await element.updateComplete;
+    expect(element.shadowRoot.querySelector('.filters [data-context="all"]')).not.toBeNull();
+    expect(element.shadowRoot.querySelector('.task-detail [data-context]')).toBeNull();
+    expect(board.setReconciliationContext).toHaveBeenLastCalledWith({
+      filter: true, featureIds: new Set(['child', 'parent']),
+    });
+    expect(centerFeatureById).not.toHaveBeenCalled();
+    finishRender();
+    await element._presentationComplete;
+    expect(centerFeatureById).toHaveBeenCalledTimes(1);
+    expect(centerFeatureById).toHaveBeenCalledWith('child');
+    const counts = plugin.getMetadata().attentionCounts;
+    element.shadowRoot.querySelector('[data-context="all"]').click();
+    await element.updateComplete;
+    expect(board.setReconciliationContext).toHaveBeenLastCalledWith({
+      filter: false, featureIds: new Set(['child', 'parent']),
+    });
+    finishRender();
+    await element._presentationComplete;
+    expect(centerFeatureById).toHaveBeenCalledTimes(2);
+    expect(plugin.getMetadata().attentionCounts).toEqual(counts);
+    element._onToggleToolbox();
+    reconciliation.setMarkersVisible(!element.snapshot.markersVisible);
+    await element.updateComplete;
+    await element._presentationComplete;
+    expect(centerFeatureById).toHaveBeenCalledTimes(2);
+    element.close();
+    expect(board.setReconciliationContext).toHaveBeenLastCalledWith(null);
+    finishRender();
+  });
+
+  it('opens a non-modal toolbox, retains hidden state and returns focus on dismissal', async () => {
     await openMenu();
+    document.querySelector('reconciliation-review').close();
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
     openReconciliationReview();
     const review = document.querySelector('reconciliation-review');
     await review.updateComplete;
-    const dialog = review.shadowRoot.querySelector('dialog');
-    expect(dialog.getAttribute('aria-labelledby')).toBe('review-heading');
-    expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce();
-    expect(review.shadowRoot.querySelector('input[type="search"]')).not.toBeNull();
-    dialog.dispatchEvent(new Event('cancel'));
+    const toolbox = review.shadowRoot.querySelector('[role="region"]');
+    expect(toolbox.getAttribute('aria-labelledby')).toBe('review-heading');
+    expect(review.shadowRoot.querySelector('dialog')).toBeNull();
+    expect(HTMLDialogElement.prototype.showModal).not.toHaveBeenCalled();
+    const search = review.shadowRoot.querySelector('input[type="search"]');
+    search.value = 'retained search';
+    search.dispatchEvent(new Event('input'));
+    search.focus();
+    review.shadowRoot.querySelector('[aria-label="Hide reconciliation toolbox"]').click();
+    await review.updateComplete;
+    expect(toolbox.hidden).toBe(true);
+    expect(toolbox.hasAttribute('inert')).toBe(true);
+    const restore = review.shadowRoot.querySelector('[aria-label="Show reconciliation toolbox"]');
+    expect(review.shadowRoot.activeElement).toBe(restore);
+    restore.click();
+    await review.updateComplete;
+    expect(toolbox.hidden).toBe(false);
+    expect(search.value).toBe('retained search');
+    toolbox.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(document.querySelector('reconciliation-review')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('orders category task counts and distinguishes empty scope from health', async () => {
+    const { plugin, element } = await openMenu();
+    expect([...element.shadowRoot.querySelectorAll('[data-category]')]
+      .map((button) => button.dataset.category)).toEqual(['quality', 'schedule']);
+    expect(plugin.getMetadata().attentionCounts.map((category) => category.id))
+      .toEqual(['quality', 'schedule']);
+    const state = createInitialAppState();
+    state.lifecycle.status = 'ready';
+    store.setState(state, true);
+    await element.updateComplete;
+    expect(element.shadowRoot.querySelector('[role="status"]').textContent)
+      .toContain('No tasks in the current scope');
+    expect(plugin.getMetadata().attentionCounts.every((category) => category.count === 0)).toBe(true);
+    store.setState({ ...state, lifecycle: { ...state.lifecycle, status: 'error' } }, true);
+    await element.updateComplete;
+    expect(element.shadowRoot.querySelector('[role="status"]').textContent)
+      .toContain('Plan data unavailable');
+    expect(plugin.getMetadata().attentionStatus).toContain('cannot be assessed');
   });
 });

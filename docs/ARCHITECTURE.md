@@ -151,17 +151,31 @@ to match the directive implementation used by the application.
 
 ### 5.2 Sidebar section contracts
 
-`Sidebar.lit.js` composes Team Drill-down, Hierarchy Controls, Task Filters, and Footer
+`Sidebar.lit.js` composes Team Drill-down, Hierarchy Controls, and Task Filters
 renderers under `components/sidebar/`. Renderers receive explicit `{ model, actions }`
 values and do not read selectors, subscribe, or call host methods. The shell preserves
 `app-sidebar`, its shadow root, layout, and programmatic command adapters.
 `Sidebar.styles.lit.js` preserves the original CSS order and cascade.
 
 `SidebarController` projects presentation from stable store dependencies, manages board
-fold-state notifications, and owns health requests and queued animation frames.
-Disconnect cancels queued frames, removes subscriptions, and invalidates asynchronous
-responses; reconnect establishes one fresh set of subscriptions. Mounting or becoming
+fold-state notifications, and owns queued animation frames.
+Disconnect cancels queued frames and removes subscriptions;
+reconnect establishes one fresh set of subscriptions. Mounting or becoming
 ready does not initialize, reset, or otherwise mutate restored application state.
+
+`SidebarFooter.lit.js` now defines the independently mounted `app-footer` rather
+than a Sidebar section. It owns health requests, ignores obsolete responses after
+disconnect, and subscribes to scope dependencies for the informational task count.
+Sidebar and the Reconciliation toolbox reserve its fixed bottom space, keeping
+application status visible while the toolbox overlays or reveals Sidebar controls.
+
+Reconciliation uses `FeatureBoard.setReconciliationContext({ filter, featureIds })`
+for transient presentation (`featureIds` is a Set of loaded task IDs). The board
+composes it with ordinary visible features and temporarily reveals required folded
+branches and groups, without changing scope selectors or store/view state. Passing
+`null` restores ordinary presentation. Review selection awaits that layout before
+`centerFeatureById`, which also mounts and briefly retains virtualized navigation
+targets for highlighting. Closing or disabling review releases this context.
 
 Task-type commands atomically update selected names and hidden types. Selectors expose
 effective selected names without requiring a mounted Sidebar; Cost and saved-view

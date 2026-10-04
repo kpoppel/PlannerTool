@@ -1,7 +1,13 @@
 export const CATEGORIES = [
-  { id: 'schedule', label: 'Schedule conflicts' },
-  { id: 'quality', label: 'Plan quality' },
+  { id: 'quality', label: 'Within selected plans', icon: '\u2637' },
+  { id: 'schedule', label: 'Across plans & dependencies', icon: '\u2194' },
 ];
+
+export function categoryCounts(snapshot) {
+  return CATEGORIES.map((category) => ({ ...category,
+    count: new Set(snapshot.groups.filter((group) => group.category === category.id)
+      .map((group) => group.featureId)).size }));
+}
 
 export function changeLabel(change) {
   if (change === 'new') return 'New';

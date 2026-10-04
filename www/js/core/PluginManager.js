@@ -262,6 +262,14 @@ export class PluginManager {
     return plugin.createMenuElement();
   }
 
+  toggleMenu(pluginId) {
+    const plugin = this.plugins.get(pluginId);
+    if (!(plugin instanceof MenuPlugin)) {
+      throw new Error(`Plugin ${pluginId} does not implement the menu plugin contract`);
+    }
+    plugin.toggleMenu();
+  }
+
   /**
    * Load plugins from config.
    *

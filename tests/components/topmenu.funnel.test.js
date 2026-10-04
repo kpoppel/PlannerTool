@@ -113,16 +113,19 @@ describe('TopMenu Data Funnel', () => {
     const trigger = menu.shadowRoot.querySelector('[data-plugin-id="plugin-reconciliation"]');
     trigger.click();
     await menu.updateComplete;
-    const content = menu.shadowRoot.querySelector('plugin-reconciliation-content');
+    const content = document.querySelector('reconciliation-review');
     await content.updateComplete;
     expect(content.shadowRoot.querySelectorAll('[data-category]').length).to.equal(2);
     expect(content.shadowRoot.querySelector('.close')).to.equal(null);
     expect(tool.active).to.equal(true);
     expect(plugin.active).to.equal(false);
-    menu.shadowRoot.querySelector('.plugin-menu-popover').dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
+    expect(menu.shadowRoot.querySelector('.plugin-menu-popover')).to.equal(null);
+    expect(trigger.getAttribute('aria-pressed')).to.equal('true');
+    trigger.click();
     await menu.updateComplete;
     expect(menu.openMenu).to.equal(null);
+    expect(document.querySelector('reconciliation-review')).to.equal(null);
+    expect(trigger.getAttribute('aria-pressed')).to.equal('false');
     expect(menu.shadowRoot.activeElement).to.equal(trigger);
   });
 

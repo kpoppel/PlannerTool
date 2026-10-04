@@ -11,6 +11,9 @@ Template - do not change :
 ## [v] - unreleased
 ### Added
 ### Changed
+- Task warning markers now scroll the reconciliation toolbox to the selected task's expanded details and actions, including repeated selection and hidden review.
+- Reconciliation groups labelled Sidebar-style controls and issue actions into two blue sections, re-highlights tasks on repeated clicks, and shows only class-specific multiple-finding counts.
+- Reconciliation adopts Sidebar-styled issue-class accordions, inline task actions, clearer local/cross-plan labels, a top marker toggle, and automatic task location with temporary board context.
 ### Fixed
 ---
 
@@ -31,6 +34,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Reconciliation now toggles directly from its active top-bar button, keeps an independent status footer visible, and separates category controls, issue classes, and selected-task details without an internal close button.
+- Reconciliation Slice 1 adds separate category task counts and a non-modal Sidebar toolbox with retained review state, task-first navigation, and hide/restore controls.
 - Consolidated cost calculation in the current calculator, moving shared month helpers and retiring unused v1 allocations and tests.
 - Replaced passive Plan Health with modular live Reconciliation detection, category-count menu summaries linking to focused issue review, and nonblocking baseline/scenario schedule warnings.
 - Generalized plan hierarchy, capacity graphs, cost ordering, admin validation, and generated plans to configured container types; lowest-level graphs use raw allocation lines.

@@ -11,6 +11,7 @@
 import { expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/Sidebar.lit.js';
+import '../../www/js/components/sidebar/SidebarFooter.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { BoardEvents, FilterEvents, FeatureEvents } from '../../www/js/core/EventRegistry.js';
@@ -23,6 +24,7 @@ import { renderSidebarTaskFilters } from '../../www/js/components/sidebar/Sideba
 
 describe('Sidebar task-type filter', () => {
   let sidebar;
+  let footer;
   let originalCheckHealth;
 
   beforeEach(async () => {
@@ -45,7 +47,10 @@ describe('Sidebar task-type filter', () => {
     });
     sidebar = document.createElement('app-sidebar');
     document.body.appendChild(sidebar);
+    footer = document.createElement('app-footer');
+    document.body.appendChild(footer);
     await sidebar.updateComplete;
+    await footer.updateComplete;
     // Reset type visibility via seam so store-backed selector state is authoritative.
     cmd.view.setTypeVisibility('epic', true);
     cmd.view.setTypeVisibility('feature', true);
@@ -54,6 +59,7 @@ describe('Sidebar task-type filter', () => {
   afterEach(() => {
     cmd.view.setTaskViewMode('plan');
     if (sidebar && sidebar.isConnected) sidebar.remove();
+    footer.remove();
     dataService.checkHealth = originalCheckHealth;
     sinon.restore();
   });
@@ -66,16 +72,16 @@ describe('Sidebar task-type filter', () => {
       },
     });
 
-    await sidebar.refreshServerStatus();
+    await footer.refreshServerStatus();
 
-    expect(sidebar.serverName).to.equal('Planner API');
-    expect(sidebar.serverStatus).to.equal('4.5.6 | Server: ok - Uptime: 1h 1m');
+    expect(footer.serverName).to.equal('Planner API');
+    expect(footer.serverStatus).to.equal('4.5.6 | Server: ok - Uptime: 1h 1m');
   });
 
   it('keeps its extracted stylesheet in the existing shadow root', () => {
     expect(sidebar.constructor.styles).to.equal(SIDEBAR_STYLES);
     expect(SIDEBAR_STYLES.cssText).to.include('.team-drilldown-grid');
-    expect(SIDEBAR_STYLES.cssText).to.include('.sidebar-footer-box');
+    expect(sidebar.shadowRoot.querySelector('.sidebar-config')).to.equal(null);
     expect(sidebar.shadowRoot).to.exist;
   });
 
@@ -109,13 +115,13 @@ describe('Sidebar task-type filter', () => {
     console.error = (...args) => loggedErrors.push(args);
 
     try {
-      await sidebar.refreshServerStatus();
+      await footer.refreshServerStatus();
     } finally {
       console.error = originalConsoleError;
     }
 
-    expect(sidebar.serverStatus).to.equal('Server: error');
-    expect(loggedErrors).to.deep.equal([['[Sidebar] Health check failed', error]]);
+    expect(footer.serverStatus).to.equal('Server: error');
+    expect(loggedErrors).to.deep.equal([['[AppFooter] Health check failed', error]]);
   });
 
   it('toggles state filters through the existing application command', async () => {
@@ -402,11 +408,13 @@ describe('Sidebar task-type filter', () => {
   });
 
   it('shows the resolved task count as informational footer data', async () => {
-    sidebar.resolvedTasksCount = 12;
-    sidebar.requestUpdate();
-    await sidebar.updateComplete;
-
-    expect((sidebar.shadowRoot || sidebar).textContent).to.include('Tasks loaded: 12');
+    await footer.updateComplete;
+    expect(footer.shadowRoot.textContent).to.include('Tasks loaded: 2');
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: state.baseline.features.slice(0, 1),
+    } }));
+    await footer.updateComplete;
+    expect(footer.shadowRoot.textContent).to.include('Tasks loaded: 1');
   });
 
   it('uses display-only team selection from the Sidebar', () => {
@@ -425,15 +433,15 @@ describe('Sidebar task-type filter', () => {
   it('ignores a pending health response after disconnection', async () => {
     let resolve;
     dataService.checkHealth = () => new Promise((done) => { resolve = done; });
-    const previous = sidebar.serverStatus;
-    const pending = sidebar.refreshServerStatus();
-    sidebar.remove();
+    const previous = footer.serverStatus;
+    const pending = footer.refreshServerStatus();
+    footer.remove();
     resolve({ ok: true, data: {
       status: 'ok', server_name: 'Obsolete', version: '9.9.9', uptime_seconds: 0,
     } });
     await pending;
-    expect(sidebar.serverStatus).to.equal(previous);
-    expect(sidebar.serverName).to.not.equal('Obsolete');
+    expect(footer.serverStatus).to.equal(previous);
+    expect(footer.serverName).to.not.equal('Obsolete');
   });
 
   it('cancels pending frames and cleans up board subscriptions across reconnects', async () => {
