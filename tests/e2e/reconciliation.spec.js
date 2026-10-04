@@ -90,6 +90,190 @@ async function selectReviewTask(page, title, issueType = 'containment') {
   await issueClass.locator('.item').filter({ hasText: title }).click();
 }
 
+for (const width of [1366, 1024]) {
+  test(`scenario acceptance saves separately from live findings at desktop width ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const saves = [];
+    await page.route('**/api/scenario', async (route) => {
+      saves.push(route.request().postDataJSON());
+      await route.fulfill({ json: { id: 'review', name: 'Review' } });
+    });
+    await page.evaluate(async () => {
+      const { store } = await import('/js/application/store.js');
+      const { sel } = await import('/js/application/imports.js');
+      const { dataService } = await import('/js/services/dataService.js');
+      await dataService.setLocalPref('user.email', 'editor@example.test');
+      store.setState((state) => ({ ...state,
+        baseline: { ...state.baseline,
+          projects: state.baseline.projects.map((project) => ({ ...project,
+            state_categories: { Active: 'InProgress', Done: 'Completed' } })),
+          features: state.baseline.features.map((feature) => feature.id === 'delivery'
+            ? { ...feature, end: '2026-10-02' } : { ...feature, state: 'Done' }),
+        },
+        scenarios: { ...state.scenarios, activeId: 'review', items: [...state.scenarios.items,
+          { id: 'review', name: 'Review', readonly: false, overrides: {}, groupOverrides: {},
+            scenarioGroups: [], pluginData: {} }] },
+      }));
+      document.querySelector('feature-card-lit').feature = sel.feature.getEffectiveFeatureById('delivery');
+    });
+    await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
+    await selectReviewTask(page, 'Integration', 'past-unfinished');
+    const review = page.locator('reconciliation-review');
+    await expect(review.locator('[data-action="accept-exception"]')).toBeDisabled();
+    await review.locator('[data-exception-reason]').fill('Agreed delivery window');
+    await review.locator('[data-action="accept-exception"]').click();
+    await expect(review.locator('.accepted-status')).toContainText('Acceptance not saved');
+    await expect(page.locator('reconciliation-task-marker [data-marker="exception"]')).toHaveCount(1);
+    await expect(page.locator('reconciliation-task-marker [data-marker="warning"]')).toHaveCount(1);
+    await review.locator('[data-review-view="accepted"]').click();
+    await expect(review.locator('.exception-list')).toContainText('Agreed delivery window');
+    await testInfo.attach('accepted-exception-pending', {
+      body: await page.screenshot({ path: testInfo.outputPath('exception-pending.png') }), contentType: 'image/png',
+    });
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      const result = await cmd.scenario.saveScenario('review');
+      if (!result.ok) throw new Error(result.error.message);
+    });
+    expect(saves).toHaveLength(1);
+    expect(saves[0].op).toBe('save');
+    expect(saves[0].data.overrides).toEqual({});
+    expect(saves[0].data.pluginData['plugin-reconciliation'].decisions[0].reason).toBe('Agreed delivery window');
+    await expect(review.locator('.exception-list')).toContainText('Saved in this scenario');
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      cmd.scenario.activateScenario('baseline');
+    });
+    await expect(page.locator('reconciliation-task-marker [data-marker="exception"]')).toHaveCount(0);
+    await expect(page.locator('reconciliation-task-marker [data-marker="warning"]')).toHaveCount(1);
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      cmd.scenario.activateScenario('review');
+    });
+    await expect(review.locator('.exception-list')).toContainText('Saved in this scenario');
+    await review.locator('[data-action="undo-acceptance"]').click();
+    await expect(review.locator('.exception-list')).toContainText('Acceptance undone');
+    await expect(page.locator('reconciliation-task-marker [data-marker="exception"]')).toHaveCount(0);
+    expect(await review.evaluate((element) => element.selectedId)).toBe('past-unfinished:delivery');
+    const bounds = await review.locator('[data-review-view="accepted"]').evaluate((element) => ({
+      width: element.clientWidth, content: element.scrollWidth,
+    }));
+    expect(bounds.content).toBeLessThanOrEqual(bounds.width);
+  });
+
+  test(`configured state correction and undo retain review at desktop width ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(async () => {
+      const { store } = await import('/js/application/store.js');
+      const { sel } = await import('/js/application/imports.js');
+      store.setState((state) => ({ ...state,
+        baseline: { ...state.baseline,
+          projects: state.baseline.projects.map((project) => ({ ...project,
+            state_categories: { Active: 'InProgress', Delivered: 'Completed', Cancelled: 'Completed' } })),
+          features: state.baseline.features.map((feature) => feature.id === 'delivery'
+            ? { ...feature, end: '2026-10-02' } : feature),
+        },
+        scenarios: { ...state.scenarios, activeId: 'review', items: [...state.scenarios.items,
+          { id: 'review', name: 'Review', readonly: false, overrides: {}, groupOverrides: {},
+            scenarioGroups: [], pluginData: {} }] },
+      }));
+      document.querySelector('feature-card-lit').feature = sel.feature.getEffectiveFeatureById('delivery');
+      const { initTimeline } = await import('/js/components/Timeline.lit.js');
+      await import('/js/components/FeatureBoard.lit.js');
+      const root = document.createElement('timeline-board');
+      root.innerHTML = '<div id="scroll-container" style="position:relative;overflow:auto;height:600px;width:100%"><timeline-lit></timeline-lit><div id="board-area" style="position:relative;min-width:1800px"><feature-board></feature-board></div></div>';
+      document.querySelector('main').replaceChildren(root);
+      await initTimeline();
+      await root.querySelector('feature-board').renderFeatures();
+    });
+    await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
+    await selectReviewTask(page, 'Integration', 'past-unfinished');
+    const review = page.locator('reconciliation-review');
+    const states = review.locator('[data-state-choice]');
+    await expect(states.locator('option')).toHaveText(['Choose state', 'Delivered', 'Cancelled']);
+    await expect(review.locator('[data-action="apply-state"]')).toBeDisabled();
+    await states.selectOption('Delivered');
+    await expect(review.locator('.action-preview')).toContainText('Active \u2192 Delivered');
+    await review.locator('[data-action="apply-state"]').click();
+    await expect(review.locator('.impact-review')).toContainText('Programme');
+    await testInfo.attach('state-impact-review', {
+      body: await page.screenshot({ path: testInfo.outputPath('state-impact.png') }), contentType: 'image/png',
+    });
+    await review.locator('[data-action="continue-edit"]').click();
+    await expect(review.locator('.resolved-task')).toContainText('No remaining findings');
+    await expect(page.locator('reconciliation-task-marker button')).toHaveCount(0);
+    await expect(page.locator('feature-card-lit .feature-card[data-id="delivery"]')).toHaveClass(/dirty/);
+    const result = await page.evaluate(async () => {
+      const { store } = await import('/js/application/store.js');
+      const { sel } = await import('/js/application/imports.js');
+      return { effective: sel.feature.getEffectiveFeatureById('delivery').state,
+        source: store.getState().baseline.features[1].state,
+        baselineOverrides: store.getState().scenarios.items[0].overrides,
+        changed: store.getState().scenarios.changedIds,
+        selected: document.querySelector('reconciliation-review').selectedId };
+    });
+    expect(result).toEqual({ effective: 'Delivered', source: 'Active', baselineOverrides: {},
+      changed: ['review'], selected: 'past-unfinished:delivery' });
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      cmd.feature.revertFeature('delivery');
+    });
+    await expect(review.locator('.item[aria-pressed="true"]')).toContainText('Integration');
+    await expect(page.locator('reconciliation-task-marker button')).toHaveCount(1);
+  });
+}
+
+test('date correction opens Scheduling after impact review and leaves parent bounds unchanged', async ({ page }) => {
+  await editDates(page, 'alternative');
+  await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
+  await selectReviewTask(page, 'Integration');
+  const review = page.locator('reconciliation-review');
+  await review.locator('[data-action="edit-dates"]').click();
+  await expect(review.locator('.impact-review')).toContainText('extend direct parent bounds');
+  await expect(page.locator('details-panel .panel:not(.closed)')).toHaveCount(0);
+  await review.locator('[data-action="continue-edit"]').click();
+  const inputs = page.locator('details-panel .date-input');
+  await expect(inputs.first()).toBeFocused();
+  await inputs.last().fill('2026-10-09');
+  await expect(review.locator('.resolved-task')).toContainText('No remaining findings');
+  await expect(page.locator('feature-card-lit .feature-card')).toHaveClass(/dirty/);
+  const dates = await page.evaluate(async () => {
+    const { sel } = await import('/js/application/imports.js');
+    return [sel.feature.getEffectiveFeatureById('delivery').end,
+      sel.feature.getEffectiveFeatureById('programme').end];
+  });
+  expect(dates).toEqual(['2026-10-09', '2026-10-10']);
+});
+
+test('recorded dependency correction keeps containment warning and selected issue outcome', async ({ page }) => {
+  await editDates(page, 'alternative');
+  await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: state.baseline.features.map((feature) => feature.id === 'programme'
+        ? { ...feature, start: '2026-10-02', relations: [
+          { type: 'Successor', id: 'delivery' }, { type: 'Related', id: 'delivery' }] } : feature),
+    } }));
+  });
+  await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
+  await selectReviewTask(page, 'Integration', 'dependency-order');
+  const review = page.locator('reconciliation-review');
+  await review.locator('[data-action="edit-dependency"]').click();
+  await expect(review.locator('[data-action="remove-dependency"]')).toBeDisabled();
+  await review.locator('[data-link-choice]').selectOption('0');
+  await expect(review.locator('.link-preview')).toContainText('Programme delivery in Programme');
+  await review.locator('[data-action="remove-dependency"]').click();
+  await expect(review.locator('.resolved-task')).toContainText('1 other finding remains');
+  await expect(review.locator('.issue-class[data-issue-type="containment"]')).toBeVisible();
+  await expect(page.locator('reconciliation-task-marker button')).toHaveCount(1);
+  const changes = await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    return store.getState().scenarios.items.find((scenario) => scenario.id === 'alternative').overrides;
+  });
+  expect(changes).toEqual({ delivery: { end: '2026-10-22' },
+    programme: { relations: [{ type: 'Related', id: 'delivery' }] } });
+});
+
 test('toggles the toolbox directly from its active top-bar button without a dropdown or close button', async ({ page }) => {
   const trigger = page.locator('[data-plugin-id="plugin-reconciliation"]');
   await trigger.click();
@@ -418,7 +602,8 @@ test('shows incomplete relationship assessment without drift or unloaded-task ed
   await expect(finding).toContainText('Task missing-task (not loaded)');
   await expect(finding).toContainText('Affected plan unavailable');
   await expect(finding).not.toContainText('days early');
-  await expect(finding.getByRole('button')).toHaveCount(0);
+  await expect(finding.getByRole('button', { name: 'Open related task', exact: true })).toHaveCount(0);
+  await expect(finding.locator('[data-action="edit-dependency"]')).toBeDisabled();
   await expect(page.locator('reconciliation-review')).not.toContainText('No issues found');
 });
 

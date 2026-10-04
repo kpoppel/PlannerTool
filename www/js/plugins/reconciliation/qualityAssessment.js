@@ -88,7 +88,8 @@ export function assessQuality({ featuresById, scopeIds, today, projects, hierarc
       const ancestorId = String(current.parentId);
       if (visited.has(ancestorId)) {
         add(feature, 'hierarchy-cycle', 'Circular parent links',
-          `The parent chain of "${feature.title}" loops back on itself.`, 'error');
+          `The parent chain of "${feature.title}" loops back on itself.`, 'error', null,
+          [...visited].filter((id) => id !== String(feature.id)));
         break;
       }
       visited.add(ancestorId);

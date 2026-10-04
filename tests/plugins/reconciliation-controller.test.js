@@ -10,7 +10,8 @@ function fixture() {
     lifecycle: { status: 'bootstrapping' },
     baseline: { features: [parent, child], projects: [{ id: 'project', name: 'Programme',
       type: 'project', state_categories: { Active: 'InProgress' } }] },
-    scenarios: { activeId: 'baseline', items: [{ id: 'baseline', name: 'Baseline' }] },
+    scenarios: { activeId: 'baseline', changedIds: [],
+      items: [{ id: 'baseline', name: 'Baseline', pluginData: {}, overrides: {} }] },
   };
   let effective = state.baseline.features;
   let onState;

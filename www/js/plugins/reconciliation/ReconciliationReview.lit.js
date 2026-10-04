@@ -1,5 +1,6 @@
 import { LitElement, html, css, repeat } from '../../vendor/lit.js';
-import { cmd } from '../../application/imports.js';
+import { cmd, sel } from '../../application/imports.js';
+import { dataService } from '../../services/dataService.js';
 import { bus } from '../../core/EventBus.js';
 import { PluginEvents, UIEvents } from '../../core/EventRegistry.js';
 import { findInBoard } from '../../components/board-utils.js';
@@ -54,7 +55,10 @@ export class ReconciliationReview extends LitElement {
     query: { state: true }, selectedId: { state: true },
     _selectedIssueType: { state: true }, selectedIssueId: { state: true },
     contextMode: { state: true }, presentationError: { state: true },
+    _stateChoices: { state: true },
+    _impactReview: { state: true }, _linkChoice: { state: true }, actionError: { state: true },
     _locateRevision: { state: true }, _taskRevealRevision: { state: true },
+    reviewView: { state: true }, _exceptionReasons: { state: true }, _accepting: { state: true },
     toolboxHidden: { state: true } };
 
   static styles = [SIDEBAR_STYLES, css`
@@ -71,11 +75,23 @@ export class ReconciliationReview extends LitElement {
     h2 { font-size: 14px; margin: 0; } h3 { font-size: 14px; margin: 0 0 8px; }
     header .scenario-name { flex: 1; text-align: right; font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
     p { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-    button, input { font: inherit; font-size: 13px; border: 1px solid #b8c2c8;
+    button, input, select, textarea { font: inherit; font-size: 13px; border: 1px solid #b8c2c8;
       border-radius: 4px; color: inherit; background: transparent; padding: 8px 10px; }
     button { cursor: pointer; } button:hover { background: #ffffff20; }
     button:disabled { color: #78848b; background: #f4f6f7; border-color: #d7dde0; cursor: default; }
     button:focus-visible, input:focus-visible { outline: 2px solid #8ec8ff; outline-offset: 2px; }
+    select { width: 100%; color: #23344d; background: white; box-sizing: border-box; }
+    select:focus-visible { outline: 2px solid #8ec8ff; outline-offset: 2px; }
+    .fix-actions label { display: block; font-size: 12px; }
+    .fix-actions select { margin-top: 6px; }
+    .exception-actions { border-top: 1px solid rgba(255,255,255,.25); margin-top: 12px; padding-top: 8px; }
+    .exception-actions label { display: block; font-size: 12px; }
+    textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical;
+      margin: 6px 0; min-height: 64px; }
+    textarea:focus-visible { outline: 2px solid #8ec8ff; outline-offset: 2px; }
+    .exception-entry { border-top: 1px solid rgba(255,255,255,.25); padding: 10px 0; }
+    .accepted-status { font-weight: 600; }
+    .impact-review { border-left: 3px solid #8ec8ff; padding-left: 8px; margin-top: 12px; }
     .filters { display: grid; gap: 12px; margin: 6px; flex-shrink: 0; }
     .category { min-height: 48px; }
     .category .count { display: block; font-variant-numeric: tabular-nums; margin-top: 4px; }
@@ -119,6 +135,10 @@ export class ReconciliationReview extends LitElement {
     this._selectedIssueType = null;
     this.selectedIssueId = null;
     this.contextMode = 'relevant';
+    this._stateChoices = new Map();
+    this._impactReview = null;
+    this._linkChoice = '';
+    this.actionError = '';
     this.presentationError = '';
     this._contextBoard = null;
     this._contextSignature = 'null';
@@ -128,6 +148,9 @@ export class ReconciliationReview extends LitElement {
     this._locateRevision = 0;
     this._taskRevealRevision = 0;
     this.toolboxHidden = false;
+    this.reviewView = 'findings';
+    this._exceptionReasons = new Map();
+    this._accepting = null;
   }
 
   connectedCallback() {
@@ -138,19 +161,26 @@ export class ReconciliationReview extends LitElement {
       this._returnFocus = this._returnFocus.shadowRoot.activeElement;
     }
     this.snapshot = reconciliation.snapshot;
-    this._unsubscribe = reconciliation.subscribe((snapshot) => { this.snapshot = snapshot; });
+    this._unsubscribe = reconciliation.subscribe((snapshot) => {
+      this.snapshot = snapshot;
+      this._stateChoices = new Map();
+      this._impactReview = null;
+      this._linkChoice = '';
+      this._exceptionReasons = new Map();
+    });
     bus.emit(PluginEvents.MENU_STATUS_CHANGED, { id: 'plugin-reconciliation' });
   }
 
   disconnectedCallback() {
+    this._unsubscribe();
     this._presentationGeneration++;
+    reconciliation.setReviewFeatureId(null);
     if (this._contextBoard !== null) {
       this._presentationComplete = this._contextBoard.setReconciliationContext(null);
       this._presentationComplete.catch((error) => this._onPresentationError(error));
       this._contextBoard = null;
       this._contextSignature = 'null';
     }
-    this._unsubscribe();
     if (review === this) review = null;
     bus.emit(PluginEvents.MENU_STATUS_CHANGED, { id: 'plugin-reconciliation' });
     super.disconnectedCallback();
@@ -161,10 +191,14 @@ export class ReconciliationReview extends LitElement {
   }
 
   updated(changes) {
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+    if (!this.isConnected) return;
     const selected = this.snapshot.groups.find((group) => group.id === this.selectedId);
     if (selected !== undefined) {
       this._selectedTask = { id: selected.id, category: selected.category, featureId: selected.featureId };
     }
+    const retained = this._selectedTask !== null && this._selectedTask.id === this.selectedId;
+    reconciliation.setReviewFeatureId(retained ? this._selectedTask.featureId : null);
     if (changes.has('_taskRevealRevision') && this.selectedId !== null) {
       this._scrollSelectedTaskIntoView();
     }
@@ -290,10 +324,208 @@ export class ReconciliationReview extends LitElement {
     </dl>`;
   }
 
-  _renderTaskDetails(current, issueType = null) {
+  _stateOptions(issue) {
+    const requiredGroup = issue.type === 'future-active' ? 'Proposed'
+      : ['past-unfinished', 'parent-state'].includes(issue.type) ? 'Completed' : null;
+    if (requiredGroup === null) return [];
+    const feature = this.snapshot.featuresById.get(issue.featureId);
+    const project = this.snapshot.projectsById.get(String(feature.project));
+    if (project === undefined) return [];
+    return Object.entries(project.state_categories)
+      .filter(([, group]) => group === requiredGroup).map(([state]) => state);
+  }
+
+  _requireEditable() {
+    if (sel.scenario.getActiveScenario().readonly === true) {
+      throw new Error('Cannot correct a read-only scenario');
+    }
+  }
+
+  _actionContext(issue) {
+    const ids = new Set([issue.featureId, ...issue.path]);
+    const feature = this.snapshot.featuresById.get(issue.featureId);
+    if (feature.parentId !== null) ids.add(String(feature.parentId));
+    for (const relation of feature.relations) ids.add(String(relation.id));
+    for (const related of this.snapshot.featuresById.values()) {
+      if (String(related.parentId) === issue.featureId
+        || related.relations.some((relation) => String(relation.id) === issue.featureId)) {
+        ids.add(String(related.id));
+      }
+    }
+    return [...ids];
+  }
+
+  _hasCrossPlanImpact(issue) {
+    const feature = this.snapshot.featuresById.get(issue.featureId);
+    return this._actionContext(issue).some((id) => {
+      const related = this.snapshot.featuresById.get(id);
+      return related === undefined || String(related.project) !== String(feature.project);
+    });
+  }
+
+  _dependencyLinks(issue) {
+    if (!['dependency-order', 'unavailable-dependency', 'unavailable-dependency-dates'].includes(issue.type)) return [];
+    const links = [];
+    for (const ownerId of issue.path) {
+      const owner = this.snapshot.featuresById.get(ownerId);
+      if (owner === undefined) continue;
+      owner.relations.forEach((relation, index) => {
+        const matches = issue.type === 'unavailable-dependency'
+          ? ownerId === issue.featureId && String(relation.id) === issue.relatedId
+            && issue.id === `unavailable-dependency:${ownerId}:${relation.type}:${relation.id}`
+          : (ownerId === issue.featureId && relation.type === 'Predecessor'
+            && String(relation.id) === issue.relatedId)
+            || (ownerId === issue.relatedId && relation.type === 'Successor'
+              && String(relation.id) === issue.featureId);
+        if (matches) {
+          links.push({ ownerId, relation, index });
+        }
+      });
+    }
+    return links;
+  }
+
+  _onApplyState(issue) {
+    this._requireEditable();
+    const state = this._stateChoices.get(issue.id);
+    if (!this.snapshot.issues.some((current) => current.id === issue.id)
+      || !this._stateOptions(issue).includes(state)) {
+      throw new Error('Choose a configured state for the current finding');
+    }
+    if (this._hasCrossPlanImpact(issue)
+      && (this._impactReview === null || this._impactReview.issueId !== issue.id
+        || this._impactReview.kind !== 'state')) {
+      this._onEdit(issue, 'state');
+      return;
+    }
+    cmd.feature.updateFeatureField(issue.featureId, 'state', state);
+  }
+
+  _onEdit(issue, kind) {
+    this.selectedIssueId = issue.id;
+    this._impactReview = { issueId: issue.id, kind };
+    this._linkChoice = '';
+    this.actionError = '';
+  }
+
+  async _onContinueEdit(issue) {
+    this._requireEditable();
+    if (!this.snapshot.issues.some((current) => current.id === issue.id)
+      || this._impactReview === null || this._impactReview.issueId !== issue.id) {
+      throw new Error('Review the current finding before editing');
+    }
+    if (this._impactReview.kind === 'state') {
+      this._onApplyState(issue);
+      return;
+    }
+    try {
+      this._onTaskOpen(issue.featureId);
+      const panel = document.querySelector('details-panel');
+      if (panel === null) throw new Error('Task editor is not mounted');
+      await panel.focusSchedulingEditor();
+    } catch (error) {
+      console.error('[ReconciliationReview] Task editor failed', { issueId: issue.id, error });
+      this.actionError = 'Could not open the task editor.';
+    }
+  }
+
+  _onRemoveDependency(issue) {
+    this._requireEditable();
+    if (this._impactReview === null || this._impactReview.issueId !== issue.id
+      || this._impactReview.kind !== 'dependency' || this._linkChoice === ''
+      || !this.snapshot.issues.some((current) => current.id === issue.id)) {
+      throw new Error('Choose a recorded dependency in the current impact review');
+    }
+    const link = this._dependencyLinks(issue)[Number(this._linkChoice)];
+    if (link === undefined) throw new Error('Recorded dependency is no longer available');
+    const owner = this.snapshot.featuresById.get(link.ownerId);
+    cmd.feature.updateFeatureField(link.ownerId, 'relations',
+      owner.relations.filter((relation, index) => index !== link.index));
+  }
+
+  _renderImpactReview(issue, readonly) {
+    if (this._impactReview === null || this._impactReview.issueId !== issue.id) return '';
+    const kind = this._impactReview.kind;
+    const links = this._dependencyLinks(issue);
+    const link = this._linkChoice === '' ? undefined : links[Number(this._linkChoice)];
+    return html`<section class="impact-review" aria-label="Correction impact review">
+      <h3>Impact review</h3>
+      <p>${kind === 'dates' ? 'Review start and finish dates in Scheduling. The existing date editor can shift children and extend direct parent bounds; no dates change when opening it.'
+        : kind === 'state' ? 'State correction affects related work; related task fields will not change.'
+          : 'Remove only a recorded dependency that is incorrect. Removing a link does not reschedule either task; reciprocal links remain until separately reviewed.'}</p>
+      <dl><dt>Related work</dt><dd>${this._actionContext(issue).map((id) =>
+        `${taskLabel(this.snapshot, id)} (${projectLabel(this.snapshot, id)})`).join('; ')}</dd></dl>
+      ${kind === 'dependency' ? html`
+        <label>Recorded dependency
+          <select data-link-choice aria-label="Recorded dependency" ?disabled=${readonly}
+            .value=${this._linkChoice} @change=${(event) => { this._linkChoice = event.target.value; }}>
+            <option value="">Choose recorded link</option>
+            ${links.map((entry, index) => html`<option value=${String(index)}>
+              ${taskLabel(this.snapshot, entry.ownerId)}: ${entry.relation.type} ${taskLabel(this.snapshot, entry.relation.id)}
+            </option>`)}
+          </select>
+        </label>
+        <p class="link-preview">${link === undefined ? 'No link selected.' :
+          `Remove ${link.relation.type} ${taskLabel(this.snapshot, link.relation.id)} from ${taskLabel(this.snapshot, link.ownerId)} in ${projectLabel(this.snapshot, link.ownerId)}.`}
+          Changes only the selected link in ${this.snapshot.scenarioName}; does not publish.</p>
+        <button data-action="remove-dependency" ?disabled=${readonly || link === undefined}
+          @click=${() => this._onRemoveDependency(issue)}>Remove reviewed dependency</button>` : html`
+        <button data-action="continue-edit" ?disabled=${readonly}
+          @click=${() => this._onContinueEdit(issue)}>${kind === 'state' ? 'Apply reviewed state' : 'Open Scheduling'}</button>`}
+      <button data-action="cancel-impact" @click=${() => { this._impactReview = null; }}>Cancel</button>
+    </section>`;
+  }
+
+  _renderFixActions(issue) {
+    const states = this._stateOptions(issue);
+    const feature = this.snapshot.featuresById.get(issue.featureId);
+    const selected = this._stateChoices.get(issue.id);
+    const readonly = sel.scenario.getActiveScenario().readonly === true;
+    const dates = ['invalid-dates', 'past-unfinished', 'future-active', 'unplanned-child',
+      'containment', 'dependency-order', 'unavailable-containment-dates',
+      'unavailable-dependency-dates'].includes(issue.type);
+    const links = this._dependencyLinks(issue);
+    return html`<div class="fix-actions">
+      ${readonly && (states.length > 0 || dates || links.length > 0) ? html`<p>Read-only scenario. Choose an editable scenario to apply corrections.</p>` : ''}
+      ${states.length > 0 ? html`<label>Task state
+        <select data-state-choice aria-label="Configured task state" ?disabled=${readonly}
+          .value=${selected === undefined ? '' : selected}
+          @change=${(event) => {
+            this._stateChoices = new Map(this._stateChoices).set(issue.id, event.target.value);
+            this._impactReview = null;
+          }}>
+          <option value="">Choose state</option>
+          ${states.map((state) => html`<option value=${state}>${state}</option>`)}
+        </select>
+      </label>
+      <p class="action-preview">${taskLabel(this.snapshot, issue.featureId)} in
+        ${projectLabel(this.snapshot, issue.featureId)}:
+        ${feature.state} ${'\u2192'} ${selected === undefined || selected === '' ? 'choose state' : selected}.
+        Changes only this task's state in ${this.snapshot.scenarioName}; does not publish.</p>
+      <button data-action="apply-state" ?disabled=${readonly || !states.includes(selected)}
+        @click=${() => this._onApplyState(issue)}>${this._hasCrossPlanImpact(issue) ? 'Review state impact' : 'Set task state'}</button>` : ''}
+      ${states.length === 0 && ['past-unfinished', 'future-active', 'parent-state'].includes(issue.type)
+        ? html`<p>No configured state in the required ${issue.type === 'future-active' ? 'Proposed' : 'Completed'} group.</p>` : ''}
+      <div class="actions">
+        ${dates ? html`<button data-action="edit-dates" ?disabled=${readonly}
+          @click=${() => this._onEdit(issue, 'dates')}>Edit dates</button>` : ''}
+        ${links.length > 0 ? html`<button data-action="edit-dependency" ?disabled=${readonly}
+          @click=${() => this._onEdit(issue, 'dependency')}>Edit dependency</button>` : ''}
+      </div>
+      ${this._renderImpactReview(issue, readonly)}
+      ${this.actionError !== '' ? html`<p role="alert">${this.actionError}</p>` : ''}
+    </div>`;
+  }
+
+  _renderTaskDetails(current, issueType = null, issueId = null) {
+    const selectedIssues = current.issues.filter((issue) => issue.type === issueType
+      && (issueId === null || issue.id === issueId));
+    const remaining = this.snapshot.issues.filter((issue) => issue.featureId === current.featureId).length;
     return html`<div class="task-detail">
       ${this._renderDates(current.featureId)}
-      ${current.issues.length === 0 ? html`<p role="status">No remaining findings for this task in the current review scope.</p>` : ''}
+      ${selectedIssues.length === 0 ? html`<p role="status">${remaining === 0
+        ? 'No remaining findings for this task in the current review scope.'
+        : `Selected finding resolved. ${remaining} other ${remaining === 1 ? 'finding remains' : 'findings remain'} for this task.`}</p>` : ''}
       <div class="actions">
         <button data-action="open-task"
           title=${`Open ${taskLabel(this.snapshot, current.featureId)} in ${projectLabel(this.snapshot, current.featureId)}; opening does not change task data.`}
@@ -301,7 +533,7 @@ export class ReconciliationReview extends LitElement {
         <button data-action="locate-task"
           @click=${() => this._onLocate(current.featureId)}>Locate on board</button>
       </div>
-      ${current.issues.filter((issue) => issue.type === issueType)
+      ${selectedIssues
         .map((issue) => {
           const explanation = findingExplanation(this.snapshot, issue);
           return html`<details class="relationship"
@@ -319,6 +551,8 @@ export class ReconciliationReview extends LitElement {
             <dt>Drift</dt><dd>${issue.earlyDays} days early / ${issue.lateDays} days late</dd>` : ''}
           <dt>Impact</dt><dd>${explanation.impact} Opening or locating tasks does not change task data.</dd>
         </dl>
+        ${this._renderFixActions(issue)}
+        ${this._renderExceptionActions(issue)}
         ${issue.relatedId !== null && this.snapshot.featuresById.has(issue.relatedId) ? html`
           ${this._renderDates(issue.relatedId)}
           <div class="actions">
@@ -329,6 +563,96 @@ export class ReconciliationReview extends LitElement {
           </div>` : ''}
       </details>`;
         })}
+    </div>`;
+  }
+
+  async _onAcceptException(issue) {
+    this._requireEditable();
+    const scenarioId = sel.scenario.getActiveScenario().id;
+    const evidence = this.snapshot.featuresById;
+    const reason = this._exceptionReasons.get(issue.id);
+    this._accepting = issue.id;
+    this.actionError = '';
+    try {
+      const actor = await dataService.getLocalPref('user.email');
+      // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+      if (typeof actor !== 'string' || actor.trim() === '') {
+        throw new Error('Sign in before accepting an exception');
+      }
+      if (sel.scenario.getActiveScenario().id !== scenarioId || this.snapshot.featuresById !== evidence) {
+        throw new Error('Finding changed while accepting; review it again');
+      }
+      reconciliation.acceptException(issue.id, { actor, reason });
+    } catch (error) {
+      console.error('[ReconciliationReview] Acceptance failed', { issueId: issue.id, error });
+      this.actionError = error.message;
+    } finally {
+      this._accepting = null;
+    }
+  }
+
+  _renderExceptionActions(issue) {
+    if (issue.severity === 'info') return '';
+    const readonly = sel.scenario.getActiveScenario().readonly === true;
+    const decision = issue.acceptance;
+    const reason = this._exceptionReasons.get(issue.id);
+    return html`<section class="exception-actions" aria-label="Exception decision">
+      ${decision === null ? html`
+        <label>Reason for exception
+          <textarea data-exception-reason aria-label="Reason for exception" rows="2"
+            ?disabled=${readonly} .value=${reason === undefined ? '' : reason}
+            @input=${(event) => {
+              this._exceptionReasons = new Map(this._exceptionReasons).set(issue.id, event.target.value);
+            }}></textarea>
+        </label>
+        <button data-action="accept-exception"
+          ?disabled=${readonly || reason === undefined || reason.trim() === '' || this._accepting !== null}
+          @click=${() => this._onAcceptException(issue)}>Accept exception</button>` : html`
+        <p class="accepted-status">Accepted exception: ${decision.status === 'pending'
+          ? 'Acceptance not saved' : 'Saved in this scenario'}</p>
+        <p>${decision.reason}</p>
+        <p class="muted">${decision.actor} · ${decision.acceptedAt}</p>
+        <button data-action="undo-acceptance" ?disabled=${readonly}
+          @click=${() => reconciliation.revokeException(issue.id)}>Undo acceptance</button>`}
+      ${readonly ? html`<p class="muted">Choose an editable scenario to accept exceptions.</p>` : ''}
+      ${this.actionError !== '' ? html`<p role="alert">${this.actionError}</p>` : ''}
+    </section>`;
+  }
+
+  _renderExceptions(query) {
+    const entries = this.snapshot.exceptions.filter((entry) => entry.category === this.category
+      && [entry.taskTitle, entry.planName, entry.findingTitle, entry.reason, entry.actor]
+        .join(' ').toLowerCase().includes(query));
+    return html`<div class="exception-list" aria-label="Accepted exceptions">
+      ${entries.length === 0 ? html`<p>No matching exception decisions.</p>` : ''}
+      ${repeat(entries, (entry) => entry.id, (entry) => {
+        const groupId = entry.category === 'schedule' ? `schedule:${entry.identity.taskId}` : entry.id;
+        const group = this.snapshot.groups.find((candidate) => candidate.id === groupId);
+        return html`<section class="exception-entry">
+          <button class="item" aria-pressed=${this.selectedId === groupId && this.selectedIssueId === entry.id}
+            @click=${() => {
+              this.selectedId = groupId;
+              this._selectedIssueType = entry.identity.rule;
+              this.selectedIssueId = entry.id;
+              this._selectedTask = { id: groupId, category: entry.category, featureId: entry.identity.taskId };
+              this._reviewFeatureIds = new Set(entry.identity.path);
+              this._locateRevision++;
+            }}><strong>${entry.taskTitle}</strong><small>${entry.planName}</small>
+            <small>${entry.findingTitle}</small></button>
+          <p class="accepted-status">${entry.status === 'revoked' ? `Revoked: ${entry.revocationReason}`
+            : 'Accepted exception'} · ${entry.saveStatus === 'pending'
+              ? entry.status === 'revoked' ? 'Revocation not saved' : 'Acceptance not saved'
+              : 'Saved in this scenario'}</p>
+          <p>${entry.reason}</p><p class="muted">${entry.actor} · ${entry.acceptedAt}</p>
+          ${entry.status === 'revoked' ? html`<p class="muted">${entry.revokedAt}</p>` : ''}
+          ${entry.status === 'active' && (group === undefined || !group.issues.some((issue) => issue.id === entry.id))
+            ? html`<button data-action="undo-acceptance"
+              ?disabled=${sel.scenario.getActiveScenario().readonly === true}
+              @click=${() => reconciliation.revokeException(entry.id)}>Undo acceptance</button>` : ''}
+          ${this.selectedId === groupId && this.selectedIssueId === entry.id && group !== undefined
+            ? this._renderTaskDetails(group, entry.identity.rule, entry.id) : ''}
+        </section>`;
+      })}
     </div>`;
   }
 
@@ -386,6 +710,14 @@ export class ReconciliationReview extends LitElement {
           </button>`)}
           </div>
         </div>
+        <div class="segmented-group context-group" role="group" aria-label="Review view">
+          <button class="segment-btn ${this.reviewView === 'findings' ? 'active' : ''}"
+            data-review-view="findings" aria-pressed=${this.reviewView === 'findings'}
+            @click=${() => { this.reviewView = 'findings'; }}>Findings</button>
+          <button class="segment-btn ${this.reviewView === 'accepted' ? 'active' : ''}"
+            data-review-view="accepted" aria-pressed=${this.reviewView === 'accepted'}
+            @click=${() => { this.reviewView = 'accepted'; }}>Accepted exceptions</button>
+        </div>
         ${this.category === 'schedule' || (current !== undefined && current.category === 'schedule') ? html`
           <div>
             <div class="group-label" id="board-context-label">Board context</div>
@@ -408,7 +740,8 @@ export class ReconciliationReview extends LitElement {
           ${this.presentationError !== '' ? html`<p role="alert">${this.presentationError}</p>` : ''}
           ${groups.length === 0 && snapshot.status === 'ready' && snapshot.groups.length > 0
             ? html`<p>No matching issues.</p>` : ''}
-          ${repeat([...issueClasses.values()], (issueClass) => issueClass.type, (issueClass) => html`
+          ${this.reviewView === 'accepted' ? this._renderExceptions(query)
+            : repeat([...issueClasses.values()], (issueClass) => issueClass.type, (issueClass) => html`
             <details class="issue-class" data-issue-type=${issueClass.type}
               .open=${current !== undefined && issueClass.tasks.has(current.id)
                 && (this._selectedIssueType === issueClass.type
@@ -429,7 +762,9 @@ export class ReconciliationReview extends LitElement {
                 </button>${isSelected ? this._renderTaskDetails(group, issueClass.type) : ''}</div>`;
               })}
             </details>`)}
-          ${current !== undefined && current.issues.length === 0 ? html`
+          ${this.reviewView === 'findings' && current !== undefined && (current.issues.length === 0
+            || (this._selectedIssueType !== null
+              && !current.issues.some((issue) => issue.type === this._selectedIssueType))) ? html`
             <section class="resolved-task"><h3>${taskLabel(snapshot, current.featureId)}</h3>
               ${this._renderTaskDetails(current)}</section>` : ''}
         </section>

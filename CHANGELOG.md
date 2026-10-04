@@ -19,6 +19,9 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- DetailsPanel exposes a plugin-independent `focusSchedulingEditor()` API for opening the existing date editor from reconciliation.
+- Reconciliation Slice 4 stages reasoned scenario exceptions with pending/saved check-shield markers, an accepted-decisions view, task-evidence revocation and save-race protection; live publication remains Slice 5.
+- Reconciliation Slice 3 adds configured-state corrections, impact-reviewed date and recorded-dependency actions, read-only guards, and retained quality/scheduling warnings and selection through scenario edits and revert.
 - Reconciliation Slice 2 documents isolated temporary board context, reports incomplete relationship data, and explains each finding's constraint, owning/affected plans, drift, scenario status, and navigation impact.
 - Grouped reconciliation review findings into collapsible issue-type sections with instance counts and focused task details.
 - Added a Reconciliation menu toggle to show or hide feature-card markers without changing issue detection.

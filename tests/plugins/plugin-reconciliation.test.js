@@ -3,6 +3,8 @@ import PluginRegistry from '../../www/js/core/pluginRegistry.js';
 import modulesConfig from '../../www/js/modules.config.json';
 import { store } from '../../www/js/application/store.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
+import { cmd } from '../../www/js/application/imports.js';
+import { dataService } from '../../www/js/services/dataService.js';
 import { reconciliation } from '../../www/js/plugins/reconciliation/runtime.js';
 import * as boardUtils from '../../www/js/components/board-utils.js';
 import { openReconciliationReview } from '../../www/js/plugins/reconciliation/ReconciliationReview.lit.js';
@@ -41,12 +43,402 @@ describe('Reconciliation detection menu', () => {
     return { plugin, element };
   }
 
+  function seedActions({ readonly = false, future = false, linked = false } = {}) {
+    const state = createInitialAppState();
+    const task = { id: 'task', title: 'Delivery', type: 'Feature', project: 'project',
+      state: 'Working', start: future ? '2026-10-10' : '2026-10-01',
+      end: future ? '2026-10-20' : '2026-10-02', capacity: [], relations: [], parentId: null };
+    const project = { id: 'project', name: 'Delivery plan', type: 'project',
+      state_categories: { Working: 'InProgress', Delivered: 'Completed', Cancelled: 'Completed',
+        Draft: 'Proposed', Ready: 'Proposed' },
+      task_type_hierarchy: [{ types: ['Feature'] }] };
+    state.lifecycle.status = 'ready';
+    state.baseline.projects = [project, { ...project, id: 'other', name: 'Other plan' }];
+    state.baseline.features = linked ? [task, { ...task, id: 'predecessor', title: 'Prerequisite',
+      project: 'other', start: '2026-10-02', end: '2026-10-20',
+      relations: [{ type: 'Successor', id: 'task' }, { type: 'Related', id: 'task' }] }] : [task];
+    state.selection.projectIds = ['project', 'other'];
+    state.selection.featureStateNames = Object.keys(project.state_categories);
+    if (!readonly) {
+      state.scenarios.activeId = 'review';
+      state.scenarios.items.push({ ...state.scenarios.items[0], id: 'review', name: 'Review',
+        readonly: false, overrides: {} });
+    }
+    store.setState(state, true);
+    return state;
+  }
+
   it('registers an enabled nonexclusive menu, not a startup tool', () => {
     expect(config.type).toBe('menu');
     expect(config.enabled).toBe(true);
     expect(config.activateOnStartup).toBe(false);
     expect(config.exclusive).toBe(false);
     expect(config.menuPosition).toBe('before-tools');
+  });
+
+  it('stages individual exceptions without task edits or suppressing baseline findings', async () => {
+    const { element } = await openMenu();
+    seedActions({ linked: true });
+    await element.updateComplete;
+    const issue = reconciliation.snapshot.issues.find((finding) => finding.type === 'past-unfinished');
+    const originalCount = reconciliation.snapshot.issues.length;
+    reconciliation.acceptException(issue.id, { actor: 'editor@example.test', reason: 'Agreed delay' });
+    await element.updateComplete;
+    const scenario = store.getState().scenarios.items.find((item) => item.id === 'review');
+    expect(scenario.overrides).toEqual({});
+    expect(store.getState().scenarios.changedIds).toContain('review');
+    expect(reconciliation.snapshot.issues).toHaveLength(originalCount);
+    expect(reconciliation.snapshot.issues.find((finding) => finding.id === issue.id).acceptance.status)
+      .toBe('pending');
+    expect(reconciliation.snapshot.issues.find((finding) => finding.type === 'dependency-order').acceptance)
+      .toBeNull();
+    cmd.scenario.activateScenario('baseline');
+    expect(reconciliation.snapshot.issues.find((finding) => finding.id === issue.id).acceptance).toBeNull();
+    expect(() => reconciliation.acceptException(issue.id, { actor: 'editor@example.test', reason: 'Delay' }))
+      .toThrow('editable scenario');
+    cmd.scenario.activateScenario('review');
+    expect(reconciliation.snapshot.issues.find((finding) => finding.id === issue.id).acceptance.status)
+      .toBe('pending');
+    reconciliation.revokeException(issue.id);
+    expect(reconciliation.snapshot.issues.find((finding) => finding.id === issue.id).acceptance).toBeNull();
+  });
+
+  it('revokes acceptance on scenario edits and does not resurrect it on task revert', async () => {
+    await openMenu();
+    seedActions({ linked: true });
+    const issue = reconciliation.snapshot.issues.find((finding) => finding.type === 'dependency-order');
+    reconciliation.acceptException(issue.id, { actor: 'editor@example.test', reason: 'Approved overlap' });
+    cmd.feature.updateFeatureField('predecessor', 'title', 'Updated prerequisite');
+    expect(reconciliation.snapshot.issues.find((finding) => finding.id === issue.id).acceptance).toBeNull();
+    cmd.feature.revertFeature('predecessor');
+    expect(reconciliation.snapshot.issues.find((finding) => finding.id === issue.id).acceptance).toBeNull();
+  });
+
+  it('keeps failed saves pending and distinguishes saved acceptance from subsequent task changes', async () => {
+    await openMenu();
+    seedActions();
+    const issue = reconciliation.snapshot.issues[0];
+    reconciliation.acceptException(issue.id, { actor: 'editor@example.test', reason: 'Agreed delay' });
+    const save = vi.spyOn(dataService, 'saveScenario').mockResolvedValueOnce({ ok: false,
+      error: { message: 'Offline' } }).mockResolvedValue({ ok: true, data: {} });
+    expect((await cmd.scenario.saveScenario('review')).ok).toBe(false);
+    expect(reconciliation.snapshot.issues[0].acceptance.status).toBe('pending');
+    expect(store.getState().scenarios.changedIds).toContain('review');
+    await cmd.scenario.saveScenario('review');
+    expect(save.mock.calls[1][0].pluginData['plugin-reconciliation'].decisions[0].reason)
+      .toBe('Agreed delay');
+    expect(reconciliation.snapshot.issues[0].acceptance.status).toBe('saved');
+    store.setState((state) => ({ ...state, selection: { ...state.selection, projectIds: ['project'] } }));
+    expect(reconciliation.snapshot.issues[0].acceptance.status).toBe('saved');
+    cmd.scenario.activateScenario('baseline');
+    expect(reconciliation.snapshot.issues[0].acceptance).toBeNull();
+  });
+
+  it('revokes dormant scenario decisions when observed source data changes, even while viewing baseline', async () => {
+    await openMenu();
+    seedActions({ linked: true });
+    const issue = reconciliation.snapshot.issues.find((finding) => finding.type === 'dependency-order');
+    reconciliation.acceptException(issue.id, { actor: 'editor@example.test', reason: 'Agreed overlap' });
+    cmd.scenario.activateScenario('baseline');
+    const source = store.getState().baseline.features;
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: source.map((task) => task.id === 'predecessor' ? { ...task, title: 'ADO changed title' } : task) } }));
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline, features: source } }));
+    cmd.scenario.activateScenario('review');
+    expect(reconciliation.snapshot.issues.find((finding) => finding.id === issue.id).acceptance).toBeNull();
+    expect(reconciliation.snapshot.exceptions[0].status).toBe('revoked');
+  });
+
+  it('shows reasoned acceptance, a distinct marker and an accepted view without losing selection on undo', async () => {
+    const { element } = await openMenu();
+    seedActions({ linked: true });
+    vi.spyOn(dataService, 'getLocalPref').mockResolvedValue('editor@example.test');
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-task-id="past-unfinished:task"]').click();
+    await element.updateComplete;
+    const accept = element.shadowRoot.querySelector('[data-action="accept-exception"]');
+    expect(accept.disabled).toBe(true);
+    const reason = element.shadowRoot.querySelector('[data-exception-reason]');
+    reason.value = 'Agreed delay';
+    reason.dispatchEvent(new Event('input'));
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-action="accept-exception"]').click();
+    await vi.waitFor(() => expect(reconciliation.snapshot.issues
+      .find((issue) => issue.type === 'past-unfinished').acceptance).not.toBeNull());
+    await element.updateComplete;
+    expect(element.shadowRoot.textContent).toContain('Acceptance not saved');
+    const marker = document.createElement('reconciliation-task-marker');
+    marker.featureId = 'task';
+    document.body.appendChild(marker);
+    await marker.updateComplete;
+    expect(marker.shadowRoot.querySelector('[data-marker="exception"]').getAttribute('aria-label'))
+      .toContain('Accepted exception');
+    expect(marker.shadowRoot.querySelector('[data-marker="warning"]')).not.toBeNull();
+    element.shadowRoot.querySelector('[data-review-view="accepted"]').click();
+    await element.updateComplete;
+    expect(element.shadowRoot.querySelector('.exception-list').textContent).toContain('Agreed delay');
+    element.shadowRoot.querySelector('[data-action="undo-acceptance"]').click();
+    await element.updateComplete;
+    await marker.updateComplete;
+    expect(element.selectedId).toBe('past-unfinished:task');
+    expect(marker.shadowRoot.querySelector('[data-marker="exception"]')).toBeNull();
+    expect(element.shadowRoot.textContent).toContain('Acceptance undone');
+  });
+
+  it('keeps decisions made during an in-flight save pending', async () => {
+    await openMenu();
+    seedActions({ linked: true });
+    const first = reconciliation.snapshot.issues.find((issue) => issue.type === 'past-unfinished');
+    const second = reconciliation.snapshot.issues.find((issue) => issue.type === 'dependency-order');
+    reconciliation.acceptException(first.id, { actor: 'editor@example.test', reason: 'Agreed delay' });
+    let finishSave;
+    vi.spyOn(dataService, 'saveScenario').mockImplementation(() => new Promise((resolve) => { finishSave = resolve; }));
+    const pending = cmd.scenario.saveScenario('review');
+    reconciliation.acceptException(second.id, { actor: 'editor@example.test', reason: 'Agreed overlap' });
+    finishSave({ ok: true, data: {} });
+    await pending;
+    expect(store.getState().scenarios.changedIds).toContain('review');
+    expect(reconciliation.snapshot.issues.find((issue) => issue.id === first.id).acceptance.status).toBe('saved');
+    expect(reconciliation.snapshot.issues.find((issue) => issue.id === second.id).acceptance.status).toBe('pending');
+  });
+
+  it('revalidates persisted decisions after deactivation and preserves unrelated scenario edits', async () => {
+    const { plugin } = await openMenu();
+    seedActions();
+    const issue = reconciliation.snapshot.issues[0];
+    reconciliation.acceptException(issue.id, { actor: 'editor@example.test', reason: 'Agreed delay' });
+    vi.spyOn(dataService, 'saveScenario').mockResolvedValue({ ok: true, data: {} });
+    await cmd.scenario.saveScenario('review');
+    cmd.pluginScenarioData.set('review', 'unrelated-plugin', { note: 'Keep this edit' });
+    expect(reconciliation.snapshot.issues[0].acceptance.status).toBe('saved');
+    await plugin.destroy();
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: state.baseline.features.map((task) => ({ ...task, title: 'Changed in ADO' })) } }));
+    await plugin.init();
+    expect(reconciliation.snapshot.issues[0].acceptance).toBeNull();
+    expect(reconciliation.snapshot.exceptions[0].status).toBe('revoked');
+    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 'review')
+      .pluginData['unrelated-plugin']).toEqual({ note: 'Keep this edit' });
+  });
+
+  it('requires actor and reason and refuses incomplete assessments and stale finding IDs', async () => {
+    await openMenu();
+    const state = seedActions();
+    const issue = reconciliation.snapshot.issues[0];
+    expect(() => reconciliation.acceptException(issue.id, { actor: '', reason: 'Agreed' })).toThrow('actor and reason');
+    expect(() => reconciliation.acceptException(issue.id, { actor: 'editor@example.test', reason: '  ' }))
+      .toThrow('actor and reason');
+    expect(() => reconciliation.acceptException('missing', { actor: 'editor@example.test', reason: 'Agreed' }))
+      .toThrow('current, assessed finding');
+    store.setState({ ...state, baseline: { ...state.baseline,
+      features: [{ ...state.baseline.features[0], parentId: 'not-loaded' }] } }, true);
+    const incomplete = reconciliation.snapshot.issues.find((finding) => finding.type === 'unavailable-parent');
+    expect(() => reconciliation.acceptException(incomplete.id, { actor: 'editor@example.test', reason: 'Agreed' }))
+      .toThrow('current, assessed finding');
+    expect(store.getState().scenarios.changedIds).toEqual([]);
+  });
+
+  it('offers configured completion choices, resolves only matching findings and supports revert', async () => {
+    const { element } = await openMenu();
+    const state = createInitialAppState();
+    const task = { id: 'task', title: 'Late delivery', type: 'Feature', project: 'project',
+      state: 'Working', start: '2026-10-01', end: '2026-10-02', capacity: [],
+      relations: [], parentId: null };
+    state.lifecycle.status = 'ready';
+    state.baseline.projects = [{ id: 'project', name: 'Delivery plan', type: 'project',
+      state_categories: { Working: 'InProgress', Delivered: 'Completed', Cancelled: 'Completed',
+        Draft: 'Proposed' }, task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }];
+    state.baseline.features = [{ ...task, id: 'root', type: 'Epic', end: '2026-10-10' }, task];
+    state.selection.projectIds = ['project'];
+    state.selection.featureStateNames = ['Working'];
+    state.scenarios.activeId = 'review';
+    state.scenarios.items.push({ ...state.scenarios.items[0], id: 'review', name: 'Review',
+      readonly: false, overrides: {} });
+    store.setState(state, true);
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-task-id="past-unfinished:task"]').click();
+    await element.updateComplete;
+    const choice = element.shadowRoot.querySelector('[data-state-choice]');
+    expect([...choice.options].map((option) => option.value)).toEqual(['', 'Delivered', 'Cancelled']);
+    expect(element.shadowRoot.querySelector('[data-action="apply-state"]').disabled).toBe(true);
+    choice.value = 'Delivered';
+    choice.dispatchEvent(new Event('change'));
+    await element.updateComplete;
+    expect(element.shadowRoot.querySelector('.action-preview').textContent)
+      .toContain('Working \u2192 Delivered');
+    element.shadowRoot.querySelector('[data-action="apply-state"]').click();
+    await element.updateComplete;
+    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 'review').overrides.task.state)
+      .toBe('Delivered');
+    expect(store.getState().baseline.features[1].state).toBe('Working');
+    expect(store.getState().scenarios.items[0].overrides).toEqual({});
+    expect(store.getState().scenarios.changedIds).toContain('review');
+    expect(reconciliation.issuesForFeature('task').map((issue) => issue.type)).toEqual(['missing-parent']);
+    expect(element.selectedId).toBe('past-unfinished:task');
+    expect(element.shadowRoot.textContent).toContain('Selected finding resolved');
+    expect(element.shadowRoot.textContent).toContain('1 other finding remains');
+    cmd.feature.revertFeature('task');
+    await element.updateComplete;
+    expect(reconciliation.issuesForFeature('task').map((issue) => issue.type))
+      .toEqual(['past-unfinished', 'missing-parent']);
+    expect(element.selectedId).toBe('past-unfinished:task');
+  });
+
+  it('offers every configured definition state for future work and disables read-only fixes', async () => {
+    const { element } = await openMenu();
+    seedActions({ future: true, readonly: true });
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-task-id="future-active:task"]').click();
+    await element.updateComplete;
+    const choice = element.shadowRoot.querySelector('[data-state-choice]');
+    expect([...choice.options].map((option) => option.value)).toEqual(['', 'Draft', 'Ready']);
+    expect(choice.disabled).toBe(true);
+    expect(element.shadowRoot.querySelector('[data-action="apply-state"]').disabled).toBe(true);
+    expect(element.shadowRoot.textContent).toContain('Read-only scenario');
+    expect(() => element._onApplyState(element.snapshot.issues.find((issue) => issue.type === 'future-active')))
+      .toThrow('read-only');
+    expect(store.getState().scenarios.items[0].overrides).toEqual({});
+  });
+
+  it('marks quality findings on the board and opens their owning review category', async () => {
+    await openMenu();
+    seedActions();
+    const marker = document.createElement('reconciliation-task-marker');
+    marker.featureId = 'task';
+    document.body.appendChild(marker);
+    await marker.updateComplete;
+    const warning = marker.shadowRoot.querySelector('button');
+    expect(warning).not.toBeNull();
+    expect(warning.title).toContain('Delivery plan');
+    expect(warning.title).not.toContain('Project unavailable');
+    warning.click();
+    const review = document.querySelector('reconciliation-review');
+    await review.updateComplete;
+    expect(review.category).toBe('quality');
+    expect(review.selectedId).toBe('past-unfinished:task');
+  });
+
+  it('reviews cross-plan date impact before opening Scheduling without changing data', async () => {
+    const { element } = await openMenu();
+    seedActions({ linked: true });
+    const panel = document.createElement('details-panel');
+    panel.focusSchedulingEditor = vi.fn(async () => {});
+    document.body.appendChild(panel);
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-task-id="past-unfinished:task"]').click();
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-action="edit-dates"]').click();
+    await element.updateComplete;
+    expect(element.shadowRoot.querySelector('.impact-review').textContent).toContain('Other plan');
+    expect(element.shadowRoot.querySelector('.impact-review').textContent).toContain('Prerequisite');
+    expect(store.getState().featureDisplay.selectedId).toBeNull();
+    element.shadowRoot.querySelector('[data-action="continue-edit"]').click();
+    await vi.waitFor(() => expect(panel.focusSchedulingEditor).toHaveBeenCalledWith());
+    expect(store.getState().featureDisplay.selectedId).toBe('task');
+    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 'review').overrides).toEqual({});
+    expect(element.selectedId).toBe('past-unfinished:task');
+  });
+
+  it('repairs the recorded dependency on its actual owner and preserves unrelated links', async () => {
+    const { element } = await openMenu();
+    seedActions({ linked: true });
+    openReconciliationReview('schedule', 'schedule:task');
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-action="edit-dependency"]').click();
+    await element.updateComplete;
+    const choice = element.shadowRoot.querySelector('[data-link-choice]');
+    expect(choice.options).toHaveLength(2);
+    expect(element.shadowRoot.querySelector('.impact-review').textContent).toContain('Other plan');
+    expect(element.shadowRoot.querySelector('[data-action="remove-dependency"]').disabled).toBe(true);
+    choice.value = '0';
+    choice.dispatchEvent(new Event('change'));
+    await element.updateComplete;
+    expect(element.shadowRoot.querySelector('.link-preview').textContent).toContain('Prerequisite');
+    element.shadowRoot.querySelector('[data-action="remove-dependency"]').click();
+    await element.updateComplete;
+    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 'review').overrides)
+      .toEqual({ predecessor: { relations: [{ type: 'Related', id: 'task' }] } });
+    expect(store.getState().baseline.features[1].relations).toHaveLength(2);
+    expect(reconciliation.snapshot.issues.some((issue) => issue.type === 'dependency-order')).toBe(false);
+    expect(reconciliation.snapshot.issues.some((issue) => issue.type === 'past-unfinished')).toBe(true);
+    expect(element.selectedId).toBe('schedule:task');
+    cmd.feature.revertFeature('predecessor');
+    await element.updateComplete;
+    expect(reconciliation.snapshot.issues.some((issue) => issue.type === 'dependency-order')).toBe(true);
+  });
+
+  it('keeps a resolved issue class selected when a different scheduling finding remains', async () => {
+    const { element } = await openMenu();
+    const state = seedActions({ linked: true });
+    state.baseline.features[0].parentId = 'predecessor';
+    store.setState({ ...state, baseline: { ...state.baseline, features: [...state.baseline.features] } }, true);
+    openReconciliationReview('schedule', 'schedule:task');
+    await element.updateComplete;
+    element.shadowRoot.querySelector('.issue-class[data-issue-type="dependency-order"] .item').click();
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-action="edit-dependency"]').click();
+    await element.updateComplete;
+    const choice = element.shadowRoot.querySelector('[data-link-choice]');
+    choice.value = '0';
+    choice.dispatchEvent(new Event('change'));
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-action="remove-dependency"]').click();
+    await element.updateComplete;
+    expect(element.selectedId).toBe('schedule:task');
+    expect(element.shadowRoot.querySelector('.resolved-task')).not.toBeNull();
+    expect(element.shadowRoot.querySelector('.resolved-task').textContent).toContain('3 other findings remain');
+    expect(element.shadowRoot.querySelector('.issue-class[data-issue-type="containment"]')).not.toBeNull();
+  });
+
+  it('reviews reciprocal dependency records separately without offering the opposite valid direction', async () => {
+    const { element } = await openMenu();
+    const state = seedActions({ linked: true });
+    state.baseline.features[0].relations = [
+      { type: 'Predecessor', id: 'predecessor' }, { type: 'Successor', id: 'predecessor' }];
+    state.baseline.features[1].relations.push({ type: 'Predecessor', id: 'task' });
+    store.setState({ ...state, baseline: { ...state.baseline, features: [...state.baseline.features] } }, true);
+    openReconciliationReview('schedule', 'schedule:task');
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-action="edit-dependency"]').click();
+    await element.updateComplete;
+    const choice = element.shadowRoot.querySelector('[data-link-choice]');
+    expect(choice.options).toHaveLength(3);
+    choice.value = '0';
+    choice.dispatchEvent(new Event('change'));
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-action="remove-dependency"]').click();
+    await element.updateComplete;
+    expect(reconciliation.snapshot.issues.some((issue) => issue.type === 'dependency-order')).toBe(true);
+    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 'review').overrides.task.relations)
+      .toEqual([{ type: 'Successor', id: 'predecessor' }]);
+    element.shadowRoot.querySelector('[data-action="edit-dependency"]').click();
+    await element.updateComplete;
+    const remainingChoice = element.shadowRoot.querySelector('[data-link-choice]');
+    expect(remainingChoice.options).toHaveLength(2);
+    remainingChoice.value = '0';
+    remainingChoice.dispatchEvent(new Event('change'));
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-action="remove-dependency"]').click();
+    await element.updateComplete;
+    expect(reconciliation.snapshot.issues.some((issue) => issue.type === 'dependency-order')).toBe(false);
+  });
+
+  it('discards a configured state draft when scenario or findings change', async () => {
+    const { element } = await openMenu();
+    seedActions({ future: true });
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-task-id="future-active:task"]').click();
+    await element.updateComplete;
+    const oldIssue = element.snapshot.issues.find((issue) => issue.type === 'future-active');
+    const choice = element.shadowRoot.querySelector('[data-state-choice]');
+    choice.value = 'Draft';
+    choice.dispatchEvent(new Event('change'));
+    await element.updateComplete;
+    seedActions();
+    await element.updateComplete;
+    expect(element._stateChoices.size).toBe(0);
+    expect(() => element._onApplyState(oldIssue)).toThrow('current finding');
+    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 'review').overrides).toEqual({});
   });
 
   it('publishes a discoverable JSON configuration schema for the admin page', () => {
@@ -445,7 +837,9 @@ describe('Reconciliation detection menu', () => {
     expect(finding.textContent).toContain('Affected plan unavailable');
     expect(finding.textContent).not.toContain('undefined');
     expect(finding.textContent).not.toContain('days early');
-    expect(finding.querySelector('button')).toBeNull();
+    expect([...finding.querySelectorAll('button')].some((button) =>
+      button.textContent.includes('Open related task'))).toBe(false);
+    expect(finding.querySelector('[data-action="edit-dependency"]').disabled).toBe(true);
     expect(element.shadowRoot.querySelector('[data-action="open-task"]').title)
       .toContain('Delivery plan');
   });

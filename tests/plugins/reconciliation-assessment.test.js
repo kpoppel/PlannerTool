@@ -114,7 +114,7 @@ describe('Reconciliation assessment', () => {
       task('second', { parentId: 'first', start: '2026-03-30' }),
       task('unrelated', { start: '2026-12-20', end: '2026-01-01' })];
     const issues = assess(features, ['first']);
-    expect(issues.some((issue) => issue.type === 'hierarchy-cycle')).toBe(true);
+    expect(issues.find((issue) => issue.type === 'hierarchy-cycle').path).toEqual(['first', 'second']);
     expect(issues.find((issue) => issue.category === 'schedule').earlyDays).toBe(2);
     expect(issues.some((issue) => issue.featureId === 'unrelated')).toBe(false);
   });
