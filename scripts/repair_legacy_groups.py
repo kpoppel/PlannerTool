@@ -1,7 +1,9 @@
 """One-time migration 24 repair; stop source writers before running.
 
 Preview: python scripts/repair_legacy_groups.py --data-dir /srv/data-esw
-Retain copies: add --destination /srv/repaired (a new parent directory).
+Retain a repaired installation: add --destination /srv/data-esw-repaired.
+An explicit single installation writes directly to the destination; batches
+write one installation subdirectory per source under the destination.
 Sources, credentials, version strings, and later ledger entries are preserved.
 """
 
@@ -133,6 +135,7 @@ def discover_instances(sources):
 
 def repair_copies(sources, destination=None):
     instances = discover_instances(sources)
+    single_instance = len(sources) == 1 and (Path(sources[0]) / 'migrations.json').is_file()
     pending = []
     for instance in instances:
         if instance.is_symlink() or (instance / 'migrations.json').is_symlink():
@@ -194,7 +197,8 @@ def repair_copies(sources, destination=None):
         if destination is not None:
             if destination.exists() or destination.is_symlink():
                 raise ValueError('Destination appeared during repair')
-            os.rename(batch, destination)
+            output = batch / names[0] if single_instance else batch
+            os.rename(output, destination)
         return names
 
 
@@ -203,14 +207,18 @@ def main():
     parser.add_argument('--data-dir', '--source', dest='source', type=Path, nargs='+', required=True,
                         help='Stopped installation roots or parents containing them; never modified')
     parser.add_argument('--destination', type=Path,
-                        help='New parent directory for repaired copies; omit for a temporary dry run')
+                        help='New installation root for a single source, or parent for a batch; '
+                            'omit for a temporary dry run')
     args = parser.parse_args()
     repaired = repair_copies(args.source, args.destination)
     print('Migration 24 completed for:', ', '.join(repaired) or 'none')
     if args.destination is None:
         print('Dry run complete; temporary repaired copy discarded. Source unchanged.')
     elif repaired:
-        print('Repaired installation copies written under:', args.destination)
+        single_instance = len(args.source) == 1 and (args.source[0] / 'migrations.json').is_file()
+        for name in repaired:
+            output = args.destination if single_instance else args.destination / name
+            print('Repaired installation root:', output)
         print('Sources, existing version fields, and other ledger entries unchanged.')
 
 
