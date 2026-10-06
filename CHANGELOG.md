@@ -12,7 +12,13 @@ Template - do not change :
 ### Added
 ### Changed
 ### Fixed
+
 ---
+
+## [v4.2.2]
+
+### Fixed
+- Azure DevOps refreshes now isolate connection state per worker thread so concurrent refreshes cannot disconnect each other and leave task data stale.
 
 ## [v4.2.1] - 2026-07-19
 
