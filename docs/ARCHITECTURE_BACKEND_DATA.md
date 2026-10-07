@@ -121,6 +121,16 @@ source owners and iteration enrichment, and emits domain-level `sourcePlanIds`,
 File and mock providers return their supplied seed snapshots with presentation
 metadata; repositories do not probe provider capabilities or interpret source fields.
 
+ADO prepares task `start` and `end` from explicit scheduling fields first, then
+fills missing boundaries from the exact assigned iteration in the work item's
+native ADO project. Date resolution reads that project's full iteration tree,
+independently of configured picker presets or their roots. Context enrichment
+shares one iteration map per native project and recalculates missing or previously
+inferred seed boundaries without replacing explicit dates. Unmatched or undated
+iterations leave unavailable boundaries unset; no parent or name-based inference
+is performed. Existing task/context snapshots acquire these dates on task refresh
+or cache expiry. This preparation does not write inferred dates back to ADO.
+
 After descendant expansion, ADO loads Parent paths across areas and projects in
 bounded batches. Ancestors reached only by this second pass have `ancestorOnly: true`,
 `childrenComplete: false`, and empty `sourcePlanIds` and `presentationPlanIds` lists.

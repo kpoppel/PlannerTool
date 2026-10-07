@@ -61,6 +61,24 @@ def test_second_fetch_served_from_cache(caching, inner):
     assert len(inner.fetch_tasks_calls) == 1
 
 
+@pytest.mark.parametrize('method', ['fetch_tasks', 'fetch_plan_tasks', 'fetch_task_context'])
+@pytest.mark.parametrize('field,value', [('start', '2026-03-05'), ('end', '2026-03-20')])
+def test_published_date_becomes_explicit_in_every_task_cache(caching, storage, method, field, value):
+    key = f'{method}__dates'
+    task = dict(_TASK, start='2026-03-01', end='2026-03-14',
+                _inferred_start=True, _inferred_end=True)
+    storage.save('backend_domain', key, [task])
+
+    result = caching.write_task('1', {field: value}, CRED)
+
+    assert result['ok']
+    cached, = storage.load('backend_domain', key)
+    assert cached[field] == value
+    assert cached[f'_inferred_{field}'] is False
+    other = 'end' if field == 'start' else 'start'
+    assert cached[f'_inferred_{other}'] is True
+
+
 def test_different_type_filter_is_separate_cache_key(caching, inner):
     caching.fetch_tasks(AREA, task_types=['Feature'])
     caching.fetch_tasks(AREA, task_types=['Epic'])

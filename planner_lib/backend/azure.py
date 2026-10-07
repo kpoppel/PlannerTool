@@ -173,88 +173,16 @@ class AzureDevOpsBackend(BackendPort):
         area_path: str,
         azure_project: str,
     ) -> Dict[str, Any]:
-        """Fetch and return a normalised iteration-path → dates map."""
-        try:
-            source_project, raw_roots = self._resolve_iteration_source(area_path)
-            if not source_project:
-                return {}
-
-            raw_roots = [str(r) for r in (raw_roots or []) if str(r).strip()]
-            iteration_map: Dict[str, Any] = {}
-            for root in (raw_roots or [None]):
-                try:
-                    iterations = client.get_iterations(source_project, root_path=root)
-                    for it in iterations:
-                        raw_path = it.get('path', '')
-                        norm_path = self._strip_iteration_segment(raw_path)
-                        if norm_path:
-                            iteration_map[norm_path] = {
-                                'startDate': it.get('startDate'),
-                                'finishDate': it.get('finishDate'),
-                                'name': it.get('name'),
-                            }
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to fetch iterations for area '%s' "
-                        "(source_project='%s', root='%s'): %s",
-                        area_path,
-                        source_project,
-                        root,
-                        exc,
-                    )
-            return iteration_map
-        except Exception as exc:
-            logger.warning(
-                "Error building iteration map for area '%s' "
-                "(source_project='%s'): %s",
-                area_path,
-                azure_project,
-                exc,
-            )
-            return {}
-
-    def _resolve_iteration_source(self, area_path: str) -> tuple[str, List[str]]:
-        """Resolve iteration source project and roots for one configured area path."""
-        if self._config is None:
-            return '', []
-        try:
-            project_map = self._config.fetch_project_map()
-            iterations_config = self._config.fetch_iterations_config()
-        except Exception:
-            return '', []
-
-        matched_project = None
-        for entry in (project_map or []):
-            if not isinstance(entry, dict):
-                continue
-            cfg_area = entry.get('area_path')
-            if isinstance(cfg_area, str) and area_path == cfg_area:
-                matched_project = entry
-                break
-
-        if not matched_project:
-            return '', []
-
-        assoc_id = str(matched_project.get('iteration_uuid') or '').strip()
-        if not assoc_id:
-            return '', []
-
-        iteration_sets = iterations_config.get('iteration_sets') if isinstance(iterations_config, dict) else None
-        if not isinstance(iteration_sets, list):
-            return '', []
-
-        for item in iteration_sets:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get('id') or '').strip() != assoc_id:
-                continue
-            source_project = str(item.get('source_project') or '').strip()
-            if not source_project:
-                return '', []
-            root_path = str(item.get('root_path') or '').strip()
-            return source_project, [root_path] if root_path else []
-
-        return '', []
+        """Resolve assigned iteration dates independently of picker configuration."""
+        iteration_map: Dict[str, Any] = {}
+        for iteration in client.get_iterations(azure_project):
+            path = normalize_iteration_path(iteration['path'])
+            iteration_map[path] = {
+                'startDate': iteration.get('startDate'),
+                'finishDate': iteration.get('finishDate'),
+                'name': iteration.get('name'),
+            }
+        return iteration_map
 
     @staticmethod
     def _strip_iteration_segment(path: str) -> str:
@@ -317,7 +245,7 @@ class AzureDevOpsBackend(BackendPort):
         try:
             with self._conn.connect(pat) as client:
                 def iteration_map_for(area, ado_project):
-                    key = (area, ado_project)
+                    key = ado_project
                     if key not in iteration_maps:
                         iteration_maps[key] = self._build_iteration_map(client, area, ado_project)
                     return iteration_maps[key]
@@ -347,8 +275,9 @@ class AzureDevOpsBackend(BackendPort):
                         owner = 'context-' + hashlib.sha256(identity.encode()).hexdigest()[:20]
                     if task_id in seed_by_id:
                         task = dict(seed_by_id[task_id])
-                        if task['project'] != owner and (
-                            task.get('_inferred_start', False) or task.get('_inferred_end', False)
+                        if task.get('iterationPath') and (
+                            not task.get('start') or not task.get('end')
+                            or task.get('_inferred_start', False) or task.get('_inferred_end', False)
                         ):
                             iteration_map = iteration_map_for(area, raw['adoProject'])
                             iteration_path = task.get('iterationPath')
@@ -359,7 +288,7 @@ class AzureDevOpsBackend(BackendPort):
                                 ('start', 'startDate', '_inferred_start'),
                                 ('end', 'finishDate', '_inferred_end'),
                             ):
-                                if task.get(inferred, False):
+                                if not task.get(field) or task.get(inferred, False):
                                     task[field] = None if iteration is None else iteration.get(date_field)
                                     task[inferred] = task[field] is not None
                     else:
