@@ -587,8 +587,8 @@ export class PluginCostComponent extends LitElement {
 
   disconnectedCallback() {
     // Unsubscribe all listeners
-    for (const u of this._unsubscribes) {
-      if (typeof u === 'function') u();
+    for (const unsubscribe of this._unsubscribes) {
+      unsubscribe();
     }
     this._unsubscribes = [];
 
@@ -642,32 +642,8 @@ export class PluginCostComponent extends LitElement {
         );
       }
 
-      // Build features payload for cost API
-      // Honor selected task types. If multiple types
-      // are selected, apply the "lowest level counts" rule: when a parent
-      // item has children of a selected type, skip the parent so children
-      // are authoritative.
-      const selectedTypes = new Set(
-        sel.filter.getSelectedTaskTypeNames().map((type) => type.toLowerCase())
-      );
-
-      // Helper: determine if a feature has children according to selector hierarchy map.
-      const childrenByParent = sel.feature.getChildrenByParentMap();
-      const hasChildren = (fid) => {
-        const children = childrenByParent.get(String(fid));
-        return children !== undefined && children.length > 0;
-      };
-
-      const filteredFeatures = contextFeatures.filter((f) => {
-        if (!f) return false;
-        const ftype = f.type.toLowerCase();
-        if (!selectedTypes.has(ftype)) return false;
-        // If multiple types selected, prefer lowest-level: skip parents
-        if (selectedTypes.size > 1) {
-          if (hasChildren(f.id)) return false;
-        }
-        return true;
-      });
+      // Board type visibility cannot discard financial context or parent-only teams.
+      const filteredFeatures = [...contextFeatures];
 
       // Apply task filters (planned/unplanned, allocation, etc.) from seam selectors.
       const taskFilter = sel.filter;
@@ -700,16 +676,21 @@ export class PluginCostComponent extends LitElement {
         Array.prototype.push.apply(filteredFeatures, ff);
       }
 
-      const featuresPayload = filteredFeatures.map((f) => ({
-        id: f.id,
-        project: f.project,
-        start: f.start,
-        end: f.end,
-        capacity: Array.isArray(f.capacity) ? f.capacity : [],
-        title: f.title || f.name || '',
-        type: f.type || f.feature_type || '',
-        state: f.state || '',
-        relations: f.relations || [],
+      const featuresPayload = filteredFeatures.map((feature) => ({
+        id: feature.id,
+        project: feature.project,
+        sourcePlanIds: feature.sourcePlanIds,
+        presentationPlanIds: feature.presentationPlanIds,
+        parentId: feature.parentId,
+        traversalBoundary: feature.traversalBoundary,
+        excludedChildIds: feature.excludedChildIds,
+        start: feature.start,
+        end: feature.end,
+        capacity: feature.capacity,
+        title: feature.title,
+        type: feature.type,
+        state: feature.state,
+        relations: feature.relations,
       }));
 
       // Fetch cost data
@@ -722,34 +703,20 @@ export class PluginCostComponent extends LitElement {
       // an array into a lookup so subsequent code can index by project id.
       // Also enrich each feature object with `capacity` (from the payload)
       // and `project` so downstream allocation and filtering works.
-      const payloadById = (featuresPayload || []).reduce((acc, f) => {
-        if (f && f.id != null) acc[String(f.id)] = f;
+      const payloadById = featuresPayload.reduce((acc, feature) => {
+        acc[String(feature.id)] = feature;
         return acc;
       }, {});
 
-      if (json && Array.isArray(json.projects)) {
-        const projectsById = {};
-        for (const p of json.projects) {
-          if (!p || p.id == null) continue;
-          // Ensure features array exists
-          p.features = Array.isArray(p.features) ? p.features : [];
-
-          // Enrich each feature with capacity (from the payload) and project id
-          p.features = p.features.map((feat) => {
-            const fid = String(feat.id);
-            const src = payloadById[fid];
-            const capacity =
-              src && Array.isArray(src.capacity) ? src.capacity : feat.capacity || [];
-            return Object.assign({}, feat, {
-              capacity: capacity,
-              project: p.id,
-            });
-          });
-
-          projectsById[String(p.id)] = p;
-        }
-        json.projects = projectsById;
+      const projectsById = {};
+      for (const project of json.projects) {
+        project.features = project.features.map((feature) => {
+          const source = payloadById[String(feature.id)];
+          return { ...feature, capacity: source.capacity, project: project.id };
+        });
+        projectsById[String(project.id)] = project;
       }
+      json.projects = projectsById;
 
       this.data = json;
 
@@ -914,7 +881,7 @@ export class PluginCostComponent extends LitElement {
           // For Project (Plan) view only show when at least one expanded project
           // has a selected sub-view (teams or features) so the sub-tables are visible.
           if (this.activeView === 'project') {
-            const expanded = Array.from(this.expandedProjects || []);
+            const expanded = Array.from(this.expandedProjects);
             const show = expanded.some(
               (pid) => this.projectViewSelection && this.projectViewSelection[pid]
             );

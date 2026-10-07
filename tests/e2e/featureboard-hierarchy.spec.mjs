@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { clearOverlays, selectAllPlans } from './helpers.js';
 // Run : PWDEBUG=1 npx playwright test tests/e2e/featureboard-hierarchy.spec.mjs --headed
 //
 
@@ -465,4 +466,57 @@ test('FeatureBoard handles various parent-child constellations without crashing'
 
   // Optionally dump some debug output to the test log
   console.log('Mocked /api/tasks served. Payload length:', tasksPayload.length);
+});
+
+test('linked context follows importing plans without leaking owners or context-only types', async ({ page }) => {
+  const projectsResponse = await page.request.get('/api/projects');
+  const teamsResponse = await page.request.get('/api/teams');
+  expect(projectsResponse.ok()).toBe(true);
+  expect(teamsResponse.ok()).toBe(true);
+  const configuredProjects = await projectsResponse.json();
+  const configuredTeams = await teamsResponse.json();
+  const origin = { ...configuredProjects[0], name: 'Origin Plan' };
+  const other = { ...origin, id: 'linked-importer', name: 'Other Plan' };
+  const common = {
+    ...tasksPayload[1], state: 'Active', start: '2026-10-01', end: '2026-10-15',
+    relations: [], parentId: null, capacity: [],
+  };
+  const imported = [
+    { ...common, id: 'seed', title: 'Imported Seed', type: 'Epic', project: origin.id,
+      sourcePlanIds: [origin.id], presentationPlanIds: [origin.id] },
+    { ...common, id: 'hidden-context', title: 'Hidden Requirement', type: 'Requirement',
+      project: 'context-internal-owner', parentId: 'seed',
+      relations: [{ type: 'Parent', id: 'seed' }],
+      sourcePlanIds: [origin.id, other.id], presentationPlanIds: [],
+      capacity: [{ team: configuredTeams[0].id, capacity: 30 }] },
+    { ...common, id: 'shared', title: 'Shared Feature', type: 'Feature',
+      project: 'context-internal-owner', parentId: 'hidden-context',
+      relations: [{ type: 'Parent', id: 'hidden-context' }],
+      sourcePlanIds: [origin.id, other.id], presentationPlanIds: [origin.id, other.id] },
+  ];
+  await page.route('**/api/projects', (route) => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify([origin, other]),
+  }));
+  await page.route('**/api/tasks', (route) => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify(imported),
+  }));
+
+  await page.goto('/');
+  await clearOverlays(page);
+  await selectAllPlans(page);
+  const cards = page.locator('feature-card-lit');
+  const cardIds = () => cards.evaluateAll((elements) => elements
+    .map((element) => String(element.feature.id)).sort());
+  await expect.poll(cardIds).toEqual(['seed', 'shared']);
+
+  const planButton = page.getByRole('navigation', { name: 'Top menu' })
+    .getByRole('button', { name: /^Plan(?:\s|$)/ });
+  const originEntry = page.locator('plan-menu').getByTitle('Origin Plan', { exact: true });
+  if (!(await originEntry.isVisible())) await planButton.click();
+  await expect(page.locator('plan-menu').getByTitle('context-internal-owner', { exact: true }))
+    .toHaveCount(0);
+  await originEntry.click();
+  await expect.poll(cardIds).toEqual(['shared']);
+  await page.locator('plan-menu').getByTitle('Other Plan', { exact: true }).click();
+  await expect.poll(cardIds).toEqual([]);
 });

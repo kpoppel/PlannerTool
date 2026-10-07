@@ -1,5 +1,10 @@
 import { createFilterSelectors } from './filterSelectors.js';
-import { deriveEffectiveFeatures } from '../shared/featureProjection.js';
+import {
+  deriveEffectiveFeatures,
+  featureCanPresent,
+  featureIsInImportScope,
+  featureMatchesPlans,
+} from '../shared/featureProjection.js';
 import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
@@ -16,7 +21,7 @@ function isHierarchicalRelation(relation) {
 
 function nonHierarchicalRelationIds(feature) {
   const ids = new Set();
-  for (const relation of feature.relations || []) {
+  for (const relation of feature.relations) {
     if (!relation || typeof relation !== 'object' || isHierarchicalRelation(relation)) continue;
     if (relation.id !== undefined && relation.id !== null) ids.add(String(relation.id));
   }
@@ -78,7 +83,7 @@ function isInSelectedProjectHierarchy(feature, featuresById, selectedProjectIds)
     const currentId = String(current.id);
     if (visited.has(currentId)) return false;
     visited.add(currentId);
-    if (selectedProjectIds.has(String(current.project))) return true;
+    if (featureMatchesPlans(current, selectedProjectIds)) return true;
     if (!current.parentId) return false;
     current = featuresById.get(String(current.parentId));
   }
@@ -138,13 +143,14 @@ export function createScopeSelectors(store) {
     const teamFocus = state.view.options.taskViewMode === 'team';
     if (!teamFocus) {
       for (const feature of contextFeatures) {
-        if (selectedProjectIds.has(String(feature.project))) {
+        if (featureMatchesPlans(feature, selectedProjectIds)) {
           focusedFeatureIds.add(String(feature.id));
         }
       }
     }
     visibleCache = contextFeatures.filter((feature) => {
-      const isSelectedPlan = selectedProjectIds.has(String(feature.project));
+      if (!featureCanPresent(feature, selectedProjectIds)) return false;
+      const isSelectedPlan = featureMatchesPlans(feature, selectedProjectIds);
       const hasSelectedTeam = hasFeatureTeamAllocation(feature, selectedTeamIds);
       const isFocusedAncestor = isAncestorOf(feature, featuresById, focusedFeatureIds);
       if (teamFocus && selectedTeamIds.size === 0) return false;
@@ -213,14 +219,15 @@ export function createScopeSelectors(store) {
       const selectedIds = toIdSet(state.selection.projectIds);
       if (selectedIds.size === 0) return [];
       const featuresById = new Map(resolvedFeatures.map((feature) => [String(feature.id), feature]));
-      const selectedFeatures = resolvedFeatures.filter((feature) => selectedIds.has(String(feature.project)));
+      const selectedFeatures = resolvedFeatures.filter((feature) => featureMatchesPlans(feature, selectedIds));
       const selectedPlanTeamIds = new Set();
       for (const feature of selectedFeatures) {
         for (const entry of feature.capacity) selectedPlanTeamIds.add(String(entry.team));
       }
       const selectedFeatureIds = new Set(selectedFeatures.map((feature) => String(feature.id)));
       return resolvedFeatures.filter((feature) => {
-        if (selectedIds.has(String(feature.project))) return true;
+        if (!featureIsInImportScope(feature, selectedIds)) return false;
+        if (featureMatchesPlans(feature, selectedIds)) return true;
         const isParent = context.parent && isAncestorOf(feature, featuresById, selectedFeatureIds);
         const isChild = context.child && isDescendantOf(feature, selectedFeatureIds, featuresById);
         const isDependency = context.dependency && isDependencyLinked(feature, selectedFeatures);
@@ -264,7 +271,7 @@ export function createScopeSelectors(store) {
       const contextFeatures = getContextFeatures();
       const selectedProjectIds = toIdSet(store.getState().selection.projectIds);
       const baseTasks = contextFeatures.filter(
-        (feature) => selectedProjectIds.has(String(feature.project))
+        (feature) => featureMatchesPlans(feature, selectedProjectIds)
       ).length;
       const teamsInScope = new Set();
       for (const feature of contextFeatures) {

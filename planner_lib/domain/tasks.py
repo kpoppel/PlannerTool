@@ -38,11 +38,17 @@ class DomainTask(TypedDict):
     type: str                       # canonical casing from task_type_hierarchy
     state: str
     project: str                    # project slug e.g. 'project-my-team'
+    revision: NotRequired[int]       # backend-neutral monotonic task version
+    sourcePlanIds: NotRequired[List[str]]
+    presentationPlanIds: NotRequired[List[str]]
+    traversalBoundary: NotRequired[bool]
     start: NotRequired[Optional[str]]      # ISO date YYYY-MM-DD or None
     end: NotRequired[Optional[str]]        # ISO date YYYY-MM-DD or None
     iterationPath: NotRequired[Optional[str]]
     parentId: NotRequired[Optional[str]]
     relations: NotRequired[List[DomainRelation]]
+    excludedChildIds: NotRequired[List[str]]
+    unresolvedChildIds: NotRequired[List[str]]
     capacity: NotRequired[List[DomainCapacity]]
     description: NotRequired[Optional[str]]
     assignee: NotRequired[Optional[str]]
@@ -57,6 +63,12 @@ class DomainTask(TypedDict):
     # explicit ADO field values.
     _inferred_start: NotRequired[bool]
     _inferred_end: NotRequired[bool]
+
+
+class BackendTask(DomainTask):
+    """Persisted backend task; backendData must not reach repository consumers."""
+
+    backendData: NotRequired[Dict[str, Any]]
 
 
 class WriteResult(TypedDict):

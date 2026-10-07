@@ -1,9 +1,11 @@
+from contextlib import contextmanager
 from types import SimpleNamespace
 import threading
 import pytest
 from unittest.mock import MagicMock
 
 from planner_lib.azure.AzureClient import AzureClient
+from planner_lib.backend.azure import AzureDevOpsBackend
 
 
 class DummyStorage:
@@ -266,6 +268,316 @@ def test_azure_native_client_get_work_items_parses_items():
 # ---------------------------------------------------------------------------
 # get_area_path_used_metadata — backlog-config path
 # ---------------------------------------------------------------------------
+
+def test_linked_hierarchy_crosses_areas_but_stops_at_project_task_category():
+    def work_item(item_id, project, item_type, children=()):
+        return SimpleNamespace(
+            id=item_id,
+            fields={
+                'System.TeamProject': project,
+                'System.AreaPath': f'{project}\\WrongArea',
+                'System.WorkItemType': item_type,
+                'System.Title': f'Item {item_id}',
+                'System.State': 'Closed',
+            },
+            relations=[SimpleNamespace(
+                attributes={'name': 'Child'},
+                url=f'https://dev.azure.com/org/{project}/_apis/wit/workItems/{child}',
+            ) for child in children],
+            url=f'https://dev.azure.com/org/{project}/_apis/wit/workItems/{item_id}',
+        )
+
+    items = {
+        1: work_item(1, 'A', 'Epic', (2, 3, 4)),
+        2: work_item(2, 'B', 'Requirement', (5,)),
+        3: work_item(3, 'B', 'Implementation Step', (6,)),
+        4: work_item(4, 'A', 'Implementation Step'),
+        5: work_item(5, 'B', 'Test Plan', (1,)),
+        6: work_item(6, 'B', 'Feature'),
+    }
+    batches = []
+    category_projects = []
+
+    def get_work_items(ids, fields=None, expand=None, error_policy=None):
+        batches.append((list(ids), fields, expand))
+        return [items[item_id] for item_id in ids]
+
+    def get_work_item_type_category(project, category):
+        assert category == 'Microsoft.TaskCategory'
+        category_projects.append(project)
+        types = ['Task'] if project == 'A' else ['Task', 'Implementation Step']
+        return SimpleNamespace(work_item_types=[SimpleNamespace(name=name) for name in types])
+
+    wit = SimpleNamespace(
+        get_work_items=get_work_items,
+        get_work_item_type_category=get_work_item_type_category,
+    )
+    client = AzureClient('org', DummyStorage())
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: wit))
+    seed = client._work_item_ops.normalize_work_item(items[1])
+
+    linked = client._work_item_ops.get_linked_work_items([seed])
+
+    assert [item['id'] for item in linked] == ['1', '2', '4', '5']
+    assert linked[1]['areaPath'] == 'B\\WrongArea'
+    assert linked[1]['adoProject'] == 'B'
+    assert linked[1]['state'] == 'Closed'
+    assert seed['relations'][1]['id'] == '3'
+    assert sorted(category_projects) == ['A', 'B']
+    assert all(3 not in ids and 6 not in ids for ids, fields, expand in batches if expand)
+    assert all(1 not in ids for ids, fields, expand in batches)
+
+
+def _linked_item(item_id, item_type='Feature', children=(), project='A'):
+    return SimpleNamespace(
+        id=item_id,
+        rev=1,
+        fields={
+            'System.Rev': 1,
+            'System.TeamProject': project,
+            'System.AreaPath': f'{project}\\WrongArea',
+            'System.WorkItemType': item_type,
+            'System.Title': f'Item {item_id}',
+            'System.State': 'Active',
+        },
+        relations=[SimpleNamespace(
+            attributes={'name': 'Child'},
+            url=f'https://dev.azure.com/org/{project}/_apis/wit/workItems/{child}',
+        ) for child in children],
+        url=f'https://dev.azure.com/org/{project}/_apis/wit/workItems/{item_id}',
+    )
+
+
+def _linked_client(items, missing_ids=()):
+    def get_work_items(ids, fields=None, expand=None, error_policy=None):
+        assert error_policy == 'omit'
+        return [items[item_id] for item_id in ids if item_id not in missing_ids]
+
+    wit = SimpleNamespace(
+        get_work_items=MagicMock(side_effect=get_work_items),
+        get_work_item_type_category=MagicMock(return_value=SimpleNamespace(
+            work_item_types=[SimpleNamespace(name='Task'), SimpleNamespace(name='Implementation Step')],
+        )),
+    )
+    client = AzureClient('org', DummyStorage())
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: wit))
+    return client, wit
+
+
+def test_linked_hierarchy_batches_and_deduplicates_shared_children():
+    children = tuple(range(3, 408))
+    items = {1: _linked_item(1, children=children), 2: _linked_item(2, children=children)}
+    items.update((item_id, _linked_item(item_id)) for item_id in children)
+    client, wit = _linked_client(items)
+    seeds = [client._work_item_ops.normalize_work_item(items[item_id]) for item_id in (1, 2)]
+
+    result = client.get_linked_work_items(seeds)
+
+    assert len(result) == 407
+    classified = []
+    hydrated = []
+    for call in wit.get_work_items.call_args_list:
+        ids = call.args[0]
+        assert len(ids) <= 200
+        (classified if 'fields' in call.kwargs else hydrated).extend(ids)
+    assert classified == list(children)
+    assert hydrated == list(children)
+    wit.get_work_item_type_category.assert_called_once_with('A', 'Microsoft.TaskCategory')
+
+
+@pytest.mark.parametrize('through_repository', [False, True])
+def test_backend_context_composes_real_traversal_and_domain_enrichment(through_repository):
+    items = {
+        1: _linked_item(1, 'Epic', (2,)),
+        4: _linked_item(4, 'Feature', (2,), project='B'),
+        2: _linked_item(2, 'Requirement', (3, 5), project='B'),
+        3: _linked_item(3, 'Implementation Step', (6,), project='B'),
+        5: _linked_item(5, 'Feature', project='C'),
+        6: _linked_item(6, 'Feature', project='B'),
+    }
+    items[2].fields['System.State'] = 'Closed'
+    client, wit = _linked_client(items)
+    plans = [
+        {'id': 'plan-a', 'area_path': 'A\\WrongArea', 'task_types': ['Epic', 'Feature']},
+        {'id': 'plan-b', 'area_path': 'B\\WrongArea', 'task_types': ['Feature']},
+    ]
+    config = SimpleNamespace(
+        fetch_project_map=lambda: plans,
+        fetch_projects=lambda: [],
+        fetch_iterations_config=lambda: {'iteration_sets': []},
+    )
+    capacity = MagicMock()
+    capacity.parse.return_value = []
+    backend = AzureDevOpsBackend('org', storage=MagicMock(), team_repository=MagicMock(),
+                                 capacity_service=capacity, local_backend=config)
+
+    @contextmanager
+    def connect(_pat):
+        yield client
+
+    backend._conn = SimpleNamespace(connect=connect)
+    seeds = []
+    for item_id, plan_id in ((1, 'plan-a'), (4, 'plan-b')):
+        seed = backend._adapter.to_domain(
+            client._work_item_ops.normalize_work_item(items[item_id]),
+            plan_id, backend._team_repository, {}, {}, capacity,
+        )
+        seed['sourcePlanIds'] = [plan_id]
+        seeds.append(seed)
+
+    credential = {'token': 'test', 'user_id': 'test'}
+    if through_repository:
+        from planner_lib.repository.task_repository import TaskRepository
+
+        backend.fetch_tasks = MagicMock(side_effect=lambda area_path, **kwargs: [
+            seed for seed in seeds if seed['areaPath'] == area_path
+        ])
+        repository = TaskRepository(
+            backend, SimpleNamespace(get_project_map=lambda: plans), MagicMock(),
+        )
+        backend.fetch_task_context = MagicMock(wraps=backend.fetch_task_context)
+        tasks = {task['id']: task for task in repository.read(credential=credential)}
+        assert all('backendData' in task
+                   for task in backend.fetch_task_context.call_args.args[0])
+        assert all('backendData' not in task for task in tasks.values())
+        assert len(backend.fetch_tasks.call_args_list) == 2
+    else:
+        tasks = {task['id']: task for task in backend.fetch_task_context(seeds, credential)}
+
+    assert set(tasks) == {'1', '4', '2', '5'}
+    assert tasks['2']['project'] == 'plan-b'
+    assert tasks['2']['state'] == 'Closed'
+    assert tasks['2']['sourcePlanIds'] == ['plan-a', 'plan-b']
+    assert tasks['2']['excludedChildIds'] == ['3']
+    assert tasks['2']['presentationPlanIds'] == []
+    assert tasks['5']['project'].startswith('context-')
+    assert tasks['5']['sourcePlanIds'] == ['plan-a', 'plan-b']
+    assert tasks['5']['presentationPlanIds'] == ['plan-a', 'plan-b']
+    assert [call.args[0] for call in wit.get_work_items.call_args_list] == [[2], [2], [3, 5], [5]]
+    assert wit.get_work_item_type_category.call_count == 3
+
+
+def test_linked_hierarchy_preserves_references_without_fetching_lateral_targets():
+    items = {1: _linked_item(1, children=(2, 3, 4)), 2: _linked_item(2),
+             3: _linked_item(3, 'Implementation Step')}
+    client, wit = _linked_client(items, missing_ids=(4,))
+    seed = client._work_item_ops.normalize_work_item(items[1])
+    seed['relations'].extend(
+        {'id': str(item_id), 'type': relation_type}
+        for item_id, relation_type in enumerate(('Parent', 'Related', 'Predecessor', 'Successor'), 10)
+    )
+
+    result = client.get_linked_work_items([seed])
+
+    assert [item['id'] for item in result] == ['1', '2']
+    assert result[0]['unresolvedChildIds'] == ['4']
+    assert result[0]['excludedChildIds'] == ['3']
+    assert result[0]['relations'] == seed['relations']
+    assert 'unresolvedChildIds' not in seed
+    assert wit.get_work_items.call_args_list[0].args[0] == [2, 3, 4]
+    assert wit.get_work_items.call_args_list[1].args[0] == [2]
+
+
+def test_linked_hierarchy_keeps_independent_seeds_beyond_a_task_boundary():
+    items = {1: _linked_item(1, children=(2,)), 2: _linked_item(2, 'Task', (3,)),
+             3: _linked_item(3, 'Requirement', (4,)), 4: _linked_item(4, 'Change Request')}
+    client, wit = _linked_client(items)
+    seeds = [client._work_item_ops.normalize_work_item(items[item_id]) for item_id in (1, 3)]
+
+    result = client.get_linked_work_items(seeds)
+
+    assert [item['id'] for item in result] == ['1', '3', '4']
+    assert result[0]['excludedChildIds'] == ['2']
+    assert all(item['traversalBoundary'] is False for item in result)
+    assert all(2 not in call.args[0] for call in wit.get_work_items.call_args_list if 'expand' in call.kwargs)
+
+
+def test_explicit_task_seed_is_kept_without_expanding_children():
+    items = {1: _linked_item(1, 'Task', (2,))}
+    client, wit = _linked_client(items)
+
+    result = client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])])
+
+    assert [item['id'] for item in result] == ['1']
+    assert result[0]['traversalBoundary'] is True
+    wit.get_work_items.assert_not_called()
+
+
+def test_seeded_task_child_remains_loaded_but_excluded_from_parent_traversal():
+    items = {1: _linked_item(1, children=(2,)), 2: _linked_item(2, 'Task', (3,)),
+             3: _linked_item(3, 'Requirement')}
+    client, wit = _linked_client(items)
+    seeds = [client._work_item_ops.normalize_work_item(items[item_id]) for item_id in (1, 2, 3)]
+
+    result = client.get_linked_work_items(seeds)
+
+    assert [item['id'] for item in result] == ['1', '2', '3']
+    assert result[0]['excludedChildIds'] == ['2']
+    assert [item['traversalBoundary'] for item in result] == [False, True, False]
+    wit.get_work_items.assert_not_called()
+
+
+def test_empty_task_category_does_not_guess_from_a_type_name():
+    items = {1: _linked_item(1, children=(2,)), 2: _linked_item(2, 'Task')}
+    client, wit = _linked_client(items)
+    wit.get_work_item_type_category.return_value.work_item_types = []
+
+    result = client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])])
+
+    assert [item['id'] for item in result] == ['1', '2']
+    assert all(item['traversalBoundary'] is False for item in result)
+
+
+@pytest.mark.parametrize('failed_call', ['get_work_item_type_category', 'get_work_items'])
+def test_linked_hierarchy_does_not_reinterpret_sdk_failure_as_empty(failed_call):
+    items = {1: _linked_item(1, children=(2,))}
+    client, wit = _linked_client(items)
+    getattr(wit, failed_call).side_effect = RuntimeError('SDK unavailable')
+
+    with pytest.raises(RuntimeError, match='SDK unavailable'):
+        client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])])
+
+
+def test_linked_hierarchy_requires_a_connected_client():
+    client = AzureClient('org', DummyStorage())
+
+    with pytest.raises(RuntimeError, match='not connected'):
+        client.get_linked_work_items([])
+
+
+def test_linked_hierarchy_keeps_the_highest_revision_of_duplicate_seeds():
+    items = {1: _linked_item(1)}
+    client, wit = _linked_client(items)
+    seed = client._work_item_ops.normalize_work_item(items[1])
+    newer = {**seed, 'rev': 2, 'title': 'Latest seed'}
+
+    result = client.get_linked_work_items([newer, seed])
+
+    assert len(result) == 1
+    assert result[0]['title'] == 'Latest seed'
+    wit.get_work_items.assert_not_called()
+
+
+@pytest.mark.parametrize('changed_field,changed_value', [
+    ('System.WorkItemType', 'Task'), ('System.TeamProject', 'Other'),
+])
+def test_linked_hierarchy_rejects_type_or_project_drift(changed_field, changed_value):
+    items = {1: _linked_item(1, children=(2,)), 2: _linked_item(2)}
+    client, wit = _linked_client(items)
+    read_items = wit.get_work_items.side_effect
+
+    def get_work_items(ids, **kwargs):
+        if 'expand' in kwargs:
+            items[2].fields[changed_field] = changed_value
+        return read_items(ids, **kwargs)
+
+    wit.get_work_items.side_effect = get_work_items
+
+    with pytest.raises(RuntimeError, match='classification changed for work item 2'):
+        client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])])
+
 
 def _make_mapping(type_name, states_dict):
     """Return a SimpleNamespace mimicking WorkItemTypeStateInfo."""

@@ -8,6 +8,33 @@ function planConfig(id, type = 'project') {
 }
 
 describe('CapacityCalculator (unit)', () => {
+  it('counts shared hidden context once for any associated selected plan', () => {
+    const calc = new CapacityCalculator(bus, new Map([['seed', ['linked']]]));
+    const projects = [planConfig('p1'), planConfig('p2')];
+    const features = [
+      { id: 'seed', project: 'p1', sourcePlanIds: ['p1'], presentationPlanIds: ['p1'],
+        start: '2025-01-01', end: '2025-01-01', state: 'active',
+        capacity: [{ team: 't1', capacity: 90 }] },
+      { id: 'linked', project: 'internal-owner', parentId: 'seed',
+        sourcePlanIds: ['p1', 'p2'], presentationPlanIds: [],
+        start: '2025-01-01', end: '2025-01-01', state: 'active',
+        capacity: [{ team: 't1', capacity: 30 }] },
+    ];
+    const calculate = (selectedProjects, data = features, changedIds = null) => calc.calculate(
+      data, { selectedProjects, selectedStates: ['active'] }, [{ id: 't1' }], projects, changedIds,
+    );
+
+    expect(calculate(['p1']).totalOrgDailyCapacity).to.deep.equal([30]);
+    expect(calculate(['p2']).totalOrgDailyCapacity).to.deep.equal([30]);
+    const sharedResult = calculate(['p1', 'p2']);
+    expect(sharedResult.totalOrgDailyCapacity).to.deep.equal([30]);
+    expect(sharedResult.planDailyCapacityMap[0]).to.deep.equal({ p1: 30, p2: 30 });
+    const changed = features.map((feature) => feature.id === 'linked'
+      ? { ...feature, capacity: [{ team: 't1', capacity: 40 }] } : feature);
+    expect(calculate(['p1', 'p2'], changed, ['linked']).totalOrgDailyCapacity).to.deep.equal([40]);
+    expect(calculate([]).totalOrgDailyCapacity).to.deep.equal([]);
+  });
+
   it('empty inputs produce empty result', () => {
     const calc = new CapacityCalculator(bus);
     const res = calc.calculate([], {}, [], []);

@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, BackendPort
-from planner_lib.domain.tasks import DomainTask, WriteResult
+from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 
 logger = logging.getLogger(__name__)
@@ -132,6 +132,28 @@ class StaticBackend(BackendPort):
     # BackendPort: fetch_tasks
     # ------------------------------------------------------------------
 
+    def fetch_plan_tasks(
+        self,
+        plan: Dict[str, Any],
+        credential: Optional[BackendCredential] = None,
+    ) -> List[BackendTask]:
+        """Translate a configured plan to this file backend's source key."""
+        tasks = self.fetch_tasks(
+            area_path=plan['area_path'],
+            task_types=plan.get('task_types'),
+            include_states=plan.get('include_states'),
+            credential=credential,
+        )
+        return [{**task, 'project': plan['id']} for task in tasks]
+
+    def fetch_task_context(
+        self,
+        seeds: List[BackendTask],
+        credential: Optional[BackendCredential] = None,
+    ) -> List[BackendTask]:
+        """File snapshots already contain their supplied task context."""
+        return [{**task, 'presentationPlanIds': list(task['sourcePlanIds'])} for task in seeds]
+
     def fetch_tasks(
         self,
         area_path: str,
@@ -164,7 +186,7 @@ class StaticBackend(BackendPort):
 
     def write_task(
         self,
-        task_id: int,
+        task_id: int | str,
         updates: Dict[str, Any],
         credential: BackendCredential,
     ) -> WriteResult:

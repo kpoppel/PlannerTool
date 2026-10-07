@@ -81,7 +81,7 @@ function renderRelationIcon(item) {
 }
 
 /** Render relation presentation without reaching into application state. */
-export function renderDetailsPanelRelations({ model }) {
+export function renderDetailsPanelRelations({ model, actions }) {
   return html`
     <div class="details-label">Links:</div>
     <div class="details-value">
@@ -92,7 +92,9 @@ export function renderDetailsPanelRelations({ model }) {
             <ul class="azure-relations-list">
               ${group.items.map((item) => html`
                 <li class="azure-relation-item">
-                  <div class="relation-icon">${renderRelationIcon(item)}</div>
+                  <div class="relation-icon" @click=${() => actions.centerFeature(item.id)}>
+                    ${renderRelationIcon(item)}
+                  </div>
                   <div class="relation-content">
                     ${item.type === 'Child' && item.loaded ? html`
                       <div class="relation-state-indicator"

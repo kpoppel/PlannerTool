@@ -31,7 +31,7 @@ Design
     purged on an error/empty response.  Local, static, and mock backends never
     hit transient outages, so they pass the refresh result through unchanged.
 * ``write_task``: delegate to inner backend first (ADO / mock persistence),
-  then patch every cached ``fetch_tasks__*`` list in-place so diskcache is
+  then patch every cached task list in-place so diskcache is
   immediately consistent.  The patch preserves the existing freshness window.
   TTL expiry and explicit ``/cache/refresh`` are the only paths that ever
   re-fetch from ADO.
@@ -99,6 +99,8 @@ class CacheTTLConfig:
     # overrides those methods directly and never routes them through diskcache.
 
     def ttl_for(self, method_name: str) -> Optional[timedelta]:
+        if method_name in ('fetch_plan_tasks', 'fetch_task_context'):
+            return self.fetch_tasks
         return getattr(self, method_name, self.default)
 
     @classmethod
@@ -446,7 +448,7 @@ class CachingBackend:
 
     def write_task(
         self,
-        task_id: int,
+        task_id: int | str,
         updates: Dict[str, Any],
         credential: BackendCredential,
     ) -> WriteResult:
@@ -463,7 +465,7 @@ class CachingBackend:
             self._patch_task_in_cache(task_id, updates)
         return result
 
-    def _patch_task_in_cache(self, task_id: int, updates: Dict[str, Any]) -> None:
+    def _patch_task_in_cache(self, task_id: int | str, updates: Dict[str, Any]) -> None:
         """Update every cached fetch_tasks list that contains *task_id* in-place.
 
         The remaining TTL of each entry is preserved: we read the absolute
@@ -475,7 +477,7 @@ class CachingBackend:
         get_expire = getattr(self._storage, 'get_expire_time', None)
         try:
             for key in list(self._storage.list_keys(_NAMESPACE)):
-                if not key.startswith('fetch_tasks__'):
+                if not key.startswith(('fetch_tasks__', 'fetch_plan_tasks__', 'fetch_task_context__')):
                     continue
                 try:
                     tasks = self._storage.load(_NAMESPACE, key)

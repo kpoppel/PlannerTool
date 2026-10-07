@@ -1,6 +1,44 @@
 from planner_lib.cost.service import CostService, build_cost_schema
 
 
+def test_cost_context_uses_configured_provenance_and_category_bounded_precedence(
+    fake_services, cache_storage,
+):
+    svc = CostService(
+        storage=fake_services['storage'],
+        project_repository=fake_services['project_repository'],
+        team_repository=fake_services['team_repository'],
+        people_repository=fake_services['people_repository'],
+        cache_storage=cache_storage,
+    )
+    base = {'start': '2025-01-01', 'end': '2025-01-31',
+            'state': 'Active', 'type': 'Feature', 'relations': [],
+            'capacity': [{'team': 'team-alpha', 'capacity': 100}]}
+    parent = {**base, 'id': 'parent', 'project': 'project-1',
+              'sourcePlanIds': ['project-1'], 'excludedChildIds': ['task']}
+    linked = {**base, 'id': 'linked', 'project': 'context-internal',
+              'parentId': 'parent', 'sourcePlanIds': ['project-1', 'project-2'],
+              'relations': [{'type': 'Parent', 'id': 'parent'}],
+              'capacity': [{'team': 'team-alpha', 'capacity': 30}]}
+    task = {**base, 'id': 'task', 'project': 'project-2',
+            'parentId': 'parent', 'sourcePlanIds': ['project-2'],
+            'traversalBoundary': True,
+            'relations': [{'type': 'Parent', 'id': 'parent'}]}
+
+    linked_only = svc.estimate_costs({'features': [linked]})['projects']
+    assert set(linked_only) == {'project-1', 'project-2'}
+    assert linked_only['project-1']['linked'] == linked_only['project-2']['linked']
+
+    parent_only = svc.estimate_costs({'features': [parent]})['projects']['project-1']
+    bounded = svc.estimate_costs({'features': [parent, task]})['projects']
+    assert 'task' not in bounded['project-1']
+    assert bounded['project-1']['totals'] == parent_only['totals']
+
+    combined = svc.estimate_costs({'features': [parent, linked]})['projects']
+    assert 'context-internal' not in combined
+    assert combined['project-1']['totals'] == linked_only['project-1']['totals']
+
+
 def test_cost_schema_sorts_by_configured_container_order():
     schema = build_cost_schema(
         {'a-leaf': {}, 'z-root': {}, 'm-middle': {}},

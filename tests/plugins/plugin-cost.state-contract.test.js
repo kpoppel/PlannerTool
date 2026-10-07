@@ -74,7 +74,7 @@ describe('plugin cost pluginState seam', () => {
     expect(plugin.loadData).toHaveBeenCalledTimes(1);
   });
 
-  it('reports changing Context exactly without re-adding filtered parents', async () => {
+  it('reports complete Context without applying board type filters', async () => {
     const parent = {
       id: 'parent',
       project: 'plan-1',
@@ -83,9 +83,13 @@ describe('plugin cost pluginState seam', () => {
     };
     const child = {
       id: 'child',
-      project: 'plan-1',
+      project: 'internal-owner',
       parentId: 'parent',
-      type: 'Feature',
+      type: 'Requirement',
+      sourcePlanIds: ['plan-1'],
+      presentationPlanIds: [],
+      traversalBoundary: false,
+      excludedChildIds: [],
       capacity: [{ team: 'team-1', capacity: 100 }],
     };
     mockSel.scope.getContextFeatures.mockReturnValue([parent, child]);
@@ -104,9 +108,12 @@ describe('plugin cost pluginState seam', () => {
 
     expect(getCost).toHaveBeenCalledOnce();
     expect(getCost.mock.calls[0][0].features.map((feature) => feature.id)).toEqual([
-      'child',
+      'parent', 'child',
     ]);
-    expect(getCost.mock.calls[0][0].features[0].capacity).toBe(child.capacity);
+    expect(getCost.mock.calls[0][0].features[1].capacity).toBe(child.capacity);
+    expect(getCost.mock.calls[0][0].features[1].sourcePlanIds).toEqual(['plan-1']);
+    expect(getCost.mock.calls[0][0].features[1].presentationPlanIds).toEqual([]);
+    expect(getCost.mock.calls[0][0].features[1].traversalBoundary).toBe(false);
     expect(plugin.data).toEqual({ projects: {} });
 
     const contextFeature = {
@@ -133,12 +140,12 @@ describe('plugin cost pluginState seam', () => {
     querySelector.mockRestore();
   });
 
-  it('renders the selected type counting rules without a mounted Sidebar', () => {
+  it('renders allocation-scope counting rules without a mounted Sidebar', () => {
     const querySelector = vi.spyOn(document, 'querySelector');
     const root = document.createElement('div');
     render(renderCountingBanner(), root);
-    expect(root.textContent).toContain('Epic, Feature');
-    expect(root.textContent).toContain('Children (lowest-level) are authoritative');
+    expect(root.textContent).toContain('Complete allocation context');
+    expect(root.textContent).toContain('Child-team precedence');
     expect(querySelector).not.toHaveBeenCalledWith('app-sidebar');
   });
 

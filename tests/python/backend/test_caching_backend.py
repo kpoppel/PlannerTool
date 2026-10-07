@@ -88,6 +88,111 @@ def test_credential_excluded_from_cache_key(caching, inner):
     assert len(inner.fetch_tasks_calls) == 1
 
 
+@pytest.mark.parametrize('task_ttl', [timedelta(minutes=5), None])
+def test_plan_fetch_uses_the_existing_task_ttl(task_ttl):
+    from planner_lib.backend.caching import CacheTTLConfig
+
+    config = CacheTTLConfig(default=timedelta(hours=4), fetch_tasks=task_ttl)
+
+    assert config.ttl_for('fetch_plan_tasks') == task_ttl
+    assert config.ttl_for('fetch_task_context') == task_ttl
+
+
+def test_plan_task_cache_keeps_private_metadata_but_repository_does_not_expose_it(storage):
+    from unittest.mock import MagicMock
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.repository.task_repository import TaskRepository
+
+    plan = {'id': 'plan-a', 'backendData': {'query': 'backend-owned-query'}}
+    private_data = {'externalKey': 'issue-1', 'versionToken': 'backend-owned-token'}
+    task = {**_TASK, 'project': 'plan-a', 'backendData': private_data}
+    inner = MagicMock(spec=['fetch_plan_tasks', 'fetch_task_context', 'write_task'])
+    inner.fetch_plan_tasks.return_value = [task]
+    inner.fetch_task_context.side_effect = lambda seeds, credential: seeds
+    inner.write_task.return_value = {'ok': True, 'updated': 1, 'errors': []}
+    caching = CachingBackend(inner, storage)
+    projects = MagicMock()
+    projects.get_project_map.return_value = [plan]
+    repo = TaskRepository(caching, projects, MagicMock())
+
+    public_task, = repo.read()
+    assert 'backendData' not in public_task
+    assert task['backendData'] == private_data
+    key = caching._make_key('fetch_plan_tasks', (), {'plan': plan, 'credential': None})
+    assert storage.load('backend_domain', key)[0]['backendData'] == private_data
+
+    caching.write_task(1, {'state': 'Closed'}, CRED)
+
+    public_task, = repo.read()
+    assert public_task['state'] == 'Closed'
+    assert 'backendData' not in public_task
+    assert storage.load('backend_domain', key)[0]['backendData'] == private_data
+    inner.fetch_plan_tasks.assert_called_once_with(plan=plan, credential=None)
+
+
+def test_repository_private_context_reuses_cached_seeds_and_forest(storage):
+    from unittest.mock import MagicMock
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.repository.task_repository import TaskRepository
+
+    plans = [{'id': 'plan-a'}, {'id': 'plan-b'}]
+    seed = {**_TASK, 'backendData': {'sourceKey': 'external-1'}}
+    linked = {**_TASK, 'id': 'linked', 'project': 'internal-owner',
+              'sourcePlanIds': ['plan-a', 'plan-b'], 'presentationPlanIds': [],
+              'backendData': {'sourceKey': 'external-2'}}
+    inner = MagicMock(spec=['fetch_plan_tasks', 'fetch_task_context', 'write_task'])
+    inner.fetch_plan_tasks.return_value = [seed]
+    inner.fetch_task_context.return_value = [
+        {**seed, 'sourcePlanIds': ['plan-a', 'plan-b']}, linked,
+    ]
+    inner.write_task.return_value = {'ok': True, 'updated': 1, 'errors': []}
+    caching = CachingBackend(inner, storage)
+    projects = MagicMock()
+    projects.get_project_map.return_value = plans
+    repo = TaskRepository(caching, projects, MagicMock())
+
+    repo._fetch_context(CRED)
+    cached = repo._fetch_context({'token': 'different', 'user_id': 'other'})
+
+    assert cached[1] == linked
+    inner.fetch_task_context.assert_called_once_with([
+        {**seed, 'sourcePlanIds': ['plan-a', 'plan-b']},
+    ], credential=CRED)
+    assert inner.fetch_plan_tasks.call_count == 2
+    assert all('backendData' in task for task in cached)
+    assert all('backendData' not in task for task in repo._project_tasks(cached))
+
+    caching.write_task('linked', {'state': 'Closed'}, CRED)
+    updated = repo._fetch_context(CRED)
+    assert updated[1]['state'] == 'Closed'
+    assert updated[1]['backendData'] == linked['backendData']
+    assert updated[1]['sourcePlanIds'] == ['plan-a', 'plan-b']
+    inner.fetch_task_context.assert_called_once()
+
+
+def test_context_cache_write_through_preserves_private_identity_and_scope(storage):
+    from unittest.mock import MagicMock
+    from planner_lib.backend.caching import CachingBackend
+
+    inner = MagicMock(spec=['fetch_task_context', 'write_task'])
+    task = {**_TASK, 'sourcePlanIds': ['plan-a', 'plan-b'],
+            'presentationPlanIds': ['plan-a'], 'backendData': {'sourceKey': 'external-1'}}
+    seeds = [dict(_TASK)]
+    inner.fetch_task_context.return_value = [task]
+    inner.write_task.return_value = {'ok': True, 'updated': 1, 'errors': []}
+    caching = CachingBackend(inner, storage)
+
+    caching.fetch_task_context(seeds, credential=CRED)
+    caching.write_task(1, {'state': 'Closed'}, CRED)
+    cached, = caching.fetch_task_context(seeds, credential=CRED)
+
+    assert cached['state'] == 'Closed'
+    assert cached['backendData'] == task['backendData']
+    assert cached['sourcePlanIds'] == ['plan-a', 'plan-b']
+    assert cached['presentationPlanIds'] == ['plan-a']
+    inner.fetch_task_context.assert_called_once_with(seeds, credential=CRED)
+
+
 def test_invalid_pat_serves_stale_tasks_snapshot_and_records_warning(storage):
     """On a soft-expired entry, an auth failure keeps and serves existing content.
 

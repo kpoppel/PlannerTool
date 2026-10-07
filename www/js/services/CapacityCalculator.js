@@ -7,6 +7,7 @@
 import { CapacityEvents } from '../core/EventRegistry.js';
 import { isEnabled } from '../config.js';
 import { getPlanAncestorIds, resolveFundedTargetProject } from '../application/shared/ownership.js';
+import { featureMatchesPlans } from '../application/shared/featureProjection.js';
 
 // Special project ID for unfunded/orphaned allocations
 const UNFUNDED_PROJECT_ID = '__unfunded__';
@@ -45,6 +46,7 @@ export class CapacityCalculator {
   // Optional 5th param: changedFeatureIds (Array) for incremental updates
   calculate(features, filters, teams, projects, changedFeatureIds = null) {
     const { selectedProjects = [], selectedTeams = [], selectedStates = [] } = filters;
+    const scopeKey = JSON.stringify([selectedProjects, selectedStates]);
 
     // Validate inputs
     if (
@@ -117,6 +119,7 @@ export class CapacityCalculator {
           oldFeature.project === newFeature.project;
       }) &&
       this._lastResultCache &&
+      this._lastResultCache.scopeKey === scopeKey &&
       this._lastResultCache.dates.length === dates.length
     ) {
       this._applyFeatureDeltas(changedFeatureIds, effectiveById, {
@@ -193,6 +196,7 @@ export class CapacityCalculator {
 
     // Cache result for incremental updates
     this._lastResultCache = {
+      scopeKey,
       dates,
       teamDaily,
       teamDailyMap,
@@ -235,7 +239,7 @@ export class CapacityCalculator {
     const planTeamDailyMap = Array.from({ length: dlen }, () => ({}));
     const totalOrgDaily = new Array(dlen).fill(0);
 
-    const selectedProjectSet = new Set(selectedProjects);
+    const selectedProjectSet = new Set(selectedProjects.map(String));
     const selectedStateSet = new Set(selectedStates);
     const fundedTargetMemo = new Map();
 
@@ -254,7 +258,7 @@ export class CapacityCalculator {
 
     for (const f of features) {
       if (!f || !f.start || !f.end) continue;
-      if (!selectedProjectSet.has(f.project)) continue;
+      if (!featureMatchesPlans(f, selectedProjectSet)) continue;
       const fState = f.state;
       if (!selectedStateSet.has(fState)) continue;
 
@@ -362,7 +366,7 @@ export class CapacityCalculator {
     const planTeamDailyMap = cache.planTeamDailyMap;
     const totalOrgDaily = cache.totalOrgDaily;
 
-    const selectedProjectSet = new Set(selectedProjects);
+    const selectedProjectSet = new Set(selectedProjects.map(String));
     const selectedStateSet = new Set(selectedStates);
     const fundedTargetMemo = new Map();
 
@@ -385,7 +389,7 @@ export class CapacityCalculator {
     // would fail to remove the parent's old contribution when a child gains capacity.
     const processFeature = (f, sign, childSource) => {
       if (!f || !f.start || !f.end) return;
-      if (!selectedProjectSet.has(f.project)) return;
+      if (!featureMatchesPlans(f, selectedProjectSet)) return;
       const fState = f.state;
       if (!selectedStateSet.has(fState)) return;
 
@@ -555,7 +559,7 @@ export class CapacityCalculator {
     const projectDailyMap = new Array(dates.length);
     const totalOrgDaily = new Array(dates.length);
 
-    const selectedProjectSet = new Set(selectedProjects);
+    const selectedProjectSet = new Set(selectedProjects.map(String));
     const selectedStateSet = new Set(selectedStates);
 
     for (let di = 0; di < dates.length; di++) {
@@ -572,7 +576,7 @@ export class CapacityCalculator {
         if (dayIso < f.start || dayIso > f.end) continue;
 
         // Filter by selected projects
-        if (!selectedProjectSet.has(f.project)) continue;
+        if (!featureMatchesPlans(f, selectedProjectSet)) continue;
 
         // Filter by selected states
         const fState = f.state;

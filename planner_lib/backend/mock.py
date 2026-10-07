@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter
-from planner_lib.domain.tasks import DomainTask, WriteResult
+from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,28 @@ class _MockBackendBase(BackendPort):
         self._capacity_service = capacity_service
         self._storage = storage
         self._config = local_backend
+
+    def fetch_plan_tasks(
+        self,
+        plan: Dict[str, Any],
+        credential: Optional[BackendCredential] = None,
+    ) -> List[BackendTask]:
+        """Interpret the ADO-like seed settings used by these mock clients."""
+        tasks = self.fetch_tasks(
+            area_path=plan['area_path'],
+            task_types=plan.get('task_types'),
+            include_states=plan.get('include_states'),
+            credential=credential,
+        )
+        return [{**task, 'project': plan['id']} for task in tasks]
+
+    def fetch_task_context(
+        self,
+        seeds: List[BackendTask],
+        credential: Optional[BackendCredential] = None,
+    ) -> List[BackendTask]:
+        """Mock snapshots already contain their supplied task context."""
+        return [{**task, 'presentationPlanIds': list(task['sourcePlanIds'])} for task in seeds]
 
     def _build_type_canonical(self) -> Dict[str, str]:
         type_canonical: Dict[str, str] = {}
@@ -255,11 +277,12 @@ class MockFixtureBackend(_MockBackendBase):
 
     def write_task(
         self,
-        task_id: int,
+        task_id: int | str,
         updates: Dict[str, Any],
         credential: BackendCredential,
     ) -> WriteResult:
         """Apply updates in mock client's in-memory store."""
+        task_id = int(task_id)
         errors: List[str] = []
         updated = 0
         try:
@@ -526,10 +549,11 @@ class MockGeneratorBackend(_MockBackendBase):
 
     def write_task(
         self,
-        task_id: int,
+        task_id: int | str,
         updates: Dict[str, Any],
         credential: BackendCredential,
     ) -> WriteResult:
+        task_id = int(task_id)
         errors: List[str] = []
         updated = 0
         try:

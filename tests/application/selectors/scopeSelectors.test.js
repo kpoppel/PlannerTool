@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createScopeSelectors } from '../../../www/js/application/selectors/scopeSelectors.js';
+import { createFeatureSelectors } from '../../../www/js/application/selectors/featureSelectors.js';
+import { createSelectionSelectors } from '../../../www/js/application/selectors/selectionSelectors.js';
 
 function createStore(state) {
   return { getState: () => state };
@@ -59,6 +61,52 @@ function baseState(overrides = {}) {
 }
 
 describe('application/selectors/scopeSelectors', () => {
+  it('keeps imported context inspectable but presents only configured types', () => {
+    const state = baseState({ selection: { teamIds: [] } });
+    state.baseline.features = [
+      { id: 'seed', project: 'selected', type: 'Epic', state: 'Active',
+        sourcePlanIds: ['selected'], presentationPlanIds: ['selected'],
+        parentId: null, relations: [], capacity: [] },
+      { id: 'linked', project: 'internal-owner', type: 'Requirement', state: 'Active',
+        sourcePlanIds: ['selected', 'other'], presentationPlanIds: [],
+        parentId: 'seed', relations: [], capacity: [{ team: 'team-a', capacity: 50 }] },
+      { id: 'shared', project: 'internal-owner', type: 'Feature', state: 'Active',
+        sourcePlanIds: ['selected', 'other'], presentationPlanIds: ['selected', 'other'],
+        parentId: 'linked', relations: [], capacity: [] },
+    ];
+    state.selection.taskTypeNames = [];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'seed', 'linked', 'shared',
+    ]);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed', 'shared']);
+    const featureSelectors = createFeatureSelectors(createStore(state));
+    expect(featureSelectors.getAvailableTaskTypes()).toEqual(['Epic', 'Feature']);
+    expect(featureSelectors.getCountsForProject('selected')).toEqual(
+      new Map([['epic', 1], ['feature', 1]])
+    );
+    expect(createSelectionSelectors(createStore(state)).getProjects()
+      .some((plan) => plan.id === 'internal-owner')).toBe(false);
+
+    state.selection.projectIds = ['other'];
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual(['linked', 'shared']);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['shared']);
+
+    state.selection.projectIds = ['child'];
+    state.view.context.child = true;
+    state.view.context.parent = true;
+    state.view.context.otherAllocations = true;
+    expect(selectors.getContextFeatures()).toEqual([]);
+    expect(selectors.getResolvedFeatures()).toHaveLength(3);
+    state.baseline.features = [...state.baseline.features, {
+      id: 'unrelated-seed', project: 'child', type: 'Feature', state: 'Active',
+      sourcePlanIds: ['child'], presentationPlanIds: ['child'],
+      parentId: null, relations: [], capacity: [{ team: 'team-a', capacity: 10 }],
+    }];
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual(['unrelated-seed']);
+  });
+
   it('applies plan, context, team, and task filters in that order', () => {
     const state = baseState({
       view: { context: { parent: true, child: true, dependency: true, otherAllocations: true } },

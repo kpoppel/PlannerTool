@@ -240,6 +240,166 @@ def test_task_repository_read_calls_backend():
     assert len(backend.fetch_tasks_calls) == 1
 
 
+@pytest.mark.parametrize('reverse', [False, True])
+def test_task_repository_preserves_actual_owner_and_merges_seed_provenance(reverse):
+    from planner_lib.repository.task_repository import TaskRepository
+
+    projects = [
+        {'id': 'plan-a', 'backendData': {'query': 'external-query-a'}},
+        {'id': 'plan-b', 'backendData': {'query': 'external-query-b'}},
+    ]
+    original = {'id': 'external-1', 'project': 'plan-b', 'type': 'Feature',
+                'state': 'Active', 'revision': 1, 'title': 'Old',
+                'backendData': {'externalKey': 'issue-17', 'rev': 'opaque-token'}}
+    newer = {**original, 'revision': 2, 'title': 'Newest'}
+    orphan = {'id': 'external-2', 'project': 'internal-context-owner',
+              'type': 'Feature', 'state': 'Active',
+              'backendData': {'source': 'external-workspace', 'rev': 'not-an-integer'}}
+    backend = MagicMock()
+    payloads = {'plan-a': [original, orphan], 'plan-b': [newer, orphan]}
+    backend.fetch_plan_tasks.side_effect = lambda plan, credential: payloads[plan['id']]
+    backend.fetch_task_context.side_effect = lambda seeds, credential: seeds
+    repo = TaskRepository(backend, _make_project_service(projects[::-1] if reverse else projects),
+                          FakeCredentialProvider())
+
+    tasks = {task['id']: task for task in repo.read()}
+
+    assert len(tasks) == 2
+    assert tasks['external-1']['project'] == 'plan-b'
+    assert tasks['external-1']['title'] == 'Newest'
+    assert tasks['external-1']['sourcePlanIds'] == ['plan-a', 'plan-b']
+    assert tasks['external-2']['project'] == 'internal-context-owner'
+    assert all('backendData' not in task for task in tasks.values())
+    assert orphan['backendData'] == {'source': 'external-workspace', 'rev': 'not-an-integer'}
+    assert tasks['external-2']['sourcePlanIds'] == ['plan-a', 'plan-b']
+    assert original['project'] == 'plan-b'
+    assert 'sourcePlanIds' not in orphan
+    assert [call.kwargs['plan'] for call in backend.fetch_plan_tasks.call_args_list] == (
+        projects[::-1] if reverse else projects
+    )
+    backend.fetch_tasks.assert_not_called()
+
+
+def test_task_repository_passes_private_combined_seeds_to_context_before_projection():
+    from planner_lib.repository.task_repository import TaskRepository
+
+    projects = [{'id': 'plan-a'}, {'id': 'plan-b'}]
+    older = {'id': 'external-1', 'project': 'plan-a', 'revision': 1,
+             'backendData': {'source': 'old'}}
+    newer = {**older, 'revision': 2, 'backendData': {'source': 'current'}}
+    second = {'id': 'external-2', 'project': 'plan-b',
+              'backendData': {'source': 'other'}}
+    backend = MagicMock()
+    backend.fetch_plan_tasks.side_effect = [[older], [newer, second]]
+    context = [
+        {**newer, 'sourcePlanIds': ['plan-a', 'plan-b'],
+         'presentationPlanIds': ['plan-a', 'plan-b']},
+        {**second, 'sourcePlanIds': ['plan-b'], 'presentationPlanIds': ['plan-b']},
+        {'id': 'linked-3', 'project': 'internal-owner',
+         'sourcePlanIds': ['plan-a', 'plan-b'], 'presentationPlanIds': [],
+         'backendData': {'source': 'linked'}},
+    ]
+    backend.fetch_task_context.return_value = context
+    credential = {'token': 'test', 'user_id': 'test'}
+    repo = TaskRepository(backend, _make_project_service(projects), FakeCredentialProvider())
+
+    private_context = repo._fetch_context(credential=credential)
+    result = repo._project_tasks(private_context)
+
+    backend.fetch_task_context.assert_called_once_with([
+        {**newer, 'sourcePlanIds': ['plan-a', 'plan-b']},
+        {**second, 'sourcePlanIds': ['plan-b']},
+    ], credential=credential)
+    assert {task['id'] for task in result} == {'external-1', 'external-2', 'linked-3'}
+    assert all('backendData' not in task for task in result)
+    assert 'sourcePlanIds' not in older
+    assert 'sourcePlanIds' not in newer
+    assert all('backendData' in task for task in context)
+    assert private_context == context
+
+
+def test_task_repository_public_read_projects_the_normalized_forest():
+    from planner_lib.repository.task_repository import TaskRepository
+
+    backend = MagicMock()
+    seed = {'id': 'seed', 'project': 'plan-a', 'backendData': {'identity': 'private'}}
+    backend.fetch_plan_tasks.return_value = [seed]
+    backend.fetch_task_context.return_value = [
+        {**seed, 'sourcePlanIds': ['plan-a'], 'presentationPlanIds': ['plan-a']},
+        {'id': 'linked', 'project': 'internal-owner', 'sourcePlanIds': ['plan-a'],
+         'presentationPlanIds': [], 'backendData': {'identity': 'linked-private'}},
+    ]
+    repo = TaskRepository(backend, _make_project_service([{'id': 'plan-a'}]),
+                          FakeCredentialProvider())
+
+    assert repo.read() == [
+        {'id': 'seed', 'project': 'plan-a', 'sourcePlanIds': ['plan-a'],
+         'presentationPlanIds': ['plan-a']},
+        {'id': 'linked', 'project': 'internal-owner', 'sourcePlanIds': ['plan-a'],
+         'presentationPlanIds': []},
+    ]
+    backend.fetch_task_context.assert_called_once_with([
+        {**seed, 'sourcePlanIds': ['plan-a']},
+    ], credential=None)
+    assert 'sourcePlanIds' not in seed
+
+
+@pytest.mark.parametrize('error', [BackendAuthError, BackendConfigError, BackendUnavailableError])
+def test_task_repository_private_context_failures_propagate(error):
+    from planner_lib.repository.task_repository import TaskRepository
+
+    backend = MagicMock()
+    backend.fetch_plan_tasks.return_value = [{'id': 'seed', 'project': 'plan-a'}]
+    backend.fetch_task_context.side_effect = error('Context normalization failed')
+    repo = TaskRepository(backend, _make_project_service([{'id': 'plan-a'}]),
+                          FakeCredentialProvider())
+
+    with pytest.raises(error, match='Context normalization failed'):
+        repo._fetch_context()
+
+
+def test_task_repository_private_context_handles_an_empty_combined_forest():
+    from planner_lib.repository.task_repository import TaskRepository
+
+    backend = FakeBackend()
+    repo = TaskRepository(backend, _make_project_service([]), FakeCredentialProvider())
+
+    assert repo._fetch_context() == []
+    assert backend.fetch_tasks_calls == []
+
+
+@pytest.mark.parametrize('project_id, expected_ids', [
+    (None, {'seed-a', 'seed-b', 'linked'}),
+    ('plan-a', {'seed-a', 'linked'}),
+    ('plan-b', {'seed-b', 'linked'}),
+])
+def test_task_repository_filters_by_provenance_after_combined_forest_normalization(
+    project_id, expected_ids,
+):
+    from planner_lib.repository.task_repository import TaskRepository
+
+    plans = [{'id': 'plan-a'}, {'id': 'plan-b'}]
+    backend = MagicMock()
+    backend.fetch_plan_tasks.side_effect = [
+        [{'id': 'seed-a', 'project': 'plan-a'}],
+        [{'id': 'seed-b', 'project': 'plan-b'}],
+    ]
+    backend.fetch_task_context.return_value = [
+        {'id': 'seed-a', 'project': 'plan-a', 'sourcePlanIds': ['plan-a']},
+        {'id': 'seed-b', 'project': 'plan-b', 'sourcePlanIds': ['plan-b']},
+        {'id': 'linked', 'project': 'context-internal',
+         'sourcePlanIds': ['plan-a', 'plan-b'], 'presentationPlanIds': []},
+    ]
+    repo = TaskRepository(backend, _make_project_service(plans), FakeCredentialProvider())
+
+    assert {task['id'] for task in repo.read(project_id)} == expected_ids
+    assert backend.fetch_plan_tasks.call_count == 2
+    backend.fetch_task_context.assert_called_once_with([
+        {'id': 'seed-a', 'project': 'plan-a', 'sourcePlanIds': ['plan-a']},
+        {'id': 'seed-b', 'project': 'plan-b', 'sourcePlanIds': ['plan-b']},
+    ], credential=None)
+
+
 def test_task_repository_read_filters_by_project():
     from planner_lib.repository.task_repository import TaskRepository
 
@@ -271,7 +431,7 @@ def test_task_repository_read_skips_misconfigured_project_and_logs_error(caplog)
     class PartialFailureBackend(FakeBackend):
         def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
             if area_path == 'PB\\MissingArea':
-                raise BackendConfigError('TF401232: area path does not exist')
+                raise BackendConfigError(f'TF401232: area path {area_path} does not exist')
             return super().fetch_tasks(
                 area_path,
                 task_types=task_types,
@@ -356,6 +516,36 @@ def test_task_repository_write_delegates_to_backend():
 
     assert result['updated'] == 1
     assert len(backend.write_task_calls) == 1
+
+
+def test_task_repository_write_preserves_backend_neutral_task_ids():
+    from planner_lib.repository.task_repository import TaskRepository
+
+    backend = MagicMock()
+    backend.write_task.return_value = {'ok': True, 'updated': 1, 'errors': []}
+    credentials = FakeCredentialProvider('user@test.com', 'tok')
+    repo = TaskRepository(backend, _make_project_service([]), credentials)
+    update = {'id': 'issue-17', 'state': 'Active'}
+
+    assert repo.write([update], 'user@test.com') == {'updated': 1, 'errors': []}
+    backend.write_task.assert_called_once_with(
+        'issue-17', update, credentials.get_credential('user@test.com')
+    )
+
+
+def test_task_repository_consumers_cannot_update_backend_metadata():
+    from planner_lib.repository.task_repository import TaskRepository
+
+    backend = MagicMock()
+    repo = TaskRepository(backend, _make_project_service([]),
+                          FakeCredentialProvider('user@test.com', 'tok'))
+
+    result = repo.write([{'id': '1', 'backendData': {'externalKey': 'another-item'}}],
+                        'user@test.com')
+
+    assert result['updated'] == 0
+    assert result['errors'] == ['Task 1: backendData is private to the backend']
+    backend.write_task.assert_not_called()
 
 
 def test_task_repository_write_returns_error_for_missing_credential():

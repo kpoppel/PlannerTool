@@ -1,3 +1,5 @@
+import { featureCanPresent } from './featureProjection.js';
+
 function toTypeName(feature) {
   return feature.type;
 }
@@ -23,6 +25,7 @@ export function deriveAvailableTaskTypes(features) {
   const seen = new Set();
 
   for (const feature of features) {
+    if (!featureCanPresent(feature)) continue;
     const typeName = toTypeName(feature);
     if (!typeName) continue;
     const key = String(typeName);

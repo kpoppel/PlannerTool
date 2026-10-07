@@ -96,16 +96,45 @@ class CostService:
         except Exception:
             allowed_projects = None
 
-        # First pass: build a mapping from work item ID to project ID
-        # This helps us identify which work items are projects. Allow plans
-        # of all types to participate in the Project View - do not filter by
-        # configured project types here.
-        workitem_to_project: Dict[str, str] = {}
-        for f in features:
-            fid = str(f.get("id", ""))
-            project_id = f.get("project")
-            if fid and project_id:
-                workitem_to_project[fid] = project_id
+        features_by_id = {str(feature['id']): feature for feature in features}
+        parents_by_child = {}
+        children_by_parent = {}
+        for feature in features:
+            child_id = str(feature['id'])
+            parent_ids = {str(relation['id']) for relation in feature.get('relations', [])
+                          if relation['type'] == 'Parent'}
+            if feature.get('parentId') is not None:
+                parent_ids.add(str(feature['parentId']))
+            parents_by_child[child_id] = []
+            if feature.get('traversalBoundary', False):
+                continue
+            for parent_id in sorted(parent_ids):
+                parent = features_by_id.get(parent_id)
+                if parent is None or parent.get('traversalBoundary', False):
+                    continue
+                if child_id in {str(item_id) for item_id in parent.get('excludedChildIds', [])}:
+                    continue
+                parents_by_child[child_id].append(parent_id)
+                children_by_parent.setdefault(parent_id, []).append(child_id)
+
+        targets_by_id = {}
+        for feature in features:
+            target_ids = set()
+            pending = [str(feature['id'])]
+            visited = set()
+            while pending:
+                current_id = pending.pop()
+                if current_id in visited:
+                    continue
+                visited.add(current_id)
+                current = features_by_id[current_id]
+                if current.get('project'):
+                    target_ids.add(current['project'])
+                target_ids.update(current.get('sourcePlanIds', []))
+                pending.extend(parents_by_child[current_id])
+            if allowed_projects:
+                target_ids.intersection_update(allowed_projects)
+            targets_by_id[str(feature['id'])] = sorted(target_ids)
 
         projects: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
@@ -115,34 +144,8 @@ class CostService:
             project_id = f.get("project")
             title = f.get("title", "") or f.get("name", "")
             
-            # Check if this feature has a parent that is a project via relations
-            # Treat any parent project id as valid (plans of all types allowed)
-            parent_project_ids = []
-            has_project_parent = False
-            relations = f.get("relations", [])
-            if isinstance(relations, list):
-                for rel in relations:
-                    if isinstance(rel, dict) and rel.get("type") == "Parent":
-                        parent_id = str(rel.get("id", ""))
-                        # Look up the parent's project in our mapping
-                        parent_proj = workitem_to_project.get(parent_id)
-                        if parent_proj:
-                            parent_project_ids.append(parent_proj)
-                            # mark that a project parent exists (no type-based filtering)
-                            has_project_parent = True
-            
-            # Determine which projects should include this feature
-            target_projects = []
-            
-            # Add the feature's own project (allow any project/plan id)
-            if project_id:
-                target_projects.append(project_id)
-            
-            # Add parent projects (if different from own project). Include
-            # descendants/parent links regardless of configured project types.
-            for parent_proj in parent_project_ids:
-                if parent_proj != project_id:
-                    target_projects.append(parent_proj)
+            has_project_parent = bool(parents_by_child[str(fid)])
+            target_projects = targets_by_id[str(fid)]
             
             # Skip if no valid project to assign to
             if not target_projects:
@@ -208,27 +211,6 @@ class CostService:
         team_aggregates = _engine._team_members(self._cfg, cache_storage=self._cache_storage)
         project_sites: Dict[str, Dict[str, Dict[str, Dict[str, float]]]] = {}
 
-        # Build parent→children set from the payload relations so we can apply
-        # the same per-team rollup rule as the client:
-        #   - children are authoritative for the teams they cover
-        #   - a parent keeps its own allocation for teams no child covers
-        # (Previously we skipped whole parents, losing their team-only allocations.)
-        children_by_parent: Dict[str, list] = {}
-        for ftmp in features:
-            rels = ftmp.get('relations') or []
-            if isinstance(rels, list):
-                for rel in rels:
-                    if isinstance(rel, dict) and rel.get('type') == 'Parent':
-                        parent_id = str(rel.get('id')) if rel.get('id') is not None else None
-                        child_id = str(ftmp.get('id')) if ftmp.get('id') is not None else None
-                        if parent_id and child_id:
-                            children_by_parent.setdefault(parent_id, []).append(child_id)
-
-        # Build feature lookup and determine which teams each feature's *children*
-        # cover so we can decide: covered team → use children's allocation,
-        # uncovered team → use own allocation.
-        features_by_id: Dict[str, dict] = {str(f.get('id')): f for f in features if f.get('id') is not None}
-
         def child_covered_teams(fid_s: str) -> set:
             """Return the set of team keys covered by any direct child."""
             covered: set = set()
@@ -278,17 +260,7 @@ class CostService:
             end = f.get('end')
             capacity = f.get('capacity', []) or []
 
-            target_projects = []
-            if project_id and (not isinstance(allowed_projects, set) or not allowed_projects or project_id in allowed_projects):
-                target_projects.append(project_id)
-            relations = f.get('relations', [])
-            if isinstance(relations, list):
-                for rel in relations:
-                    if isinstance(rel, dict) and rel.get('type') == 'Parent':
-                        parent_id = str(rel.get('id', ''))
-                        parent_proj = workitem_to_project.get(parent_id)
-                        if parent_proj and parent_proj != project_id:
-                            target_projects.append(parent_proj)
+            target_projects = targets_by_id[str(fid)]
 
             for target_project_id in target_projects:
                 seen = seen_per_project.setdefault(target_project_id, set())

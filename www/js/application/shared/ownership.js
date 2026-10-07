@@ -1,3 +1,5 @@
+import { featureHasEligibleParent } from './featureProjection.js';
+
 export function isLowestContainer(plan) {
   return plan.container_order === plan.container_types.length - 1;
 }
@@ -34,7 +36,9 @@ export function resolveFundedTargetProject(feature, effectiveById, projectById, 
     }
 
     if (current.parentId === undefined || current.parentId === null) break;
-    current = effectiveById.get(String(current.parentId));
+    const parent = effectiveById.get(String(current.parentId));
+    if (!featureHasEligibleParent(current, parent)) break;
+    current = parent;
   }
 
   memo.set(startId, result);
@@ -78,7 +82,9 @@ export function getConnectedPlanIds(planId, features) {
     if (descendants.has(id)) continue;
     descendants.add(id);
     connected.add(String(feature.project));
-    for (const child of children.get(id) || []) pending.push(child);
+    if (children.has(id)) {
+      for (const child of children.get(id)) pending.push(child);
+    }
   }
   return connected;
 }
@@ -89,10 +95,19 @@ export function getPlanAncestorIds(feature, featuresById, plansById) {
   let current = feature;
   while (current && !visited.has(String(current.id))) {
     visited.add(String(current.id));
+    // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+    if (current.sourcePlanIds !== undefined) {
+      for (const sourcePlanId of current.sourcePlanIds) {
+        const sourceId = String(sourcePlanId);
+        if (plansById.has(sourceId)) planIds.add(sourceId);
+      }
+    }
     const planId = String(current.project);
     if (plansById.has(planId)) planIds.add(planId);
-    current = current.parentId === undefined || current.parentId === null ? null
-      : featuresById.get(String(current.parentId));
+    if (current.parentId === undefined || current.parentId === null) break;
+    const parent = featuresById.get(String(current.parentId));
+    if (!featureHasEligibleParent(current, parent)) break;
+    current = parent;
   }
   return planIds;
 }

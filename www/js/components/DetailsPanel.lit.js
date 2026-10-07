@@ -3,6 +3,7 @@ import { DETAILS_PANEL_STYLES } from './details-panel/DetailsPanel.styles.lit.js
 import { bus } from '../core/EventBus.js';
 import { UIEvents } from '../core/EventRegistry.js';
 import { cmd, sel } from '../application/imports.js';
+import { findInBoard } from './board-utils.js';
 import { DetailsPanelController } from './details-panel/DetailsPanelController.js';
 import { renderDetailsPanelHeader } from './details-panel/DetailsPanelHeader.lit.js';
 import { renderDetailsPanelScheduling } from './details-panel/DetailsPanelScheduling.lit.js';
@@ -555,7 +556,13 @@ export class DetailsPanelLit extends LitElement {
 
           <div class="details-label">Description</div>
           <div class="details-value" .innerHTML=${cleanDescription === '' ? '—' : cleanDescription}></div>
-          ${renderDetailsPanelRelations({ model: model.relations })}
+          ${renderDetailsPanelRelations({
+            model: model.relations,
+            actions: this._controller.bindActions({
+              centerFeature: (featureId) =>
+                findInBoard('feature-board').centerFeatureById(featureId),
+            }),
+          })}
           ${changedBanner}
         </div>
       </div>

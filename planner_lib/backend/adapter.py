@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Any
 import logging
 
-from planner_lib.domain.tasks import DomainTask, DomainRelation, DomainCapacity
+from planner_lib.domain.tasks import BackendTask, DomainRelation, DomainCapacity
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,8 @@ class AzureAdapter:
         type_canonical: Dict[str, str],
         iteration_map: Dict[str, Any],
         capacity_service=None,
-    ) -> DomainTask:
-        """Convert one raw ADO work-item dict into a DomainTask.
+    ) -> BackendTask:
+        """Convert one raw ADO work-item dict into a persisted BackendTask.
 
         Parameters
         ----------
@@ -95,7 +95,7 @@ class AzureAdapter:
                 end_date = iter_data['finishDate']
                 inferred_end = True
 
-        task: DomainTask = {
+        task: BackendTask = {
             'id': str(raw_wi.get('id', '')),
             'title': raw_wi.get('title') or '',
             'type': canonical_type,
@@ -113,6 +113,14 @@ class AzureAdapter:
             'areaPath': raw_wi.get('areaPath'),
             'url': raw_wi.get('url'),
         }
+        task['backendData'] = {
+            key: raw_wi[key] for key in ('adoProject', 'rev', 'type') if key in raw_wi
+        }
+        if 'rev' in raw_wi:
+            task['revision'] = raw_wi['rev']
+        for key in ('excludedChildIds', 'unresolvedChildIds'):
+            if key in raw_wi:
+                task[key] = raw_wi[key]
         # Extra ADO field values (e.g. Priority, ProductType) fetched when
         # extra_fields is configured in projects.yml.  Only include when
         # present and non-empty to keep the task dict compact.

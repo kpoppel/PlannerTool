@@ -6,7 +6,7 @@ methods are never required.
 
 Focused protocols
 -----------------
-  TaskBackend            — fetch_tasks, write_task, invalidate_cache
+    TaskBackend            — fetch_plan_tasks, fetch_task_context, write_task, invalidate_cache
   HistoryBackend         — fetch_history
   TeamsBackend           — fetch_teams
   PlansBackend           — fetch_plans, fetch_markers
@@ -73,7 +73,7 @@ from __future__ import annotations
 from typing import List, Optional, Dict, Any
 from typing_extensions import TypedDict, Protocol, runtime_checkable
 
-from planner_lib.domain.tasks import DomainTask, WriteResult
+from planner_lib.domain.tasks import BackendTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.domain.people import DomainPerson
 from planner_lib.domain.projects import DomainProject
@@ -135,17 +135,29 @@ class DiagnosticBackend(Protocol):
 class TaskBackend(Protocol):
     """Backend that can read and write work items (tasks)."""
 
-    def fetch_tasks(
+    def fetch_plan_tasks(
         self,
-        area_path: str,
-        task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        plan: Dict[str, Any],
         credential: Optional[BackendCredential] = None,
-    ) -> List[DomainTask]: ...
+    ) -> List[BackendTask]:
+        """Interpret this backend's plan settings and return canonical tasks.
+
+        Backend-specific settings are opaque to repository consumers. Owners
+        use PlannerTool plan IDs; backendData is private to backend persistence.
+        """
+        ...
+
+    def fetch_task_context(
+        self,
+        seeds: List[BackendTask],
+        credential: Optional[BackendCredential] = None,
+    ) -> List[BackendTask]:
+        """Normalize the combined seed forest, including backend-owned context."""
+        ...
 
     def write_task(
         self,
-        task_id: int,
+        task_id: str,
         updates: Dict[str, Any],
         credential: BackendCredential,
     ) -> WriteResult: ...

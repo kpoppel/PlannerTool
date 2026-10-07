@@ -163,4 +163,16 @@ describe('application/shared/featureProjection', () => {
     expect(map.get('f1')).toEqual(['f2', 'f3']);
     expect(map.get('f2')).toEqual(['f4']);
   });
+
+  it('does not reconnect excluded Task-category seeds through parent references', () => {
+    const map = buildChildrenByParentMap([
+      { id: 'parent', excludedChildIds: ['task'] },
+      { id: 'linked', parentId: 'parent', traversalBoundary: false },
+      { id: 'task', parentId: 'parent', traversalBoundary: true },
+      { id: 'below-task', parentId: 'task', traversalBoundary: false },
+    ]);
+
+    expect(map.get('parent')).toEqual(['linked']);
+    expect(map.has('task')).toBe(false);
+  });
 });

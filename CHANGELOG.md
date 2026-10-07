@@ -16,6 +16,9 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Added a tested ADO Child-traversal client helper with batched reads and per-project TaskCategory boundaries.
+- Added backend-owned ADO forest enrichment with source ownership, shared provenance, presentation metadata, and context-cache write-through tests.
+- Enabled canonical hierarchy loading with provenance-based plan selection, configured-type board presentation, and category-bounded hidden-context capacity/cost accounting.
 - Grouped reconciliation review findings into collapsible issue-type sections with instance counts and focused task details.
 - Added a Reconciliation menu toggle to show or hide feature-card markers without changing issue detection.
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`, ESLint guard rule `eslint-rules/no-runtime-state-violations.js`, inert `USE_STATE_STORE` flag in `config.js`); removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
@@ -31,6 +34,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Clicking a relation icon in the details panel centers its linked card on the board.
+- Made task repository reads and writes backend-neutral, with backend-owned plan settings and private persisted task metadata.
 - Consolidated cost calculation in the current calculator, moving shared month helpers and retiring unused v1 allocations and tests.
 - Replaced passive Plan Health with modular live Reconciliation detection, category-count menu summaries linking to focused issue review, and nonblocking baseline/scenario schedule warnings.
 - Generalized plan hierarchy, capacity graphs, cost ordering, admin validation, and generated plans to configured container types; lowest-level graphs use raw allocation lines.

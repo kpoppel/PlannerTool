@@ -2,6 +2,8 @@ import {
   buildChildrenByParentMap,
   buildFeatureMap,
   deriveEffectiveFeatures,
+  featureCanPresent,
+  featureMatchesPlans,
 } from '../shared/featureProjection.js';
 import { deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
 import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
@@ -157,9 +159,11 @@ export function createFeatureSelectors(store) {
     },
 
     getCountsForProject(projectId) {
+      const projectIds = new Set([String(projectId)]);
       return makeCountsMap(
         selectors.getEffectiveFeatures(),
-        (feature) => String(feature.project) === String(projectId)
+        (feature) => featureMatchesPlans(feature, projectIds)
+          && featureCanPresent(feature, projectIds)
       );
     },
 

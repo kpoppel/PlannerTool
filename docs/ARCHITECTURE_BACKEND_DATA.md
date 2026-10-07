@@ -73,7 +73,7 @@ The focused protocol inventory is:
 
 | Protocol | Owner | Main operations |
 |---|---|---|
-| `TaskBackend` | Remote provider | `fetch_tasks`, `write_task`, `invalidate_cache` |
+| `TaskBackend` | Remote provider | `fetch_plan_tasks`, `fetch_task_context`, `write_task`, `invalidate_cache` |
 | `HistoryBackend` | Remote provider | `fetch_history` |
 | `TeamsBackend` | Remote provider | `fetch_teams` |
 | `PlansBackend` | Remote provider | `fetch_plans`, `fetch_markers` |
@@ -86,6 +86,49 @@ The focused protocol inventory is:
 `BackendPort` is the composite remote contract. `DiagnosticBackend` is an
 optional capability implemented by backends that publish user-facing
 diagnostics; it is not part of the remote data contract itself.
+
+### Task Metadata Boundary
+
+`TaskRepository` calls `TaskBackend.fetch_plan_tasks(plan, credential)`. It uses
+the configured plan ID for import provenance but forwards the plan record's
+source settings without interpreting them. Only the concrete backend knows
+whether a source is an ADO area path, an external query, or something else.
+Existing ADO and ADO-like backends retain their native `fetch_tasks` helper;
+it is not the repository's task-read protocol.
+
+Backends return `BackendTask` records with canonical domain properties and an
+optional opaque `backendData` dictionary. That dictionary remains associated
+with its task in backend persistence/cache records. The repository neither
+interprets nor mutates its contents and omits it from consumer-facing
+`DomainTask` results. Consumers cannot read backend metadata through repository
+results or replace it through repository updates.
+
+Ownership is a backend-provided PlannerTool plan ID, not a repository inference
+from provider paths or parent items. Canonical IDs, optional monotonic domain
+`revision` values, and `sourcePlanIds` support deduplication and selection;
+provider-specific revision tokens belong in `backendData`. Numeric SDK ID
+conversion also belongs to the concrete backend, not the repository.
+
+New repository consumers must use these domain properties, never backend-specific
+source fields or metadata for ownership, selection, or calculations.
+
+`TaskRepository` calls the required `fetch_task_context(seeds)` operation after
+merging one combined forest of configured seeds, while private metadata is still
+present. Only then does it scope project-specific reads by `sourcePlanIds` and
+strip metadata for consumers. ADO interprets its own private identity, resolves
+source owners and iteration enrichment, and emits domain-level `sourcePlanIds`,
+`presentationPlanIds`, `excludedChildIds` and `traversalBoundary` properties.
+File and mock providers return their supplied seed snapshots with presentation
+metadata; repositories do not probe provider capabilities or interpret source fields.
+
+Task selection follows importing-plan provenance, independently of actual source
+ownership. Ordinary board/menu presentation uses configured presentation plans;
+internal source owners do not become selectable plans. Hidden context remains in
+the resolved graph for inspection, capacity and cost. Category-excluded references
+remain inspectable but are not calculation edges, including independently seeded
+Task-category endpoints. Shared tasks contribute once to organization totals and
+once to each associated plan rollup. Cost reports retain all context types and
+apply the same team-aware child precedence, without inventing source-owner plans.
 
 ### Dependency-Injection Keys
 

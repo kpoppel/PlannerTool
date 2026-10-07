@@ -87,13 +87,25 @@ describe('DetailsPanel relations section contract', () => {
       { id: '99', type: 'Child', url: '' },
       { id: '2', type: 'Child', url: 'https://other.test/task/2' },
     ]);
+    const actions = { centerFeature: sinon.spy() };
     const root = await fixture(html`<div></div>`);
-    renderTemplate(renderDetailsPanelRelations({ model }), root);
+    renderTemplate(renderDetailsPanelRelations({ model, actions }), root);
     const links = root.querySelectorAll('.details-link');
     expect(links[0].getAttribute('href')).to.equal('https://other.test/task/2');
     expect(links[1].getAttribute('href')).to.equal('https://example.test/workitems/99');
     expect(links[1].textContent).to.include('(task state not loaded)');
     expect(root.querySelector('.relation-state-indicator').getAttribute('title')).to.equal('Done');
+  });
+
+  it('dispatches the related feature ID when its icon is clicked', async () => {
+    const model = buildModel([{ id: '2', type: 'Child', url: '' }]);
+    const actions = { centerFeature: sinon.spy() };
+    const root = await fixture(html`<div></div>`);
+    renderTemplate(renderDetailsPanelRelations({ model, actions }), root);
+
+    root.querySelector('.relation-icon').click();
+
+    expect(actions.centerFeature.calledOnceWithExactly('2')).to.be.true;
   });
 
   it('preserves original ordering for children in the same category', () => {

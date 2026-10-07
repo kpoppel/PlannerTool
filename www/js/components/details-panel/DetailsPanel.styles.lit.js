@@ -674,6 +674,7 @@ export const DETAILS_PANEL_STYLES = css`
       border-radius: 0.6em;
       background: rgba(0, 0, 0, 0.06);
       flex: 0 0 1.2em;
+      cursor: pointer;
     }
     .relation-content {
       display: flex;

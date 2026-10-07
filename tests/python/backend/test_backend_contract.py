@@ -230,6 +230,18 @@ def test_fetch_tasks_each_item_has_required_keys(backend):
         assert not missing, f"Item {item.get('id')} missing keys: {missing}"
 
 
+def test_fetch_plan_tasks_associates_seeds_without_mutating_source_records(backend):
+    plan = {'id': 'configured-plan', 'area_path': AREA,
+            'task_types': ['Feature'], 'include_states': ['Active']}
+
+    result = backend.fetch_plan_tasks(plan=plan)
+
+    assert [task['id'] for task in result] == ['10']
+    assert result[0]['project'] == 'configured-plan'
+    original = backend.fetch_tasks(AREA)
+    assert all(task['project'] == 'project-team-a' for task in original)
+
+
 # ---------------------------------------------------------------------------
 # fetch_teams / fetch_plans / fetch_markers / fetch_iterations contract
 # ---------------------------------------------------------------------------

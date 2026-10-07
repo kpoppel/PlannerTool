@@ -18,7 +18,9 @@ the cache-hit / no-credential fast path.)
 """
 from __future__ import annotations
 
+import hashlib
 import logging
+from collections import deque
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
@@ -29,7 +31,7 @@ from planner_lib.backend.errors import (
     BackendConfigError,
     classify_ado_exception,
 )
-from planner_lib.domain.tasks import DomainTask, WriteResult
+from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.storage.base import StorageBackend
 
@@ -267,6 +269,133 @@ class AzureDevOpsBackend(BackendPort):
     # BackendPort: fetch_tasks
     # ------------------------------------------------------------------
 
+    def fetch_plan_tasks(
+        self,
+        plan: Dict[str, Any],
+        credential: Optional[BackendCredential] = None,
+    ) -> List[BackendTask]:
+        """Run this plan's exact-area seed query and associate its seed items."""
+        tasks = self.fetch_tasks(
+            area_path=plan['area_path'],
+            task_types=plan.get('task_types'),
+            include_states=plan.get('include_states'),
+            credential=credential,
+        )
+        return [{**task, 'project': plan['id'], 'sourcePlanIds': [plan['id']]} for task in tasks]
+
+    def fetch_task_context(
+        self,
+        seeds: List[BackendTask],
+        credential: Optional[BackendCredential] = None,
+    ) -> List[BackendTask]:
+        """Expand one seed forest while retaining backend-owned source identity."""
+        if not seeds:
+            return []
+        pat = self._require_credential(credential, 'fetch_task_context')
+        plans = self._config.fetch_project_map()
+        plans_by_id = {plan['id']: plan for plan in plans}
+        owners = {}
+        for plan in plans:
+            area_key = plan['area_path'].strip('/\\').replace('/', '\\').casefold()
+            if area_key in owners and owners[area_key] != plan['id']:
+                raise BackendConfigError(f"Ambiguous source owner for area {plan['area_path']}")
+            owners[area_key] = plan['id']
+        seed_by_id = {}
+        raw_seeds = []
+        for seed in seeds:
+            task_id = str(seed['id'])
+            previous = seed_by_id.get(task_id)
+            if previous is None or seed['revision'] > previous['revision']:
+                seed_by_id[task_id] = seed
+        for seed in seed_by_id.values():
+            metadata = seed['backendData']
+            raw_seeds.append({
+                **seed, 'adoProject': metadata['adoProject'],
+                'rev': metadata['rev'], 'type': metadata['type'],
+            })
+        type_canonical = self._build_type_canonical()
+        tasks = {}
+        iteration_maps = {}
+        try:
+            with self._conn.connect(pat) as client:
+                def iteration_map_for(area, ado_project):
+                    key = (area, ado_project)
+                    if key not in iteration_maps:
+                        iteration_maps[key] = self._build_iteration_map(client, area, ado_project)
+                    return iteration_maps[key]
+
+                raw_items = client.get_linked_work_items(raw_seeds)
+                for raw in raw_items:
+                    task_id = str(raw['id'])
+                    area = raw['areaPath']
+                    area_key = area.strip('/\\').replace('/', '\\').casefold()
+                    owner = owners.get(area_key)
+                    if owner is None:
+                        identity = f'{self._organization_url}|{area_key}'
+                        owner = 'context-' + hashlib.sha256(identity.encode()).hexdigest()[:20]
+                    if task_id in seed_by_id:
+                        task = dict(seed_by_id[task_id])
+                        if task['project'] != owner and (
+                            task.get('_inferred_start', False) or task.get('_inferred_end', False)
+                        ):
+                            iteration_map = iteration_map_for(area, raw['adoProject'])
+                            iteration = iteration_map.get(task.get('iterationPath'))
+                            for field, date_field, inferred in (
+                                ('start', 'startDate', '_inferred_start'),
+                                ('end', 'finishDate', '_inferred_end'),
+                            ):
+                                if task.get(inferred, False):
+                                    task[field] = None if iteration is None else iteration.get(date_field)
+                                    task[inferred] = task[field] is not None
+                    else:
+                        task = self._adapter.to_domain(
+                            raw_wi=raw,
+                            project_slug=owner,
+                            team_repository=self._team_repository,
+                            type_canonical=type_canonical,
+                            iteration_map=iteration_map_for(area, raw['adoProject']),
+                            capacity_service=self._capacity_service,
+                        )
+                    task['project'] = owner
+                    task['excludedChildIds'] = raw['excludedChildIds']
+                    task['unresolvedChildIds'] = raw['unresolvedChildIds']
+                    task['traversalBoundary'] = raw['traversalBoundary']
+                    task['sourcePlanIds'] = []
+                    tasks[task_id] = task
+        except Exception as exc:
+            raise classify_ado_exception(exc) from exc
+
+        pending = deque(
+            (str(seed['id']), plan_id)
+            for seed in seeds for plan_id in seed['sourcePlanIds']
+        )
+        while pending:
+            task_id, plan_id = pending.popleft()
+            task = tasks[task_id]
+            if plan_id in task['sourcePlanIds']:
+                continue
+            task['sourcePlanIds'].append(plan_id)
+            if task['traversalBoundary']:
+                continue
+            for relation in task['relations']:
+                child_id = str(relation['id'])
+                if (relation['type'] == 'Child' and child_id in tasks
+                        and child_id not in task['excludedChildIds']
+                        and not tasks[child_id]['traversalBoundary']):
+                    pending.append((child_id, plan_id))
+        for task in tasks.values():
+            task['sourcePlanIds'].sort()
+            task['presentationPlanIds'] = []
+            for plan_id in sorted(set(task['sourcePlanIds']) | {task['project']}):
+                if plan_id not in plans_by_id:
+                    continue
+                task_types = plans_by_id[plan_id].get('task_types')
+                if task_types is None:
+                    task_types = ['Epic', 'Feature']
+                if task['type'].casefold() in {name.casefold() for name in task_types}:
+                    task['presentationPlanIds'].append(plan_id)
+        return list(tasks.values())
+
     def fetch_tasks(
         self,
         area_path: str,
@@ -278,8 +407,8 @@ class AzureDevOpsBackend(BackendPort):
         """Fetch and enrich work items for one *area_path*.
 
         Contacts the live ADO API for the requested states in a single pass.
-        The completed-task ancestor filter is the responsibility of the caller
-        (TaskRepository); this method does not split or double-fetch.
+        This is seed retrieval only; whole-forest hierarchy normalization is
+        handled separately by this backend's fetch_task_context operation.
         Wrap with CachingBackend to add a TTL cache in front.
         """
         pat = self._require_credential(credential, 'fetch_tasks')
@@ -361,12 +490,13 @@ class AzureDevOpsBackend(BackendPort):
 
     def write_task(
         self,
-        task_id: int,
+        task_id: int | str,
         updates: Dict[str, Any],
         credential: BackendCredential,
     ) -> WriteResult:
         """Persist *updates* for *task_id* to ADO."""
         pat = self._require_credential(credential, 'write_task')
+        task_id = int(task_id)
 
         errors: List[str] = []
         item_updated = False

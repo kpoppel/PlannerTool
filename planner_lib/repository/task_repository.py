@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 from planner_lib.backend.port import TaskBackend, BackendCredential
-from planner_lib.domain.tasks import DomainTask, WriteResult
+from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +68,13 @@ class TaskRepository:
         project_id: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainTask]:
-        """Return all tasks, optionally filtered to one project.
+        """Return the normalized forest, optionally scoped to one importing plan.
 
         Parameters
         ----------
         project_id:
-            When supplied, only tasks from the matching project entry are
-            returned.  Matches the ``id`` field from projects.yml project_map.
+            When supplied, return tasks reached from the matching configured
+            plan after normalizing the combined seed forest.
         credential:
             Optional BackendCredential for cache-miss paths.  When absent and
             the backend needs a live fetch, the backend raises BackendAuthError.
@@ -82,26 +82,28 @@ class TaskRepository:
         Notes
         -----
         Per-project BackendUnavailableError and BackendConfigError failures are
-        logged with project context and skipped so one broken area path does
+        logged with project context and skipped so one broken source does
         not fail the complete task load. BackendAuthError remains fatal.
         """
+        tasks = self._fetch_context(credential)
+        if project_id is not None:
+            tasks = [task for task in tasks if project_id in task['sourcePlanIds']]
+        return self._project_tasks(tasks)
+
+    def _fetch_seeds(
+        self,
+        credential: Optional[BackendCredential],
+    ) -> List[BackendTask]:
+        """Merge canonical seed records without interpreting private metadata."""
         project_map = self._project_service.get_project_map()
-        items: List[DomainTask] = []
+        items = {}
 
         for project in project_map:
             pid = project.get('id')
-            if project_id and pid != project_id:
-                continue
-
-            area_path: str = project.get('area_path', '')
-            task_types: Optional[List[str]] = project.get('task_types')
-            include_states: Optional[List[str]] = project.get('include_states')
 
             try:
-                tasks = self._backend.fetch_tasks(
-                    area_path=area_path,
-                    task_types=task_types,
-                    include_states=include_states,
+                tasks = self._backend.fetch_plan_tasks(
+                    plan=project,
                     credential=credential,
                 )
             except BackendAuthError:
@@ -109,37 +111,51 @@ class TaskRepository:
                 raise
             except BackendConfigError as exc:
                 logger.error(
-                    "TaskRepository.read: skipping project '%s' (name=%r, area_path=%r) due to backend_misconfigured: %s",
+                    "TaskRepository.read: skipping project '%s' (name=%r) due to backend_misconfigured: %s",
                     pid,
                     project.get('name'),
-                    area_path,
                     exc,
                 )
                 continue
             except BackendUnavailableError as exc:
                 logger.error(
-                    "TaskRepository.read: skipping project '%s' (name=%r, area_path=%r) due to backend_unavailable: %s",
+                    "TaskRepository.read: skipping project '%s' (name=%r) due to backend_unavailable: %s",
                     pid,
                     project.get('name'),
-                    area_path,
                     exc,
                 )
                 continue
 
-            # Post-fill the project identifier so consumers can filter by project
-            # without relying on adapter-level slug derivation.
             for task in tasks or []:
-                task['project'] = pid
-
-            items.extend(tasks or [])
+                task_id = str(task['id'])
+                previous = items.get(task_id)
+                sources = set(task.get('sourcePlanIds', [])) | {pid}
+                if previous is not None:
+                    sources.update(previous['sourcePlanIds'])
+                if previous is None or task.get('revision', 0) > previous.get('revision', 0):
+                    items[task_id] = dict(task)
+                items[task_id]['sourcePlanIds'] = sorted(sources)
             logger.debug(
                 "TaskRepository.read: %d tasks for project '%s'",
                 len(tasks or []),
                 pid,
             )
 
-        logger.debug("TaskRepository.read: %d total tasks returned", len(items))
-        return items
+        logger.debug("TaskRepository.read: %d total seed tasks returned", len(items))
+        return list(items.values())
+
+    def _fetch_context(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[BackendTask]:
+        """Normalize one combined forest before projecting it to consumers."""
+        seeds = self._fetch_seeds(credential)
+        return self._backend.fetch_task_context(seeds, credential=credential)
+
+    @staticmethod
+    def _project_tasks(tasks: List[BackendTask]) -> List[DomainTask]:
+        return [{key: value for key, value in task.items() if key != 'backendData'}
+                for task in tasks]
 
     def write(
         self,
@@ -162,11 +178,14 @@ class TaskRepository:
 
         for update in updates:
             try:
-                task_id = int(update.get('id', 0))
-                if not task_id:
+                task_id = update.get('id')
+                if 'backendData' in update:
+                    all_errors.append(f'Task {task_id}: backendData is private to the backend')
+                    continue
+                if task_id is None or task_id == '':
                     all_errors.append(f"Invalid task id: {update!r}")
                     continue
-                result: WriteResult = self._backend.write_task(task_id, update, credential)
+                result: WriteResult = self._backend.write_task(str(task_id), update, credential)
                 total_updated += result.get('updated', 0)
                 all_errors.extend(result.get('errors') or [])
             except Exception as exc:

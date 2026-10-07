@@ -1,6 +1,34 @@
 import { getActiveScenarioId, getScenarioItems } from './scenarioMutations.js';
 import { computeFeatureOrgLoad } from './teamAllocation.js';
 
+export function featureMatchesPlans(feature, selectedPlanIds) {
+  // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+  const planIds = feature.sourcePlanIds === undefined
+    ? [feature.project] : feature.sourcePlanIds;
+  return planIds.some((planId) => selectedPlanIds.has(String(planId)));
+}
+
+export function featureCanPresent(feature, selectedPlanIds = null) {
+  // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+  if (feature.presentationPlanIds === undefined) return true;
+  if (selectedPlanIds === null) return feature.presentationPlanIds.length > 0;
+  return feature.presentationPlanIds.some((planId) => selectedPlanIds.has(String(planId)));
+}
+
+export function featureIsInImportScope(feature, selectedPlanIds) {
+  // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+  return feature.sourcePlanIds === undefined || featureMatchesPlans(feature, selectedPlanIds);
+}
+
+export function featureHasEligibleParent(feature, parent) {
+  // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+  if (feature.traversalBoundary === true) return false;
+  if (parent === undefined) return true;
+  if (parent.traversalBoundary === true) return false;
+  return parent.excludedChildIds === undefined
+    || !parent.excludedChildIds.some((id) => String(id) === String(feature.id));
+}
+
 export function computeDirtyFields(base, override) {
   const fields = [];
   const normDate = (value) => value;
@@ -78,10 +106,12 @@ export function buildFeatureMap(features) {
 
 export function buildChildrenByParentMap(features) {
   const map = new Map();
+  const featuresById = buildFeatureMap(features);
   for (const feature of features) {
     const parentId = feature.parentId;
     if (!parentId) continue;
     const key = String(parentId);
+    if (!featureHasEligibleParent(feature, featuresById.get(key))) continue;
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(String(feature.id));
   }

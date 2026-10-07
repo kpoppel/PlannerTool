@@ -1,5 +1,11 @@
 /** Pure Context-driven plan swimlane helpers for FeatureBoard. */
 
+import {
+  featureCanPresent,
+  featureHasEligibleParent,
+  featureMatchesPlans,
+} from '../application/shared/featureProjection.js';
+
 export const SWIMLANE_LABEL_WIDTH_PX = 140;
 export const SWIMLANE_BAND_GAP_PX = 8;
 
@@ -108,17 +114,28 @@ export function assignFeatureToSwimlane(
       const parentId = String(current.parentId);
       if (visited.has(parentId)) break;
       visited.add(parentId);
-      current = allFeaturesById.get(parentId);
+      const parent = allFeaturesById.get(parentId);
+      if (!featureHasEligibleParent(current, parent)) break;
+      current = parent;
       if (!current) break;
       const lane = swimlaneById.get(String(current.project));
       if (!lane) continue;
+      if (!featureCanPresent(feature, new Set([String(lane.id)]))) continue;
       if (lane.type === 'plan') return lane.id;
       if (expandedPlanId === null) expandedPlanId = lane.id;
     }
     if (expandedPlanId !== null) return expandedPlanId;
   }
 
-  if (ownSwimlane && ownSwimlane.type === 'plan') return ownSwimlane.id;
+  if (ownSwimlane && ownSwimlane.type === 'plan'
+    && featureCanPresent(feature, new Set([String(ownSwimlane.id)]))) return ownSwimlane.id;
+
+  const presentationLane = swimlanes.find((lane) => {
+    const laneIds = new Set([String(lane.id)]);
+    return lane.type === 'plan' && featureMatchesPlans(feature, laneIds)
+      && featureCanPresent(feature, laneIds);
+  });
+  if (presentationLane !== undefined) return presentationLane.id;
 
   if (context.child) {
     let current = feature;
@@ -128,7 +145,9 @@ export function assignFeatureToSwimlane(
       const parentId = String(current.parentId);
       if (visited.has(parentId)) break;
       visited.add(parentId);
-      current = allFeaturesById.get(parentId);
+      const parent = allFeaturesById.get(parentId);
+      if (!featureHasEligibleParent(current, parent)) break;
+      current = parent;
       if (!current) break;
       const lane = swimlaneById.get(String(current.project));
       if (!lane) continue;

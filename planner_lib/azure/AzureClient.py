@@ -138,6 +138,10 @@ class AzureClient:
         assert self.conn is not None
         return self.conn.base_url
 
+    def get_linked_work_items(self, seeds: List[dict]) -> List[dict]:
+        """Expand already-fetched seeds through Child links above TaskCategory."""
+        return self._work_item_ops.get_linked_work_items(seeds)
+
     def get_work_item(self, work_item_id: int, fields=None) -> Any:
         """Fetch a single work item by ID.
 

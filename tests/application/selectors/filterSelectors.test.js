@@ -4,6 +4,19 @@ import { ColorService } from '../../../www/js/services/ColorService.js';
 import { createInitialAppState } from '../../../www/js/application/createInitialAppState.js';
 
 describe('application/selectors/filterSelectors', () => {
+  it('does not offer context-only types in ordinary task menus', () => {
+    const state = createInitialAppState();
+    state.baseline.features = [
+      { id: 'seed', type: 'Epic', presentationPlanIds: ['plan-a'] },
+      { id: 'linked', type: 'Requirement', presentationPlanIds: [] },
+      { id: 'visible', type: 'Feature', presentationPlanIds: ['plan-a'] },
+    ];
+    const selectors = createFilterSelectors({ getState: () => state });
+
+    expect(selectors.getSelectedTaskTypeNames()).toEqual(['Epic', 'Feature']);
+    expect(state.baseline.features).toHaveLength(3);
+  });
+
   it('projects visible types and unions packed restrictions with plugin restrictions', () => {
     const state = createInitialAppState();
     state.baseline.features = [{ id: 'a', type: 'Epic' }, { id: 'b', type: 'Task' }];

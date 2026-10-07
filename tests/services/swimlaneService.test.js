@@ -68,6 +68,19 @@ describe('SwimlaneService', () => {
     )).toBe('p1');
   });
 
+  it('places linked work in an eligible configured presentation lane without changing ownership', () => {
+    const configured = [mkProject('p1', true), mkProject('p2', true)];
+    const linked = {
+      ...mkFeature('linked', 'context-internal'),
+      sourcePlanIds: ['p1', 'p2'], presentationPlanIds: ['p2'],
+    };
+    const lanes = buildSwimlaneList(configured, [linked], noContext);
+
+    expect(lanes.map((lane) => lane.id)).toEqual(['p1', 'p2']);
+    expect(assignFeatureToSwimlane(linked, lanes, new Map(), noContext)).toBe('p2');
+    expect(linked.project).toBe('context-internal');
+  });
+
   it('moves selected child-plan work into an available ancestor lane in Parent Context', () => {
     const lanes = [{ id: 'p2', type: 'plan' }, { id: 'p1', type: 'expanded-plan' }];
     const features = [mkFeature('parent', 'p1'), mkFeature('child', 'p2', 'parent')];

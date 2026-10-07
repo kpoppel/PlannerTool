@@ -2,7 +2,7 @@
  * PluginCostShared
  * Shared UI helpers used by all PluginCost view modules.
  *
- * - renderCountingBanner()   Yellow info banner: active task-type / unplanned rules.
+ * - renderCountingBanner()   Yellow info banner: allocation scope / unplanned rules.
  * - renderClipBanner()       Orange warning banner: features extending outside the
  *                            selected display window so sums are window-restricted.
  */
@@ -10,22 +10,14 @@ import { html } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
 
 /**
- * Yellow banner describing the active counting rules (task types, unplanned
- * inclusion, hierarchy level). Call once per view at the top of the output.
+ * Yellow banner describing allocation scope and child-team precedence.
  *
  * @returns {import('lit').TemplateResult|string}
  */
 export function renderCountingBanner() {
     const taskFilters = sel.filter.getTaskFilters();
     const showUnplanned = taskFilters.schedule.unplanned;
-    const selectedTypes = sel.filter.getSelectedTaskTypeNames();
-    const typesLabel =
-      selectedTypes.length === 0 ? 'No task types' : selectedTypes.join(', ');
-    const levelMsg =
-      selectedTypes.length > 1 ? 'Children (lowest-level) are authoritative'
-      : selectedTypes.length === 1 ? `${selectedTypes[0]} selected`
-      : 'No task types';
-    const msg = `${typesLabel} · ${showUnplanned ? 'Counting Unplanned work' : 'Excluding Unplanned work'} · ${levelMsg}`;
+    const msg = `Complete allocation context · ${showUnplanned ? 'Counting Unplanned work' : 'Excluding Unplanned work'} · Child-team precedence`;
     return html`<div
       style="margin-bottom:8px;padding:8px;border-radius:6px;background:#fffbe6;border:1px solid #f0e6b6;color:#333;font-size:13px;"
     >
@@ -44,7 +36,7 @@ export function renderCountingBanner() {
  * @returns {import('lit').TemplateResult|string}
  */
 export function renderClipBanner(features, startDate, endDate) {
-  if (!Array.isArray(features) || features.length === 0) return '';
+  if (features.length === 0) return '';
   const clippedCount = features.filter((f) => {
     if (!f) return false;
     const fs = f.start ? String(f.start).slice(0, 10) : null;

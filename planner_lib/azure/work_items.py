@@ -144,12 +144,20 @@ class WorkItemOperations:
         task_ids = [int(t) for t in task_ids if t is not None]
         logger.debug(f"Found {len(task_ids)} work items for area '{area_path}'")
 
-        # Standard fields already promoted to named top-level keys.  All other
-        # fields returned by ADO (custom, extension, process-template) are
-        # collected into the 'fields' dict so plugins can access them without
-        # requiring any per-project configuration.
-        _STANDARD_FIELD_NAMES = frozenset({
+        ret = []
+        for offset in range(0, len(task_ids), 200):
+            items = wit_client.get_work_items(task_ids[offset:offset + 200], expand="All")
+            ret.extend(self.normalize_work_item(item) for item in items)
+        return ret
+
+    def normalize_work_item(self, item) -> dict:
+        """Normalize full seed and explicit-ID payloads through the same path."""
+        # Standard fields already promoted to named top-level keys. All remaining
+        # fields stay available to plugins without per-project configuration.
+        standard_fields = frozenset({
             'System.Id',
+            'System.TeamProject',
+            'System.Rev',
             'System.WorkItemType',
             'System.Title',
             'System.AssignedTo',
@@ -161,68 +169,110 @@ class WorkItemOperations:
             'System.AreaPath',
             'System.IterationPath',
         })
-        
-        # Fetch work items in batches
-        ret = []
-        
-        def chunks(lst, n):
-            for i in range(0, len(lst), n):
-                yield lst[i:i+n]
-        
-        for batch in chunks(task_ids, 200):
-            # expand="All" returns both relations and all field values including
-            # custom / process-template fields not in the default set.
-            items = wit_client.get_work_items(batch, expand="All")
-            for item in items or []:
-                try:
-                    # Process relations
-                    relations = getattr(item, "relations", []) or []
-                    relation_map = []
-                    for r in relations:
-                        if r.attributes.get("name") in ("Parent", "Child", "Related", "Predecessor", "Successor"):
-                            relation_map.append({
-                                "type": r.attributes.get("name"),
-                                "id": str(r.url.split('/')[-1]),
-                                "url": self.api_url_to_ui_link(getattr(r, "url", "")),
-                            })
-                    
-                    # Process assignee
-                    assigned = item.fields.get("System.AssignedTo")
-                    assignedTo = assigned.get("displayName") if isinstance(assigned, dict) and "displayName" in assigned else ""
-                    
-                    url = self.api_url_to_ui_link(getattr(item, "url", ""))
+        relation_map = []
+        for relation in item.relations or []:
+            name = relation.attributes.get('name')
+            if name in ('Parent', 'Child', 'Related', 'Predecessor', 'Successor'):
+                relation_map.append({
+                    'type': name,
+                    'id': str(relation.url.split('/')[-1]),
+                    'url': self.api_url_to_ui_link(relation.url),
+                })
+        assigned = item.fields.get('System.AssignedTo')
+        extra_values = {
+            key: value for key, value in item.fields.items()
+            if key not in standard_fields and value is not None
+        }
+        entry = {
+            'id': str(item.id),
+            'rev': item.fields.get('System.Rev', item.rev if hasattr(item, 'rev') else 0),
+            'adoProject': item.fields.get('System.TeamProject'),
+            'type': item.fields.get('System.WorkItemType') or '',
+            'title': item.fields.get('System.Title'),
+            'assignee': assigned.get('displayName', '') if isinstance(assigned, dict) else '',
+            'state': item.fields.get('System.State'),
+            'tags': item.fields.get('System.Tags'),
+            'description': item.fields.get('System.Description'),
+            'startDate': self._safe_date(item.fields.get('Microsoft.VSTS.Scheduling.StartDate')),
+            'finishDate': self._safe_date(item.fields.get('Microsoft.VSTS.Scheduling.TargetDate')),
+            'areaPath': item.fields.get('System.AreaPath'),
+            'iterationPath': item.fields.get('System.IterationPath'),
+            'parentId': next((r['id'] for r in relation_map if r['type'] == 'Parent'), None),
+            'relations': relation_map,
+            'url': self.api_url_to_ui_link(item.url),
+        }
+        if extra_values:
+            entry['fields'] = extra_values
+        return entry
 
-                    # Collect all non-standard field values so plugins (e.g. the
-                    # 2-D board) can use fields like Priority, ProductType, etc.
-                    # without requiring any per-project configuration.
-                    extra_values = {
-                        k: v
-                        for k, v in item.fields.items()
-                        if k not in _STANDARD_FIELD_NAMES and v is not None
-                    } or None
+    def get_linked_work_items(self, seeds: List[dict]) -> List[dict]:
+        """Expand Child links, classifying targets before full hydration."""
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        wit = self.client.wit_client
+        loaded = {}
+        for item in seeds:
+            item_id = int(item['id'])
+            if item_id not in loaded or item['rev'] > loaded[item_id]['rev']:
+                loaded[item_id] = dict(item)
+        category_types = {}
+        excluded = set()
+        missing = set()
+        expanded = set()
+        task_level_ids = set()
 
-                    entry = {
-                        "id": str(item.id),
-                        "type": item.fields.get("System.WorkItemType") or "",
-                        "title": item.fields.get("System.Title"),
-                        "assignee": assignedTo,
-                        "state": item.fields.get("System.State"),
-                        "tags": item.fields.get("System.Tags"),
-                        "description": item.fields.get("System.Description"),
-                        "startDate": self._safe_date(item.fields.get("Microsoft.VSTS.Scheduling.StartDate")),
-                        "finishDate": self._safe_date(item.fields.get("Microsoft.VSTS.Scheduling.TargetDate")),
-                        "areaPath": item.fields.get("System.AreaPath"),
-                        "iterationPath": item.fields.get("System.IterationPath"),
-                        "relations": relation_map,
-                        "url": url,
-                    }
-                    if extra_values:
-                        entry["fields"] = extra_values
-                    ret.append(entry)
-                except Exception as e:
-                    logger.exception(f"Error processing item {getattr(item, 'id', '?')}: {e}")
-        
-        return ret
+        def is_task_level(project, item_type):
+            if project not in category_types:
+                category = wit.get_work_item_type_category(project, 'Microsoft.TaskCategory')
+                category_types[project] = {entry.name for entry in category.work_item_types}
+            return item_type in category_types[project]
+
+        frontier = list(loaded)
+        while frontier:
+            targets = set()
+            for item_id in frontier:
+                if item_id in expanded:
+                    continue
+                expanded.add(item_id)
+                item = loaded[item_id]
+                if is_task_level(item['adoProject'], item['type']):
+                    task_level_ids.add(item_id)
+                    continue
+                targets.update(int(r['id']) for r in item['relations'] if r['type'] == 'Child')
+            todo = sorted(targets - loaded.keys() - excluded - missing)
+            for offset in range(0, len(todo), 200):
+                batch = todo[offset:offset + 200]
+                classified = wit.get_work_items(
+                    batch, fields=['System.TeamProject', 'System.WorkItemType'], error_policy='omit')
+                seen = {int(item.id) for item in classified}
+                missing.update(set(batch) - seen)
+                identities = {
+                    int(item.id): (item.fields['System.TeamProject'], item.fields['System.WorkItemType'])
+                    for item in classified
+                }
+                allowed = []
+                for item in classified:
+                    if is_task_level(item.fields['System.TeamProject'], item.fields['System.WorkItemType']):
+                        excluded.add(int(item.id))
+                    else:
+                        allowed.append(int(item.id))
+                if allowed:
+                    hydrated = wit.get_work_items(allowed, expand='All', error_policy='omit')
+                    missing.update(set(allowed) - {int(item.id) for item in hydrated})
+                    for item in hydrated:
+                        identity = (item.fields['System.TeamProject'], item.fields['System.WorkItemType'])
+                        if identity != identities[int(item.id)]:
+                            raise RuntimeError(f'Hierarchy classification changed for work item {item.id}')
+                        loaded[int(item.id)] = self.normalize_work_item(item)
+            frontier = sorted(targets & loaded.keys() - expanded)
+
+        for item in loaded.values():
+            children = {int(r['id']) for r in item['relations'] if r['type'] == 'Child'}
+            item['unresolvedChildIds'] = [str(item_id) for item_id in sorted(children & missing)]
+            item['excludedChildIds'] = [str(item_id) for item_id in sorted(
+                children & (excluded | task_level_ids))]
+            item['traversalBoundary'] = int(item['id']) in task_level_ids
+        return list(loaded.values())
     
     def update_work_item_dates(self, work_item_id: int, start=_UNSET, end=_UNSET) -> Any:
         """Update start and/or end dates for a work item.
