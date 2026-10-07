@@ -77,6 +77,29 @@ def test_safe_date():
     assert isinstance(c._safe_date('2020-01-01T12:00:00Z'), str)
 
 
+def test_work_item_normalization_promotes_state_change_date():
+    client = AzureClient('org', DummyStorage())
+    item = SimpleNamespace(
+        id=17,
+        fields={
+            'System.Id': 17,
+            'System.TeamProject': 'Project',
+            'System.Rev': 2,
+            'System.WorkItemType': 'Feature',
+            'System.Title': 'Feature',
+            'System.State': 'Closed',
+            'Microsoft.VSTS.Common.StateChangeDate': '2026-08-01T09:00:00Z',
+        },
+        relations=[],
+        url='https://dev.azure.com/x/y/_apis/wit/workItems/17',
+    )
+
+    result = client._work_item_ops.normalize_work_item(item)
+
+    assert result['stateChangeDate'] == '2026-08-01T09:00:00Z'
+    assert 'Microsoft.VSTS.Common.StateChangeDate' not in result.get('fields', {})
+
+
 def test_work_item_type_passthrough():
     """Work item types must be stored as the exact Azure DevOps string.
 

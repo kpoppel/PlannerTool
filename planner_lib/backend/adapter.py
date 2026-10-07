@@ -124,7 +124,8 @@ class AzureAdapter:
             'url': raw_wi.get('url'),
         }
         task['backendData'] = {
-            key: raw_wi[key] for key in ('adoProject', 'rev', 'type') if key in raw_wi
+            key: raw_wi[key]
+            for key in ('adoProject', 'rev', 'type', 'stateChangeDate') if key in raw_wi
         }
         if 'rev' in raw_wi:
             task['revision'] = raw_wi['rev']

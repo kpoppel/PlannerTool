@@ -1,11 +1,12 @@
 from contextlib import contextmanager
+from datetime import date
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from planner_lib.backend.adapter import AzureAdapter
-from planner_lib.backend.azure import AzureDevOpsBackend
+from planner_lib.backend.azure import AzureDevOpsBackend, _calendar_months_before
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 from planner_lib.backend.mock import MockFixtureBackend, MockGeneratorBackend
 from planner_lib.backend.port import BackendTask
@@ -513,6 +514,67 @@ def _context_backend(seeds, boundary_ids=()):
 
     backend._conn = MagicMock(connect=MagicMock(side_effect=connect))
     return backend, client
+
+
+def test_context_prunes_only_wholly_expired_trees():
+    plans = [{'id': 'plan-a', 'area_path': 'A\\plan-a', 'task_types': ['Feature']}]
+    seeds = [
+        _context_seed(1, 'plan-a', (2,)),
+        _context_seed(3, 'plan-a', (4, 7)),
+        _context_seed(5, 'plan-a', (6,)),
+    ]
+    for seed in seeds:
+        seed.update(state='Closed', backendData={**seed['backendData'],
+                                                  'stateChangeDate': '2020-01-01'})
+    undated_seed = _context_seed(9, 'plan-a')
+    undated_seed['state'] = 'Closed'
+    seeds.append(undated_seed)
+    backend, client = _context_backend(seeds)
+    backend._config = _FakeConfig(plans, {'iteration_sets': []})
+    children = [
+        {**_context_seed(2, 'plan-a'), 'state': 'Closed',
+         'stateChangeDate': '2020-01-01'},
+        {**_context_seed(4, 'plan-a'), 'state': 'Active'},
+        {**_context_seed(6, 'plan-a'), 'state': 'Closed',
+         'stateChangeDate': '2026-08-01'},
+        {**_context_seed(7, 'plan-a'), 'state': 'Closed',
+         'stateChangeDate': '2020-01-01'},
+        {**_context_seed(8, 'plan-a', (3,)), 'state': 'Closed',
+         'ancestorOnly': True, 'stateChangeDate': '2020-01-01'},
+        {**_context_seed(10, 'plan-a', (1,)), 'state': 'Active',
+         'ancestorOnly': True},
+    ]
+    client.get_linked_work_items.side_effect = lambda roots: [
+        *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
+           'unresolvedChildIds': [], 'traversalBoundary': False} for item in roots],
+        *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
+           'unresolvedChildIds': [], 'traversalBoundary': False} for item in children],
+    ]
+    backend._metadata_service = MagicMock()
+    backend._metadata_service.get_cached.return_value = {
+        'state_categories': {'Active': 'InProgress', 'Closed': 'Completed'},
+    }
+
+    tasks = {task['id']: task for task in backend.fetch_task_context(
+        seeds, {'token': 'test', 'user_id': 'test'},
+    )}
+
+    assert set(tasks) == {'3', '4', '5', '6', '7', '8', '9'}
+    assert tasks['3']['sourcePlanIds'] == ['plan-a']
+    assert tasks['4']['sourcePlanIds'] == ['plan-a']
+    assert tasks['5']['sourcePlanIds'] == ['plan-a']
+    assert tasks['6']['sourcePlanIds'] == ['plan-a']
+    assert tasks['7']['sourcePlanIds'] == ['plan-a']
+    assert tasks['8']['ancestorOnly'] is True
+    assert tasks['9']['sourcePlanIds'] == ['plan-a']
+
+
+@pytest.mark.parametrize(('day', 'expected'), [
+    (date(2026, 8, 31), date(2026, 2, 28)),
+    (date(2024, 8, 31), date(2024, 2, 29)),
+])
+def test_closed_retention_cutoff_uses_calendar_months(day, expected):
+    assert _calendar_months_before(day, 6) == expected
 
 
 def test_context_provenance_stops_at_task_boundaries_and_ignores_lateral_links():

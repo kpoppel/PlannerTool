@@ -23,6 +23,7 @@ Template - do not change :
 - Added a tested ADO Child-traversal client helper with batched reads and per-project TaskCategory boundaries.
 - Added backend-owned ADO forest enrichment with source ownership, shared provenance, presentation metadata, and context-cache write-through tests.
 - Enabled canonical hierarchy loading with provenance-based plan selection, configured-type board presentation, and category-bounded hidden-context capacity/cost accounting.
+- Prune ADO hierarchy trees whose accessible members are all completed more than six calendar months ago, while retaining active and recently completed trees whole.
 - Grouped reconciliation review findings into collapsible issue-type sections with instance counts and focused task details.
 - Added a Reconciliation menu toggle to show or hide feature-card markers without changing issue detection.
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`, ESLint guard rule `eslint-rules/no-runtime-state-violations.js`, inert `USE_STATE_STORE` flag in `config.js`); removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).

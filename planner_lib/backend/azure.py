@@ -18,11 +18,13 @@ the cache-hit / no-credential fast path.)
 """
 from __future__ import annotations
 
+import calendar
 import hashlib
 import logging
 import time
 from collections import deque
 from contextlib import contextmanager
+from datetime import date, datetime, timezone
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +41,28 @@ from planner_lib.storage.base import StorageBackend
 
 
 logger = logging.getLogger(__name__)
+
+_CLOSED_RETENTION_MONTHS = 6
+
+
+def _calendar_months_before(day: date, months: int) -> date:
+    month_index = day.year * 12 + day.month - 1 - months
+    year, month_index = divmod(month_index, 12)
+    month = month_index + 1
+    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def _terminal_date(value: Any) -> Optional[date]:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return None
 
 
 class AzureDevOpsBackend(BackendPort):
@@ -344,6 +368,54 @@ class AzureDevOpsBackend(BackendPort):
                 str(relation['id']) for relation in task['relations']
                 if relation['type'] == 'Child' and str(relation['id']) in removed_ids
             })
+        cutoff = _calendar_months_before(
+            datetime.now(timezone.utc).date(), _CLOSED_RETENTION_MONTHS,
+        )
+        adjacency = {task_id: set() for task_id in tasks}
+        for parent_id, task in tasks.items():
+            if task['traversalBoundary']:
+                continue
+            for relation in task['relations']:
+                child_id = str(relation['id'])
+                if (relation['type'] == 'Child' and child_id in tasks
+                        and child_id not in task['excludedChildIds']
+                        and not tasks[child_id]['traversalBoundary']):
+                    adjacency[parent_id].add(child_id)
+                    adjacency[child_id].add(parent_id)
+
+        def is_expired(task):
+            ado_project = task.get('backendData', {}).get('adoProject')
+            state_categories = categories_by_project.get(ado_project, {})
+            if state_categories.get(task['state']) != 'Completed':
+                return False
+            transition_date = _terminal_date(
+                task.get('backendData', {}).get('stateChangeDate')
+            )
+            return transition_date is not None and transition_date < cutoff
+
+        expired_ids = set()
+        visited = set()
+        for task_id in tasks:
+            if task_id in visited:
+                continue
+            component = set()
+            pending_component = [task_id]
+            while pending_component:
+                member_id = pending_component.pop()
+                if member_id in visited:
+                    continue
+                visited.add(member_id)
+                component.add(member_id)
+                pending_component.extend(adjacency[member_id] - visited)
+            descendants = [
+                member_id for member_id in component
+                if not tasks[member_id].get('ancestorOnly', False)
+            ]
+            if not any(not is_expired(tasks[member_id]) for member_id in descendants):
+                expired_ids.update(component)
+        for task_id in expired_ids:
+            del tasks[task_id]
+
         pending = deque(
             (str(seed['id']), plan_id)
             for seed in seeds for plan_id in seed['sourcePlanIds']
