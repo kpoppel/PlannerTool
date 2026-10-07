@@ -36,6 +36,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Team focus now hides empty selected-plan swimlanes so the board shows only lanes holding the focused team's work.
 - Improved PlanMenu with half-width color selectors, compact boxed count columns, blank zero cells, content-sized aligned plan names, quieter tabular counts, and a sticky type header.
 - Clarified that sidebar team counts cover explicit allocations across loaded data rather than tasks in the current display or selected scope.
 - Added permanent hierarchy-ordered top-two sidebar team counts expandable to all types, with empty-column suppression and PlanMenu-style rows.

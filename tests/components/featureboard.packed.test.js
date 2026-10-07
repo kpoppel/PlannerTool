@@ -354,6 +354,27 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
       scrollContainer.remove();
     }
   });
+
+  it('team focus mode hides empty selected-plan swimlanes', async () => {
+    projects = [
+      { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
+      { id: 'p2', name: 'Plan B', color: '#00aa00', selected: true },
+      { id: 'p3', name: 'Plan C', color: '#0000aa', selected: true },
+    ];
+    effectiveFeatures = [makeFeature('f1'), { ...makeFeature('f2'), project: 'p2' }];
+    const taskViewMode = sinon.stub(sel.view, 'getTaskViewMode').returns('plan');
+
+    await board.renderFeatures();
+    await board.updateComplete;
+    expect(board.shadowRoot.querySelectorAll('.swimlane-label-slot')).to.have.length(3);
+
+    taskViewMode.returns('team');
+    await board.renderFeatures();
+    await board.updateComplete;
+    const labels = [...board.shadowRoot.querySelectorAll('.swimlane-label-text')]
+      .map((label) => label.textContent);
+    expect(labels).to.deep.equal(['Plan A', 'Plan B']);
+  });
 });
 
 // ---- updateCardsById in packed mode triggers full rerender ----

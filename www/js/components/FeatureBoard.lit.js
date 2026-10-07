@@ -769,23 +769,23 @@ class FeatureBoard extends LitElement {
         if (bucket) bucket.push(feature);
       }
 
-      // Hide only empty expansion lanes; selected plan lanes remain visible even when empty.
-      const hiddenExpansionLanes = new Map(
+      // Hide empty expansion lanes; selected plan lanes stay visible when empty
+      // except in Team focus, where only lanes holding the team's work matter.
+      const hideEmptyPlanLanes = sel.view.getTaskViewMode() === 'team';
+      const hiddenLaneIds = new Set(
         swimlanes
           .filter((s) => {
             const isExpansion = s.type === 'expanded-plan' || s.type === 'team';
             const isEmpty = (buckets.get(s.id) || []).length === 0;
-            return isExpansion && isEmpty;
+            return (isExpansion || hideEmptyPlanLanes) && isEmpty;
           })
-          .map((s) => [String(s.id), s])
+          .map((s) => String(s.id))
       );
 
       // Full lookup of all swimlanes by ID — used for origin attribution in labels.
       const swimlaneById = new Map(swimlanes.map((s) => [String(s.id), s]));
 
-      const swimlanesToRender = swimlanes.filter(
-        (s) => s.type === 'plan' || !hiddenExpansionLanes.has(String(s.id))
-      );
+      const swimlanesToRender = swimlanes.filter((s) => !hiddenLaneIds.has(String(s.id)));
 
       // Render each swimlane band independently and accumulate vertical offsets
       renderList = [];
