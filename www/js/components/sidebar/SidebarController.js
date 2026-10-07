@@ -107,6 +107,9 @@ export class SidebarController {
 
   getPresentationModel(teams) {
     const taskTypes = sel.feature.getAvailableTaskTypesOrdered();
+    const features = sel.scope.getPresentableContextFeatures();
+    const scopedTypes = new Set(features.map((feature) => feature.type.toLowerCase()));
+    const scopedStates = new Set(features.map((feature) => feature.state));
     const filters = sel.filter.getTaskFilters();
     const colors = sel.filter.getFeatureStateColors();
     const selectedStates = sel.filter.getSelectedFeatureStateSet();
@@ -134,11 +137,11 @@ export class SidebarController {
             disabled: sel.filter.isSidebarControlDisabled('taskFilter', dimension.key, option.key),
           })),
         })),
-        states: sel.filter.getAvailableFeatureStates().map((name) => ({
+        states: sel.filter.getAvailableFeatureStates().filter((name) => scopedStates.has(name)).map((name) => ({
           name, color: colors[name].background, active: selectedStates.has(name),
           disabled: sel.filter.isSidebarControlDisabled('state', name),
         })),
-        types: taskTypes.map((name) => ({ name, active: sel.view.isTypeVisible(name),
+        types: taskTypes.filter((name) => scopedTypes.has(name.toLowerCase())).map((name) => ({ name, active: sel.view.isTypeVisible(name),
           disabled: sel.filter.isSidebarControlDisabled('taskType', name) })),
       },
       footer: { serverName: this.host.serverName, serverStatus: this.host.serverStatus,

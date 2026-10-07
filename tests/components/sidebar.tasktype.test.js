@@ -58,6 +58,37 @@ describe('Sidebar task-type filter', () => {
     sinon.restore();
   });
 
+  it('offers only scoped presentable states and types, keeping unchecked options available', () => {
+    store.setState((state) => ({ ...state,
+      baseline: { ...state.baseline,
+        features: [
+          { ...state.baseline.features[0], presentationPlanIds: ['p1'] },
+          { ...state.baseline.features[1], presentationPlanIds: ['p1'], state: 'Active' },
+          { ...state.baseline.features[1], id: 'hidden', type: 'User Story',
+            state: 'Closed', presentationPlanIds: [] },
+          { ...state.baseline.features[1], id: 'outside', project: 'p2', type: 'Bug',
+            state: 'Resolved', presentationPlanIds: ['p2'] },
+        ],
+      },
+    }));
+    cmd.filter.setSelectedStates(['New']);
+    cmd.view.setTypeVisibility('feature', false);
+
+    const model = sidebar._controller.getPresentationModel([]);
+
+    expect(model.filters.states.map((option) => option.name)).to.deep.equal(['New', 'Active']);
+    expect(model.filters.types.map((option) => option.name)).to.deep.equal(['epic', 'feature']);
+    expect(model.filters.states.find((option) => option.name === 'Active').active).to.equal(false);
+    expect(model.filters.types.find((option) => option.name === 'feature').active).to.equal(false);
+
+    store.setState((state) => ({ ...state,
+      selection: { ...state.selection, projectIds: ['p2'] },
+    }));
+    const next = sidebar._controller.getPresentationModel([]);
+    expect(next.filters.states.map((option) => option.name)).to.deep.equal(['Resolved']);
+    expect(next.filters.types.map((option) => option.name)).to.deep.equal(['Bug']);
+  });
+
   it('renders health version, server name, and uptime from the successful result data', async () => {
     dataService.checkHealth = async () => ({
       ok: true,

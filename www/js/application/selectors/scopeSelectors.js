@@ -139,6 +139,22 @@ export function createScopeSelectors(store) {
     return membershipCache;
   }
 
+  function canPresentInContext(feature) {
+    const state = store.getState();
+    const membership = getScopeMembership();
+    const isAncestorContext = feature.ancestorOnly === true
+      && state.view.context.parent && membership.ancestorIds.has(String(feature.id));
+    if (!featureCanPresent(feature) && !isAncestorContext) return false;
+    const plan = state.baseline.projects.find((project) => project.id === feature.project);
+    // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+    return plan === undefined || plan.display_states === undefined
+      || plan.display_states.includes(feature.state);
+  }
+
+  function getPresentableContextFeatures() {
+    return getContextFeatures().filter(canPresentInContext);
+  }
+
   function getCardEligibleFeatures(contextFeatures) {
     const state = store.getState();
     const selectedFeatureStates = new Set(
@@ -150,9 +166,7 @@ export function createScopeSelectors(store) {
     const hiddenTypes = new Set(state.view.options.hiddenTypes.map((type) => String(type)));
     const membership = getScopeMembership();
     return contextFeatures.filter((feature) => {
-      const isAncestorContext = feature.ancestorOnly === true
-        && state.view.context.parent && membership.ancestorIds.has(String(feature.id));
-      if (!featureCanPresent(feature) && !isAncestorContext) return false;
+      if (!canPresentInContext(feature)) return false;
       if (selectedTaskTypeNames.size > 0
         && !selectedTaskTypeNames.has(String(feature.type).toLowerCase())) return false;
       if (selectedFeatureStates.size === 0
@@ -169,7 +183,7 @@ export function createScopeSelectors(store) {
   function getVisibleFeatures() {
     const state = store.getState();
     const contextFeatures = getContextFeatures();
-    const key = [contextFeatures, state.selection.teamIds.join(','), state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','), state.selection.taskFilters, state.view.options];
+    const key = [contextFeatures, state.baseline.projects, state.selection.teamIds.join(','), state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','), state.selection.taskFilters, state.view.options];
     if (visibleCache && key.every((value, index) => value === visibleCacheKey[index])) return visibleCache;
     visibleCacheKey = key;
     visibleCache = getBoardFeatures(
@@ -226,7 +240,7 @@ export function createScopeSelectors(store) {
       const state = store.getState();
       const currentContext = state.view.context;
       const key = [
-        getScopeMembership(), currentContext.parent, currentContext.child,
+        getScopeMembership(), state.baseline.projects, currentContext.parent, currentContext.child,
         currentContext.dependency, currentContext.otherAllocations,
         state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','),
         state.selection.taskFilters, state.view.options,
@@ -297,6 +311,7 @@ export function createScopeSelectors(store) {
   return {
     getResolvedFeatures,
     getContextFeatures,
+    getPresentableContextFeatures,
     getVisibleFeatures,
     getVisibleTeams,
     getContextTeams,

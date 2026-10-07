@@ -248,6 +248,42 @@ def test_fetch_task_context_preserves_source_owner_and_unions_seed_provenance():
     ]
 
 
+@pytest.mark.parametrize('removed_state', ['Removed', 'Discarded'])
+def test_context_respects_display_states_without_treating_terminated_as_removed(removed_state):
+    plan = {'id': 'plan-a', 'area_path': 'A\\plan-a',
+            'task_types': ['Feature', 'Change Request'],
+            'display_states': ['Active', 'Terminated']}
+    seeds = [_context_seed(1, 'plan-a', (2, 3, 4))]
+    backend, client = _context_backend(seeds)
+    backend._config = _FakeConfig([plan], {'iteration_sets': []})
+    children = [
+        {**_context_seed(2, 'plan-a'), 'state': removed_state},
+        {**_context_seed(3, 'plan-a', item_type='Change Request'), 'state': 'Terminated'},
+        {**_context_seed(4, 'plan-a'), 'state': 'Closed'},
+    ]
+    client.get_linked_work_items.side_effect = lambda roots: [
+        {**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
+         'unresolvedChildIds': [], 'traversalBoundary': False}
+        for item in [*roots, *children]
+    ]
+    backend._metadata_service = MagicMock()
+    backend._metadata_service.get_cached.return_value = {
+        'state_categories': {'Active': 'InProgress', removed_state: 'Removed',
+                             'Terminated': 'Completed', 'Closed': 'Completed'},
+    }
+
+    tasks = {task['id']: task for task in backend.fetch_task_context(
+        seeds, {'token': 'test', 'user_id': 'test'},
+    )}
+
+    assert '2' not in tasks
+    assert tasks['1']['excludedChildIds'] == ['2']
+    assert tasks['3']['sourcePlanIds'] == ['plan-a']
+    assert tasks['3']['presentationPlanIds'] == ['plan-a']
+    assert tasks['4']['sourcePlanIds'] == ['plan-a']
+    assert tasks['4']['presentationPlanIds'] == []
+
+
 def test_plan_seeds_can_be_passed_directly_to_context_loading():
     plan = {'id': 'plan-a', 'area_path': 'A\\Seeds', 'task_types': ['Feature']}
     backend = _make_backend(_FakeConfig([plan], {'iteration_sets': []}))

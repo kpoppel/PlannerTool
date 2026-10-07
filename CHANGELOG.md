@@ -16,6 +16,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Excluded ADO Removed-category work from planning calculations, honored admin display states, and scoped sidebar state/type choices to presentable content.
 - Load bounded ADO ancestor paths across unseeded plans and show labeled featureboard context cards without importing sibling branches or partial-plan costs.
 - Added a tested ADO Child-traversal client helper with batched reads and per-project TaskCategory boundaries.
 - Added backend-owned ADO forest enrichment with source ownership, shared provenance, presentation metadata, and context-cache write-through tests.

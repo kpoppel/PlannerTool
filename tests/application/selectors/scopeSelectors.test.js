@@ -61,6 +61,34 @@ function baseState(overrides = {}) {
 }
 
 describe('application/selectors/scopeSelectors', () => {
+  it('honors admin display states for owned and ancestor context without changing resolved work', () => {
+    const state = baseState({ view: { context: { parent: true } } });
+    state.baseline.projects = state.baseline.projects.map((project) => ({ ...project,
+      display_states: project.id === 'selected' ? ['Active'] : ['New'],
+    }));
+    state.baseline.features = state.baseline.features.map((feature) => ({ ...feature,
+      ancestorOnly: feature.id === 'parent-task',
+      presentationPlanIds: feature.id === 'parent-task' ? [] : [feature.project],
+      state: feature.id === 'hidden-type' ? 'Closed' : feature.state,
+    }));
+    state.selection.featureStateNames = ['Active', 'Closed'];
+    state.selection.taskTypeNames = [];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getPresentableContextFeatures().map((feature) => feature.id)).toEqual(['own']);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own']);
+    expect(selectors.getResolvedFeatures()).toHaveLength(6);
+    expect(selectors.getContextOptionCounts().parent).toBe(0);
+
+    state.baseline.projects = state.baseline.projects.map((project) => ({ ...project,
+      display_states: ['Active', 'Closed'],
+    }));
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'own', 'parent-task', 'hidden-type',
+    ]);
+    expect(selectors.getContextOptionCounts().parent).toBe(1);
+  });
+
   it('indexes relationships once for scope counts instead of rescanning every selected task', () => {
     const state = baseState();
     const taskCount = 5800;

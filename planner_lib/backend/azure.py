@@ -316,6 +316,8 @@ class AzureDevOpsBackend(BackendPort):
         type_canonical = self._build_type_canonical()
         tasks = {}
         iteration_maps = {}
+        categories_by_project = {}
+        removed_ids = set()
         try:
             with self._conn.connect(pat) as client:
                 def iteration_map_for(area, ado_project):
@@ -328,6 +330,20 @@ class AzureDevOpsBackend(BackendPort):
                 for raw in raw_items:
                     task_id = str(raw['id'])
                     area = raw['areaPath']
+                    ado_project = raw['adoProject']
+                    if ado_project not in categories_by_project:
+                        metadata = None
+                        if self._metadata_service is not None:
+                            metadata = self._metadata_service.get_cached(ado_project)
+                            if not metadata:
+                                metadata = client.get_area_path_used_metadata(ado_project, area)
+                                self._metadata_service.store(ado_project, metadata)
+                        categories_by_project[ado_project] = (
+                            metadata['state_categories'] if metadata is not None else {}
+                        )
+                    if categories_by_project[ado_project].get(raw['state']) == 'Removed':
+                        removed_ids.add(task_id)
+                        continue
                     area_key = area.strip('/\\').replace('/', '\\').casefold()
                     owner = owners.get(area_key)
                     if owner is None:
@@ -369,9 +385,15 @@ class AzureDevOpsBackend(BackendPort):
         except Exception as exc:
             raise classify_ado_exception(exc) from exc
 
+        for task in tasks.values():
+            task['excludedChildIds'] = sorted(set(task['excludedChildIds']) | {
+                str(relation['id']) for relation in task['relations']
+                if relation['type'] == 'Child' and str(relation['id']) in removed_ids
+            })
         pending = deque(
             (str(seed['id']), plan_id)
             for seed in seeds for plan_id in seed['sourcePlanIds']
+            if str(seed['id']) in tasks
         )
         while pending:
             task_id, plan_id = pending.popleft()
@@ -395,7 +417,11 @@ class AzureDevOpsBackend(BackendPort):
             for plan_id in sorted(set(task['sourcePlanIds']) | {task['project']}):
                 if plan_id not in plans_by_id:
                     continue
-                task_types = plans_by_id[plan_id].get('task_types')
+                plan = plans_by_id[plan_id]
+                display_states = plan.get('display_states')
+                if display_states is not None and task['state'] not in display_states:
+                    continue
+                task_types = plan.get('task_types')
                 if task_types is None:
                     task_types = ['Epic', 'Feature']
                 if task['type'].casefold() in {name.casefold() for name in task_types}:
