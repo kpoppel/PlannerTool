@@ -4,6 +4,17 @@ import { ColorService } from '../../../www/js/services/ColorService.js';
 import { createInitialAppState } from '../../../www/js/application/createInitialAppState.js';
 
 describe('application/selectors/filterSelectors', () => {
+  it('offers ancestor card types while keeping hidden descendant types out of menus', () => {
+    const state = createInitialAppState();
+    state.baseline.features = [
+      { id: 'seed', type: 'Feature', presentationPlanIds: ['plan-a'] },
+      { id: 'ancestor', type: 'Epic', presentationPlanIds: [], ancestorOnly: true },
+      { id: 'hidden', type: 'Requirement', presentationPlanIds: [] },
+    ];
+    const selectors = createFilterSelectors({ getState: () => state });
+    expect(selectors.getSelectedTaskTypeNames()).toEqual(['Feature', 'Epic']);
+  });
+
   it('does not offer context-only types in ordinary task menus', () => {
     const state = createInitialAppState();
     state.baseline.features = [

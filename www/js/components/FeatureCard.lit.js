@@ -445,6 +445,14 @@ export class FeatureCardLit extends LitElement {
       min-width: 0;
     }
 
+    .ancestor-context {
+      flex-shrink: 0;
+      font-size: 0.7em;
+      color: #42584a;
+      border-bottom: 1px dashed currentColor;
+      white-space: nowrap;
+    }
+
     .feature-dates {
       font-size: 0.75em;
       color: #666;
@@ -1067,6 +1075,10 @@ export class FeatureCardLit extends LitElement {
           <div class="feature-title" title=${this.feature.title}>
             ${this.feature.title}
           </div>
+          ${this.feature.ancestorOnly === true ? html`<span
+            class="ancestor-context"
+            title="Ancestor context only. Other child branches are not loaded."
+          >Ancestor</span>` : ''}
         </div>
         ${!this.condensed ?
           html`

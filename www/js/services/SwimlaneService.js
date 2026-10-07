@@ -74,6 +74,17 @@ export function buildSwimlaneList(projects, visibleFeatures, context) {
     const projectId = String(feature.project);
     if (addedIds.has(projectId)) continue;
     const project = projectsById.get(projectId);
+    if (project === undefined && feature.ancestorOnly === true) {
+      swimlanes.push({
+        id: feature.project,
+        name: feature.sourcePlanName,
+        color: '#68776e',
+        type: 'expanded-plan',
+        contextOnly: true,
+      });
+      addedIds.add(projectId);
+      continue;
+    }
     if (!project) continue;
     swimlanes.push({
       id: project.id,
@@ -120,9 +131,10 @@ export function assignFeatureToSwimlane(
       if (!current) break;
       const lane = swimlaneById.get(String(current.project));
       if (!lane) continue;
-      if (!featureCanPresent(feature, new Set([String(lane.id)]))) continue;
+      const followsContextParent = feature.ancestorOnly === true || current.ancestorOnly === true;
+      if (!followsContextParent && !featureCanPresent(feature, new Set([String(lane.id)]))) continue;
       if (lane.type === 'plan') return lane.id;
-      if (expandedPlanId === null) expandedPlanId = lane.id;
+      if (expandedPlanId === null || followsContextParent) expandedPlanId = lane.id;
     }
     if (expandedPlanId !== null) return expandedPlanId;
   }

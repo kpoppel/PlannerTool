@@ -52,6 +52,19 @@ describe('details-panel', () => {
     expect(panel.open).to.be.true;
   });
 
+  it('renders the backend-neutral source name for an ancestor outside configured plans', async () => {
+    panel.feature = {
+      id: 'ancestor', title: 'Ancestor', project: 'context-owner', type: 'Epic',
+      ancestorOnly: true, sourcePlanName: 'Portfolio', state: 'New',
+      start: null, end: null, capacity: [], orgLoad: '0%', relations: [],
+    };
+    panel.open = true;
+    await panel.updateComplete;
+    const label = [...panel.shadowRoot.querySelectorAll('.details-label')]
+      .find((element) => element.textContent.startsWith('Plan:'));
+    expect(label.querySelector('.details-value').textContent).to.equal('Portfolio');
+  });
+
   it('_renderField shows original when changed', () => {
     panel.feature = { original: { start: '2025-01-01' } };
     // Render the template result into a container using lit render

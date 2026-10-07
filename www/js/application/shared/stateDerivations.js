@@ -25,7 +25,7 @@ export function deriveAvailableTaskTypes(features) {
   const seen = new Set();
 
   for (const feature of features) {
-    if (!featureCanPresent(feature)) continue;
+    if (!featureCanPresent(feature) && feature.ancestorOnly !== true) continue;
     const typeName = toTypeName(feature);
     if (!typeName) continue;
     const key = String(typeName);

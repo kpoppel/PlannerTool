@@ -61,8 +61,151 @@ function baseState(overrides = {}) {
 }
 
 describe('application/selectors/scopeSelectors', () => {
+  it('indexes relationships once for scope counts instead of rescanning every selected task', () => {
+    const state = baseState();
+    const taskCount = 5800;
+    let relationReads = 0;
+    state.baseline.features = Array.from({ length: taskCount }, (_, index) => ({
+      id: String(index), project: index < 200 ? 'selected' : 'other',
+      parentId: index >= 200 ? '0' : null, type: 'Feature', state: 'Active',
+      capacity: [{ team: 'team-a', capacity: 10 }],
+      relations: [{
+        id: String((index + 1) % taskCount),
+        get type() { relationReads += 1; return 'Related'; },
+      }],
+    }));
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextOptionCounts()).toEqual({
+      parent: 0, child: 5600, dependency: 2, otherAllocations: 0,
+    });
+    expect(relationReads).toBeLessThan(taskCount * 4);
+    const initialReads = relationReads;
+    selectors.getContextOptionCounts();
+    expect(relationReads).toBe(initialReads);
+  });
+
+  it('reuses counts for team drill-down but invalidates them for plans, filters and scenario edits', () => {
+    const state = baseState();
+    const selectors = createScopeSelectors(createStore(state));
+    const originalCounts = selectors.getContextOptionCounts();
+    expect(originalCounts).toEqual({ parent: 1, child: 1, dependency: 0, otherAllocations: 1 });
+    state.selection.teamIds = ['team-b'];
+    expect(selectors.getContextOptionCounts()).toBe(originalCounts);
+
+    state.selection.taskTypeNames = ['Bug'];
+    expect(selectors.getContextOptionCounts()).toEqual({
+      parent: 0, child: 0, dependency: 0, otherAllocations: 0,
+    });
+    state.selection.taskTypeNames = ['Feature'];
+    state.selection.projectIds = ['child'];
+    expect(selectors.getContextOptionCounts().parent).toBe(2);
+
+    state.selection.projectIds = ['selected'];
+    state.scenarios.items = [{ id: 'baseline', overrides: { 'child-task': { parentId: null } } }];
+    expect(selectors.getContextOptionCounts().child).toBe(0);
+    state.baseline.features = [...state.baseline.features, {
+      id: 'new-child', project: 'other', parentId: 'own', type: 'Feature', state: 'Active',
+      capacity: [{ team: 'team-a', capacity: 10 }], relations: [],
+    }];
+    expect(selectors.getContextOptionCounts().child).toBe(1);
+    state.view.context.child = true;
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toContain('new-child');
+    expect(selectors.getContextOptionCounts().child).toBe(1);
+  });
+
+  it('indexes only eligible hierarchy edges and terminates on cyclic parent references', () => {
+    const state = baseState();
+    state.baseline.features[0].parentId = 'child-task';
+    state.view.context.parent = true;
+    state.view.context.child = true;
+    const selectors = createScopeSelectors(createStore(state));
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'own', 'child-task', 'hidden-type',
+    ]);
+
+    state.baseline.features = state.baseline.features.map((feature) =>
+      feature.id === 'own' ? { ...feature, excludedChildIds: ['child-task'] } : feature
+    );
+    state.view.context.parent = false;
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual(['own', 'hidden-type']);
+    state.baseline.features = state.baseline.features.map((feature) =>
+      feature.id === 'own' ? { ...feature, parentId: 'parent-task', traversalBoundary: true } : feature
+    );
+    state.view.context.parent = true;
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual(['own', 'hidden-type']);
+  });
+
+  it('counts eligible card additions without counting hidden context descendants', () => {
+    const state = baseState();
+    state.baseline.features = [
+      { id: 'root', project: 'selected', type: 'Epic', parentId: 'ancestor',
+        state: 'Active', relations: [{ id: 'dependency', type: 'Successor' }], capacity: [{ team: 'team-a' }],
+        sourcePlanIds: ['selected'], presentationPlanIds: ['selected'] },
+      { id: 'ancestor', project: 'parent', type: 'Feature', parentId: null,
+        state: 'Active', relations: [], capacity: [],
+        sourcePlanIds: ['parent'], presentationPlanIds: ['parent'] },
+      { id: 'child', project: 'child', type: 'Feature', parentId: 'root',
+        state: 'Active', relations: [], capacity: [{ team: 'team-a' }],
+        sourcePlanIds: ['selected', 'child'], presentationPlanIds: ['selected', 'child'] },
+      { id: 'grandchild', project: 'child', type: 'Task', parentId: 'child',
+        state: 'Active', relations: [], capacity: [{ team: 'team-a' }],
+        sourcePlanIds: ['selected', 'child'], presentationPlanIds: [] },
+      { id: 'unallocated-child', project: 'child', type: 'Feature', parentId: 'root',
+        state: 'Active', relations: [], capacity: [],
+        sourcePlanIds: ['selected', 'child'], presentationPlanIds: ['selected'] },
+      { id: 'dependency', project: 'other', type: 'Feature', parentId: null,
+        state: 'Active', relations: [], capacity: [{ team: 'team-a' }],
+        sourcePlanIds: ['other'], presentationPlanIds: ['other'] },
+      { id: 'other-work', project: 'other', type: 'Feature', parentId: null,
+        state: 'Active', relations: [], capacity: [{ team: 'team-a' }],
+        sourcePlanIds: ['other'], presentationPlanIds: ['other'] },
+    ];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual(['root']);
+    expect(selectors.getContextOptionCounts()).toEqual({
+      parent: 1, child: 1, dependency: 1, otherAllocations: 1,
+    });
+    state.view.context.parent = true;
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['ancestor']);
+    expect(selectors.getContextOptionCounts().parent).toBe(1);
+    state.view.context.parent = false;
+    state.view.context.child = true;
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['child']);
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'root', 'child', 'grandchild', 'unallocated-child',
+    ]);
+    state.selection.taskTypeNames = ['Epic'];
+    expect(selectors.getContextOptionCounts().child).toBe(0);
+    state.selection.taskTypeNames = ['Feature'];
+    state.selection.featureStateNames = [];
+    expect(selectors.getContextOptionCounts().child).toBe(0);
+  });
+
+  it('presents ancestor-only cards through parent context without importing their plan', () => {
+    const state = baseState({ selection: { teamIds: [], taskTypeNames: [] } });
+    state.baseline.features = [
+      { id: 'seed', project: 'selected', type: 'Feature', state: 'Active',
+        sourcePlanIds: ['selected'], presentationPlanIds: ['selected'],
+        parentId: 'ancestor', relations: [], capacity: [] },
+      { id: 'ancestor', project: 'internal-owner', type: 'Epic', state: 'Active',
+        sourcePlanIds: [], presentationPlanIds: [], ancestorOnly: true, childrenComplete: false,
+        parentId: null, relations: [], capacity: [] },
+    ];
+    const selectors = createScopeSelectors(createStore(state));
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed']);
+    state.view.context.parent = true;
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed', 'ancestor']);
+    expect(selectors.getContextOptionCounts().parent).toBe(1);
+    state.selection.teamIds = ['team-a'];
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed', 'ancestor']);
+    state.selection.projectIds = ['internal-owner'];
+    expect(selectors.getContextFeatures()).toEqual([]);
+  });
+
   it('keeps imported context inspectable but presents only configured types', () => {
-    const state = baseState({ selection: { teamIds: [] } });
+    const state = baseState({ selection: { teamIds: ['team-a'] } });
     state.baseline.features = [
       { id: 'seed', project: 'selected', type: 'Epic', state: 'Active',
         sourcePlanIds: ['selected'], presentationPlanIds: ['selected'],
@@ -72,11 +215,16 @@ describe('application/selectors/scopeSelectors', () => {
         parentId: 'seed', relations: [], capacity: [{ team: 'team-a', capacity: 50 }] },
       { id: 'shared', project: 'internal-owner', type: 'Feature', state: 'Active',
         sourcePlanIds: ['selected', 'other'], presentationPlanIds: ['selected', 'other'],
-        parentId: 'linked', relations: [], capacity: [] },
+        parentId: 'linked', relations: [], capacity: [{ team: 'team-a', capacity: 10 }] },
     ];
     state.selection.taskTypeNames = [];
     const selectors = createScopeSelectors(createStore(state));
 
+    expect(selectors.getResolvedFeatures().map((feature) => feature.id)).toEqual([
+      'seed', 'linked', 'shared',
+    ]);
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual(['seed']);
+    state.view.context.child = true;
     expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
       'seed', 'linked', 'shared',
     ]);
@@ -90,8 +238,8 @@ describe('application/selectors/scopeSelectors', () => {
       .some((plan) => plan.id === 'internal-owner')).toBe(false);
 
     state.selection.projectIds = ['other'];
-    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual(['linked', 'shared']);
-    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['shared']);
+    expect(selectors.getContextFeatures()).toEqual([]);
+    expect(selectors.getVisibleFeatures()).toEqual([]);
 
     state.selection.projectIds = ['child'];
     state.view.context.child = true;
@@ -104,6 +252,10 @@ describe('application/selectors/scopeSelectors', () => {
       sourcePlanIds: ['child'], presentationPlanIds: ['child'],
       parentId: null, relations: [], capacity: [{ team: 'team-a', capacity: 10 }],
     }];
+    expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
+      'linked', 'shared', 'unrelated-seed',
+    ]);
+    state.view.context.otherAllocations = false;
     expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual(['unrelated-seed']);
   });
 
@@ -231,10 +383,13 @@ describe('application/selectors/scopeSelectors', () => {
     ]);
   });
 
-  it('derives related scope counts from base-plan participants, not Team Drill-down focus', () => {
+  it('keeps added-scope counts independent of Team Drill-down while filtering the board', () => {
     const state = baseState({
       view: { context: { parent: false, child: false, dependency: false, otherAllocations: false } },
     });
+    state.baseline.features[0].relations = [{ id: 'dependency-task', type: 'Successor' }];
+    state.baseline.features[4].capacity = [{ team: 'team-a' }];
+    state.baseline.features[4].type = 'Feature';
     state.selection.teamIds = [];
     const selectors = createScopeSelectors(createStore(state));
     const clearFocusCounts = selectors.getContextOptionCounts();
@@ -242,8 +397,20 @@ describe('application/selectors/scopeSelectors', () => {
     state.selection.teamIds = ['team-a'];
     const focusedCounts = selectors.getContextOptionCounts();
 
+    expect(clearFocusCounts).toEqual({ parent: 1, child: 1, dependency: 1, otherAllocations: 1 });
     expect(focusedCounts).toEqual(clearFocusCounts);
-    expect(clearFocusCounts.child).to.equal(1);
+    state.selection.teamIds = ['team-b'];
+    expect(selectors.getVisibleFeatures()).toEqual([]);
+    expect(selectors.getContextOptionCounts()).toEqual(clearFocusCounts);
+    state.view.context.child = true;
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own', 'child-task']);
+    expect(selectors.getContextOptionCounts().child).toBe(1);
+    state.selection.teamIds = [];
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own']);
+    expect(selectors.getContextOptionCounts().child).toBe(1);
+    state.view.options = { ...state.view.options, taskViewMode: 'team' };
+    expect(selectors.getVisibleFeatures()).toEqual([]);
+    expect(selectors.getContextOptionCounts().child).toBe(1);
   });
 
   it('does not count Parent or Child relations as dependency scope', () => {

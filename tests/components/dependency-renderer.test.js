@@ -89,6 +89,24 @@ describe('PluginDependenciesComponent', () => {
     return featureBoard.shadowRoot.querySelector('#feature-board-host') || featureBoard.shadowRoot;
   }
 
+  it('attaches and draws when the board becomes available after the plugin first renders', async () => {
+    mockFeatures.list = [
+      { id: 1, relations: [{ id: 2, type: 'Successor' }] },
+      { id: 2, relations: [] },
+    ];
+    boardArea.remove();
+    component = document.createElement('plugin-dependencies');
+    document.body.appendChild(component);
+    await component.updateComplete;
+
+    document.querySelector('timeline-board').appendChild(boardArea);
+    component.open();
+
+    const svg = boardArea.querySelector('.dependencies-overlay__svg');
+    expect(svg).to.exist;
+    expect(svg.querySelectorAll('path')).to.have.length(1);
+  });
+
   it('draws a Bezier path between two feature cards', async () => {
     // Uses cards 1 and 2 from the global setup (left:10,top:10 and left:160,top:10)
     mockFeatures.list = [

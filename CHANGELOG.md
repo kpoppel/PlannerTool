@@ -16,6 +16,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Load bounded ADO ancestor paths across unseeded plans and show labeled featureboard context cards without importing sibling branches or partial-plan costs.
 - Added a tested ADO Child-traversal client helper with batched reads and per-project TaskCategory boundaries.
 - Added backend-owned ADO forest enrichment with source ownership, shared provenance, presentation metadata, and context-cache write-through tests.
 - Enabled canonical hierarchy loading with provenance-based plan selection, configured-type board presentation, and category-bounded hidden-context capacity/cost accounting.
@@ -34,6 +35,9 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Give ancestor context swimlanes and details-panel plan labels backend-provided source names, using the final ADO area-path segment for readable origin labels.
+- Indexed scope relationships and cached graph membership and counts to eliminate repeated per-task hierarchy and dependency scans.
+- Restored ownership-anchored board scope and eligible-card addition counts independent of Team Drill-down; dependency overlays attach when the board becomes available after plugin startup.
 - Clicking a relation icon in the details panel centers its linked card on the board.
 - Made task repository reads and writes backend-neutral, with backend-owned plan settings and private persisted task metadata.
 - Consolidated cost calculation in the current calculator, moving shared month helpers and retiring unused v1 allocations and tests.

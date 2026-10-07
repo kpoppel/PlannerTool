@@ -154,6 +154,8 @@ export class DetailsPanelController {
 		const originalState = feature.original === undefined ? undefined : feature.original.state;
 		const originalTags = feature.original === undefined ? undefined : feature.original.tags;
 		const project = projects.find((item) => item.id === feature.project);
+		const planName = project ? project.name
+			: feature.ancestorOnly === true ? feature.sourcePlanName : null;
 		const linkedFeatures = new Map();
 		const stateCategories = new Map();
 		for (const relation of feature.relations) {
@@ -166,7 +168,7 @@ export class DetailsPanelController {
 		}
 		return {
 			header: {
-				feature, planName: project ? project.name : null,
+				feature, planName,
 				stateChanged: originalState !== undefined && feature.state !== originalState,
 				originalState, stateColors, availableFeatureStates: sel.filter.getAvailableFeatureStates(),
 				editingState: this.editor.editingState, stateEditValue: this.editor.stateEditValue,

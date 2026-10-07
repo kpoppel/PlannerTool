@@ -46,6 +46,17 @@ describe('SwimlaneService', () => {
       .toMatchObject({ id: 'p2', type: 'expanded-plan' });
   });
 
+  it('represents an unconfigured ancestor owner with a backend-neutral context lane', () => {
+    const ancestor = { ...mkFeature('ancestor', 'context-owner'), ancestorOnly: true,
+      sourcePlanName: 'Portfolio', sourcePlanIds: [], presentationPlanIds: [] };
+    const context = { ...noContext, parent: true };
+    const lanes = buildSwimlaneList(projects, [ancestor], context);
+    expect(lanes[1]).toEqual({ id: 'context-owner', name: 'Portfolio',
+      color: '#68776e', type: 'expanded-plan', contextOnly: true });
+    expect(assignFeatureToSwimlane(ancestor, lanes, new Map(), context)).toBe('context-owner');
+    expect(projects.some((project) => project.id === 'context-owner')).toBe(false);
+  });
+
   it('adds an Other allocation source-plan lane without creating team lanes', () => {
     const lanes = buildSwimlaneList(
       projects,
@@ -79,6 +90,23 @@ describe('SwimlaneService', () => {
     expect(lanes.map((lane) => lane.id)).toEqual(['p1', 'p2']);
     expect(assignFeatureToSwimlane(linked, lanes, new Map(), noContext)).toBe('p2');
     expect(linked.project).toBe('context-internal');
+  });
+
+  it('keeps a task with its parent through an unseeded ancestor chain using domain metadata', () => {
+    const context = { ...noContext, parent: true };
+    const features = [
+      { ...mkFeature('seed', 'p1', 'middle'),
+        sourcePlanIds: ['p1'], presentationPlanIds: ['p1'] },
+      { ...mkFeature('middle', 'external-middle', 'root'), ancestorOnly: true,
+        sourcePlanName: 'Program', sourcePlanIds: [], presentationPlanIds: [] },
+      { ...mkFeature('root', 'external-root'), ancestorOnly: true,
+        sourcePlanName: 'Portfolio', sourcePlanIds: [], presentationPlanIds: [] },
+    ];
+    const lanes = buildSwimlaneList(projects, features, context);
+    const byId = new Map(features.map((feature) => [feature.id, feature]));
+    for (const feature of features) {
+      expect(assignFeatureToSwimlane(feature, lanes, byId, context)).toBe('external-root');
+    }
   });
 
   it('moves selected child-plan work into an available ancestor lane in Parent Context', () => {

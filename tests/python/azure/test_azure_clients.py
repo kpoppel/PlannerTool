@@ -329,7 +329,7 @@ def test_linked_hierarchy_crosses_areas_but_stops_at_project_task_category():
     assert all(1 not in ids for ids, fields, expand in batches)
 
 
-def _linked_item(item_id, item_type='Feature', children=(), project='A'):
+def _linked_item(item_id, item_type='Feature', children=(), project='A', parents=()):
     return SimpleNamespace(
         id=item_id,
         rev=1,
@@ -344,7 +344,10 @@ def _linked_item(item_id, item_type='Feature', children=(), project='A'):
         relations=[SimpleNamespace(
             attributes={'name': 'Child'},
             url=f'https://dev.azure.com/org/{project}/_apis/wit/workItems/{child}',
-        ) for child in children],
+        ) for child in children] + [SimpleNamespace(
+            attributes={'name': 'Parent'},
+            url=f'https://dev.azure.com/org/{project}/_apis/wit/workItems/{parent}',
+        ) for parent in parents],
         url=f'https://dev.azure.com/org/{project}/_apis/wit/workItems/{item_id}',
     )
 
@@ -364,6 +367,45 @@ def _linked_client(items, missing_ids=()):
     client._connected = True
     client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: wit))
     return client, wit
+
+
+def test_linked_hierarchy_loads_ancestor_paths_without_sibling_branches():
+    items = {
+        1: _linked_item(1, children=(2,), parents=(10,)),
+        2: _linked_item(2, parents=(1,)),
+        10: _linked_item(10, 'Epic', children=(1, 11), project='B', parents=(20,)),
+        20: _linked_item(20, 'Epic', children=(10, 21), project='C'),
+    }
+    client, wit = _linked_client(items)
+    seed = client._work_item_ops.normalize_work_item(items[1])
+
+    tasks = {item['id']: item for item in client.get_linked_work_items([seed])}
+
+    assert set(tasks) == {'1', '2', '10', '20'}
+    assert not tasks['1']['ancestorOnly']
+    assert tasks['1']['childrenComplete']
+    assert tasks['10']['ancestorOnly']
+    assert not tasks['10']['childrenComplete']
+    assert tasks['20']['ancestorOnly']
+    assert tasks['10']['unresolvedChildIds'] == []
+    requested = {item_id for call in wit.get_work_items.call_args_list for item_id in call.args[0]}
+    assert requested == {2, 10, 20}
+
+
+def test_linked_hierarchy_reports_missing_parents_and_terminates_parent_cycles():
+    items = {
+        1: _linked_item(1, parents=(10, 99)),
+        10: _linked_item(10, parents=(1,)),
+    }
+    client, wit = _linked_client(items, missing_ids=(99,))
+    tasks = {item['id']: item for item in client.get_linked_work_items([
+        client._work_item_ops.normalize_work_item(items[1]),
+    ])}
+
+    assert set(tasks) == {'1', '10'}
+    assert tasks['1']['unresolvedParentIds'] == ['99']
+    assert tasks['10']['unresolvedParentIds'] == []
+    assert len(wit.get_work_items.call_args_list) == 1
 
 
 def test_linked_hierarchy_batches_and_deduplicates_shared_children():
@@ -390,12 +432,13 @@ def test_linked_hierarchy_batches_and_deduplicates_shared_children():
 @pytest.mark.parametrize('through_repository', [False, True])
 def test_backend_context_composes_real_traversal_and_domain_enrichment(through_repository):
     items = {
-        1: _linked_item(1, 'Epic', (2,)),
+        1: _linked_item(1, 'Epic', (2,), parents=(10,)),
         4: _linked_item(4, 'Feature', (2,), project='B'),
         2: _linked_item(2, 'Requirement', (3, 5), project='B'),
         3: _linked_item(3, 'Implementation Step', (6,), project='B'),
         5: _linked_item(5, 'Feature', project='C'),
         6: _linked_item(6, 'Feature', project='B'),
+        10: _linked_item(10, 'Epic', (1, 11), project='D'),
     }
     items[2].fields['System.State'] = 'Closed'
     client, wit = _linked_client(items)
@@ -446,7 +489,14 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
     else:
         tasks = {task['id']: task for task in backend.fetch_task_context(seeds, credential)}
 
-    assert set(tasks) == {'1', '4', '2', '5'}
+    assert set(tasks) == {'1', '4', '2', '5', '10'}
+    assert tasks['10']['ancestorOnly']
+    assert not tasks['10']['childrenComplete']
+    assert tasks['10']['project'].startswith('context-')
+    assert tasks['10']['sourcePlanName'] == 'WrongArea'
+    assert tasks['10']['sourcePlanIds'] == []
+    assert tasks['10']['presentationPlanIds'] == []
+    assert tasks['10']['unresolvedParentIds'] == []
     assert tasks['2']['project'] == 'plan-b'
     assert tasks['2']['state'] == 'Closed'
     assert tasks['2']['sourcePlanIds'] == ['plan-a', 'plan-b']
@@ -455,14 +505,14 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
     assert tasks['5']['project'].startswith('context-')
     assert tasks['5']['sourcePlanIds'] == ['plan-a', 'plan-b']
     assert tasks['5']['presentationPlanIds'] == ['plan-a', 'plan-b']
-    assert [call.args[0] for call in wit.get_work_items.call_args_list] == [[2], [2], [3, 5], [5]]
-    assert wit.get_work_item_type_category.call_count == 3
+    assert [call.args[0] for call in wit.get_work_items.call_args_list] == [[2], [2], [3, 5], [5], [10]]
+    assert wit.get_work_item_type_category.call_count == 4
 
 
 def test_linked_hierarchy_preserves_references_without_fetching_lateral_targets():
     items = {1: _linked_item(1, children=(2, 3, 4)), 2: _linked_item(2),
              3: _linked_item(3, 'Implementation Step')}
-    client, wit = _linked_client(items, missing_ids=(4,))
+    client, wit = _linked_client(items, missing_ids=(4, 10))
     seed = client._work_item_ops.normalize_work_item(items[1])
     seed['relations'].extend(
         {'id': str(item_id), 'type': relation_type}
@@ -473,6 +523,7 @@ def test_linked_hierarchy_preserves_references_without_fetching_lateral_targets(
 
     assert [item['id'] for item in result] == ['1', '2']
     assert result[0]['unresolvedChildIds'] == ['4']
+    assert result[0]['unresolvedParentIds'] == ['10']
     assert result[0]['excludedChildIds'] == ['3']
     assert result[0]['relations'] == seed['relations']
     assert 'unresolvedChildIds' not in seed

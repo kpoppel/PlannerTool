@@ -25,6 +25,20 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(root.textContent).to.include('2025-01-01');
   });
 
+  it('labels ancestor context cards as partial hierarchy without changing ordinary cards', async () => {
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'ancestor', title: 'Ancestor item', ancestorOnly: true,
+      childrenComplete: false, start: '2026-01-01', end: '2026-02-01' };
+    await el.updateComplete;
+    const badge = el.shadowRoot.querySelector('.ancestor-context');
+    expect(badge).to.exist;
+    expect(badge.textContent.trim()).to.equal('Ancestor');
+    expect(badge.getAttribute('title')).to.include('Other child branches are not loaded');
+    el.feature = { ...el.feature, ancestorOnly: false, childrenComplete: true };
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.ancestor-context')).to.be.null;
+  });
+
   it('shows a keyboard-accessible fold control only for parents and emits a toggle', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = { id: 'parent', title: 'Parent task', start: '2025-01-01', end: '2025-01-05' };

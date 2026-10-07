@@ -206,7 +206,7 @@ class WorkItemOperations:
         return entry
 
     def get_linked_work_items(self, seeds: List[dict]) -> List[dict]:
-        """Expand Child links, classifying targets before full hydration."""
+        """Expand descendants, then load ancestor paths without sibling branches."""
         if not self.client._connected:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         wit = self.client.wit_client
@@ -266,8 +266,38 @@ class WorkItemOperations:
                         loaded[int(item.id)] = self.normalize_work_item(item)
             frontier = sorted(targets & loaded.keys() - expanded)
 
+        descendant_ids = set(loaded)
+        # Ancestors are a separate pass: their Child links must never widen the forest.
+        frontier = list(loaded)
+        expanded_parents = set()
+        missing_parents = set()
+        while frontier:
+            targets = set()
+            for item_id in frontier:
+                if item_id in expanded_parents:
+                    continue
+                expanded_parents.add(item_id)
+                item = loaded[item_id]
+                if is_task_level(item['adoProject'], item['type']):
+                    task_level_ids.add(item_id)
+                    continue
+                targets.update(int(relation['id']) for relation in item['relations']
+                               if relation['type'] == 'Parent')
+            todo = sorted(targets - loaded.keys() - missing_parents)
+            for offset in range(0, len(todo), 200):
+                batch = todo[offset:offset + 200]
+                hydrated = wit.get_work_items(batch, expand='All', error_policy='omit')
+                missing_parents.update(set(batch) - {int(item.id) for item in hydrated})
+                for item in hydrated:
+                    loaded[int(item.id)] = self.normalize_work_item(item)
+            frontier = sorted(targets & loaded.keys() - expanded_parents)
+
         for item in loaded.values():
             children = {int(r['id']) for r in item['relations'] if r['type'] == 'Child'}
+            parents = {int(r['id']) for r in item['relations'] if r['type'] == 'Parent'}
+            item['ancestorOnly'] = int(item['id']) not in descendant_ids
+            item['childrenComplete'] = not item['ancestorOnly']
+            item['unresolvedParentIds'] = [str(item_id) for item_id in sorted(parents & missing_parents)]
             item['unresolvedChildIds'] = [str(item_id) for item_id in sorted(children & missing)]
             item['excludedChildIds'] = [str(item_id) for item_id in sorted(
                 children & (excluded | task_level_ids))]

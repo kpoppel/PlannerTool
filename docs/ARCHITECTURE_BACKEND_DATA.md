@@ -121,14 +121,52 @@ source owners and iteration enrichment, and emits domain-level `sourcePlanIds`,
 File and mock providers return their supplied seed snapshots with presentation
 metadata; repositories do not probe provider capabilities or interpret source fields.
 
-Task selection follows importing-plan provenance, independently of actual source
-ownership. Ordinary board/menu presentation uses configured presentation plans;
-internal source owners do not become selectable plans. Hidden context remains in
-the resolved graph for inspection, capacity and cost. Category-excluded references
+After descendant expansion, ADO loads Parent paths across areas and projects in
+bounded batches. Ancestors reached only by this second pass have `ancestorOnly: true`,
+`childrenComplete: false`, and empty `sourcePlanIds` and `presentationPlanIds` lists.
+Their Child links never trigger sibling expansion. An independently seeded or
+descendant-reached item remains ordinary imported work, even when it is also an
+ancestor. Parent traversal deduplicates IDs to terminate cycles and reports omitted
+ADO parent targets in `unresolvedParentIds`; TaskCategory boundaries still apply.
+Existing context caches acquire the new records on task refresh or cache expiry.
+These are backend-neutral `DomainTask` properties, not ADO metadata. Backends
+also provide `sourcePlanName` as the display label for a source owner; the ADO
+backend maps the final area-path segment to this field (for example,
+`Program\D Program\System Features\LE Audio` becomes `LE Audio`). Other backends
+choose their own source labels. Distinct source-owner IDs retain distinct context
+lanes and origin attribution even when their display names happen to match.
+The application treats owner IDs as
+opaque and never derives context ownership or labels from ADO project/area fields
+or private `backendData`. Alternative providers can supply the same domain contract.
+
+Import membership and calculation rollups follow importing-plan provenance.
+Board scope starts with tasks owned by the selected PlannerTool plans; explicit
+context options add eligible ancestors, descendants, dependencies and other work
+by participating teams from the resolved graph. Scope menu counts are eligible-card
+additions from enabling each option, or removals from disabling it. They apply
+configured presentation, type, state and task filters, plus the board's allocation
+and ancestor eligibility using the organization team roster in plan mode, before
+sidebar Team Drill-down. Hidden context-only records are not counted as cards.
+Participating teams are derived from base-plan allocations, not sidebar selection.
+Ordinary presentation is restricted to tasks with configured presentation plans;
+internal source owners do not become selectable plans. Hidden context records have
+an empty `presentationPlanIds` list: they are loaded to preserve linked hierarchy
+and calculation inputs, but no configured plan presents them as cards. They remain
+in the resolved graph for inspection, capacity and cost, independently of sidebar
+type/state/team filtering of otherwise presentable cards. Category-excluded references
 remain inspectable but are not calculation edges, including independently seeded
 Task-category endpoints. Shared tasks contribute once to organization totals and
 once to each associated plan rollup. Cost reports retain all context types and
 apply the same team-aware child precedence, without inventing source-owner plans.
+Ancestor-only records are an explicit presentation exception: Parent Context can
+show them subject to the ordinary type/state/task filters. Their card has an
+Ancestor label identifying partial child coverage; unconfigured owners receive an
+owner-label context swimlane, not a selectable plan. Parent Context places tasks
+with their ancestors even across unseeded owners; an ancestor-only chain shares
+its highest available ancestor lane without altering ownership or import provenance.
+Ancestor types are available in
+the task-type menu. Ancestor-only allocations and owners do not create cost rollups,
+and their empty import provenance keeps them out of plan capacity totals.
 
 ### Dependency-Injection Keys
 

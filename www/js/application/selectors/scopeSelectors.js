@@ -2,8 +2,7 @@ import { createFilterSelectors } from './filterSelectors.js';
 import {
   deriveEffectiveFeatures,
   featureCanPresent,
-  featureIsInImportScope,
-  featureMatchesPlans,
+  featureHasEligibleParent,
 } from '../shared/featureProjection.js';
 import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
 
@@ -11,6 +10,10 @@ import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
 
 function toIdSet(values) {
   return new Set(values.map((value) => String(value)));
+}
+
+function isBasePlanFeature(feature, selectedPlanIds) {
+  return feature.ancestorOnly !== true && selectedPlanIds.has(String(feature.project));
 }
 
 function isHierarchicalRelation(relation) {
@@ -28,66 +31,27 @@ function nonHierarchicalRelationIds(feature) {
   return ids;
 }
 
-function isAncestorOf(feature, selectedFeaturesById, selectedIds) {
-  const candidateId = String(feature.id);
-  for (const selectedId of selectedIds) {
-    let current = selectedFeaturesById.get(selectedId);
-    const visited = new Set();
-    while (current && current.parentId) {
-      const parentId = String(current.parentId);
-      if (visited.has(parentId)) break;
-      visited.add(parentId);
-      if (parentId === candidateId) return true;
-      current = selectedFeaturesById.get(parentId);
+function addGraphLink(index, sourceId, targetId) {
+  if (!index.has(sourceId)) index.set(sourceId, new Set());
+  index.get(sourceId).add(targetId);
+}
+
+function collectReachableIds(startIds, links) {
+  const reached = new Set();
+  const expanded = new Set();
+  const pending = [...startIds];
+  while (pending.length > 0) {
+    const id = pending.pop();
+    if (expanded.has(id)) continue;
+    expanded.add(id);
+    const neighbors = links.get(id);
+    if (neighbors === undefined) continue;
+    for (const neighborId of neighbors) {
+      reached.add(neighborId);
+      if (!expanded.has(neighborId)) pending.push(neighborId);
     }
   }
-  return false;
-}
-
-function isDescendantOf(feature, selectedIds, featuresById) {
-  let parentId = feature.parentId;
-  const visited = new Set();
-  while (parentId) {
-    const key = String(parentId);
-    if (visited.has(key)) return false;
-    visited.add(key);
-    if (selectedIds.has(key)) return true;
-    const parent = featuresById.get(key);
-    if (!parent) return false;
-    parentId = parent.parentId;
-  }
-  return false;
-}
-
-function isDependencyLinked(feature, selectedFeatures) {
-  const selectedFeatureIds = new Set(selectedFeatures.map((item) => String(item.id)));
-  for (const selectedFeature of selectedFeatures) {
-    if (nonHierarchicalRelationIds(selectedFeature).has(String(feature.id))) return true;
-  }
-  for (const relationId of nonHierarchicalRelationIds(feature)) {
-    if (selectedFeatureIds.has(relationId)) return true;
-  }
-  return false;
-}
-
-function isLinkedContext(feature, selectedIds, featuresById, selectedFeatures) {
-  return isAncestorOf(feature, featuresById, selectedIds)
-    || isDescendantOf(feature, selectedIds, featuresById)
-    || isDependencyLinked(feature, selectedFeatures);
-}
-
-function isInSelectedProjectHierarchy(feature, featuresById, selectedProjectIds) {
-  const visited = new Set();
-  let current = feature;
-  while (current) {
-    const currentId = String(current.id);
-    if (visited.has(currentId)) return false;
-    visited.add(currentId);
-    if (featureMatchesPlans(current, selectedProjectIds)) return true;
-    if (!current.parentId) return false;
-    current = featuresById.get(String(current.parentId));
-  }
-  return false;
+  return reached;
 }
 
 /**
@@ -104,6 +68,11 @@ export function createScopeSelectors(store) {
   let contextCacheKey;
   let visibleCache;
   let visibleCacheKey;
+  let graphCache;
+  let membershipCache;
+  let membershipCacheKey;
+  let optionCountsCache;
+  let optionCountsCacheKey;
 
   function getResolvedFeatures() {
     const state = store.getState();
@@ -117,11 +86,61 @@ export function createScopeSelectors(store) {
     return resolvedCache;
   }
 
-  function getVisibleFeatures() {
+  function getGraph() {
+    const features = getResolvedFeatures();
+    if (graphCache && graphCache.features === features) return graphCache;
+    const featuresById = new Map(features.map((feature) => [String(feature.id), feature]));
+    const parents = new Map();
+    const children = new Map();
+    const dependencies = new Map();
+    for (const feature of features) {
+      const id = String(feature.id);
+      if (feature.parentId) {
+        const parentId = String(feature.parentId);
+        if (featureHasEligibleParent(feature, featuresById.get(parentId))) {
+          addGraphLink(parents, id, parentId);
+          addGraphLink(children, parentId, id);
+        }
+      }
+      for (const relationId of nonHierarchicalRelationIds(feature)) {
+        addGraphLink(dependencies, id, relationId);
+        addGraphLink(dependencies, relationId, id);
+      }
+    }
+    graphCache = { features, parents, children, dependencies };
+    return graphCache;
+  }
+
+  function getScopeMembership() {
+    const graph = getGraph();
     const state = store.getState();
-    const contextFeatures = getContextFeatures();
-    const selectedTeamIds = toIdSet(state.selection.teamIds);
-    const selectedProjectIds = toIdSet(state.selection.projectIds);
+    const key = [graph, state.selection.projectIds.join(',')];
+    if (membershipCache && key.every((value, index) => value === membershipCacheKey[index])) {
+      return membershipCache;
+    }
+    const selectedIds = toIdSet(state.selection.projectIds);
+    const selectedFeatures = graph.features.filter((feature) => isBasePlanFeature(feature, selectedIds));
+    const baseIds = new Set(selectedFeatures.map((feature) => String(feature.id)));
+    const teamIds = new Set();
+    const dependencyIds = new Set();
+    for (const feature of selectedFeatures) {
+      for (const entry of feature.capacity) teamIds.add(String(entry.team));
+      const linkedIds = graph.dependencies.get(String(feature.id));
+      if (linkedIds !== undefined) {
+        for (const id of linkedIds) dependencyIds.add(id);
+      }
+    }
+    membershipCacheKey = key;
+    membershipCache = {
+      baseIds, teamIds, dependencyIds,
+      ancestorIds: collectReachableIds(baseIds, graph.parents),
+      descendantIds: collectReachableIds(baseIds, graph.children),
+    };
+    return membershipCache;
+  }
+
+  function getCardEligibleFeatures(contextFeatures) {
+    const state = store.getState();
     const selectedFeatureStates = new Set(
       state.selection.featureStateNames.map((stateName) => String(stateName).toLowerCase())
     );
@@ -129,36 +148,11 @@ export function createScopeSelectors(store) {
       state.selection.taskTypeNames.map((type) => String(type).toLowerCase())
     );
     const hiddenTypes = new Set(state.view.options.hiddenTypes.map((type) => String(type)));
-    const key = [contextFeatures, state.selection.teamIds.join(','), state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','), state.selection.taskFilters, state.view.options];
-    if (visibleCache && key.every((value, index) => value === visibleCacheKey[index])) return visibleCache;
-    visibleCacheKey = key;
-    const featuresById = new Map(
-      getResolvedFeatures().map((feature) => [String(feature.id), feature])
-    );
-    const focusedFeatureIds = new Set(
-      contextFeatures
-        .filter((feature) => hasFeatureTeamAllocation(feature, selectedTeamIds))
-        .map((feature) => String(feature.id))
-    );
-    const teamFocus = state.view.options.taskViewMode === 'team';
-    if (!teamFocus) {
-      for (const feature of contextFeatures) {
-        if (featureMatchesPlans(feature, selectedProjectIds)) {
-          focusedFeatureIds.add(String(feature.id));
-        }
-      }
-    }
-    visibleCache = contextFeatures.filter((feature) => {
-      if (!featureCanPresent(feature, selectedProjectIds)) return false;
-      const isSelectedPlan = featureMatchesPlans(feature, selectedProjectIds);
-      const hasSelectedTeam = hasFeatureTeamAllocation(feature, selectedTeamIds);
-      const isFocusedAncestor = isAncestorOf(feature, featuresById, focusedFeatureIds);
-      if (teamFocus && selectedTeamIds.size === 0) return false;
-      if (selectedTeamIds.size === 0 && !isSelectedPlan) return false;
-      if (selectedTeamIds.size > 0
-        && !hasSelectedTeam
-        && !(isSelectedPlan && feature.capacity.length === 0 && !teamFocus)
-        && !isFocusedAncestor) return false;
+    const membership = getScopeMembership();
+    return contextFeatures.filter((feature) => {
+      const isAncestorContext = feature.ancestorOnly === true
+        && state.view.context.parent && membership.ancestorIds.has(String(feature.id));
+      if (!featureCanPresent(feature) && !isAncestorContext) return false;
       if (selectedTaskTypeNames.size > 0
         && !selectedTaskTypeNames.has(String(feature.type).toLowerCase())) return false;
       if (selectedFeatureStates.size === 0
@@ -166,10 +160,51 @@ export function createScopeSelectors(store) {
       if (hiddenTypes.has(String(feature.type))) return false;
       if (!state.view.options.showUnplannedWork && (!feature.start || !feature.end)) return false;
       if (state.view.options.showOnlyProjectHierarchy
-        && !isInSelectedProjectHierarchy(feature, featuresById, selectedProjectIds)) return false;
+        && !membership.baseIds.has(String(feature.id))
+        && !membership.descendantIds.has(String(feature.id))) return false;
       return filterSelectors.featurePassesFilters(feature);
     });
+  }
+
+  function getVisibleFeatures() {
+    const state = store.getState();
+    const contextFeatures = getContextFeatures();
+    const key = [contextFeatures, state.selection.teamIds.join(','), state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','), state.selection.taskFilters, state.view.options];
+    if (visibleCache && key.every((value, index) => value === visibleCacheKey[index])) return visibleCache;
+    visibleCacheKey = key;
+    visibleCache = getBoardFeatures(
+      contextFeatures, toIdSet(state.selection.teamIds), state.view.options.taskViewMode === 'team'
+    );
     return visibleCache;
+  }
+
+  function getBoardFeatures(contextFeatures, selectedTeamIds, teamFocus) {
+    const selectedProjectIds = toIdSet(store.getState().selection.projectIds);
+    const focusedFeatureIds = new Set(
+      contextFeatures
+        .filter((feature) => hasFeatureTeamAllocation(feature, selectedTeamIds))
+        .map((feature) => String(feature.id))
+    );
+    if (!teamFocus) {
+      for (const feature of contextFeatures) {
+        if (isBasePlanFeature(feature, selectedProjectIds)) {
+          focusedFeatureIds.add(String(feature.id));
+        }
+      }
+    }
+    const focusedAncestorIds = collectReachableIds(focusedFeatureIds, getGraph().parents);
+    return getCardEligibleFeatures(contextFeatures).filter((feature) => {
+      const isSelectedPlan = isBasePlanFeature(feature, selectedProjectIds);
+      const hasSelectedTeam = hasFeatureTeamAllocation(feature, selectedTeamIds);
+      const isFocusedAncestor = focusedAncestorIds.has(String(feature.id));
+      if (teamFocus && selectedTeamIds.size === 0) return false;
+      if (selectedTeamIds.size === 0 && !isSelectedPlan && !isFocusedAncestor) return false;
+      if (selectedTeamIds.size > 0
+        && !hasSelectedTeam
+        && !(isSelectedPlan && feature.capacity.length === 0 && !teamFocus)
+        && !isFocusedAncestor) return false;
+      return true;
+    });
   }
 
   function getContextFeatures() {
@@ -188,52 +223,53 @@ export function createScopeSelectors(store) {
   }
 
     function getContextOptionCounts() {
-      const currentContext = stateContext();
-      const currentIds = new Set(getContextFeatures().map((feature) => String(feature.id)));
+      const state = store.getState();
+      const currentContext = state.view.context;
+      const key = [
+        getScopeMembership(), currentContext.parent, currentContext.child,
+        currentContext.dependency, currentContext.otherAllocations,
+        state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','),
+        state.selection.taskFilters, state.view.options,
+      ];
+      if (optionCountsCache && key.every((value, index) => value === optionCountsCacheKey[index])) {
+        return optionCountsCache;
+      }
+      const organizationTeamIds = new Set(state.baseline.teams.map((team) => String(team.id)));
+      const currentIds = new Set(
+        getBoardFeatures(getContextFeatures(), organizationTeamIds, false)
+          .map((feature) => String(feature.id))
+      );
       const counts = {};
       for (const option of ['parent', 'child', 'dependency', 'otherAllocations']) {
         const nextContext = { ...currentContext, [option]: !currentContext[option] };
-        const nextIds = new Set(getContextFeaturesFor(nextContext).map((feature) => String(feature.id)));
-        let changed = 0;
-        for (const id of currentContext[option] ? currentIds : nextIds) {
-          if (!(currentContext[option] ? nextIds : currentIds).has(id)) changed += 1;
-        }
-        counts[option] = changed;
+        const nextIds = new Set(
+          getBoardFeatures(getContextFeaturesFor(nextContext), organizationTeamIds, false)
+            .map((feature) => String(feature.id))
+        );
+        const includedIds = currentContext[option] ? currentIds : nextIds;
+        const excludedIds = currentContext[option] ? nextIds : currentIds;
+        counts[option] = [...includedIds].filter((id) => !excludedIds.has(id)).length;
       }
-      return counts;
-    }
-
-    function stateContext() {
-      const context = store.getState().view.context;
-      return {
-        parent: Boolean(context.parent),
-        child: Boolean(context.child),
-        dependency: Boolean(context.dependency),
-        otherAllocations: Boolean(context.otherAllocations),
-      };
+      optionCountsCacheKey = key;
+      optionCountsCache = counts;
+      return optionCountsCache;
     }
 
     function getContextFeaturesFor(context) {
-      const state = store.getState();
       const resolvedFeatures = getResolvedFeatures();
-      const selectedIds = toIdSet(state.selection.projectIds);
-      if (selectedIds.size === 0) return [];
-      const featuresById = new Map(resolvedFeatures.map((feature) => [String(feature.id), feature]));
-      const selectedFeatures = resolvedFeatures.filter((feature) => featureMatchesPlans(feature, selectedIds));
-      const selectedPlanTeamIds = new Set();
-      for (const feature of selectedFeatures) {
-        for (const entry of feature.capacity) selectedPlanTeamIds.add(String(entry.team));
-      }
-      const selectedFeatureIds = new Set(selectedFeatures.map((feature) => String(feature.id)));
+      const membership = getScopeMembership();
+      if (membership.baseIds.size === 0) return [];
       return resolvedFeatures.filter((feature) => {
-        if (!featureIsInImportScope(feature, selectedIds)) return false;
-        if (featureMatchesPlans(feature, selectedIds)) return true;
-        const isParent = context.parent && isAncestorOf(feature, featuresById, selectedFeatureIds);
-        const isChild = context.child && isDescendantOf(feature, selectedFeatureIds, featuresById);
-        const isDependency = context.dependency && isDependencyLinked(feature, selectedFeatures);
+        const id = String(feature.id);
+        if (membership.baseIds.has(id)) return true;
+        const isParent = context.parent && membership.ancestorIds.has(id);
+        const isChild = context.child && membership.descendantIds.has(id);
+        const isDependency = context.dependency && membership.dependencyIds.has(id);
         const isOther = context.otherAllocations
-          && hasFeatureTeamAllocation(feature, selectedPlanTeamIds)
-          && !isLinkedContext(feature, selectedFeatureIds, featuresById, selectedFeatures);
+          && hasFeatureTeamAllocation(feature, membership.teamIds)
+          && !membership.ancestorIds.has(id)
+          && !membership.descendantIds.has(id)
+          && !membership.dependencyIds.has(id);
         return isParent || isChild || isDependency || isOther;
       });
     }
@@ -271,7 +307,7 @@ export function createScopeSelectors(store) {
       const contextFeatures = getContextFeatures();
       const selectedProjectIds = toIdSet(store.getState().selection.projectIds);
       const baseTasks = contextFeatures.filter(
-        (feature) => featureMatchesPlans(feature, selectedProjectIds)
+        (feature) => isBasePlanFeature(feature, selectedProjectIds)
       ).length;
       const teamsInScope = new Set();
       for (const feature of contextFeatures) {

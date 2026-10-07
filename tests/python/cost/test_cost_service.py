@@ -39,6 +39,30 @@ def test_cost_context_uses_configured_provenance_and_category_bounded_precedence
     assert combined['project-1']['totals'] == linked_only['project-1']['totals']
 
 
+def test_ancestor_only_context_does_not_create_partial_plan_cost_totals(fake_services, cache_storage):
+    svc = CostService(
+        storage=fake_services['storage'],
+        project_repository=fake_services['project_repository'],
+        team_repository=fake_services['team_repository'],
+        people_repository=fake_services['people_repository'],
+        cache_storage=cache_storage,
+    )
+    seed = {'id': 'seed', 'project': 'project-1', 'sourcePlanIds': ['project-1'],
+            'parentId': 'ancestor', 'relations': [{'type': 'Parent', 'id': 'ancestor'}],
+            'start': '2025-01-01', 'end': '2025-01-31',
+            'capacity': [{'team': 'team-alpha', 'capacity': 30}]}
+    ancestor = {**seed, 'id': 'ancestor', 'project': 'project-2', 'sourcePlanIds': [],
+                'ancestorOnly': True, 'childrenComplete': False, 'parentId': None,
+                'relations': [], 'capacity': [{'team': 'team-alpha', 'capacity': 100}]}
+
+    expected = svc.estimate_costs({'features': [seed]})['projects']
+    actual = svc.estimate_costs({'features': [seed, ancestor]})['projects']
+    assert set(actual) == {'project-1'}
+    assert actual['project-1']['totals'] == expected['project-1']['totals']
+    assert actual['project-1']['seed']['has_project_parent']
+    assert 'ancestor' not in actual['project-1']
+
+
 def test_cost_schema_sorts_by_configured_container_order():
     schema = build_cost_schema(
         {'a-leaf': {}, 'z-root': {}, 'm-middle': {}},

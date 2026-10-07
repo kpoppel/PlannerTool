@@ -357,9 +357,13 @@ class AzureDevOpsBackend(BackendPort):
                             capacity_service=self._capacity_service,
                         )
                     task['project'] = owner
+                    task['sourcePlanName'] = area.strip('/\\').replace('/', '\\').rsplit('\\', 1)[-1]
                     task['excludedChildIds'] = raw['excludedChildIds']
                     task['unresolvedChildIds'] = raw['unresolvedChildIds']
                     task['traversalBoundary'] = raw['traversalBoundary']
+                    for field in ('ancestorOnly', 'childrenComplete', 'unresolvedParentIds'):
+                        if field in raw:
+                            task[field] = raw[field]
                     task['sourcePlanIds'] = []
                     tasks[task_id] = task
         except Exception as exc:
@@ -386,6 +390,8 @@ class AzureDevOpsBackend(BackendPort):
         for task in tasks.values():
             task['sourcePlanIds'].sort()
             task['presentationPlanIds'] = []
+            if task.get('ancestorOnly', False):
+                continue
             for plan_id in sorted(set(task['sourcePlanIds']) | {task['project']}):
                 if plan_id not in plans_by_id:
                     continue

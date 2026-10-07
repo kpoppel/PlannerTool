@@ -128,7 +128,7 @@ class CostService:
                     continue
                 visited.add(current_id)
                 current = features_by_id[current_id]
-                if current.get('project'):
+                if current.get('project') and not current.get('ancestorOnly', False):
                     target_ids.add(current['project'])
                 target_ids.update(current.get('sourcePlanIds', []))
                 pending.extend(parents_by_child[current_id])
@@ -140,6 +140,8 @@ class CostService:
 
         # Second pass: calculate costs and assign to appropriate projects and teams
         for f in features:
+            if f.get('ancestorOnly', False):
+                continue
             fid = f.get("id")
             project_id = f.get("project")
             title = f.get("title", "") or f.get("name", "")

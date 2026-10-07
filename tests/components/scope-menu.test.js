@@ -16,7 +16,7 @@ describe('ScopeMenu', () => {
     if (menu && menu.isConnected) menu.remove();
   });
 
-  it('renders related-work options with their additions and scope summary', async () => {
+  it('renders related-work options with additions and scope summary', async () => {
     const originalGetContext = sel.view.getContext;
     sel.view.getContext = () => ({
       parent: false,
@@ -34,7 +34,8 @@ describe('ScopeMenu', () => {
     expect(root.textContent).to.include('Descendant work');
     expect(root.textContent).to.include('Dependencies');
     expect(root.textContent).to.include('Other work by participating teams');
-    expect(root.textContent).to.include('+9');
+    expect([...root.querySelectorAll('.scope-count')].map((count) => count.textContent))
+      .to.deep.equal(['+3', '+9', '+4', '+7']);
     expect(root.textContent).to.include('12 base + 9 related = 21 shown');
     sel.view.getContext = originalGetContext;
   });

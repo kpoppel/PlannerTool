@@ -97,9 +97,12 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
   // ---------------------------------------------------------------------------
 
   _renderSvg() {
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+    if (!this._svgEl) this._attachOverlay();
     if (!this._svgEl) return;
 
     const board = findInBoard('feature-board');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (!board) return;
 
     // Clear previous frame
@@ -107,13 +110,13 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
 
     // Collect cards from feature-board shadow DOM
     const cardById = new Map();
-    const hostCards = Array.from(board.shadowRoot?.querySelectorAll('feature-card-lit') ?? []);
+    const hostCards = Array.from(board.shadowRoot.querySelectorAll('feature-card-lit'));
     for (const c of hostCards) {
       const id = c.getAttribute('data-feature-id');
       if (id) cardById.set(String(id), c);
     }
 
-    const features = sel.feature?.getEffectiveFeatures?.() || [];
+    const features = sel.feature.getEffectiveFeatures();
     const laneHeight = sel.view.getCondensedCards() ? 28 : 100;
 
     /**
@@ -148,8 +151,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
     const drawn = new Set();
 
     for (const f of features) {
-      const relations = Array.isArray(f.relations) ? f.relations : null;
-      if (!relations) continue;
+      const relations = f.relations;
 
       const target = cardById.get(String(f.id));
       if (!target) continue;
@@ -161,9 +163,10 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
         if (typeof rel === 'string' || typeof rel === 'number') {
           otherId = String(rel);
           relType = 'Predecessor';
-        } else if (rel?.id) {
+        } else if (rel.id) {
           otherId = String(rel.id);
-          relType = rel.type || rel.relationType || 'Related';
+          relType = rel.type !== undefined ? rel.type
+            : rel.relationType !== undefined ? rel.relationType : 'Related';
         } else {
           continue;
         }

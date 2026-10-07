@@ -40,8 +40,11 @@ class DomainTask(TypedDict):
     project: str                    # project slug e.g. 'project-my-team'
     revision: NotRequired[int]       # backend-neutral monotonic task version
     sourcePlanIds: NotRequired[List[str]]
+    sourcePlanName: NotRequired[str]  # Backend-neutral display label for the source owner.
     presentationPlanIds: NotRequired[List[str]]
     traversalBoundary: NotRequired[bool]
+    ancestorOnly: NotRequired[bool]
+    childrenComplete: NotRequired[bool]
     start: NotRequired[Optional[str]]      # ISO date YYYY-MM-DD or None
     end: NotRequired[Optional[str]]        # ISO date YYYY-MM-DD or None
     iterationPath: NotRequired[Optional[str]]
@@ -49,6 +52,7 @@ class DomainTask(TypedDict):
     relations: NotRequired[List[DomainRelation]]
     excludedChildIds: NotRequired[List[str]]
     unresolvedChildIds: NotRequired[List[str]]
+    unresolvedParentIds: NotRequired[List[str]]
     capacity: NotRequired[List[DomainCapacity]]
     description: NotRequired[Optional[str]]
     assignee: NotRequired[Optional[str]]
