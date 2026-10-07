@@ -23,31 +23,42 @@ export class PlanMenuLit extends LitElement {
       border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 6px;
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
-      min-width: 320px;
-      max-width: 400px;
+      box-sizing: border-box;
+      width: max-content;
+      max-width: calc(100vw - 48px);
       max-height: 500px;
       overflow-y: auto;
       padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+      display: grid;
+      grid-template-columns: var(--plan-columns);
+      gap: 8px 4px;
     }
 
     .counts-header {
       display: grid;
-      grid-template-columns: 28px 50px 1fr;
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
+      align-items: center;
+      gap: 8px 4px;
+      color: #ddd;
+      position: sticky;
+      top: -12px;
+      z-index: 1;
+      padding: 12px 0 6px;
+      background: var(--color-sidebar-bg);
+    }
+
+    .plan-actions {
+      display: flex;
       align-items: center;
       gap: 8px;
-      color: #ddd;
+      padding: 0 4px;
     }
 
     .type-icon {
       display: inline-flex;
       align-items: center;
-    }
-    .type-icon.epic {
-      color: #ffcf33;
-      margin-left: 30px;
+      justify-content: center;
     }
     .type-icon svg {
       width: 16px;
@@ -58,25 +69,30 @@ export class PlanMenuLit extends LitElement {
     .sidebar-list {
       list-style: none;
       padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+      display: grid;
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
+      row-gap: 4px;
       margin: 0;
     }
 
     .sidebar-list-item {
-      display: block;
+      display: grid;
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
     }
 
     .sidebar-chip {
-      padding: 0 8px 0 0;
-      border-radius: 10px;
+      padding: 0;
+      border-radius: 6px;
       background: transparent;
-      border: 1px solid rgba(0, 0, 0, 0.06);
       box-sizing: border-box;
-      min-height: 25px;
+      min-height: 32px;
       overflow: hidden;
-      display: flex;
+      display: grid;
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
+      gap: 8px 4px;
       align-items: stretch;
     }
 
@@ -95,16 +111,19 @@ export class PlanMenuLit extends LitElement {
     }
 
     .sidebar-list .color-dot {
-      width: 28px;
+      width: 14px;
       border-radius: 6px 0 0 6px;
       display: inline-block;
-      flex: 0 0 28px;
+      flex: 0 0 14px;
       align-self: stretch;
       cursor: pointer;
     }
 
     .sidebar-chip .project-name-col {
-      padding-left: 8px;
+      min-width: 0;
+      padding: 6px 4px;
+      align-self: center;
+      overflow-wrap: anywhere;
       font-weight: 600;
       font-size: 0.8rem;
       color: var(--color-sidebar-text);
@@ -114,13 +133,19 @@ export class PlanMenuLit extends LitElement {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 30px;
-      height: 18px;
-      border-radius: 9px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      background: rgba(0, 0, 0, 0.06);
+      width: 32px;
+      height: 20px;
+      align-self: center;
+      font-size: 0.75rem;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
       color: var(--color-sidebar-text);
+      opacity: 0.75;
+    }
+
+    .chip-badge.has-count {
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.18);
     }
 
     .list-toggle-btn {
@@ -145,6 +170,7 @@ export class PlanMenuLit extends LitElement {
     }
 
     .divider {
+      grid-column: 1 / -1;
       border-top: 1px dashed rgba(255, 255, 255, 0.32);
       margin: 4px 0;
       border-radius: 2px;
@@ -152,12 +178,14 @@ export class PlanMenuLit extends LitElement {
     }
 
     .plans-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+      display: grid;
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
+      row-gap: 4px;
     }
 
     .group-label {
+      grid-column: 1 / -1;
       color: var(--color-sidebar-text);
       font-size: 0.75rem;
       font-weight: 700;
@@ -165,6 +193,7 @@ export class PlanMenuLit extends LitElement {
     }
 
     .focus-controls {
+      grid-column: 1 / -1;
       display: flex;
       flex-direction: column;
       gap: 6px;
@@ -283,8 +312,8 @@ export class PlanMenuLit extends LitElement {
     };
 
     this._onViewActivated = (payload) => {
-      this.activeViewId = payload?.id || null;
-      this.activeViewData = payload?.data || null;
+      this.activeViewId = payload.id;
+      this.activeViewData = payload.data;
       this.focusedPlanId = sel.view.getFocusedPlanId();
       this.focusSearch = '';
       this.focusOptionsOpen = false;
@@ -311,8 +340,8 @@ export class PlanMenuLit extends LitElement {
   }
 
   _toggleProject(pid) {
-    const current = (this.projects || []).find((p) => p.id === pid);
-    const newVal = !(current && current.selected);
+    const current = this.projects.find((p) => p.id === pid);
+    const newVal = !current.selected;
     cmd.selection.setProjectSelected(pid, newVal);
   }
 
@@ -390,9 +419,9 @@ export class PlanMenuLit extends LitElement {
     cp.openFor('project', projectId, rect);
   }
 
-  _renderProjectsList(projects, taskTypes) {
+  _renderProjectsList(projects, taskTypes, projectCounts) {
     return html`${projects.map((project) => {
-      const counts = sel.feature.getCountsForProject(project.id);
+      const counts = projectCounts.get(project.id);
 
       return html`
         <li class="sidebar-list-item">
@@ -401,7 +430,6 @@ export class PlanMenuLit extends LitElement {
             @click=${(e) => {
               if (!e.target.closest('.color-dot')) this._toggleProject(project.id);
             }}
-            style="display:flex;align-items:stretch;gap:8px;width:100%;"
           >
             <span
               class="color-dot"
@@ -411,13 +439,14 @@ export class PlanMenuLit extends LitElement {
             <div
               class="project-name-col"
               title="${project.name}"
-              style="align-self:center"
             >
               ${project.name}
             </div>
-            <div style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;">
-              ${taskTypes.map((t) => html`<span class="chip-badge" title="${t}">${counts.get(t.toLowerCase()) || 0}</span>`)}
-            </div>
+            ${taskTypes.map((type) => {
+              const count = counts.get(type.toLowerCase());
+              return html`<span class="chip-badge ${count > 0 ? 'has-count' : ''}"
+                title="${type}">${count > 0 ? count : ''}</span>`;
+            })}
           </div>
         </li>
       `;
@@ -436,10 +465,14 @@ export class PlanMenuLit extends LitElement {
     }
     const orderedGroups = [...groups.entries()].sort((first, second) =>
       first[1].order - second[1].order);
-    const taskTypes = sel.feature.getAvailableTaskTypesOrdered();
+    const projectCounts = new Map(projects.map((project) =>
+      [project.id, sel.feature.getCountsForProject(project.id)]));
+    const taskTypes = sel.feature.getAvailableTaskTypesOrdered().filter((type) =>
+      projects.some((project) => projectCounts.get(project.id).get(type.toLowerCase()) > 0));
+    const columns = `14px minmax(0, max-content)${taskTypes.length ? ` repeat(${taskTypes.length}, 32px)` : ''}`;
 
     return html`
-      <div class="menu-popover">
+      <div class="menu-popover" style="--plan-columns: ${columns}">
         <div class="focus-controls" @focusout=${(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {
             this.focusOptionsOpen = false;
@@ -478,8 +511,9 @@ export class PlanMenuLit extends LitElement {
               `)}
             </div>` : ''}
         </div>
-        <div class="counts-header" style="grid-template-columns: 28px 50px 1fr${taskTypes && taskTypes.length ? ` repeat(${taskTypes.length}, 30px)` : ''}">
+        <div class="counts-header">
           <span></span>
+          <div class="plan-actions">
           <button
             class="list-toggle-btn"
             @click=${this._handleProjectToggle}
@@ -492,7 +526,8 @@ export class PlanMenuLit extends LitElement {
             <button type="button" class="list-toggle-btn clear-hidden-btn"
               title="Clear hidden plans"
               @click=${this._clearHiddenProjects}>Clear hidden</button>
-          ` : html`<span></span>`}
+          ` : ''}
+          </div>
           ${taskTypes.map((t) => html`<span class="type-icon" title="${t}">${getIconTemplate(t)}</span>`)}
         </div>
 
@@ -501,7 +536,7 @@ export class PlanMenuLit extends LitElement {
               ${index ? html`<div class="divider"></div>` : ''}
               <span class="group-label">${type}</span>
               <ul class="sidebar-list">
-                ${this._renderProjectsList(group.projects, taskTypes)}
+                ${this._renderProjectsList(group.projects, taskTypes, projectCounts)}
               </ul>
             `)}
         </div>

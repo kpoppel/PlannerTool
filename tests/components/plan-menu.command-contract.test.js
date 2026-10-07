@@ -7,6 +7,7 @@ const mockSelectionCommands = vi.hoisted(() => ({
   setProjectsSelectedBulk: vi.fn(),
 }));
 const mockFeatures = vi.hoisted(() => ({ current: [] }));
+const mockCounts = vi.hoisted(() => ({ types: [], projects: new Map() }));
 const mockView = vi.hoisted(() => ({ focusedPlanId: '' }));
 const mockViewCommands = vi.hoisted(() => ({ setFocusedPlanId: vi.fn() }));
 
@@ -20,8 +21,9 @@ vi.mock('../../www/js/application/imports.js', () => ({
     selection: { getProjects: () => [] },
     scope: { getResolvedFeatures: () => mockFeatures.current },
     feature: {
-      getAvailableTaskTypesOrdered: () => [],
-      getCountsForProject: () => new Map(),
+      getAvailableTaskTypesOrdered: () => mockCounts.types,
+      getCountsForProject: (id) => mockCounts.projects.has(id)
+        ? mockCounts.projects.get(id) : new Map(),
     },
   },
 }));
@@ -33,8 +35,99 @@ describe('PlanMenu command seam', () => {
     mockSelectionCommands.setProjectSelected.mockReset();
     mockSelectionCommands.setProjectsSelectedBulk.mockReset();
     mockFeatures.current = [];
+    mockCounts.types = [];
+    mockCounts.projects = new Map();
     mockView.focusedPlanId = '';
     mockViewCommands.setFocusedPlanId.mockReset();
+  });
+
+  it('omits empty type columns and leaves zero cells blank in their original positions', async () => {
+    mockCounts.types = ['Epic', 'Feature', 'Task', 'Bug'];
+    mockCounts.projects = new Map([
+      ['a', new Map([['epic', 12], ['task', 0]])],
+      ['b', new Map([['feature', 3], ['bug', 4]])],
+    ]);
+    const el = new PlanMenuLit();
+    document.body.appendChild(el);
+    el.projects = [
+      { id: 'a', name: 'Alpha', type: 'project', container_order: 0 },
+      { id: 'b', name: 'Bravo', type: 'project', container_order: 0 },
+    ];
+    await el.updateComplete;
+
+    expect([...el.shadowRoot.querySelectorAll('.counts-header .type-icon')]
+      .map((node) => node.title)).toEqual(['Epic', 'Feature', 'Bug']);
+    const rows = [...el.shadowRoot.querySelectorAll('.sidebar-chip')];
+    expect(rows.map((row) => [...row.querySelectorAll('.chip-badge')]
+      .map((node) => [node.title, node.textContent.trim()]))).toEqual([
+      [['Epic', '12'], ['Feature', ''], ['Bug', '']],
+      [['Epic', ''], ['Feature', '3'], ['Bug', '4']],
+    ]);
+    expect(el.shadowRoot.querySelector('.menu-popover').style.getPropertyValue('--plan-columns'))
+      .toBe('14px minmax(0, max-content) repeat(3, 32px)');
+    expect(rows.map((row) => [...row.querySelectorAll('.chip-badge')]
+      .map((node) => node.classList.contains('has-count')))).toEqual([
+      [true, false, false], [false, true, true],
+    ]);
+    el.remove();
+  });
+
+  it('recomputes nonempty columns for the focused list and supports lists with no counts', async () => {
+    mockFeatures.current = [{ id: 'task', project: 'a' }];
+    mockCounts.types = ['Epic', 'Feature'];
+    mockCounts.projects = new Map([
+      ['a', new Map([['epic', 2]])],
+      ['b', new Map([['feature', 5]])],
+    ]);
+    const el = new PlanMenuLit();
+    document.body.appendChild(el);
+    el.projects = [
+      { id: 'a', name: 'Alpha', type: 'project', container_order: 0 },
+      { id: 'b', name: 'Bravo', type: 'project', container_order: 0 },
+    ];
+    await el.updateComplete;
+    el._chooseFocus(el.projects[0]);
+    await el.updateComplete;
+    expect([...el.shadowRoot.querySelectorAll('.counts-header .type-icon')]
+      .map((node) => node.title)).toEqual(['Epic']);
+
+    mockCounts.projects = new Map();
+    el.requestUpdate();
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelectorAll('.type-icon')).toHaveLength(0);
+    expect(el.shadowRoot.querySelectorAll('.chip-badge')).toHaveLength(0);
+    expect(el.shadowRoot.querySelector('.project-name-col').textContent.trim()).toBe('Alpha');
+    el.remove();
+  });
+
+  it('uses a shared content-sized name track without a fixed menu minimum', async () => {
+    const el = new PlanMenuLit();
+    document.body.appendChild(el);
+    el.projects = [
+      { id: 'a', name: 'Alpha', type: 'program', container_order: 0 },
+      { id: 'b', name: 'Connectivity & Interaction', type: 'team', container_order: 1 },
+    ];
+    await el.updateComplete;
+
+    expect(el.shadowRoot.querySelector('.menu-popover').style.getPropertyValue('--plan-columns'))
+      .toBe('14px minmax(0, max-content)');
+    expect(PlanMenuLit.styles.cssText).toContain('grid-template-columns: subgrid');
+    expect(PlanMenuLit.styles.cssText).not.toMatch(/min-width:\s*520px/);
+    el.remove();
+  });
+
+  it('routes a color-strip click to the picker without toggling the plan', async () => {
+    const el = new PlanMenuLit();
+    el._openColorPopover = vi.fn();
+    document.body.appendChild(el);
+    el.projects = [{ id: 'a', name: 'Alpha', type: 'project', container_order: 0 }];
+    await el.updateComplete;
+
+    el.shadowRoot.querySelector('.color-dot').click();
+
+    expect(el._openColorPopover).toHaveBeenCalledWith(expect.any(MouseEvent), 'a');
+    expect(mockSelectionCommands.setProjectSelected).not.toHaveBeenCalled();
+    el.remove();
   });
 
   it('routes single toggle through cmd.selection.setProjectSelected', () => {

@@ -36,6 +36,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Improved PlanMenu with half-width color selectors, compact boxed count columns, blank zero cells, content-sized aligned plan names, quieter tabular counts, and a sticky type header.
 - Give ancestor context swimlanes and details-panel plan labels backend-provided source names, using the final ADO area-path segment for readable origin labels.
 - Indexed scope relationships and cached graph membership and counts to eliminate repeated per-task hierarchy and dependency scans.
 - Restored ownership-anchored board scope and eligible-card addition counts independent of Team Drill-down; dependency overlays attach when the board becomes available after plugin startup.
