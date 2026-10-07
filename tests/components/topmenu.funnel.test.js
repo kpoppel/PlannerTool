@@ -1,7 +1,8 @@
 import { expect } from '@open-wc/testing';
 import { vi } from 'vitest';
 import '../../www/js/components/TopMenu.lit.js';
-import { sel } from '../../www/js/application/imports.js';
+import { cmd, sel } from '../../www/js/application/imports.js';
+import { store } from '../../www/js/application/store.js';
 import { pluginManager } from '../../www/js/core/PluginManager.js';
 import { SampleMenuPlugin } from '../../www/js/plugins/SampleMenuPlugin.js';
 import PluginReconciliation from '../../www/js/plugins/PluginReconciliation.js';
@@ -13,6 +14,7 @@ describe('TopMenu Data Funnel', () => {
   let menu;
 
   beforeEach(async () => {
+    store.setState({ notifications: [] });
     await customElements.whenDefined('top-menu-bar');
     menu = document.createElement('top-menu-bar');
     document.body.appendChild(menu);
@@ -34,6 +36,53 @@ describe('TopMenu Data Funnel', () => {
     await menu.updateComplete;
     return plugin;
   }
+
+  it('collects repeated warnings quietly and marks the log read when opened', async () => {
+    expect(menu.shadowRoot.querySelector('#notificationsBtn')).to.equal(null);
+    const notice = { source: 'Backend', code: 'schedule_missing', severity: 'warning',
+      message: '3 items have an assigned schedule that could not be found.' };
+    cmd.ui.addNotification(notice);
+    cmd.ui.addNotification(notice);
+    await menu.updateComplete;
+    const trigger = menu.shadowRoot.querySelector('#notificationsBtn');
+    expect(trigger).to.exist;
+    expect(trigger.getAttribute('aria-label')).to.equal('Notification log');
+    expect(trigger.querySelector('.notification-bell')).to.exist;
+    expect(trigger.nextElementSibling.id).to.equal('openConfigBtn');
+    expect(trigger.querySelector('.menu-attention').textContent.trim()).to.equal('1');
+    expect(menu.openMenu).to.equal(null);
+    expect(document.getElementById('app-message-modal')).to.equal(null);
+    trigger.click();
+    await menu.updateComplete;
+    const log = menu.shadowRoot.querySelector('#notificationLog');
+    expect(log.textContent).to.include(notice.message);
+    expect(log.textContent).to.include('2 occurrences');
+    expect(store.getState().notifications[0].unread).to.equal(false);
+    expect(trigger.querySelector('.menu-attention')).to.equal(null);
+    cmd.ui.addNotification(notice);
+    await menu.updateComplete;
+    expect(store.getState().notifications[0].count).to.equal(3);
+    expect(store.getState().notifications[0].unread).to.equal(false);
+    log.querySelector('#clearNotificationsBtn').click();
+    await menu.updateComplete;
+    expect(store.getState().notifications.length).to.equal(0);
+    expect(menu.shadowRoot.querySelector('#notificationLog')).to.equal(null);
+    expect(menu.shadowRoot.activeElement.id).to.equal('openConfigBtn');
+    expect(menu.shadowRoot.querySelector('#notificationsBtn')).to.equal(null);
+  });
+
+  it('keeps a bounded log, treats new occurrences as unread, and rejects invalid notices', () => {
+    for (let index = 0; index < 105; index += 1) {
+      cmd.ui.addNotification({ source: 'Backend', code: String(index), severity: 'info',
+        message: `Notice ${index}` });
+    }
+    expect(store.getState().notifications.length).to.equal(100);
+    expect(store.getState().notifications[0].message).to.equal('Notice 104');
+    cmd.ui.markNotificationsRead();
+    cmd.ui.addNotification({ source: 'Backend', code: '104', severity: 'info', message: 'Notice 104' });
+    expect(store.getState().notifications[0].unread).to.equal(true);
+    expect(() => cmd.ui.addNotification({ message: '', severity: 'warning' })).to.throw();
+  });
 
   it('shows the selected plan name only when exactly one plan is selected', async () => {
     const projects = [

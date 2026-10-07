@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from collections import deque
 from contextlib import contextmanager
+from threading import Lock
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, BackendPort
@@ -109,6 +111,8 @@ class AzureDevOpsBackend(BackendPort):
         # fetch_tasks so that /api/projects always sees state_categories even on
         # a cold cache (e.g. after server restart).
         self._metadata_service = metadata_service
+        self._diagnostics = []
+        self._diagnostics_lock = Lock()
         logger.info(
             "AzureDevOpsBackend: initialised (org_url=%r, team_repository=%s, capacity_service=%s)",
             organization_url,
@@ -136,6 +140,16 @@ class AzureDevOpsBackend(BackendPort):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def consume_diagnostics(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self._diagnostics_lock:
+            if user_id is None:
+                diagnostics = list(self._diagnostics)
+                self._diagnostics.clear()
+                return diagnostics
+            diagnostics = [entry for entry in self._diagnostics if entry['user_id'] == user_id]
+            self._diagnostics = [entry for entry in self._diagnostics if entry['user_id'] != user_id]
+            return diagnostics
 
     def _require_credential(self, credential: Optional[BackendCredential], op: str) -> str:
         """Extract the token from *credential* or raise BackendAuthError."""
@@ -173,7 +187,7 @@ class AzureDevOpsBackend(BackendPort):
         area_path: str,
         azure_project: str,
     ) -> Dict[str, Any]:
-        """Resolve assigned iteration dates independently of picker configuration."""
+        """Resolve assigned schedules from the work item's native ADO project."""
         iteration_map: Dict[str, Any] = {}
         for iteration in client.get_iterations(azure_project):
             path = normalize_iteration_path(iteration['path'])
@@ -216,6 +230,7 @@ class AzureDevOpsBackend(BackendPort):
         if not seeds:
             return []
         pat = self._require_credential(credential, 'fetch_task_context')
+        assert credential is not None
         plans = self._config.fetch_project_map()
         plans_by_id = {plan['id']: plan for plan in plans}
         owners = {}
@@ -242,6 +257,7 @@ class AzureDevOpsBackend(BackendPort):
         iteration_maps = {}
         categories_by_project = {}
         removed_ids = set()
+        schedule_issues = {}
         try:
             with self._conn.connect(pat) as client:
                 def iteration_map_for(area, ado_project):
@@ -308,6 +324,16 @@ class AzureDevOpsBackend(BackendPort):
                     for field in ('ancestorOnly', 'childrenComplete', 'unresolvedParentIds'):
                         if field in raw:
                             task[field] = raw[field]
+                    iteration_path = task.get('iterationPath')
+                    if iteration_path and '\\' in iteration_path and (
+                        not task.get('start') or not task.get('end')
+                    ):
+                        iteration = iteration_map_for(area, ado_project).get(
+                            normalize_iteration_path(iteration_path)
+                        )
+                        code = 'schedule_metadata_missing' if iteration is None else 'schedule_dates_missing'
+                        key = (ado_project, code)
+                        schedule_issues[key] = schedule_issues.get(key, 0) + 1
                     task['sourcePlanIds'] = []
                     tasks[task_id] = task
         except Exception as exc:
@@ -354,6 +380,21 @@ class AzureDevOpsBackend(BackendPort):
                     task_types = ['Epic', 'Feature']
                 if task['type'].casefold() in {name.casefold() for name in task_types}:
                     task['presentationPlanIds'].append(plan_id)
+        diagnostics = []
+        for (ado_project, code), count in sorted(schedule_issues.items()):
+            missing = code == 'schedule_metadata_missing'
+            reason = 'could not be found' if missing else 'have missing date boundaries'
+            item_label = 'item' if count == 1 else 'items'
+            diagnostics.append({
+                'code': code,
+                'severity': 'warning' if missing else 'info',
+                'message': f'{count} {item_label} in {ado_project} have assigned schedules that {reason}. '
+                           'Unavailable start/end dates remain unset.',
+                'user_id': credential['user_id'],
+                'ts': time.time(),
+            })
+        with self._diagnostics_lock:
+            self._diagnostics = (self._diagnostics + diagnostics)[-100:]
         return list(tasks.values())
 
     def fetch_tasks(

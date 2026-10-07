@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,6 +8,7 @@ from planner_lib.backend.adapter import AzureAdapter
 from planner_lib.backend.azure import AzureDevOpsBackend
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 from planner_lib.backend.mock import MockFixtureBackend, MockGeneratorBackend
+from planner_lib.backend.port import BackendTask
 
 
 class _FakeConfig:
@@ -33,7 +35,7 @@ def _make_backend(config):
 
 
 @pytest.mark.parametrize('prefix', ['MyADO', '\\MyADO'])
-def test_build_iteration_map_uses_native_project_not_picker_iteration_set(prefix):
+def test_build_iteration_map_uses_native_project_independently_of_picker_set(prefix):
     config = _FakeConfig(
         project_map=[
             {
@@ -66,9 +68,7 @@ def test_build_iteration_map_uses_native_project_not_picker_iteration_set(prefix
 
     result = backend._build_iteration_map(client, 'MyADO\\TeamA', 'MyADO')
 
-    client.get_iterations.assert_called_once_with(
-        'MyADO',
-    )
+    client.get_iterations.assert_called_once_with('MyADO')
     assert result == {
         'MyADO\\Platform\\Sprint 1': {
             'startDate': '2026-01-01',
@@ -78,7 +78,7 @@ def test_build_iteration_map_uses_native_project_not_picker_iteration_set(prefix
     }
 
 
-def test_build_iteration_map_prepares_dates_without_picker_association():
+def test_build_iteration_map_fetches_native_project_without_picker_association():
     config = _FakeConfig(
         project_map=[
             {
@@ -93,15 +93,152 @@ def test_build_iteration_map_prepares_dates_without_picker_association():
     backend = _make_backend(config)
     client = MagicMock()
     client.get_iterations.return_value = [{
-        'path': '\\MyADO\\Iteration\\OtherBranch\\Sprint 1',
-        'startDate': '2026-01-01', 'finishDate': '2026-01-14', 'name': 'Sprint 1',
+        'path': '\\MyADO\\Iteration\\Sprint', 'name': 'Sprint',
+        'startDate': '2026-01-01', 'finishDate': '2026-01-14',
     }]
 
     result = backend._build_iteration_map(client, 'MyADO\\TeamA', 'MyADO')
 
     client.get_iterations.assert_called_once_with('MyADO')
-    assert result['MyADO\\OtherBranch\\Sprint 1']['startDate'] == '2026-01-01'
-    assert result['MyADO\\OtherBranch\\Sprint 1']['finishDate'] == '2026-01-14'
+    assert result['MyADO\\Sprint']['startDate'] == '2026-01-01'
+
+
+@pytest.mark.parametrize('previous_start', [None, '1999-01-01'])
+def test_context_repairs_same_owner_missing_or_inferred_dates(previous_start):
+    seed = _context_seed(1, 'plan-a')
+    seed.update({
+        'iterationPath': 'A\\Sprint', 'start': previous_start,
+        '_inferred_start': previous_start is not None,
+        'end': '2026-03-31', '_inferred_end': False,
+    })
+    backend, client = _context_backend([seed])
+    client.get_iterations.return_value = [{
+        'path': '\\A\\Iteration\\Sprint', 'name': 'Sprint',
+        'startDate': '2026-03-01', 'finishDate': '2026-03-14',
+    }]
+
+    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+
+    assert task['start'] == '2026-03-01'
+    assert task['_inferred_start'] is True
+    assert task['end'] == '2026-03-31'
+    assert task['_inferred_end'] is False
+    assert seed['start'] == previous_start
+
+
+@pytest.mark.parametrize('start_date,end_date', [
+    ('2026-03-01', None),
+    (None, '2026-03-14'),
+    (None, None),
+])
+def test_context_leaves_unavailable_iteration_boundaries_unset(start_date, end_date):
+    seed = cast(BackendTask, _context_seed(1, 'plan-a'))
+    seed.update({'iterationPath': 'A\\Sprint', 'start': None, 'end': None})
+    backend, client = _context_backend([seed])
+    client.get_iterations.return_value = [{
+        'path': '\\A\\Iteration\\Sprint', 'name': 'Sprint',
+        'startDate': start_date, 'finishDate': end_date,
+    }]
+
+    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+
+    task = cast(dict[str, Any], task)
+    assert task['start'] == start_date
+    assert task['end'] == end_date
+    assert task['_inferred_start'] is (start_date is not None)
+    assert task['_inferred_end'] is (end_date is not None)
+
+
+def test_context_removes_stale_inference_when_assigned_schedule_is_missing():
+    seed = cast(BackendTask, _context_seed(1, 'plan-a'))
+    seed.update({
+        'iterationPath': 'A\\Missing', 'start': '1999-01-01', '_inferred_start': True,
+        'end': '2026-03-31', '_inferred_end': False,
+    })
+    backend, client = _context_backend([seed])
+    client.get_iterations.return_value = []
+
+    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+
+    task = cast(dict[str, Any], task)
+    assert task['start'] is None
+    assert task['_inferred_start'] is False
+    assert task['end'] == '2026-03-31'
+    assert task['_inferred_end'] is False
+    assert seed.get('start') == '1999-01-01'
+
+
+def test_linked_items_resolve_dates_from_native_project_once_across_areas():
+    seed = cast(BackendTask, _context_seed(1, 'plan-a', (2, 3)))
+    seed.update({'iterationPath': 'A\\Sprint', 'start': None, 'end': None})
+    backend, client = _context_backend([seed])
+    linked = [{
+        **_context_seed(item_id, 'plan-b'), 'adoProject': 'B', 'rev': 1, 'type': 'User Story',
+        'areaPath': f'B\\Team{item_id}', 'iterationPath': 'B\\Sprint',
+        'startDate': None, 'finishDate': None, 'excludedChildIds': [],
+        'unresolvedChildIds': [], 'traversalBoundary': False,
+    } for item_id in (2, 3)]
+    linked[1]['startDate'] = '2026-04-03'
+    client.get_linked_work_items.side_effect = lambda roots: [
+        {**roots[0], 'excludedChildIds': [], 'unresolvedChildIds': [], 'traversalBoundary': False},
+        *linked,
+    ]
+    dates_by_project = {
+        'A': ('2026-03-01', '2026-03-14'),
+        'B': ('2026-04-01', '2026-04-14'),
+    }
+    client.get_iterations.side_effect = lambda project: [{
+        'path': f'\\{project}\\Iteration\\Sprint', 'name': 'Sprint',
+        'startDate': dates_by_project[project][0], 'finishDate': dates_by_project[project][1],
+    }]
+
+    tasks = {task['id']: cast(dict[str, Any], task) for task in backend.fetch_task_context(
+        [seed], {'token': 'test', 'user_id': 'test'},
+    )}
+
+    assert (tasks['1']['start'], tasks['1']['end']) == dates_by_project['A']
+    assert (tasks['2']['start'], tasks['2']['end']) == dates_by_project['B']
+    assert (tasks['3']['start'], tasks['3']['end']) == ('2026-04-03', '2026-04-14')
+    assert tasks['2']['_inferred_start'] is True
+    assert tasks['3'].get('_inferred_start', False) is False
+    assert [call.args for call in client.get_iterations.call_args_list] == [('A',), ('B',)]
+
+
+def test_missing_schedule_diagnostics_are_aggregated_and_scoped_to_the_reader():
+    seeds = [_context_seed(1, 'plan-a'), _context_seed(2, 'plan-b')]
+    for seed in seeds:
+        seed.update({'iterationPath': 'A\\MissingSprint', 'start': None, 'end': None})
+    backend, client = _context_backend(seeds)
+    client.get_iterations.return_value = []
+
+    backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+
+    client.get_iterations.assert_called_once_with('A')
+    assert backend.consume_diagnostics(user_id='other') == []
+    diagnostic, = backend.consume_diagnostics(user_id='test')
+    assert diagnostic['code'] == 'schedule_metadata_missing'
+    assert diagnostic['severity'] == 'warning'
+    assert '2 items' in diagnostic['message']
+    assert backend.consume_diagnostics(user_id='test') == []
+
+
+def test_root_backlog_assignments_are_quiet_and_undated_schedules_are_informational():
+    seeds = [_context_seed(1, 'plan-a'), _context_seed(2, 'plan-a')]
+    seeds[0].update({'iterationPath': 'A', 'start': None, 'end': None})
+    seeds[1].update({'iterationPath': 'A\\Undated', 'start': None, 'end': None})
+    backend, client = _context_backend(seeds)
+    client.get_iterations.return_value = [{
+        'path': '\\A\\Iteration\\Undated', 'name': 'Undated',
+        'startDate': None, 'finishDate': None,
+    }]
+
+    tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+
+    assert all(task['start'] is None and task['end'] is None for task in tasks)
+    diagnostic, = backend.consume_diagnostics(user_id='test')
+    assert diagnostic['code'] == 'schedule_dates_missing'
+    assert diagnostic['severity'] == 'info'
+    assert '1 item' in diagnostic['message']
 
 
 @pytest.mark.parametrize('explicit_start', [None, '2026-01-03'])
@@ -457,94 +594,3 @@ def test_context_resolves_moved_seed_owner_and_reinfers_only_inferred_dates():
     assert task['end'] == '2026-03-31'
     assert seed['start'] == '1999-01-01'
     backend._build_iteration_map.assert_called_once_with(client, 'a/PLAN-B/', 'A')
-
-
-@pytest.mark.parametrize('start,inferred,expected', [
-    (None, False, '2026-03-01'),
-    ('1999-01-01', True, '2026-03-01'),
-    ('2026-03-03', False, '2026-03-03'),
-])
-def test_context_prepares_seed_dates_without_owner_change(start, inferred, expected):
-    seed = _context_seed(1, 'plan-a')
-    seed.update({
-        'iterationPath': 'A\\Sprint', 'start': start, '_inferred_start': inferred,
-        'end': '2026-03-31',
-    })
-    backend, client = _context_backend([seed])
-    backend._build_iteration_map = MagicMock(return_value={
-        'A\\Sprint': {'startDate': '2026-03-01', 'finishDate': '2026-03-14'},
-    })
-
-    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
-
-    assert task['start'] == expected
-    assert task['end'] == '2026-03-31'
-    assert task.get('_inferred_start', False) == (start is None or inferred)
-    assert seed['start'] == start
-
-
-@pytest.mark.parametrize('iteration_dates,expected_start,expected_end', [
-    ({}, None, None),
-    ({'startDate': '2026-03-01'}, '2026-03-01', None),
-    ({'finishDate': '2026-03-14'}, None, '2026-03-14'),
-])
-def test_adapter_leaves_unavailable_iteration_boundaries_unset(
-    iteration_dates, expected_start, expected_end,
-):
-    task = AzureAdapter().to_domain(
-        raw_wi={'id': '1', 'iterationPath': 'A\\Sprint'},
-        project_slug='plan', team_repository=MagicMock(), type_canonical={},
-        iteration_map={'A\\Sprint': iteration_dates},
-    )
-
-    assert task['start'] == expected_start
-    assert task['end'] == expected_end
-
-
-def test_context_removes_stale_inferred_dates_for_unmatched_iteration():
-    seed = _context_seed(1, 'plan-a')
-    seed.update({
-        'iterationPath': 'A\\Unknown', 'start': '1999-01-01', '_inferred_start': True,
-        'end': '2026-03-31',
-    })
-    backend, client = _context_backend([seed])
-    client.get_iterations.return_value = []
-
-    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
-
-    assert task['start'] is None
-    assert task['_inferred_start'] is False
-    assert task['end'] == '2026-03-31'
-
-
-def test_context_dates_linked_stories_using_each_native_project_once():
-    seeds = [_context_seed(1, 'plan-a', (2, 3))]
-    seeds[0]['iterationPath'] = 'A\\Sprint'
-    backend, client = _context_backend(seeds)
-    original_linked = client.get_linked_work_items.side_effect
-    children = [{
-        'id': str(item_id), 'rev': 1, 'adoProject': 'B', 'type': 'User Story',
-        'title': 'Story', 'state': 'Active', 'areaPath': f'B\\Team{item_id}',
-        'iterationPath': 'B\\OtherBranch\\Sprint', 'startDate': None,
-        'finishDate': None, 'relations': [], 'excludedChildIds': [],
-        'unresolvedChildIds': [], 'traversalBoundary': False,
-    } for item_id in (2, 3)]
-    client.get_linked_work_items.side_effect = lambda roots: [
-        *original_linked(roots), *children,
-    ]
-    client.get_iterations.side_effect = lambda project: [{
-        'path': f'\\{project}\\Iteration\\OtherBranch\\Sprint',
-        'startDate': '2026-03-01', 'finishDate': '2026-03-14', 'name': 'Sprint',
-    }] if project == 'B' else []
-
-    tasks = {task['id']: task for task in backend.fetch_task_context(
-        seeds, {'token': 'test', 'user_id': 'test'},
-    )}
-
-    for item_id in ('2', '3'):
-        assert tasks[item_id]['start'] == '2026-03-01'
-        assert tasks[item_id]['end'] == '2026-03-14'
-        assert tasks[item_id]['_inferred_start'] is True
-        assert tasks[item_id]['_inferred_end'] is True
-    assert tasks['1']['start'] is None
-    assert [call.args[0] for call in client.get_iterations.call_args_list] == ['A', 'B']

@@ -6,6 +6,9 @@ export const uiSelectors = {
    * @returns {boolean}
    */
   debugFlag(state) {
-    return Boolean(state?.view?.options?.debugFlag);
+    return Boolean(state.view.options.debugFlag);
+  },
+  notifications(state) {
+    return state.notifications;
   },
 }

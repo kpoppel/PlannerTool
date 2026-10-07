@@ -102,6 +102,19 @@
 
 /**
  * @typedef {{
+ *   source: string,
+ *   code: string,
+ *   severity: string,
+ *   message: string,
+ *   firstSeenAt: number,
+ *   lastSeenAt: number,
+ *   count: number,
+ *   unread: boolean
+ * }} NotificationEntry
+ */
+
+/**
+ * @typedef {{
  *   lifecycle: LifecycleState,
  *   baseline: BaselineState,
  *   scenarios: ScenariosState,
@@ -110,7 +123,8 @@
  *   groups: GroupsState,
  *   pluginState: Record<string, any>,
  *   capacity: CapacityState,
- *   featureDisplay: FeatureDisplayState
+ *   featureDisplay: FeatureDisplayState,
+ *   notifications: NotificationEntry[]
  * }} AppState
  */
 

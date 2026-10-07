@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
+const mockNotify = vi.hoisted(() => vi.fn());
+
 const mockSel = vi.hoisted(() => ({
   selection: {
     getProjects: () => [{ id: 'p1' }],
@@ -21,13 +23,25 @@ const mockSel = vi.hoisted(() => ({
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
-  cmd: {},
+  cmd: { ui: { addNotification: mockNotify } },
   sel: mockSel,
 }));
 
 import { PluginExportTimeline } from '../../www/js/plugins/PluginExportTimelineComponent.js';
 
 describe('PluginExportTimelineComponent selector seam', () => {
+  it('records export messages immediately without a dimming modal', () => {
+    const component = new PluginExportTimeline();
+
+    component._notify('Export failed', 'PNG export failed.', 'error');
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      source: 'Timeline export', code: 'Export failed', severity: 'error',
+      message: 'PNG export failed.',
+    });
+    expect(document.getElementById('app-message-modal')).toBe(null);
+  });
+
   it('collects timeline export data using sel.view for view snapshot fields', () => {
     const el = new PluginExportTimeline();
 

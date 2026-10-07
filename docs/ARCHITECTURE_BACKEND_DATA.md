@@ -131,6 +131,32 @@ iterations leave unavailable boundaries unset; no parent or name-based inference
 is performed. Existing task/context snapshots acquire these dates on task refresh
 or cache expiry. This preparation does not write inferred dates back to ADO.
 
+Published date boundaries become explicit in every affected task cache, while
+untouched boundaries retain their inference status. Failed iteration reads
+propagate as backend failures instead of masquerading as empty schedule trees,
+allowing the existing cache lifecycle to preserve its last successful snapshot.
+Missing assigned schedules are reported in aggregate as warnings; assigned
+schedules with unavailable boundary dates are informational. Project-root backlog
+assignments do not generate these notices.
+
+`GET /api/tasks` returns all pending diagnostics in the `X-Backend-Diagnostics`
+JSON header, limited to public code/severity/message fields. The provider records
+them in a session-level application notification log instead of opening a modal.
+The log retains the latest 100 distinct entries, deduplicates repeated messages
+with occurrence counts and first/last timestamps, and supports marking read and
+clearing. Its bell appears immediately left of Settings only while entries exist.
+Entries are not persisted across page reloads or broadcast to other users.
+
+REST response observation collects diagnostics from every endpoint and reports
+HTTP failures without consuming the response body. Network failures are reported
+after retries are exhausted; successful HTTP responses with failed operation
+results (including publishing) also contribute error entries. Response observers
+run outside network retry handling to avoid replaying completed writes.
+Session, hydration, initialization, uncaught browser/promise failures, and timeline
+export messages use the same log rather than screen-dimming message overlays.
+The initial loading indicator and interactive authentication/confirmation dialogs
+remain; notification collection does not change publishing semantics.
+
 After descendant expansion, ADO loads Parent paths across areas and projects in
 bounded batches. Ancestors reached only by this second pass have `ancestorOnly: true`,
 `childrenComplete: false`, and empty `sourcePlanIds` and `presentationPlanIds` lists.

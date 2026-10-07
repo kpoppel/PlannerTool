@@ -1,7 +1,98 @@
 import { expect } from '@esm-bundle/chai';
+import { vi } from 'vitest';
 import { ProviderREST } from '../../www/js/services/providerREST.js';
+import { store } from '../../www/js/application/store.js';
 
 describe('ProviderREST feature/team/project endpoints', () => {
+  beforeEach(() => store.setState({ notifications: [] }));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('records HTTP failures from any JSON endpoint with the server message', async () => {
+    const provider = new ProviderREST();
+    vi.spyOn(provider, '_fetchImpl').mockResolvedValue(new Response(JSON.stringify({
+      detail: { error: 'backend_unavailable', message: 'Azure DevOps is unreachable.' },
+    }), { status: 503 }));
+
+    const result = await provider.checkHealth();
+
+    expect(result.ok).to.equal(false);
+    expect(store.getState().notifications).to.have.length(1);
+    expect(store.getState().notifications[0].message).to.include('Azure DevOps is unreachable.');
+    expect(store.getState().notifications[0].severity).to.equal('error');
+  });
+
+  it('records every failed publish item even when HTTP succeeds', async () => {
+    const provider = new ProviderREST();
+    vi.spyOn(provider, '_fetchImpl').mockResolvedValue(new Response(JSON.stringify({
+      ok: false, updated: [], errors: ['100 (dates): denied', '101 (dates): denied'],
+    })));
+
+    const result = await provider.publishBaseline([{ id: '100', start: '2026-03-01' }]);
+
+    expect(result.ok).to.equal(true);
+    expect(result.data.ok).to.equal(false);
+    expect(store.getState().notifications.map(entry => entry.message)).to.deep.equal([
+      '101 (dates): denied', '100 (dates): denied',
+    ]);
+  });
+
+  it('records an exhausted network failure once without opening a message modal', async () => {
+    const provider = new ProviderREST();
+    vi.spyOn(provider, '_sleep').mockResolvedValue();
+    const fetch = vi.spyOn(provider, '_fetchImpl').mockRejectedValue(new Error('Connection refused'));
+
+    const result = await provider.checkHealth();
+
+    expect(result.ok).to.equal(false);
+    expect(fetch.mock.calls).to.have.length(3);
+    expect(store.getState().notifications).to.have.length(1);
+    expect(store.getState().notifications[0].count).to.equal(1);
+    expect(document.getElementById('app-message-modal')).to.equal(null);
+  });
+
+  it('records all backend diagnostics without opening a warning modal', async () => {
+    store.setState({ notifications: [] });
+    const diagnostics = [
+      { code: 'schedule_missing', severity: 'warning', message: '3 schedules were not found.' },
+      { code: 'tasks_stale', severity: 'warning', message: 'Using cached tasks.' },
+    ];
+    const pr = new ProviderREST();
+    vi.spyOn(pr, '_fetchImpl').mockResolvedValue(new Response('[]', {
+      headers: { 'X-Backend-Diagnostics': JSON.stringify(diagnostics) },
+    }));
+
+    const result = await pr.getFeatures();
+
+    expect(result.ok).to.equal(true);
+    expect(store.getState().notifications.map((notice) => notice.message)).to.deep.equal(
+      diagnostics.map((notice) => notice.message).reverse());
+    expect(document.getElementById('app-message-modal')).to.equal(null);
+  });
+
+  it('collects diagnostics from non-task endpoints as well', async () => {
+    const provider = new ProviderREST();
+    vi.spyOn(provider, '_fetchImpl').mockResolvedValue(new Response('{}', {
+      headers: { 'X-Backend-Diagnostics': JSON.stringify([
+        { code: 'cache_warning', severity: 'warning', message: 'Cache refresh failed.' },
+      ]) },
+    }));
+
+    const result = await provider.checkHealth();
+
+    expect(result.ok).to.equal(true);
+    expect(store.getState().notifications[0].message).to.equal('Cache refresh failed.');
+  });
+
+  it('records invalid JSON failures without changing the result contract', async () => {
+    const provider = new ProviderREST();
+    vi.spyOn(provider, '_fetchImpl').mockResolvedValue(new Response('not json'));
+
+    const result = await provider.checkHealth();
+
+    expect(result.ok).to.equal(false);
+    expect(store.getState().notifications[0].code).to.equal('invalid_response');
+  });
+
   it('getFeatures(project) returns enriched feature array', async () => {
     const pr = new ProviderREST();
     const feats = await pr.getFeatures('project-a');

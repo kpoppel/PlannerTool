@@ -1,5 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { sel } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { AppEvents } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
@@ -429,39 +429,8 @@ export class PluginExportTimeline extends LitElement {
     this.requestUpdate();
   }
 
-  // Small app-modal wrapper to show messages
-  async _showAppMessage(title, message, options = {}) {
-    // Use the auto-close modal component to show a brief message
-    await import('../components/AutoCloseMessageModal.js');
-    // Reuse a single app-wide auto-close modal instance
-    let modal = document.getElementById('app-message-modal');
-    if (!modal) {
-      modal = document.createElement('modal-autoclose');
-      modal.id = 'app-message-modal';
-      document.body.appendChild(modal);
-    }
-
-    // Update message and duration before opening; if already open, it will restart timer
-    modal.message = `${title ? title + '\n' : ''}${message || ''}`;
-    const duration =
-      typeof options.duration === 'number' ? options.duration
-      : options.persistent ? 0
-      : 2000;
-    modal.duration = duration;
-
-    // Open after insertion so LitElement lifecycle notices change
-    requestAnimationFrame(() => {
-      modal.open = true;
-    });
-
-    // Return a promise that resolves when this modal-close event fires for this show
-    return new Promise((resolve) => {
-      const onClose = (e) => {
-        modal.removeEventListener('modal-close', onClose);
-        resolve(e?.detail ?? null);
-      };
-      modal.addEventListener('modal-close', onClose, { once: true });
-    });
+  _notify(title, message, severity) {
+    cmd.ui.addNotification({ source: 'Timeline export', code: title, severity, message });
   }
 
   // --- PNG Export ---
@@ -483,10 +452,10 @@ export class PluginExportTimeline extends LitElement {
       });
     } catch (e) {
       console.error('[PluginExportTimeline] PNG export failed:', e);
-      await this._showAppMessage(
+      this._notify(
         'Export Failed',
         'PNG export failed. This can happen when many items are visible (browser memory limits). Try showing fewer items and export again. See console for details.',
-        { persistent: true }
+        'error'
       );
     } finally {
       this.exporting = false;
@@ -524,10 +493,10 @@ export class PluginExportTimeline extends LitElement {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error('[PluginExportTimeline] Download SVG failed:', e);
-      await this._showAppMessage(
+      this._notify(
         'Download SVG Failed',
         'Download SVG failed. If the board contains many items try narrowing the view and retry. See console for details.',
-        { persistent: true }
+        'error'
       );
     } finally {
       this.exporting = false;
@@ -551,15 +520,13 @@ export class PluginExportTimeline extends LitElement {
       });
 
       await copyPngBlobToClipboard(blob);
-      await this._showAppMessage('Copied', 'PNG image copied to clipboard', {
-        duration: 3000,
-      });
+      this._notify('Copied', 'PNG image copied to clipboard', 'success');
     } catch (e) {
       console.error('[PluginExportTimeline] Copy PNG failed:', e);
-      await this._showAppMessage(
+      this._notify(
         'Copy PNG Failed',
         'Copy PNG failed. Your browser may not support copying images to clipboard, or the export may have been too large. Try showing fewer items and try again.',
-        { persistent: true }
+        'error'
       );
     } finally {
       this.exporting = false;

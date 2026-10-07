@@ -347,7 +347,7 @@ class TeamPlanOperations:
                 )
         except Exception as e:
             logger.warning(f'Failed to fetch iterations for project {project}, root={root_path}: {e}')
-            return []
+            raise
         
         # Recursively extract iteration nodes with dates
         def _extract_iterations(n, parent_path=''):

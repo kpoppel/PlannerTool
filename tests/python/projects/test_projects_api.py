@@ -171,6 +171,8 @@ def test_tasks_list_and_project_param(authenticated_client):
 
 
 def test_tasks_returns_warning_headers_when_stale_fallback_used(authenticated_client):
+    import json
+
     task_repo = _make_task_repository()
     register_service_on_client(authenticated_client, 'task_repository', task_repo)
     register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client, email='warn@example.com'))
@@ -178,9 +180,38 @@ def test_tasks_returns_warning_headers_when_stale_fallback_used(authenticated_cl
 
     r = authenticated_client.get('/api/tasks')
     assert r.status_code == 200
-    assert r.headers.get('X-Backend-Diagnostic-Severity') == 'warning'
-    assert r.headers.get('X-Backend-Diagnostic-Code') == 'tasks_stale_invalid_pat'
-    assert 'PAT is invalid or expired' in (r.headers.get('X-Backend-Diagnostic-Message') or '')
+    diagnostic, = json.loads(r.headers['X-Backend-Diagnostics'])
+    assert diagnostic['severity'] == 'warning'
+    assert diagnostic['code'] == 'tasks_stale_invalid_pat'
+    assert 'PAT is invalid or expired' in diagnostic['message']
+    assert 'user_id' not in diagnostic
+
+
+def test_tasks_returns_every_diagnostic_without_private_metadata(authenticated_client):
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    diagnostics = [{
+        'code': 'schedule_metadata_missing', 'severity': 'warning', 'message': '2 schedules missing.',
+        'user_id': 'test-account-id', 'ts': 123, 'internal': 'private metadata',
+    }, {
+        'code': 'schedule_dates_missing', 'severity': 'info', 'message': '1 schedule has no dates.',
+        'user_id': 'test-account-id', 'ts': 124,
+    }]
+    backend = SimpleNamespace(consume_diagnostics=MagicMock(return_value=diagnostics))
+    register_service_on_client(authenticated_client, 'task_repository', _make_task_repository())
+    register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
+    register_service_on_client(authenticated_client, 'backend', backend)
+
+    response = authenticated_client.get('/api/tasks')
+
+    assert response.status_code == 200
+    assert json.loads(response.headers['X-Backend-Diagnostics']) == [
+        {key: diagnostic[key] for key in ('code', 'severity', 'message')}
+        for diagnostic in diagnostics
+    ]
+    backend.consume_diagnostics.assert_called_once_with(user_id='test-account-id')
 
 
 def test_tasks_invalid_pat_without_stale_returns_401(authenticated_client):

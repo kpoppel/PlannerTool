@@ -56,7 +56,7 @@ import time
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from planner_lib.backend.port import BackendCredential
+from planner_lib.backend.port import BackendCredential, DiagnosticBackend
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendError
 from planner_lib.domain.tasks import WriteResult
 from planner_lib.storage.base import StorageBackend
@@ -215,10 +215,12 @@ class CachingBackend:
             if user_id is None:
                 out = list(self._warnings)
                 self._warnings.clear()
-                return out
-            matched = [w for w in self._warnings if w.get('user_id') == user_id]
-            self._warnings = [w for w in self._warnings if w.get('user_id') != user_id]
-            return matched
+            else:
+                out = [w for w in self._warnings if w.get('user_id') == user_id]
+                self._warnings = [w for w in self._warnings if w.get('user_id') != user_id]
+        if isinstance(self._inner, DiagnosticBackend):
+            out.extend(self._inner.consume_diagnostics(user_id=user_id))
+        return out
 
     # ------------------------------------------------------------------
     # Generic proxy: auto-caches any fetch_* not overridden on this class.
@@ -489,7 +491,12 @@ class CachingBackend:
                 new_tasks = []
                 for task in tasks:
                     if isinstance(task, dict) and str(task.get('id')) == str_id:
-                        new_tasks.append({**task, **updates})
+                        updated_task = {**task, **updates}
+                        for field in ('start', 'end'):
+                            inferred = f'_inferred_{field}'
+                            if field in updates and inferred in updated_task:
+                                updated_task[inferred] = False
+                        new_tasks.append(updated_task)
                         patched = True
                     else:
                         new_tasks.append(task)

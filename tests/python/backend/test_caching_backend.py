@@ -79,6 +79,23 @@ def test_published_date_becomes_explicit_in_every_task_cache(caching, storage, m
     assert cached[f'_inferred_{other}'] is True
 
 
+def test_cache_forwards_provider_diagnostics_alongside_its_own(storage):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from planner_lib.backend.caching import CachingBackend
+
+    inner = SimpleNamespace(consume_diagnostics=MagicMock(return_value=[{
+        'code': 'schedule_metadata_missing', 'severity': 'warning', 'message': '2 schedules missing.',
+    }]))
+    caching = CachingBackend(inner, storage)
+    caching._record_warning(code='tasks_stale', message='Showing cached tasks.', user_id=CRED['user_id'])
+
+    diagnostics = caching.consume_diagnostics(user_id=CRED['user_id'])
+
+    assert [diagnostic['code'] for diagnostic in diagnostics] == ['tasks_stale', 'schedule_metadata_missing']
+    inner.consume_diagnostics.assert_called_once_with(user_id=CRED['user_id'])
+
+
 def test_different_type_filter_is_separate_cache_key(caching, inner):
     caching.fetch_tasks(AREA, task_types=['Feature'])
     caching.fetch_tasks(AREA, task_types=['Epic'])

@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from fastapi import APIRouter, Request, Body, HTTPException, Response
 from planner_lib.middleware import require_session
@@ -70,13 +71,13 @@ async def api_tasks(request: Request, response: Response):
         if isinstance(backend, DiagnosticBackend):
             diagnostics = backend.consume_diagnostics(user_id=account_id)
             if diagnostics:
-                diagnostic = diagnostics[-1]
-                response.headers['X-Backend-Diagnostic-Severity'] = diagnostic['severity']
-                response.headers['X-Backend-Diagnostic-Code'] = diagnostic['code']
-                response.headers['X-Backend-Diagnostic-Message'] = diagnostic['message']
-    except Exception:
+                response.headers['X-Backend-Diagnostics'] = json.dumps([
+                    {key: entry[key] for key in ('code', 'severity', 'message')}
+                    for entry in diagnostics
+                ])
+    except Exception as exc:
         # Warning propagation must never break task reads.
-        pass
+        logger.warning('Failed to deliver task diagnostics: %s', exc)
     return tasks
 
 

@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { sel } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
+import { StoreController } from '../core/StoreController.js';
 import { bus } from '../core/EventBus.js';
 import {
   ProjectEvents,
@@ -236,6 +237,21 @@ export class TopMenuBarLit extends LitElement {
       font-size: 13px;
     }
     .information-title { font-size: 13px; margin: 0 0 10px; }
+    .notification-log { width: 440px; user-select: text; }
+    .notification-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .notification-header .information-title { margin: 0; }
+    .notification-list { list-style: none; padding: 0; margin: 10px 0 0; }
+    .notification-entry { padding: 10px 0; border-top: 1px solid rgba(255, 255, 255, 0.18); }
+    .notification-message { margin: 5px 0; overflow-wrap: anywhere; line-height: 1.4; }
+    .notification-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; opacity: 0.8; }
+    .notification-severity { font-weight: 700; text-transform: capitalize; }
+    .notification-severity.warning { color: #f4c75b; }
+    .notification-severity.error { color: #ff9b9b; }
+    .notification-severity.success { color: #93d7a3; }
+    .notification-severity.info { color: #8ec8ff; }
+    .notification-empty { padding: 12px 0 0; }
+    .notification-bell { display: inline-grid; place-items: center; width: 20px; height: 20px; font-size: 17px; }
+    .small-btn:disabled { opacity: 0.5; cursor: default; }
     .count-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 12px; padding: 5px 0; }
     .count-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .count-subtotal { border-top: 1px solid rgba(255, 255, 255, 0.18); font-weight: 700; margin-top: 4px; }
@@ -271,6 +287,7 @@ export class TopMenuBarLit extends LitElement {
     };
     this.scopeContext = { parent: false, child: false, dependency: false, otherAllocations: false };
     this.menuPlugins = [];
+    this._notifications = new StoreController(this, sel.ui.notifications);
     this._ensureGlobalMenuStyles();
   }
 
@@ -465,6 +482,7 @@ export class TopMenuBarLit extends LitElement {
     this._menuElement = null;
 
     if (this.openMenu) {
+      if (menuName === 'notifications') cmd.ui.markNotificationsRead();
       if (menuName.startsWith('plugin:')) {
         const metadata = this.menuPlugins.find((plugin) => `plugin:${plugin.id}` === menuName);
         if (!metadata) throw new Error(`Plugin menu ${menuName} is not registered`);
@@ -484,6 +502,12 @@ export class TopMenuBarLit extends LitElement {
     if (returnFocus && this._menuButton && this._menuButton.isConnected) this._menuButton.focus();
   }
 
+  _onClearNotifications() {
+    cmd.ui.clearNotifications();
+    this._closeMenu(false);
+    this.shadowRoot.querySelector('#openConfigBtn').focus();
+  }
+
   _pluginMenuControls() {
     if (!this._menuElement) return [];
     const root = this._menuElement.shadowRoot === null ? this._menuElement : this._menuElement.shadowRoot;
@@ -492,6 +516,9 @@ export class TopMenuBarLit extends LitElement {
   }
 
   async updated() {
+    if (this.openMenu === 'notifications' && this._notifications.value.some((entry) => entry.unread)) {
+      cmd.ui.markNotificationsRead();
+    }
     if (this._focusPluginMenu && this._menuElement) {
       this._focusPluginMenu = false;
       const element = this._menuElement;
@@ -666,6 +693,24 @@ export class TopMenuBarLit extends LitElement {
             <span class="status-icon" aria-hidden="true">ⓘ</span>
             <span>${this.boardBreakdown.tasksVisible} on board</span>
           </button>
+          ${this._notifications.value.length > 0 ? html`
+            <button
+              class="board-info-trigger ${this.openMenu === 'notifications' ? 'active' : ''}"
+              id="notificationsBtn"
+              type="button"
+              title="Notification log"
+              aria-label="Notification log"
+              aria-haspopup="dialog"
+              aria-expanded=${this.openMenu === 'notifications' ? 'true' : 'false'}
+              aria-controls="notificationLog"
+              @click=${(event) => this._toggleMenu('notifications', event)}
+            >
+              <span class="notification-bell" aria-hidden="true">🔔</span>
+              ${this._notifications.value.some((entry) => entry.unread) ? html`
+                <span class="menu-attention" aria-label="Unread notifications">
+                  ${this._notifications.value.filter((entry) => entry.unread).length}
+                </span>` : ''}
+            </button>` : ''}
           <button class="small-btn" id="openConfigBtn" @click=${this._onConfig}>
             ⚙️
           </button>
@@ -701,6 +746,34 @@ export class TopMenuBarLit extends LitElement {
     `;
 
     switch (this.openMenu) {
+      case 'notifications':
+        return html`<div class="board-information notification-log" id="notificationLog"
+          style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;right:8px;z-index:2000"
+          role="dialog" aria-label="Notification log" @keydown=${this._onMenuKeyDown}>
+          <div class="notification-header">
+            <h2 class="information-title">Notifications</h2>
+            <button class="small-btn" id="clearNotificationsBtn" type="button"
+              ?disabled=${this._notifications.value.length === 0}
+              @click=${this._onClearNotifications}>Clear log</button>
+          </div>
+          ${this._notifications.value.length === 0 ? html`
+            <div class="notification-empty">No notifications</div>` : html`
+            <ol class="notification-list">
+              ${this._notifications.value.map((entry) => html`
+                <li class="notification-entry">
+                  <div class="notification-meta">
+                    <span class="notification-severity ${entry.severity}">${entry.severity}</span>
+                    <span>${entry.source}</span>
+                    <time datetime=${new Date(entry.lastSeenAt).toISOString()}
+                      title="First received: ${new Date(entry.firstSeenAt).toLocaleString()}">
+                      ${new Date(entry.lastSeenAt).toLocaleString()}
+                    </time>
+                  </div>
+                  <p class="notification-message">${entry.message}</p>
+                  ${entry.count > 1 ? html`<div class="notification-meta">${entry.count} occurrences</div>` : ''}
+                </li>`)}
+            </ol>`}
+        </div>`;
       case 'information': {
         const counts = this.boardBreakdown;
         const rows = [

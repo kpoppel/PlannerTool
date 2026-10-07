@@ -4,6 +4,45 @@ import { pluginManager } from './core/PluginManager.js';
 import { AppEvents, SessionEvents } from './core/EventRegistry.js';
 import { mergePluginConfig } from './core/pluginConfigMerge.js';
 import { initKeyboardShortcuts } from './services/KeyboardShortcuts.js';
+import { createUiCommands } from './application/commands/uiCommands.js';
+import { DataCommandEvents } from './application/commands/dataCommands.js';
+import { store } from './application/store.js';
+
+const uiCommands = createUiCommands(store, bus);
+
+export function registerFailureNotifications() {
+  const unsubscribers = [
+    bus.on(SessionEvents.EXPIRED, (payload) => {
+      uiCommands.addNotification({ source: 'Session', code: 'session_expired',
+        severity: 'error', message: payload.message });
+    }),
+    bus.on(SessionEvents.REACQUIRED, (payload) => {
+      const failed = payload.ok === false;
+      uiCommands.addNotification({ source: 'Session', code: failed ? 'session_failed' : 'session_recovered',
+        severity: failed ? 'error' : 'success',
+        message: failed ? `Session renewal failed: ${payload.error}` : payload.message });
+    }),
+    bus.on(DataCommandEvents.HYDRATION_FAILED, (payload) => {
+      uiCommands.addNotification({ source: 'Application', code: 'hydration_failed', severity: 'error',
+        message: `Loading ${payload.phase} failed: ${payload.error.message}` });
+    }),
+  ];
+  const onError = (event) => uiCommands.addNotification({
+    source: 'Application', code: 'uncaught_error', severity: 'error',
+    message: `Unexpected application error: ${event.message}`,
+  });
+  const onRejection = (event) => uiCommands.addNotification({
+    source: 'Application', code: 'unhandled_rejection', severity: 'error',
+    message: `Unhandled failure: ${event.reason instanceof Error ? event.reason.message : String(event.reason)}`,
+  });
+  window.addEventListener('error', onError);
+  window.addEventListener('unhandledrejection', onRejection);
+  return () => {
+    for (const unsubscribe of unsubscribers) unsubscribe();
+    window.removeEventListener('error', onError);
+    window.removeEventListener('unhandledrejection', onRejection);
+  };
+}
 
 export async function loadPluginConfiguration(dataService, modulesConfig) {
   const runtimeConfigResult = await dataService.getPluginsConfig();
@@ -17,6 +56,7 @@ export async function loadPluginConfiguration(dataService, modulesConfig) {
 }
 
 async function init() {
+  registerFailureNotifications();
   // Register typed events and optional runtime behaviors
   if (featureFlags.LOG_STRING_EVENTS) {
     bus.enableStringWarnings();
@@ -106,42 +146,13 @@ async function init() {
       document.body.appendChild(em);
     }
 
-    // Session expiry handling: notify user and indicate when reacquired
-    const showSpinnerMessage = (msg) => {
-      const sp = document.getElementById('appSpinner');
-      sp.message = msg || 'Loading';
-      sp.open = true;
-    };
-    const hideSpinner = (delay = 0) => {
-      const sp = document.getElementById('appSpinner');
-      if (delay) setTimeout(() => (sp.open = false), delay);
-      else sp.open = false;
-    };
-
-    bus.on(SessionEvents.EXPIRED, (p) => {
-      const msg = p?.message || 'Session expired — attempting to re-acquire...';
-      showSpinnerMessage(msg);
-    });
-
-    bus.on(SessionEvents.REACQUIRED, (p) => {
-      if (p && p.ok === false) {
-        const msg = 'Session re-acquire failed: ' + (p.error || 'unknown');
-        showSpinnerMessage(msg);
-        // hide after a short delay so user can read the failure
-        hideSpinner(4000);
-      } else {
-        const msg = (p && p.message) || 'Session re-acquired — Please retry the action.';
-        showSpinnerMessage(msg);
-        // keep the spinner visible longer so user sees the retry instruction
-        hideSpinner(6000);
-      }
-    });
-
     initKeyboardShortcuts();
   } catch (e) {
-    // Something really bad happened during app initialisaition. Log and show error message to user.
+    // Initialization failures leave the notification log accessible without the loading overlay.
     hideModal();
     console.error(e);
+    uiCommands.addNotification({ source: 'Application', code: 'initialization_failed', severity: 'error',
+      message: `Initialization failed: ${e instanceof Error ? e.message : String(e)}` });
     throw e;
   }
 }

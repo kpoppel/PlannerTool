@@ -4,13 +4,15 @@ import { bus } from '../core/EventBus.js';
 import { DataEvents, SessionEvents } from '../core/EventRegistry.js';
 import { RestProviderBase } from './RestProviderBase.js';
 import { ok, fail } from './result.js';
+import { store } from '../application/store.js';
+import { createUiCommands } from '../application/commands/uiCommands.js';
+
+const uiCommands = createUiCommands(store, bus);
 
 /**
  * @template T
  * @typedef {{ ok: true, data: T } | { ok: false, error: any }} Result
  */
-
-/** @typedef {HTMLElement & { message?: string, duration?: number, open?: boolean }} AutoCloseModalElement */
 
 export class ProviderREST extends RestProviderBase {
   constructor() {
@@ -20,22 +22,14 @@ export class ProviderREST extends RestProviderBase {
       networkRetryCount: 2,
       networkRetryDelay: 1000,
       onSessionExpired: () => this._handleSessionExpiry(),
-      onNetworkError: (err) => {
-        bus.emit(SessionEvents.EXPIRED, {
-          ok: false,
-          error: {
-            message: err instanceof Error ? err.message : String(err),
-            code: 'network_unreachable',
-          },
-          message:
-            'Cannot connect to server. Please check if the server is running and try again.',
-        });
-      },
+      onResponse: (response, context) => this._recordResponse(response, context.url),
+      onNetworkError: (err) => uiCommands.addNotification({
+        source: 'Network', code: 'network_unreachable', severity: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      }),
     });
     this._reacquiring = false;
     this._reacquirePromise = null;
-    this._lastTasksWarning = null;
-    this._lastTasksWarningAt = 0;
     this._accountEmail = null;
   }
   // Initialize provider and acquire a session. Init should only perform
@@ -125,10 +119,59 @@ export class ProviderREST extends RestProviderBase {
    * @returns {Promise<Result<any>>}
    */
   async _requestJson(url, options = {}) {
-    return this._fetchJson(url, {
+    const result = await this._fetchJson(url, {
       ...options,
       headers: this._headers(options.headers),
     });
+    if (result.ok) {
+      // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+      const payload = result.data;
+      if (payload !== null && typeof payload === 'object' && payload.ok === false) {
+        const errors = payload.errors instanceof Array ? payload.errors : [];
+        if (errors.length === 0) {
+          uiCommands.addNotification({ source: 'Backend', code: 'operation_failed', severity: 'error',
+            message: typeof payload.message === 'string' ? payload.message : `Operation failed: ${url}` });
+        }
+        for (const error of errors) {
+          uiCommands.addNotification({ source: 'Backend', code: 'operation_failed', severity: 'error',
+            message: typeof error === 'string' ? error : error.message });
+        }
+      }
+    } else if (result.error.message === 'Invalid JSON response'
+      || result.error.message === 'Invalid response object') {
+      uiCommands.addNotification({ source: 'Backend', code: 'invalid_response', severity: 'error',
+        message: `${url}: ${result.error.message}` });
+    }
+    return result;
+  }
+
+  async _recordResponse(response, url) {
+    const diagnostics = response.headers.get('X-Backend-Diagnostics');
+    if (diagnostics !== null) {
+      try {
+        for (const diagnostic of JSON.parse(diagnostics)) {
+          uiCommands.addNotification({ ...diagnostic, source: 'Backend' });
+        }
+      } catch (error) {
+        console.error('Invalid backend diagnostics', { url, error });
+        uiCommands.addNotification({ source: 'Backend', code: 'invalid_diagnostics', severity: 'error',
+          message: `Invalid diagnostics received from ${url}` });
+      }
+    }
+    if (response.ok) return;
+    let message = `HTTP ${response.status}: ${url}`;
+    // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+    try {
+      const payload = await response.clone().json();
+      const detail = payload.detail === undefined ? payload : payload.detail;
+      if (typeof detail === 'string') message = detail;
+      else if (detail !== null && typeof detail === 'object' && typeof detail.message === 'string') {
+        message = detail.message;
+      }
+    } catch (error) {
+      console.error('Could not parse failed REST response', { url, status: response.status, error });
+    }
+    uiCommands.addNotification({ source: 'Backend', code: `http_${response.status}`, severity: 'error', message });
   }
 
   /**
@@ -140,32 +183,6 @@ export class ProviderREST extends RestProviderBase {
     // Signal that we prefer JSON responses from the server
     if (!h['Accept']) h['Accept'] = 'application/json';
     return h;
-  }
-
-  async _showTasksWarning(message) {
-    const text = String(message || '').trim();
-    if (!text) return;
-    const now = Date.now();
-    if (this._lastTasksWarning === text && now - this._lastTasksWarningAt < 30000) {
-      return;
-    }
-    this._lastTasksWarning = text;
-    this._lastTasksWarningAt = now;
-
-    try {
-      await import('../components/AutoCloseMessageModal.js');
-      let modal = /** @type {AutoCloseModalElement|null} */ (document.getElementById('app-message-modal'));
-      if (!modal) {
-        modal = /** @type {AutoCloseModalElement} */ (document.createElement('modal-autoclose'));
-        modal.id = 'app-message-modal';
-        document.body.appendChild(modal);
-      }
-      modal.message = text;
-      modal.duration = 7000;
-      modal.open = true;
-    } catch (err) {
-      console.warn('tasks warning:', text, err);
-    }
   }
 
   async getCapabilities() {
@@ -312,15 +329,9 @@ export class ProviderREST extends RestProviderBase {
     try {
       const url =
         project ? `/api/tasks?project=${encodeURIComponent(project)}` : '/api/tasks';
-      const resTasks = await this._fetch(url, { headers: this._headers() });
-      if (!resTasks.ok) {
-        return fail({ message: `HTTP ${resTasks.status}`, status: resTasks.status });
-      }
-      const backendDiagnostic = resTasks.headers && resTasks.headers.get('X-Backend-Diagnostic-Message');
-      if (backendDiagnostic) {
-        await this._showTasksWarning(backendDiagnostic);
-      }
-      const tasks = await resTasks.json();
+      const result = await this._requestJson(url);
+      if (!result.ok) return result;
+      const tasks = result.data;
       // Calculate derived fields used in the frontend.
       const retval = (tasks || []).map((f) => ({
         ...f,
@@ -331,6 +342,8 @@ export class ProviderREST extends RestProviderBase {
       }));
       return ok(retval);
     } catch (err) {
+      uiCommands.addNotification({ source: 'Application', code: 'task_processing_failed', severity: 'error',
+        message: err instanceof Error ? err.message : String(err) });
       return fail(err);
     }
   }

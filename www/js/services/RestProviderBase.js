@@ -16,6 +16,7 @@ export class RestProviderBase {
       typeof options.onSessionExpired === 'function' ? options.onSessionExpired : null;
     this._onNetworkError =
       typeof options.onNetworkError === 'function' ? options.onNetworkError : null;
+    this._onResponse = options.onResponse === undefined ? null : options.onResponse;
     this._fetchImpl =
       typeof options.fetchImpl === 'function'
         ? options.fetchImpl
@@ -89,23 +90,9 @@ export class RestProviderBase {
     const resolvedUrl = this._resolveUrl(url);
     const fetchOptions = this._buildFetchOptions(options);
 
+    let response;
     try {
-      const response = await this._fetchImpl(resolvedUrl, fetchOptions);
-
-      if (allowSessionRecovery && response && response.status === 401) {
-        const recovered = await this._recoverSession({
-          url: resolvedUrl,
-          options: fetchOptions,
-          response,
-        });
-        if (recovered) {
-          // Retry through the shared base path once recovery succeeds.
-          // Recovery is disabled on this retry to avoid infinite 401 loops.
-          return this._fetch(resolvedUrl, fetchOptions, retryAttempt, false);
-        }
-      }
-
-      return response;
+      response = await this._fetchImpl(resolvedUrl, fetchOptions);
     } catch (err) {
       if (this._retry && retryAttempt < this._networkRetryCount) {
         const delay = this._networkRetryDelay * Math.pow(2, retryAttempt);
@@ -123,6 +110,20 @@ export class RestProviderBase {
 
       throw err;
     }
+
+    if (allowSessionRecovery && response && response.status === 401) {
+      const recovered = await this._recoverSession({
+        url: resolvedUrl, options: fetchOptions, response,
+      });
+      if (recovered) {
+        return this._fetch(resolvedUrl, fetchOptions, retryAttempt, false);
+      }
+    }
+    // Observe completed responses outside retry handling so observer failures cannot replay writes.
+    if (this._onResponse !== null) {
+      await this._onResponse(response, { url: resolvedUrl, options: fetchOptions });
+    }
+    return response;
   }
 
   async _fetchJson(url, options = {}) {

@@ -75,5 +75,6 @@ export function createInitialAppState() {
     featureDisplay: {
       selectedId: null,
     },
+    notifications: [],
   };
 }

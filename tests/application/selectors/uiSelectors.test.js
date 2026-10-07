@@ -3,7 +3,11 @@ import { uiSelectors } from '../../../www/js/application/selectors/uiSelectors.j
 
 describe('application/selectors/uiSelectors', () => {
   it('returns false when debug flag is missing', () => {
-    expect(uiSelectors.debugFlag({})).toBe(false);
+    expect(uiSelectors.debugFlag({ view: { options: {} } })).toBe(false);
+  });
+
+  it('rejects state without required view options', () => {
+    expect(() => uiSelectors.debugFlag({})).toThrow(TypeError);
   });
 
   it('returns boolean value from view options', () => {

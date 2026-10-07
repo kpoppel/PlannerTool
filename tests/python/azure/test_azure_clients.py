@@ -50,6 +50,19 @@ def test_iteration_request_uses_relative_path_for_real_ado_path_forms(root):
     assert iterations[0]['path'] == '\\Project\\Iteration\\eSW\\Platform'
 
 
+def test_iteration_fetch_failure_is_not_an_empty_schedule_tree():
+    client = AzureClient('org', DummyStorage())
+    wit = MagicMock()
+    wit.get_classification_node.side_effect = RuntimeError('503 Service Unavailable')
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(
+        get_work_item_tracking_client=lambda: wit,
+    ))
+
+    with pytest.raises(RuntimeError, match='503 Service Unavailable'):
+        client.get_iterations('A')
+
+
 def test_sanitize_and_flatten_area_nodes():
     c = AzureClient('org', DummyStorage())
     node = SimpleNamespace(path='Area/Sub', children=[SimpleNamespace(name='Leaf')])
@@ -491,6 +504,9 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
     }
     items[2].fields['System.State'] = 'Closed'
     client, wit = _linked_client(items)
+    wit.get_classification_node = MagicMock(side_effect=lambda **kwargs: SimpleNamespace(
+        path=f"\\{kwargs['project']}\\Iteration", name=kwargs['project'], attributes={}, children=[],
+    ))
     plans = [
         {'id': 'plan-a', 'area_path': 'A\\WrongArea', 'task_types': ['Epic', 'Feature']},
         {'id': 'plan-b', 'area_path': 'B\\WrongArea', 'task_types': ['Feature']},

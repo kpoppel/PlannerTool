@@ -15,6 +15,31 @@ function response({ ok = true, status = 200, jsonData = null, jsonThrows = false
 }
 
 describe('RestProviderBase', () => {
+  it('observes only the final response after session recovery', async () => {
+    const finalResponse = response({ jsonData: { ok: true } });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ ok: false, status: 401 }))
+      .mockResolvedValueOnce(finalResponse);
+    const onResponse = vi.fn();
+    const base = new RestProviderBase({ session: true, fetchImpl, onResponse,
+      onSessionExpired: vi.fn().mockResolvedValue(true) });
+
+    await base._fetch('/api/tasks');
+
+    expect(onResponse).toHaveBeenCalledTimes(1);
+    expect(onResponse).toHaveBeenCalledWith(finalResponse, expect.objectContaining({ url: '/api/tasks' }));
+  });
+
+  it('does not retry a completed write when its response observer fails', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response());
+    const base = new RestProviderBase({ retry: true, fetchImpl,
+      onResponse: vi.fn().mockRejectedValue(new Error('Observer failed')) });
+
+    await expect(base._fetch('/api/tasks', { method: 'POST' })).rejects.toThrow('Observer failed');
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('resolves absolute URLs with configured base URL provider', () => {
     const base = new RestProviderBase({ baseUrlProvider: () => '/root' });
     expect(base._resolveUrl('/api/health')).toBe('/root/api/health');
