@@ -93,6 +93,43 @@ describe('application/selectors/scopeSelectors', () => {
     expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['anchor']);
   });
 
+  it('keeps unscheduled descendants through an unscheduled intermediate in parent context', () => {
+    const state = baseState({
+      selection: {
+        projectIds: ['selected'],
+        teamIds: [],
+        featureStateNames: ['Active'],
+        taskFilters: {
+          schedule: { planned: true, unplanned: true },
+          allocation: { allocated: true, unallocated: true },
+          hierarchy: { hasParent: true, noParent: true },
+          relations: { hasLinks: true, noLinks: true },
+        },
+        taskTypeNames: ['Feature'],
+      },
+      view: { context: { parent: true, child: true } },
+    });
+    state.baseline.features = [
+      {
+        id: 'parent-a', project: 'selected', parentId: null, type: 'Feature',
+        state: 'Active', start: '2026-05-01', end: '2026-06-01',
+        capacity: [], relations: [],
+      },
+      {
+        id: 'parent-b', project: 'child', parentId: 'parent-a', type: 'Feature',
+        state: 'Active', start: null, end: null, capacity: [], relations: [],
+      },
+      {
+        id: 'child-a', project: 'child', parentId: 'parent-b', type: 'Feature',
+        state: 'Active', start: null, end: null, capacity: [], relations: [],
+      },
+    ];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id))
+      .toEqual(['parent-a', 'parent-b', 'child-a']);
+  });
+
   it('shows the scoped tree in plan overview and bounded hierarchy relevance in team focus', () => {
     const state = baseState({
       selection: { taskTypeNames: [], teamIds: ['team-a'] },

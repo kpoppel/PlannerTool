@@ -51,6 +51,7 @@ describe('board-utils selector seam', () => {
       state: 'Closed',
       start: null,
       end: null,
+      iterationPath: 'Platform_Development',
       presentation: { renderType: 'anchor', date: '2026-05-19', sourceState: 'Closed' },
     };
 

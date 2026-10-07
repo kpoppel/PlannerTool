@@ -75,6 +75,32 @@ describe('application/shared/featureProjection', () => {
     expect(feature.presentation).toBeUndefined();
   });
 
+  it('preserves anchor presentation through unrelated overrides with a project-root iteration path', () => {
+    const anchorPresentation = {
+      renderType: 'anchor', date: '2026-05-19',
+      reason: 'completed-unscheduled', sourceState: 'Closed',
+    };
+    const state = {
+      baseline: {
+        teams: [],
+        features: [{
+          id: 'closed-unscheduled', state: 'Closed', start: null, end: null,
+          iterationPath: 'Platform_Development', presentation: anchorPresentation,
+          capacity: [],
+        }],
+      },
+      selection: { teamIds: [] },
+      scenarios: {
+        activeId: 's1',
+        items: [{ id: 's1', overrides: { 'closed-unscheduled': { capacity: [] } } }],
+      },
+    };
+
+    const [feature] = deriveEffectiveFeatures(state);
+
+    expect(feature.presentation).toEqual(anchorPresentation);
+  });
+
   it('supports raw merge mode for non-selector paths', () => {
     const state = {
       baseline: {

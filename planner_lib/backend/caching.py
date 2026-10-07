@@ -492,6 +492,8 @@ class CachingBackend:
                 for task in tasks:
                     if isinstance(task, dict) and str(task.get('id')) == str_id:
                         updated_task = {**task, **updates}
+                        if any(field in updates for field in ('start', 'end', 'state', 'iterationPath')):
+                            updated_task.pop('presentation', None)
                         for field in ('start', 'end'):
                             inferred = f'_inferred_{field}'
                             if field in updates and inferred in updated_task:

@@ -169,6 +169,24 @@ describe('SwimlaneService', () => {
     )).toBe('p3');
   });
 
+  it('continues through a same-plan unplanned parent to the outer ancestor lane', () => {
+    const lanes = [
+      { id: 'bluetooth', type: 'plan' },
+      { id: 'f1r2', type: 'expanded-plan' },
+    ];
+    const features = [
+      { ...mkFeature('epic', 'f1r2'), ancestorOnly: true },
+      { ...mkFeature('feature', 'bluetooth', 'epic'), start: null, end: null },
+      { ...mkFeature('story', 'bluetooth', 'feature'), start: null, end: null },
+    ];
+    const byId = new Map(features.map((feature) => [feature.id, feature]));
+    const parentContext = { ...noContext, parent: true };
+
+    for (const feature of features) {
+      expect(assignFeatureToSwimlane(feature, lanes, byId, parentContext)).toBe('f1r2');
+    }
+  });
+
   it('terminates deterministically for a cyclic parent chain', () => {
     const lanes = [{ id: 'p1', type: 'plan' }, { id: 'p3', type: 'expanded-plan' }];
     const features = [mkFeature('one', 'p3', 'two'), mkFeature('two', 'p3', 'one')];

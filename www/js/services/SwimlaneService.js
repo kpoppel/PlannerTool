@@ -99,7 +99,7 @@ export function buildSwimlaneList(projects, visibleFeatures, context) {
 
 /**
  * Resolve one visible feature to a plan lane. Selected-plan ownership wins;
- * hierarchy Context then selects the nearest available ancestor lane; other
+ * hierarchy Context then selects the outermost available ancestor lane; other
  * contextual work remains in its visible source-plan lane.
  */
 export function assignFeatureToSwimlane(
@@ -131,8 +131,7 @@ export function assignFeatureToSwimlane(
       if (!current) break;
       const lane = swimlaneById.get(String(current.project));
       if (!lane) continue;
-      if (lane.type === 'plan') return lane.id;
-      if (expandedPlanId === null) expandedPlanId = lane.id;
+      expandedPlanId = lane.id;
     }
     if (expandedPlanId !== null) return expandedPlanId;
   }
@@ -161,8 +160,7 @@ export function assignFeatureToSwimlane(
       if (!current) break;
       const lane = swimlaneById.get(String(current.project));
       if (!lane) continue;
-      if (lane.type === 'plan') return lane.id;
-      if (expandedPlanId === null) expandedPlanId = lane.id;
+      expandedPlanId = lane.id;
     }
     if (expandedPlanId !== null) return expandedPlanId;
   }

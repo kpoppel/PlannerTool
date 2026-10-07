@@ -291,6 +291,7 @@ export class FeatureCardLit extends LitElement {
       margin-bottom: 0;
       font-size: 0.75em;
       line-height: 1;
+      min-height: 1em;
       display: block;
     }
 

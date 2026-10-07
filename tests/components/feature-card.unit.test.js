@@ -32,6 +32,9 @@ describe('FeatureCardLit basic behaviors', () => {
 
     expect(el.shadowRoot.querySelector('.dates-default').textContent.trim()).to.equal('');
     expect(el.shadowRoot.querySelector('.feature-dates').textContent).not.to.include('null');
+    expect(el.constructor.styles.cssText).to.match(
+      /\.feature-dates\s*\{[^}]*min-height:\s*1em;/
+    );
   });
 
   it('labels ancestor context cards as partial hierarchy without changing ordinary cards', async () => {

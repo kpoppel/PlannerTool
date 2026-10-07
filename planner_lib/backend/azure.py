@@ -455,8 +455,12 @@ class AzureDevOpsBackend(BackendPort):
         for task in tasks.values():
             ado_project = task.get('backendData', {}).get('adoProject')
             state_categories = categories_by_project.get(ado_project, {})
+            iteration_path = task.get('iterationPath')
+            has_iteration = iteration_path is not None and (
+                normalize_iteration_path(iteration_path).casefold() != str(ado_project).casefold()
+            )
             if (state_categories.get(task['state']) != 'Completed'
-                    or task.get('start') or task.get('end') or task.get('iterationPath')):
+                    or task.get('start') or task.get('end') or has_iteration):
                 continue
             anchor_date = _terminal_date(task.get('backendData', {}).get('stateChangeDate'))
             if anchor_date is not None:

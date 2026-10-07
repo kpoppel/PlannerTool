@@ -80,7 +80,8 @@ export function applyFeatureOverride(baseFeature, override, options = {}) {
 function clearInvalidAnchorPresentation(baseFeature, effectiveFeature) {
   const presentation = baseFeature.presentation;
   if (presentation && presentation.renderType === 'anchor'
-      && (effectiveFeature.start || effectiveFeature.end || effectiveFeature.iterationPath
+      && (effectiveFeature.start || effectiveFeature.end
+        || effectiveFeature.iterationPath !== baseFeature.iterationPath
         || effectiveFeature.state !== baseFeature.state)) {
     delete effectiveFeature.presentation;
   }

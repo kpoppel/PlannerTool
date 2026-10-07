@@ -571,7 +571,7 @@ def test_context_prunes_only_wholly_expired_trees():
 
 def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
     plan = {'id': 'plan-a', 'area_path': 'A\\plan-a', 'task_types': ['Feature']}
-    seed = _context_seed(1, 'plan-a', (2, 3, 4, 5))
+    seed = _context_seed(1, 'plan-a', (2, 3, 4, 5, 6))
     seed.update(
         state='Closed',
         backendData={**seed['backendData'], 'stateChangeDate': '2026-05-19T14:42:26Z'},
@@ -589,6 +589,8 @@ def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
          'iterationPath': 'A\\Sprint 1', 'stateChangeDate': '2026-04-30T12:40:34Z'},
         {**_context_seed(5, 'plan-a'), 'state': 'Active',
          'stateChangeDate': '2026-04-30T12:40:34Z'},
+        {**_context_seed(6, 'plan-a'), 'state': 'Closed',
+         'iterationPath': 'A', 'stateChangeDate': '2026-04-30T12:40:34Z'},
     ]
     client.get_linked_work_items.side_effect = lambda roots: [
         *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
@@ -610,6 +612,10 @@ def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
         'reason': 'completed-unscheduled', 'sourceState': 'Closed',
     }
     assert tasks['2']['presentation'] == {
+        'renderType': 'anchor', 'date': '2026-04-30',
+        'reason': 'completed-unscheduled', 'sourceState': 'Closed',
+    }
+    assert tasks['6']['presentation'] == {
         'renderType': 'anchor', 'date': '2026-04-30',
         'reason': 'completed-unscheduled', 'sourceState': 'Closed',
     }

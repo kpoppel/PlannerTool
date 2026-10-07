@@ -4,8 +4,7 @@ export function isAnchorPresentation(feature) {
     && presentation.renderType === 'anchor'
     && presentation.sourceState === feature.state
     && !feature.start
-    && !feature.end
-    && !feature.iterationPath;
+    && !feature.end;
 }
 
 export function hasTimelinePlacement(feature) {

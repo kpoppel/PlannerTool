@@ -669,6 +669,32 @@ def test_write_task_patches_cache_keeps_it_hot(caching, inner):
     assert patched['state'] == 'Closed'
 
 
+@pytest.mark.parametrize('field,value', [
+    ('start', '2026-05-19'),
+    ('end', '2026-05-20'),
+    ('state', 'Active'),
+    ('iterationPath', 'MyOrg\\TeamA\\Sprint 1'),
+])
+def test_write_task_clears_anchor_presentation_after_semantic_edit(caching, storage, field, value):
+    key = 'fetch_task_context__anchor'
+    task = {
+        **_TASK,
+        'iterationPath': 'MyOrg',
+        'presentation': {
+            'renderType': 'anchor', 'date': '2026-05-19',
+            'reason': 'completed-unscheduled', 'sourceState': 'Closed',
+        },
+    }
+    storage.save('backend_domain', key, [task])
+
+    result = caching.write_task('1', {field: value}, CRED)
+
+    assert result['ok']
+    cached, = storage.load('backend_domain', key)
+    assert field in cached
+    assert 'presentation' not in cached
+
+
 def test_write_task_result_is_forwarded(caching, inner):
     result = caching.write_task(1, {'state': 'Closed'}, CRED)
     assert result['ok'] is True
