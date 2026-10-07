@@ -41,6 +41,7 @@ deployment/
 data/
 instances.yml
 .encryption_key
+.azure-pat
 
 # Test output
 test-results/

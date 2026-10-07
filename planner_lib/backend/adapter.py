@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 _UNSET = object()
 
 
+def normalize_iteration_path(path: str) -> str:
+    """Canonical project-qualified ADO work-item/classification path."""
+    parts = path.replace('/', '\\').strip('\\').split('\\')
+    if len(parts) > 1 and parts[1].casefold() in ('iteration', 'iterations'):
+        del parts[1]
+    return '\\'.join(parts)
+
+
 class AzureAdapter:
     """Translates Azure DevOps API dicts to/from DomainTask.
 
@@ -83,6 +91,8 @@ class AzureAdapter:
         start_date = raw_wi.get('startDate')
         end_date = raw_wi.get('finishDate')
         iteration_path = raw_wi.get('iterationPath')
+        if iteration_path:
+            iteration_path = normalize_iteration_path(iteration_path)
         inferred_start = False
         inferred_end = False
 

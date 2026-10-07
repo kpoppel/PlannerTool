@@ -41,7 +41,7 @@ function getTypeDisplayNameFromHierarchy(type, hierarchy) {
   return type;
 }
 
-function getIterationsForProjectFromStore(state, projectId) {
+function getSchedulePresetsForProjectFromStore(state, projectId) {
   const idKey = String(projectId).trim();
   if (idKey === '') return [];
 
@@ -52,8 +52,7 @@ function getIterationsForProjectFromStore(state, projectId) {
 
   const linkedSet = state.baseline.iterationsByProject[iterationSetId];
   if (linkedSet === undefined) return [];
-  if (linkedSet.iterations === undefined) return [];
-  return linkedSet.iterations;
+  return linkedSet.presets;
 }
 
 function buildTaskTypeOrderMap(hierarchy) {
@@ -113,8 +112,8 @@ export function createFeatureSelectors(store) {
       return buildChildrenByParentMap(selectors.getEffectiveFeatures());
     },
 
-    getIterationsForProject(projectId) {
-      return getIterationsForProjectFromStore(store.getState(), projectId);
+    getSchedulePresetsForProject(projectId) {
+      return getSchedulePresetsForProjectFromStore(store.getState(), projectId);
     },
 
     getAvailableTaskTypes() {

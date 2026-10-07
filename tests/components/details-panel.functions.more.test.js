@@ -22,9 +22,9 @@ describe('DetailsPanel editing and scheduling commands', () => {
     const today = new Date().toISOString().slice(0, 10);
     const model = buildDetailsPanelSchedulingModel({
       feature: { id: 'x1' },
-      iterations: [
-        { name: 'Current', path: 'Current', finishDate: today },
-        { name: 'Past', path: 'Past', finishDate: '2020-01-01' },
+      presets: [
+        { id: 'current', label: 'Current', start: '2026-01-01', end: today },
+        { id: 'past', label: 'Past', start: '2019-12-01', end: '2020-01-01' },
       ],
       childrenByParent: new Map(),
       orig: {},
@@ -34,13 +34,13 @@ describe('DetailsPanel editing and scheduling commands', () => {
     const root = await fixture(html`<div>${rendered}</div>`);
 
     expect([...root.querySelectorAll('optgroup')].map((group) => group.label)).to.deep.equal([
-      'Current and future iterations',
-      'Past iterations',
+      'Current and future',
+      'Past',
     ]);
     expect([...root.querySelectorAll('option')].map((option) => option.textContent.trim())).to.deep.equal([
       '—',
-      `Current (until ${today})`,
-      'Past (until 2020-01-01)',
+      `Current (2026-01-01 to ${today})`,
+      'Past (2019-12-01 to 2020-01-01)',
     ]);
   });
 
@@ -209,26 +209,24 @@ describe('DetailsPanel editing and scheduling commands', () => {
     stub.restore();
   });
 
-  it('_onIterationChange updates dates via cmd.feature.updateFeatureDates', async () => {
+  it('_onSchedulePresetChange updates dates via cmd.feature.updateFeatureDates', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f10' };
-    const getIterationsStub = sinon.stub(sel.feature, 'getIterationsForProject').returns([
+    const getIterationsStub = sinon.stub(sel.feature, 'getSchedulePresetsForProject').returns([
       {
-        path: 'Proj\\Iteration\\It1',
-        startDate: '2025-02-01',
-        finishDate: '2025-02-10',
+        id: 'preset-1', label: 'It1',
+        start: '2025-02-01',
+        end: '2025-02-10',
       },
     ]);
     // trigger the load that runs in updated lifecycle
-    await el._loadIterationsForFeature();
+    await el._loadSchedulePresetsForFeature();
 
     const datesStub = sinon.stub(cmd.feature, 'updateFeatureDates');
     const fieldStub = sinon.stub(cmd.feature, 'updateFeatureField');
-    // simulate selection change - component accepts full path or suffix
-    // select elements may pass either full path or suffix; use suffix to match endsWith
-    await el._onIterationChange('It1');
+    await el._onSchedulePresetChange('preset-1');
 
-    expect(fieldStub.calledOnceWithExactly('f10', 'iterationPath', 'It1')).to.be.true;
+    expect(fieldStub.called).to.be.false;
     expect(datesStub.calledOnce).to.be.true;
     const arg = datesStub.getCall(0).args[0][0];
     expect(arg.id).to.equal('f10');
@@ -248,7 +246,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
     };
     await el.updateComplete;
 
-    const reloadStub = sinon.stub(el, '_loadIterationsForFeature').resolves();
+    const reloadStub = sinon.stub(el, '_loadSchedulePresetsForFeature').resolves();
     bus.emit(ProjectEvents.CHANGED, [{ id: 'project-a', name: 'Project A' }]);
     await new Promise((r) => setTimeout(r, 0));
 
@@ -268,7 +266,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
     await el.updateComplete;
 
     const getStub = sinon.stub(sel.feature, 'getEffectiveFeatureById').returns(refreshed);
-    const reloadStub = sinon.stub(el, '_loadIterationsForFeature').resolves();
+    const reloadStub = sinon.stub(el, '_loadSchedulePresetsForFeature').resolves();
 
     bus.emit(FeatureEvents.UPDATED);
     await new Promise((r) => setTimeout(r, 0));
@@ -343,7 +341,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
     stub.restore();
   });
 
-  it('_clearDates also clears iterationPath when one is set', async () => {
+  it('_clearDates emits only generic dates even when native metadata exists', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f24', start: '2025-01-01', end: '2025-02-01', iterationPath: 'Team\\Sprint 3' };
     await el.updateComplete;
@@ -352,9 +350,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
 
     el._clearDates();
 
-    // iterationPath must be cleared before the dates call
-    expect(fieldStub.calledOnce).to.be.true;
-    expect(fieldStub.getCall(0).args).to.deep.equal(['f24', 'iterationPath', null]);
+    expect(fieldStub.called).to.be.false;
     expect(datesStub.calledOnce).to.be.true;
     expect(datesStub.getCall(0).args[0][0]).to.deep.include({ id: 'f24', start: null, end: null });
     fieldStub.restore();
@@ -454,32 +450,35 @@ describe('DetailsPanel editing and scheduling commands', () => {
     updateStub.restore();
   });
 
-  it('_activeIterationPath returns matching path when dates match exactly', async () => {
-    const el = await fixture(html`<details-panel></details-panel>`);
+  it('selects a preset when dates match exactly', () => {
     const feature = { start: '2025-04-01', end: '2025-04-30' };
-    const iterations = [
-      { path: 'Proj\\It1', startDate: '2025-03-01', finishDate: '2025-03-31' },
-      { path: 'Proj\\It2', startDate: '2025-04-01', finishDate: '2025-04-30' },
+    const presets = [
+      { id: 'preset-1', label: 'March', start: '2025-03-01', end: '2025-03-31' },
+      { id: 'preset-2', label: 'April', start: '2025-04-01', end: '2025-04-30' },
     ];
-    const result = el._activeIterationPath(feature, iterations);
-    expect(result).to.equal('Proj\\It2');
+    const model = buildDetailsPanelSchedulingModel({
+      feature, presets, childrenByParent: new Map(), orig: {}, today: '2025-04-01',
+    });
+    expect(model.selectedPresetId).to.equal('preset-2');
   });
 
-  it('_activeIterationPath returns null when dates do not match any iteration', async () => {
-    const el = await fixture(html`<details-panel></details-panel>`);
+  it('does not select a preset after date edits', () => {
     const feature = { start: '2025-04-05', end: '2025-04-28' };
-    const iterations = [
-      { path: 'Proj\\It2', startDate: '2025-04-01', finishDate: '2025-04-30' },
+    const presets = [
+      { id: 'preset-2', label: 'April', start: '2025-04-01', end: '2025-04-30' },
     ];
-    const result = el._activeIterationPath(feature, iterations);
-    expect(result).to.equal(null);
+    const model = buildDetailsPanelSchedulingModel({
+      feature, presets, childrenByParent: new Map(), orig: {}, today: '2025-04-01',
+    });
+    expect(model.selectedPresetId).to.equal('');
   });
 
-  it('_activeIterationPath returns null when feature has no dates', async () => {
-    const el = await fixture(html`<details-panel></details-panel>`);
-    const result = el._activeIterationPath({}, [
-      { path: 'Proj\\It2', startDate: '2025-04-01', finishDate: '2025-04-30' },
-    ]);
-    expect(result).to.equal(null);
+  it('does not select a preset when there are no dates', () => {
+    const model = buildDetailsPanelSchedulingModel({
+      feature: {}, presets: [
+        { id: 'preset-2', label: 'April', start: '2025-04-01', end: '2025-04-30' },
+      ], childrenByParent: new Map(), orig: {}, today: '2025-04-01',
+    });
+    expect(model.selectedPresetId).to.equal('');
   });
 });

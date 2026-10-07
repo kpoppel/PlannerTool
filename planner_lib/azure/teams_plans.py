@@ -300,7 +300,7 @@ class TeamPlanOperations:
         
         Args:
             project: Project name or ID
-            root_path: Optional root iteration path to filter by (e.g., "MyProject\\Iteration\\TeamA")
+            root_path: Relative subtree or full classification path, with optional leading separator.
             depth: Depth to fetch classification nodes (default 10)
             
         Returns:
@@ -318,7 +318,7 @@ class TeamPlanOperations:
             if root_path:
                 # Strip project prefix and "Iteration\" if present in root_path
                 # E.g., "MyProject\Iteration\TeamA" -> "TeamA"
-                path_parts = root_path.replace('/', '\\').split('\\')
+                path_parts = root_path.replace('/', '\\').strip('\\').split('\\')
                 if path_parts[0] == project:
                     path_parts = path_parts[1:]
                 # Remove "Iteration" part if it's the first element

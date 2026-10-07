@@ -26,6 +26,30 @@ def test_api_url_to_ui_link_valid_and_invalid():
         c.api_url_to_ui_link('https://example.com/not/azure')
 
 
+@pytest.mark.parametrize('root', [
+    'eSW\\Platform', 'eSW/Platform', '\\eSW\\Platform',
+    'Project\\Iteration\\eSW\\Platform', '\\Project\\Iteration\\eSW\\Platform',
+    '/Project/Iteration/eSW/Platform',
+])
+def test_iteration_request_uses_relative_path_for_real_ado_path_forms(root):
+    client = AzureClient('org', DummyStorage())
+    wit = MagicMock()
+    wit.get_classification_node.return_value = SimpleNamespace(
+        path='\\Project\\Iteration\\eSW\\Platform', name='Platform',
+        attributes={}, children=[],
+    )
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(
+        get_work_item_tracking_client=lambda: wit))
+
+    iterations = client.get_iterations('Project', root_path=root)
+
+    wit.get_classification_node.assert_called_once_with(
+        project='Project', structure_group='iterations', path='eSW\\Platform', depth=10,
+    )
+    assert iterations[0]['path'] == '\\Project\\Iteration\\eSW\\Platform'
+
+
 def test_sanitize_and_flatten_area_nodes():
     c = AzureClient('org', DummyStorage())
     node = SimpleNamespace(path='Area/Sub', children=[SimpleNamespace(name='Leaf')])
@@ -228,6 +252,31 @@ def test_update_work_item_description_and_dates_require_connected():
         c.update_work_item_description(1, '<p>desc</p>')
     with pytest.raises(RuntimeError):
         c.update_work_item_dates(1, start='2020-01-01')
+
+
+@pytest.mark.parametrize('has_explicit_dates', [False, True])
+def test_clear_schedule_resets_iteration_and_existing_dates_in_one_patch(has_explicit_dates):
+    client = AzureClient('org', DummyStorage())
+    wit = MagicMock()
+    fields = {'System.TeamProject': 'Project', 'System.IterationPath': 'Project\\Sprint'}
+    if has_explicit_dates:
+        fields.update({'Microsoft.VSTS.Scheduling.StartDate': '2026-01-01',
+                       'Microsoft.VSTS.Scheduling.TargetDate': '2026-01-14'})
+    wit.get_work_item.return_value = SimpleNamespace(fields=fields)
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(
+        get_work_item_tracking_client=lambda: wit))
+
+    client.update_work_item_dates(1, start=None, end=None)
+
+    wit.update_work_item.assert_called_once()
+    document = wit.update_work_item.call_args.kwargs['document']
+    assert {'op': 'replace', 'path': '/fields/System.IterationPath',
+            'value': 'Project'} in document
+    removed = {entry['path'] for entry in document if entry['op'] == 'remove'}
+    assert removed == ({'/fields/Microsoft.VSTS.Scheduling.StartDate',
+                        '/fields/Microsoft.VSTS.Scheduling.TargetDate'}
+                       if has_explicit_dates else set())
 
 
 def test_azure_native_client_get_work_items_parses_items():

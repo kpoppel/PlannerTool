@@ -18,7 +18,7 @@ export function getDetailsPanelChildDateBounds(children) {
 }
 
 /** Project scheduling presentation; today is explicit to make grouping deterministic. */
-export function buildDetailsPanelSchedulingModel({ feature, iterations, childrenByParent, orig, today }) {
+export function buildDetailsPanelSchedulingModel({ feature, presets, childrenByParent, orig, today }) {
   const startOrig = orig === undefined ? undefined : orig.start;
   const endOrig = orig === undefined ? undefined : orig.end;
   const startChanged = startOrig !== undefined && feature.start !== startOrig;
@@ -30,23 +30,9 @@ export function buildDetailsPanelSchedulingModel({ feature, iterations, children
     childrenByParent &&
     (childrenByParent.has(String(feature.id)) || childrenByParent.has(feature.id));
 
-  const selectedPath = feature.iterationPath ? feature.iterationPath : '';
-  const selectedIter = selectedPath ?
-    iterations.find(
-      (it) =>
-        it.path === selectedPath ||
-        (it.path && it.path.endsWith(selectedPath)) ||
-        selectedPath.endsWith(it.path)
-    )
-  : null;
-  const datesOverride = !!(selectedIter && hasAnyDate && (
-    !selectedIter.startDate ||
-    !selectedIter.finishDate ||
-    selectedIter.startDate.slice(0, 10) !== feature.start ||
-    selectedIter.finishDate.slice(0, 10) !== feature.end
-  ));
-  const iterationDirty = orig !== undefined && orig.iterationPath !== undefined &&
-    feature.iterationPath !== orig.iterationPath;
+  const matches = presets.filter((preset) =>
+    preset.start === feature.start && preset.end === feature.end);
+  const selectedPresetId = matches.length === 1 ? matches[0].id : '';
 
   const startTitle = startChanged ? `was ${startOrig}` : 'Start date';
   const endTitle = endChanged ? `was ${endOrig}` : 'End date';
@@ -56,53 +42,35 @@ export function buildDetailsPanelSchedulingModel({ feature, iterations, children
       feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
     : 'Item';
 
-  const currentAndFutureIterations = [];
-  const pastIterations = [];
-  for (const iteration of iterations) {
-    const finishDate = iteration.finishDate ? iteration.finishDate.slice(0, 10) : null;
-    if (!finishDate || finishDate >= today) {
-      currentAndFutureIterations.push({ path: iteration.path, label: formatIterationLabel(iteration) });
+  const currentAndFuturePresets = [];
+  const pastPresets = [];
+  for (const preset of presets) {
+    const option = { id: preset.id, label: `${preset.label} (${preset.start} to ${preset.end})` };
+    if (preset.end >= today) {
+      currentAndFuturePresets.push(option);
     } else {
-      pastIterations.push({ path: iteration.path, label: formatIterationLabel(iteration) });
+      pastPresets.push(option);
     }
   }
-  const originalPath = orig === undefined ? undefined : orig.iterationPath;
-  const previousPathLabel = originalPath ? originalPath : '—';
   return {
     start: feature.start ? feature.start : '',
     end: feature.end ? feature.end : '',
     startChanged, endChanged, startTitle, endTitle,
-    hasChildren, hasAnyDate, typeLabel, selectedPath, datesOverride, iterationDirty,
-    currentAndFutureIterations, pastIterations,
-    iterationTitle: iterationDirty && datesOverride ?
-      `Changed from '${previousPathLabel}' — dates also differ from this iteration's bounds` :
-      iterationDirty ? `Changed from '${previousPathLabel}'` :
-      datesOverride ? 'Dates have been overridden — they differ from this iteration\'s bounds' :
-      'Pick a sprint to fill the dates below',
+    hasChildren, hasAnyDate, typeLabel, selectedPresetId,
+    currentAndFuturePresets, pastPresets,
   };
-}
-
-function formatIterationLabel(iteration) {
-  const match = iteration.path.match(/^(.+?)\\Iteration\\(.+)$/);
-  const name = iteration.name ? iteration.name : match ? match[2] : iteration.path;
-  const start = iteration.startDate ? iteration.startDate.slice(0, 10) : null;
-  const end = iteration.finishDate ? iteration.finishDate.slice(0, 10) : null;
-  if (start && end) return `${name} (${start} to ${end})`;
-  if (start) return `${name} (from ${start})`;
-  if (end) return `${name} (until ${end})`;
-  return name;
 }
 
 /** Render scheduling controls with value-based actions, not host-private handlers. */
 export function renderDetailsPanelScheduling({ model, actions }) {
   const {
     start, end, startChanged, endChanged, startTitle, endTitle,
-    hasChildren, hasAnyDate, typeLabel, selectedPath, datesOverride, iterationDirty,
-    currentAndFutureIterations, pastIterations, iterationTitle,
+    hasChildren, hasAnyDate, typeLabel, selectedPresetId,
+    currentAndFuturePresets, pastPresets,
   } = model;
   const renderIterationGroup = (label, group) => group.length ? html`
     <optgroup label=${label}>
-      ${group.map((iteration) => html`<option value=${iteration.path}>${iteration.label}</option>`)}
+      ${group.map((preset) => html`<option value=${preset.id}>${preset.label}</option>`)}
     </optgroup>
   ` : '';
 
@@ -110,18 +78,19 @@ export function renderDetailsPanelScheduling({ model, actions }) {
     <div class="details-label" style="margin-top:8px;">Scheduling</div>
     <div style="margin-top:4px;">
       <select
-        class="iteration-select${iterationDirty ? ' iteration-dirty' : ''}${datesOverride ? ' dates-override' : ''}"
-        .value=${selectedPath}
-        @change=${(event) => actions.selectIteration(event.target.value)}
-        title=${iterationTitle}
+        class="iteration-select"
+        .value=${selectedPresetId}
+        @change=${(event) => actions.selectPreset(event.target.value)}
+        aria-label="Schedule preset"
+        title="Schedule preset"
       >
         <option value="">—</option>
-        ${currentAndFutureIterations.length + pastIterations.length > 0 ?
+        ${currentAndFuturePresets.length + pastPresets.length > 0 ?
           html`
-            ${renderIterationGroup('Current and future iterations', currentAndFutureIterations)}
-            ${renderIterationGroup('Past iterations', pastIterations)}
+            ${renderIterationGroup('Current and future', currentAndFuturePresets)}
+            ${renderIterationGroup('Past', pastPresets)}
           `
-        : html`<option disabled>No iterations available</option>`}
+        : html`<option disabled>No date presets available</option>`}
       </select>
     </div>
     <div class="date-row" style="margin-top:6px;">

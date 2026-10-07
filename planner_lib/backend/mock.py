@@ -18,7 +18,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, BackendPort
-from planner_lib.backend.adapter import AzureAdapter
+from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 
@@ -268,7 +268,7 @@ class MockFixtureBackend(_MockBackendBase):
                     iteration_map = self._flatten_iter_tree(iters)
                 elif isinstance(iters, list):
                     for it in iters:
-                        norm = it.get('path', '')
+                        norm = normalize_iteration_path(it.get('path', ''))
                         if norm:
                             iteration_map[norm] = {'startDate': it.get('startDate'), 'finishDate': it.get('finishDate'), 'name': it.get('name')}
             except Exception:
@@ -348,8 +348,7 @@ class MockFixtureBackend(_MockBackendBase):
         path = node.get('path', '')
         name = node.get('name', '')
         if attrs and path:
-            import re
-            norm = re.sub(r'^[^\\]+\\Iterations?\\?', '', path)
+            norm = normalize_iteration_path(path)
             if norm:
                 result[norm] = {
                     'startDate': attrs.get('startDate'),

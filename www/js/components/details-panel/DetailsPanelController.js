@@ -46,7 +46,7 @@ export class DetailsPanelController {
 			bus.on(FeatureEvents.SELECTED, () => this.show()),
 			bus.on(FeatureEvents.UPDATED, (payload) => this.refresh(payload)),
 			bus.on(ProjectEvents.CHANGED, () => {
-				if (this.host.open && this.host.feature) this.host._loadIterationsForFeature();
+				if (this.host.open && this.host.feature) this.host._loadSchedulePresetsForFeature();
 			}),
 			bus.on(TeamEvents.CHANGED, () => this.refresh()),
 		];
@@ -93,7 +93,7 @@ export class DetailsPanelController {
 		const feature = sel.feature.getEffectiveFeatureById(host.feature.id);
 		if (!feature) return;
 		host.feature = feature;
-		host._loadIterationsForFeature();
+		host._loadSchedulePresetsForFeature();
 		host.requestUpdate();
 	}
 
@@ -174,7 +174,7 @@ export class DetailsPanelController {
 				editingState: this.editor.editingState, stateEditValue: this.editor.stateEditValue,
 			},
 			scheduling: buildDetailsPanelSchedulingModel({
-				feature, iterations: this.host.iterations,
+				feature, presets: this.host.schedulePresets,
 				childrenByParent: sel.feature.getChildrenByParentMap(), orig: feature.original, today,
 			}),
 			capacity: buildDetailsPanelCapacityModel({
@@ -191,21 +191,21 @@ export class DetailsPanelController {
 		};
 	}
 
-	async loadIterations() {
+	async loadSchedulePresets() {
 		const host = this.host;
 		const feature = host.feature;
 		const work = this.capture();
 		const request = ++this._iterationRequest;
 		if (!feature) {
-			host.iterations = [];
+			host.schedulePresets = [];
 			return;
 		}
 		const projectId = feature.project ? String(feature.project).trim() : '';
-		host.iterations = sel.feature.getIterationsForProject(projectId);
+		host.schedulePresets = sel.feature.getSchedulePresetsForProject(projectId);
 		await host.updateComplete;
 		if (!this.isCurrent(work) || request !== this._iterationRequest) return;
 		// Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
 		const select = host.shadowRoot.querySelector('.iteration-select');
-		if (select) select.value = feature.iterationPath ? feature.iterationPath : '';
+		if (select) select.value = this.getPresentationModel(new Date().toISOString().slice(0, 10)).scheduling.selectedPresetId;
 	}
 }

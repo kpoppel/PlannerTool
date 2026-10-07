@@ -325,16 +325,29 @@ class WorkItemOperations:
         wit = self.client.wit_client
 
         ops = []
+        clearing_schedule = start is None and end is None
+        existing_fields = None
+        if start is None or end is None:
+            existing_fields = wit.get_work_item(
+                id=work_item_id,
+                fields=['System.TeamProject', 'Microsoft.VSTS.Scheduling.StartDate',
+                        'Microsoft.VSTS.Scheduling.TargetDate'],
+            ).fields
+        if clearing_schedule:
+            ops.append({'op': 'replace', 'path': '/fields/System.IterationPath',
+                        'value': existing_fields['System.TeamProject']})
         # Use "remove" to clear a field (None value); "replace" to set a new value.
         # ADO rejects op:replace with a null value, so we must use op:remove to clear.
         if start is not _UNSET:
             if start is None:
-                ops.append({"op": "remove", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate"})
+                if 'Microsoft.VSTS.Scheduling.StartDate' in existing_fields:
+                    ops.append({"op": "remove", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate"})
             else:
                 ops.append({"op": "replace", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate", "value": start})
         if end is not _UNSET:
             if end is None:
-                ops.append({"op": "remove", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate"})
+                if 'Microsoft.VSTS.Scheduling.TargetDate' in existing_fields:
+                    ops.append({"op": "remove", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate"})
             else:
                 ops.append({"op": "replace", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate", "value": end})
 

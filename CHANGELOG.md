@@ -16,6 +16,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Normalize ADO scheduling paths consistently, verify relative request paths against live ADO, and expose generic date presets with backend-owned atomic schedule clearing.
 - Excluded ADO Removed-category work from planning calculations, honored admin display states, and scoped sidebar state/type choices to presentable content.
 - Load bounded ADO ancestor paths across unseeded plans and show labeled featureboard context cards without importing sibling branches or partial-plan costs.
 - Added a tested ADO Child-traversal client helper with batched reads and per-project TaskCategory boundaries.

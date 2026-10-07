@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, BackendPort
-from planner_lib.backend.adapter import AzureAdapter
+from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
 from planner_lib.backend.errors import (
     BackendAuthError,
     BackendConfigError,
@@ -180,11 +180,8 @@ class AzureDevOpsBackend(BackendPort):
                 return {}
 
             raw_roots = [str(r) for r in (raw_roots or []) if str(r).strip()]
-            # Azure DevOps expects "<Project>\Iteration\<sub-path>".
-            # The config stores only the sub-path, so prepend the full prefix.
-            root_paths = [f"{source_project}\\Iteration\\{r}" for r in raw_roots] if raw_roots else []
             iteration_map: Dict[str, Any] = {}
-            for root in (root_paths or [None]):
+            for root in (raw_roots or [None]):
                 try:
                     iterations = client.get_iterations(source_project, root_path=root)
                     for it in iterations:
@@ -261,9 +258,8 @@ class AzureDevOpsBackend(BackendPort):
 
     @staticmethod
     def _strip_iteration_segment(path: str) -> str:
-        """Remove leading 'Iteration' / 'Iterations' segment from an ADO path."""
-        import re
-        return re.sub(r'^[^\\]+\\Iterations?\\?', '', path)
+        """Return the project-qualified work-item form of a classification path."""
+        return normalize_iteration_path(path)
 
     # ------------------------------------------------------------------
     # BackendPort: fetch_tasks
@@ -355,7 +351,10 @@ class AzureDevOpsBackend(BackendPort):
                             task.get('_inferred_start', False) or task.get('_inferred_end', False)
                         ):
                             iteration_map = iteration_map_for(area, raw['adoProject'])
-                            iteration = iteration_map.get(task.get('iterationPath'))
+                            iteration_path = task.get('iterationPath')
+                            iteration = iteration_map.get(
+                                normalize_iteration_path(iteration_path) if iteration_path else None
+                            )
                             for field, date_field, inferred in (
                                 ('start', 'startDate', '_inferred_start'),
                                 ('end', 'finishDate', '_inferred_end'),
@@ -674,11 +673,8 @@ class AzureDevOpsBackend(BackendPort):
         with self._conn.connect(pat) as client:
             iteration_map: Dict[str, Any] = {}
             for raw_root in (root_paths or [None]):
-                # Construct the full ADO path: "<project>\Iteration\<sub-path>".
-                # raw_root is a plain sub-path from iterations.yml (e.g. "TeamA\Platform").
-                root = f"{project}\\Iteration\\{raw_root}" if raw_root else None
                 try:
-                    for it in client.get_iterations(project, root_path=root):
+                    for it in client.get_iterations(project, root_path=raw_root):
                         raw_path = it.get('path', '')
                         norm = self._strip_iteration_segment(raw_path)
                         if norm:
@@ -688,7 +684,7 @@ class AzureDevOpsBackend(BackendPort):
                                 'name': it.get('name'),
                             }
                 except Exception as exc:
-                    logger.warning("Failed to fetch iterations for root '%s': %s", root, exc)
+                    logger.warning("Failed to fetch iterations for root '%s': %s", raw_root, exc)
             return iteration_map
 
     # ------------------------------------------------------------------

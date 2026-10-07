@@ -32,7 +32,8 @@ def _make_backend(config):
     return backend
 
 
-def test_build_iteration_map_uses_project_iteration_uuid_and_iteration_set():
+@pytest.mark.parametrize('prefix', ['IterationsProject', '\\IterationsProject'])
+def test_build_iteration_map_uses_project_iteration_uuid_and_iteration_set(prefix):
     config = _FakeConfig(
         project_map=[
             {
@@ -56,7 +57,7 @@ def test_build_iteration_map_uses_project_iteration_uuid_and_iteration_set():
     client = MagicMock()
     client.get_iterations.return_value = [
         {
-            'path': 'IterationsProject\\Iteration\\Platform\\Sprint 1',
+            'path': f'{prefix}\\Iteration\\Platform\\Sprint 1',
             'startDate': '2026-01-01',
             'finishDate': '2026-01-14',
             'name': 'Sprint 1',
@@ -67,10 +68,10 @@ def test_build_iteration_map_uses_project_iteration_uuid_and_iteration_set():
 
     client.get_iterations.assert_called_once_with(
         'IterationsProject',
-        root_path='IterationsProject\\Iteration\\Platform',
+        root_path='Platform',
     )
     assert result == {
-        'Platform\\Sprint 1': {
+        'IterationsProject\\Platform\\Sprint 1': {
             'startDate': '2026-01-01',
             'finishDate': '2026-01-14',
             'name': 'Sprint 1',
@@ -97,6 +98,30 @@ def test_build_iteration_map_skips_projects_without_iteration_set_association():
 
     client.get_iterations.assert_not_called()
     assert result == {}
+
+
+@pytest.mark.parametrize('explicit_start', [None, '2026-01-03'])
+def test_adapter_matches_work_item_path_and_preserves_explicit_dates(explicit_start):
+    task = AzureAdapter().to_domain(
+        raw_wi={'id': '1', 'iterationPath': '\\Project/Platform/Sprint 1',
+                'startDate': explicit_start, 'finishDate': None},
+        project_slug='plan', team_repository=MagicMock(), type_canonical={},
+        iteration_map={'Project\\Platform\\Sprint 1': {
+            'startDate': '2026-01-01', 'finishDate': '2026-01-14',
+        }},
+    )
+    assert task['start'] == (explicit_start if explicit_start else '2026-01-01')
+    assert task['end'] == '2026-01-14'
+    assert task.get('_inferred_start', False) == (explicit_start is None)
+    assert task['_inferred_end'] is True
+
+
+def test_fixture_backend_uses_project_qualified_classification_paths():
+    result = MockFixtureBackend._flatten_iter_tree({
+        'path': '\\Project\\Iteration\\Platform\\Sprint', 'name': 'Sprint',
+        'attributes': {'startDate': '2026-01-01', 'finishDate': '2026-01-14'},
+    })
+    assert list(result) == ['Project\\Platform\\Sprint']
 
 
 def test_fetch_tasks_attaches_failed_area_path_to_configuration_error():

@@ -5,6 +5,7 @@ Provides the single authoritative source for iteration data.
 from __future__ import annotations
 
 import logging
+import hashlib
 from datetime import date as _date
 from typing import Any, Dict, List, Optional
 
@@ -133,13 +134,27 @@ class IterationRepository:
                 continue
 
             values = item.get('values') if isinstance(item.get('values'), list) else []
+            iterations = self._normalize_cached_values(values)
+            presets = []
+            for iteration in iterations:
+                if not iteration['startDate'] or not iteration['finishDate']:
+                    continue
+                start = _date.fromisoformat(iteration['startDate'].split('T')[0]).isoformat()
+                end = _date.fromisoformat(iteration['finishDate'].split('T')[0]).isoformat()
+                if start > end:
+                    raise ValueError(f'Invalid date preset range in set {set_id}: {iteration["name"]}')
+                presets.append({
+                    'id': hashlib.sha256(f'{set_id}\0{iteration["path"]}'.encode()).hexdigest(),
+                    'label': iteration['name'], 'start': start, 'end': end,
+                })
             out[set_id] = {
                 'id': set_id,
                 'name': str(item.get('name') or set_id),
                 'sourceProject': str(item.get('source_project') or '').strip(),
                 'rootPath': str(item.get('root_path') or '').strip() or None,
                 'cachedAt': item.get('cached_at'),
-                'iterations': self._normalize_cached_values(values),
+                'iterations': iterations,
+                'presets': presets,
             }
 
         return out

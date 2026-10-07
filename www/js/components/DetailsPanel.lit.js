@@ -15,7 +15,7 @@ export class DetailsPanelLit extends LitElement {
   static properties = {
     feature: { type: Object },
     open: { type: Boolean },
-    iterations: { type: Array },
+    schedulePresets: { type: Array },
     editingCapacityTeam: { type: String, noAccessor: true },
     showAddTeamPopover: { type: Boolean, noAccessor: true },
   };
@@ -27,7 +27,7 @@ export class DetailsPanelLit extends LitElement {
     this._controller = new DetailsPanelController(this);
     this.feature = null;
     this.open = false;
-    this.iterations = [];
+    this.schedulePresets = [];
     this.editingCapacityTeam = null; // Track which team pill is being edited
     this.showAddTeamPopover = false; // Track if add team popover is visible
     this.editingState = false;
@@ -181,23 +181,6 @@ export class DetailsPanelLit extends LitElement {
       end,
       shiftChildren: false,
     }]);
-  }
-
-  /**
-   * Returns the iteration path whose dates exactly match the feature's current
-   * start/end, or null if no iteration's bounds match (dates overridden).
-   */
-  _activeIterationPath(feature, iterations) {
-    if (!feature || !feature.start || !feature.end || !iterations || !iterations.length) {
-      return null;
-    }
-    const match = iterations.find(
-      (it) =>
-        it.startDate && it.finishDate &&
-        it.startDate.slice(0, 10) === feature.start &&
-        it.finishDate.slice(0, 10) === feature.end
-    );
-    return match ? match.path : null;
   }
 
   hide() {
@@ -373,39 +356,16 @@ export class DetailsPanelLit extends LitElement {
 
   updated(changedProps) {
     if (changedProps.has('feature') || changedProps.has('open')) {
-      // load iterations whenever the panel opens or the feature changes.
+      // Load date presets whenever the panel opens or the feature changes.
       // Checking 'open' ensures we reload when the same card is reopened after
       // the panel was closed — in that case 'feature' hasn't changed reference
       // so Lit would not flag it as changed.
-      this._loadIterationsForFeature();
+      this._loadSchedulePresetsForFeature();
     }
   }
 
-  async _loadIterationsForFeature() {
-    return this._controller.loadIterations();
-  }
-
-  _formatIterationLabel(it) {
-    if (!it) return '';
-    const name = it.name ? it.name : this._stripIterationPrefix(it.path);
-    const start = it.startDate ? it.startDate.slice(0, 10) : null;
-    const end = it.finishDate ? it.finishDate.slice(0, 10) : null;
-
-    if (start && end) {
-      return `${name} (${start} to ${end})`;
-    } else if (start) {
-      return `${name} (from ${start})`;
-    } else if (end) {
-      return `${name} (until ${end})`;
-    }
-    return name;
-  }
-
-  _stripIterationPrefix(path) {
-    if (!path || typeof path !== 'string') return path;
-    const m = path.match(/^(.+?)\\Iteration\\(.+)$/);
-    if (m) return m[2];
-    return path;
+  async _loadSchedulePresetsForFeature() {
+    return this._controller.loadSchedulePresets();
   }
 
   _onStartDateChange(value) {
@@ -433,36 +393,23 @@ export class DetailsPanelLit extends LitElement {
   _clearDates() {
     if (!this.feature) return;
     try {
-      // Clearing dates fully unplans the task — the iteration preset is also
-      // cleared because keeping a sprint label without any dates would be
-      // contradictory ("iteration as quick-fill preset" paradigm).
-      if (this.feature.iterationPath) {
-        cmd.feature.updateFeatureField(this.feature.id, 'iterationPath', null);
-      }
       cmd.feature.updateFeatureDates([{ id: this.feature.id, start: null, end: null }]);
     } catch (err) {
       console.warn('Failed to clear dates', err);
     }
   }
 
-  async _onIterationChange(path) {
-    if (!path) return;
-    const it = this.iterations.find(
-      (iteration) => iteration.path === path || iteration.path.endsWith(path)
-    );
-    if (!it) return;
-    const start = it.startDate ? it.startDate.slice(0, 10) : null;
-    const end = it.finishDate ? it.finishDate.slice(0, 10) : null;
+  async _onSchedulePresetChange(id) {
+    if (!id) return;
+    const preset = this.schedulePresets.find((item) => item.id === id);
+    if (!preset) return;
     if (!this.feature) return;
     try {
-      // Persist the iterationPath field first so it is included in the override
-      cmd.feature.updateFeatureField(this.feature.id, 'iterationPath', path);
-      // Then update dates (preserves iterationPath already stored in override)
-      if (start && end) {
-        cmd.feature.updateFeatureDates([{ id: this.feature.id, start, end }]);
-      }
+      cmd.feature.updateFeatureDates([{
+        id: this.feature.id, start: preset.start, end: preset.end,
+      }]);
     } catch (err) {
-      console.warn('Failed to update iteration', err);
+      console.warn('Failed to apply schedule preset', err);
     }
   }
 
@@ -520,7 +467,7 @@ export class DetailsPanelLit extends LitElement {
           ${renderDetailsPanelScheduling({
             model: model.scheduling,
             actions: this._controller.bindActions({
-              selectIteration: (path) => this._onIterationChange(path),
+              selectPreset: (id) => this._onSchedulePresetChange(id),
               changeStart: (value) => this._onStartDateChange(value),
               changeEnd: (value) => this._onEndDateChange(value),
               snapStart: () => this._snapStartDate(),

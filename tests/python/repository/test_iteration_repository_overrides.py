@@ -192,3 +192,29 @@ def test_list_iteration_sets_returns_set_id_keyed_payload():
     assert result["set-a"]["sourceProject"] == "TeamA"
     assert result["set-a"]["rootPath"] == "RootA"
     assert len(result["set-a"]["iterations"]) == 1
+    preset, = result["set-a"]["presets"]
+    iteration, = result["set-a"]["iterations"]
+    assert set(preset) == {'id', 'label', 'start', 'end'}
+    assert preset['id'] != iteration['path']
+    assert preset['label'] == iteration['name']
+    assert preset['start'] == iteration['startDate']
+    assert preset['end'] == iteration['finishDate']
+    assert repo.list_iteration_sets()["set-a"]["presets"] == [preset]
+
+
+def test_schedule_presets_use_date_only_values_and_omit_incomplete_nodes():
+    config = _SetWithValuesIterationConfig().fetch_iterations_config()
+    values = config['iteration_sets'][0]['values']
+    values[0]['startDate'] = '2026-02-01T00:00:00Z'
+    values[0]['finishDate'] = '2026-02-14T00:00:00Z'
+    values.extend([
+        {'path': 'TeamA\\RootA', 'name': 'Root', 'startDate': None, 'finishDate': None},
+        {'path': 'TeamA\\RootA\\Partial', 'name': 'Partial',
+         'startDate': '2026-01-01', 'finishDate': None},
+    ])
+    iteration_config = type('Config', (), {'fetch_iterations_config': lambda self: config})()
+    repo = IterationRepository(_FakeBackend(), _SetBasedProjectRepo(),
+                               _FakeCredProvider(), iteration_config)
+    preset, = repo.list_iteration_sets()['set-a']['presets']
+    assert preset['start'] == '2026-02-01'
+    assert preset['end'] == '2026-02-14'

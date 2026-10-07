@@ -49,6 +49,38 @@ async function saveScenario(page, scenario) {
 }
 
 test.describe('Details Panel editing and scheduling', () => {
+  test('generic presets fill dates without writing native schedule fields', async ({ page, editingScenario }) => {
+    await page.route('**/api/iterations', async (route) => {
+      await route.fulfill({ json: { iterationSetsById: {
+        'generic-set': { id: 'generic-set', presets: [
+          { id: 'opaque-preset', label: 'Autumn window', start: '2026-10-01', end: '2026-11-14' },
+        ] },
+      } } });
+    });
+    await page.route('**/api/projects', async (route) => {
+      const response = await route.fetch();
+      const projects = await response.json();
+      await route.fulfill({ json: projects.map((project) => ({
+        ...project, iteration_uuid: 'generic-set',
+      })) });
+    });
+    await page.reload();
+    await clearOverlays(page);
+    await waitForFeatureCards(page);
+    await activateScenario(page, editingScenario);
+    await openParent(page, editingScenario);
+    await page.getByRole('combobox', { name: 'Schedule preset' }).selectOption('opaque-preset');
+    const dates = page.locator('details-panel input[type="date"]');
+    await expect(dates.nth(0)).toHaveValue('2026-10-01');
+    await expect(dates.nth(1)).toHaveValue('2026-11-14');
+    const saved = await saveScenario(page, editingScenario);
+    const override = saved.overrides[editingScenario.parent.id];
+    expect(override.start).toBe('2026-10-01');
+    expect(override.end).toBe('2026-11-14');
+    expect(override.iterationPath).toBe('');
+    expect(override).not.toHaveProperty('presetId');
+  });
+
   test('capacity input changes persist in the editable scenario', async ({ page, editingScenario }) => {
     await openParent(page, editingScenario);
     const input = page.locator('details-panel .capacity-bar-input');
