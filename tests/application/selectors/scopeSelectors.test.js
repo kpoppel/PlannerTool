@@ -61,6 +61,38 @@ function baseState(overrides = {}) {
 }
 
 describe('application/selectors/scopeSelectors', () => {
+  it('keeps historical anchors visible as planned when unplanned work is hidden', () => {
+    const state = baseState({
+      selection: {
+        projectIds: ['selected'],
+        teamIds: [],
+        featureStateNames: ['Closed'],
+        taskFilters: {
+          schedule: { planned: true, unplanned: false },
+          allocation: { allocated: true, unallocated: true },
+          hierarchy: { hasParent: true, noParent: true },
+          relations: { hasLinks: true, noLinks: true },
+        },
+        taskTypeNames: ['Feature'],
+      },
+      view: { options: { showUnplannedWork: false } },
+    });
+    state.baseline.features = [
+      {
+        id: 'anchor', project: 'selected', type: 'Feature', state: 'Closed',
+        start: null, end: null, parentId: null, capacity: [], relations: [],
+        presentation: { renderType: 'anchor', date: '2026-05-19', sourceState: 'Closed' },
+      },
+      {
+        id: 'unplanned', project: 'selected', type: 'Feature', state: 'Closed',
+        start: null, end: null, parentId: null, capacity: [], relations: [],
+      },
+    ];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['anchor']);
+  });
+
   it('shows the scoped tree in plan overview and bounded hierarchy relevance in team focus', () => {
     const state = baseState({
       selection: { taskTypeNames: [], teamIds: ['team-a'] },

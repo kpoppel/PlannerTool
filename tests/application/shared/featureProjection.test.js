@@ -40,6 +40,41 @@ describe('application/shared/featureProjection', () => {
     );
   });
 
+  it('drops an anchor presentation when an effective schedule is added', () => {
+    const state = {
+      baseline: {
+        teams: [],
+        features: [{
+          id: 'closed-unscheduled',
+          state: 'Closed',
+          start: null,
+          end: null,
+          presentation: {
+            renderType: 'anchor', date: '2026-05-19', reason: 'completed-unscheduled',
+            sourceState: 'Closed',
+          },
+          capacity: [],
+        }],
+      },
+      selection: { teamIds: [] },
+      scenarios: {
+        activeId: 's1',
+        items: [{
+          id: 's1',
+          overrides: {
+            'closed-unscheduled': { start: '2026-05-19', end: '2026-05-20' },
+          },
+        }],
+      },
+    };
+
+    const [feature] = deriveEffectiveFeatures(state);
+
+    expect(feature.start).toBe('2026-05-19');
+    expect(feature.end).toBe('2026-05-20');
+    expect(feature.presentation).toBeUndefined();
+  });
+
   it('supports raw merge mode for non-selector paths', () => {
     const state = {
       baseline: {

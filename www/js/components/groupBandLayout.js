@@ -26,6 +26,7 @@
 import { computePosition, laneHeight } from './board-utils.js';
 import { sel } from '../application/imports.js';
 import { RANK_GAP, rankBetween } from '../application/shared/ordering.js';
+import { hasTimelinePlacement } from '../application/shared/featurePresentation.js';
 
 /** Height of a group pill row in px. */
 export const GROUP_PILL_HEIGHT = 28;
@@ -382,7 +383,7 @@ export function buildGroupBandItems(
 
     if (packed) {
       const bars = features
-        .filter((f) => f.start && f.end)
+        .filter(hasTimelinePlacement)
         .map((f) => {
           const p = computePosition(f, months);
           return p ? { left: p.left, width: p.width, feature: f } : null;

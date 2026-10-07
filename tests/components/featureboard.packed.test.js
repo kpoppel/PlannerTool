@@ -85,6 +85,25 @@ describe('FeatureBoard._packIntoRows', () => {
     expect(rows[1]).to.have.length(1); // bar(10,200)
   });
 
+  it('includes historical anchors in packed group task rows', () => {
+    const monthDates = [
+      new Date('2026-05-01T00:00:00Z'),
+      new Date('2026-06-01T00:00:00Z'),
+    ];
+    const anchor = {
+      id: 'anchor',
+      project: 'p1',
+      state: 'Closed',
+      start: null,
+      end: null,
+      presentation: { renderType: 'anchor', date: '2026-05-19', sourceState: 'Closed' },
+    };
+
+    const result = buildGroupBandItems([anchor], [], 0, monthDates, true, true, new Set());
+
+    expect(result.items.some((item) => item.feature && item.feature.id === 'anchor')).to.equal(true);
+  });
+
   it('preserves feature references in packed rows', () => {
     const f1 = { id: 'f1', title: 'Feature 1' };
     const f2 = { id: 'f2', title: 'Feature 2' };

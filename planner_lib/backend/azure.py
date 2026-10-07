@@ -452,6 +452,20 @@ class AzureDevOpsBackend(BackendPort):
                     task_types = ['Epic', 'Feature']
                 if task['type'].casefold() in {name.casefold() for name in task_types}:
                     task['presentationPlanIds'].append(plan_id)
+        for task in tasks.values():
+            ado_project = task.get('backendData', {}).get('adoProject')
+            state_categories = categories_by_project.get(ado_project, {})
+            if (state_categories.get(task['state']) != 'Completed'
+                    or task.get('start') or task.get('end') or task.get('iterationPath')):
+                continue
+            anchor_date = _terminal_date(task.get('backendData', {}).get('stateChangeDate'))
+            if anchor_date is not None:
+                task['presentation'] = {
+                    'renderType': 'anchor',
+                    'date': anchor_date.isoformat(),
+                    'reason': 'completed-unscheduled',
+                    'sourceState': task['state'],
+                }
         diagnostics = []
         for (ado_project, code), count in sorted(schedule_issues.items()):
             missing = code == 'schedule_metadata_missing'

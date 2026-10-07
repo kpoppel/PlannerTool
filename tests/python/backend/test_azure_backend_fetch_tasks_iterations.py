@@ -569,6 +569,55 @@ def test_context_prunes_only_wholly_expired_trees():
     assert tasks['9']['sourcePlanIds'] == ['plan-a']
 
 
+def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
+    plan = {'id': 'plan-a', 'area_path': 'A\\plan-a', 'task_types': ['Feature']}
+    seed = _context_seed(1, 'plan-a', (2, 3, 4, 5))
+    seed.update(
+        state='Closed',
+        backendData={**seed['backendData'], 'stateChangeDate': '2026-05-19T14:42:26Z'},
+    )
+    backend, client = _context_backend([seed])
+    backend._config = _FakeConfig([plan], {'iteration_sets': []})
+    backend._build_iteration_map = MagicMock(return_value={})
+    children = [
+        {**_context_seed(2, 'plan-a'), 'state': 'Closed',
+         'stateChangeDate': '2026-04-30T12:40:34Z'},
+        {**_context_seed(3, 'plan-a'), 'state': 'Closed',
+         'startDate': '2026-03-01', 'finishDate': '2026-03-15',
+         'stateChangeDate': '2026-04-30T12:40:34Z'},
+        {**_context_seed(4, 'plan-a'), 'state': 'Closed',
+         'iterationPath': 'A\\Sprint 1', 'stateChangeDate': '2026-04-30T12:40:34Z'},
+        {**_context_seed(5, 'plan-a'), 'state': 'Active',
+         'stateChangeDate': '2026-04-30T12:40:34Z'},
+    ]
+    client.get_linked_work_items.side_effect = lambda roots: [
+        *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
+           'unresolvedChildIds': [], 'traversalBoundary': False} for item in roots],
+        *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
+           'unresolvedChildIds': [], 'traversalBoundary': False} for item in children],
+    ]
+    backend._metadata_service = MagicMock()
+    backend._metadata_service.get_cached.return_value = {
+        'state_categories': {'Active': 'InProgress', 'Closed': 'Completed'},
+    }
+
+    tasks = {task['id']: task for task in backend.fetch_task_context(
+        [seed], {'token': 'test', 'user_id': 'test'},
+    )}
+
+    assert tasks['1']['presentation'] == {
+        'renderType': 'anchor', 'date': '2026-05-19',
+        'reason': 'completed-unscheduled', 'sourceState': 'Closed',
+    }
+    assert tasks['2']['presentation'] == {
+        'renderType': 'anchor', 'date': '2026-04-30',
+        'reason': 'completed-unscheduled', 'sourceState': 'Closed',
+    }
+    assert 'presentation' not in tasks['3']
+    assert 'presentation' not in tasks['4']
+    assert 'presentation' not in tasks['5']
+
+
 @pytest.mark.parametrize(('day', 'expected'), [
     (date(2026, 8, 31), date(2026, 2, 28)),
     (date(2024, 8, 31), date(2024, 2, 29)),

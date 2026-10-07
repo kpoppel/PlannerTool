@@ -1,5 +1,6 @@
 import { DEFAULT_STATE_COLOR_MAP, PALETTE } from '../../services/ColorService.js';
 import { normalizeTaskFilters } from '../shared/taskFilters.js';
+import { hasTimelinePlacement } from '../shared/featurePresentation.js';
 import {
   deriveConfiguredStateSequence,
   deriveAvailableTaskTypes,
@@ -69,7 +70,7 @@ function createFallbackTaskFilterFn(store) {
     const hierarchy = filters.hierarchy;
     const relations = filters.relations;
 
-    const hasDates = !!(feature.start && feature.end);
+    const hasDates = hasTimelinePlacement(feature);
     const hasCapacity = feature.capacity.length > 0;
     const hasParent = !!feature.parentId;
     const hasLinks = feature.relations.length > 0;

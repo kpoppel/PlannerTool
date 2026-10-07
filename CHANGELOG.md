@@ -23,6 +23,7 @@ Template - do not change :
 - Added a tested ADO Child-traversal client helper with batched reads and per-project TaskCategory boundaries.
 - Added backend-owned ADO forest enrichment with source ownership, shared provenance, presentation metadata, and context-cache write-through tests.
 - Enabled canonical hierarchy loading with provenance-based plan selection, configured-type board presentation, and category-bounded hidden-context capacity/cost accounting.
+- Added historical anchor card presentations for completed ADO items without a schedule or iteration, keeping schedule dates unset and treating anchors as planned display placements.
 - Prune ADO hierarchy trees whose accessible members are all completed more than six calendar months ago, while retaining active and recently completed trees whole.
 - Grouped reconciliation review findings into collapsible issue-type sections with instance counts and focused task details.
 - Added a Reconciliation menu toggle to show or hide feature-card markers without changing issue detection.

@@ -8,6 +8,7 @@ import { cmd, sel } from '../application/imports.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { getBoardZoom, findInBoard } from './board-utils.js';
+import { hasTimelinePlacement, isAnchorPresentation } from '../application/shared/featurePresentation.js';
 
 // Minimum visible gap (px) required to the left of a card, within the
 // scroll container's viewport, before its ghost title flips to the right.
@@ -229,6 +230,14 @@ export class FeatureCardLit extends LitElement {
     .feature-card.ghosted:hover {
       opacity: 0.8;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .feature-card.historical-anchor {
+      background: #eef2ef;
+      border-style: dotted;
+      border-color: #718078;
+      border-left-style: solid;
+      border-left-color: var(--project-color, #999);
     }
 
     .feature-card.condensed {
@@ -636,7 +645,7 @@ export class FeatureCardLit extends LitElement {
   }
 
   _getCurrentWidth() {
-    const styled = parseFloat(this.style?.width || '');
+    const styled = parseFloat(this.style.width);
     if (Number.isFinite(styled) && styled > 0) return styled;
     const host = this.clientWidth;
     if (Number.isFinite(host) && host > 0) return host;
@@ -645,8 +654,8 @@ export class FeatureCardLit extends LitElement {
 
   _computeLayoutKey() {
     return [
-      String(this.feature?.id ?? ''),
-      String(this.feature?.title ?? ''),
+      String(this.feature.id),
+      String(this.feature.title),
       Math.round(this._width || 0),
       this.condensed ? '1' : '0',
       this.hideGhostTitle ? '1' : '0',
@@ -668,7 +677,7 @@ export class FeatureCardLit extends LitElement {
     super.connectedCallback();
     // Suppress clicks after drag ends
     this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
-      if (p && String(p.featureId) === String(this.feature?.id)) {
+      if (p && String(p.featureId) === String(this.feature.id)) {
         this._suppressClickUntil = Date.now() + 250;
       }
     });
@@ -678,7 +687,7 @@ export class FeatureCardLit extends LitElement {
     // Keep card deselected when another feature is selected elsewhere
     this._boundOnFeatureSelected = () => {
       const selId = sel.feature.getSelectedFeatureId();
-      const myId = String(this.feature?.id);
+      const myId = String(this.feature.id);
       if (!selId || myId !== selId) {
         if (this.selected) {
           this.selected = false;
@@ -689,23 +698,23 @@ export class FeatureCardLit extends LitElement {
     bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
     // Listen for connected-set updates from the board
     this._boundOnConnectedSet = (payload) => {
-      const ids = payload && payload.ids ? payload.ids : null;
+      const ids = payload.ids;
       this._connectedPrimary =
         payload && payload.primary ? String(payload.primary) : null;
       this._connectedCurrent =
         payload && payload.current ? String(payload.current) : null;
       const id = String(this.feature.id);
-      const inSet = Array.isArray(ids) ? ids.indexOf(id) !== -1 : false;
+      const inSet = ids.indexOf(id) !== -1;
       const isPrimary = inSet && this._connectedCurrent === id;
       if (inSet !== this._connected || isPrimary !== this._connectedIsPrimary) {
         this._connected = inSet;
         this._connectedIsPrimary = isPrimary;
         this.classList.toggle('connected', inSet);
         this.classList.toggle('connected-primary', isPrimary);
-        const root = this._rootCard || this.shadowRoot?.querySelector('.feature-card');
+        const root = this._rootCard ? this._rootCard : this.shadowRoot.querySelector('.feature-card');
         if (root) root.classList.toggle('connected', inSet);
         if (root) root.classList.toggle('connected-primary', isPrimary);
-        this.classList.toggle('dirty', !!this.feature?.dirty);
+        this.classList.toggle('dirty', !!this.feature.dirty);
         this.requestUpdate();
       }
     };
@@ -726,15 +735,15 @@ export class FeatureCardLit extends LitElement {
   }
 
   firstUpdated() {
-    this._rootCard = this.shadowRoot?.querySelector('.feature-card');
+    this._rootCard = this.shadowRoot.querySelector('.feature-card');
   }
 
   updated(changedProperties) {
-    if (!this._rootCard) this._rootCard = this.shadowRoot?.querySelector('.feature-card');
+    if (!this._rootCard) this._rootCard = this.shadowRoot.querySelector('.feature-card');
     const inner = this._rootCard;
-    if (inner) inner.classList.toggle('dirty', !!this.feature?.dirty);
-    this.classList.toggle('dirty', !!this.feature?.dirty);
-    this.setAttribute('data-feature-id', String(this.feature?.id));
+    if (inner) inner.classList.toggle('dirty', !!this.feature.dirty);
+    this.classList.toggle('dirty', !!this.feature.dirty);
+    this.setAttribute('data-feature-id', String(this.feature.id));
 
     const widthNow = this._getCurrentWidth();
     if (widthNow > 0 && widthNow !== this._width) {
@@ -743,7 +752,7 @@ export class FeatureCardLit extends LitElement {
     }
 
     // Schedule layout when title changes; width changes are handled above.
-    const title = this.feature?.title;
+    const title = this.feature.title;
     if (title !== this._lastTitle) {
       this._lastTitle = title;
       this._requestLayout();
@@ -754,7 +763,7 @@ export class FeatureCardLit extends LitElement {
 
   disconnectedCallback() {
     FeatureCardLit._pendingCards.delete(this);
-    this._unsubDragEnd?.();
+    this._unsubDragEnd();
     this.removeEventListener('mousedown', this._onMouseDown);
     if (this._boundOnFeatureSelected)
       bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
@@ -825,12 +834,13 @@ export class FeatureCardLit extends LitElement {
 
   // Transient live-dates used during drag/resize
   setLiveDates(text) {
-    const container = this.shadowRoot?.querySelector?.('.feature-dates');
+    // Lifecycle guard: condensed cards intentionally omit the date row.
+    const container = this.shadowRoot.querySelector('.feature-dates');
     if (!container) return;
     const live = container.querySelector('.dates-live');
     const def = container.querySelector('.dates-default');
     if (live) {
-      live.textContent = text ?? '';
+      live.textContent = text;
       live.style.display = text ? '' : 'none';
     }
     if (def) {
@@ -843,14 +853,14 @@ export class FeatureCardLit extends LitElement {
   }
 
   _handleMouseDown(e) {
-    const rootCard = this._rootCard || this.shadowRoot?.querySelector('.feature-card');
-    if (rootCard?.classList.contains('small-feature')) return;
+    const rootCard = this._rootCard ? this._rootCard : this.shadowRoot.querySelector('.feature-card');
+    if (rootCard.classList.contains('small-feature')) return;
 
-    const path = (e.composedPath && e.composedPath()) || [];
-    const rh = this.shadowRoot?.querySelector('.drag-handle');
+    const path = e.composedPath();
+    const rh = this.shadowRoot.querySelector('.drag-handle');
     if (path.includes(rh)) {
       e.stopPropagation();
-      const datesEl = this.shadowRoot?.querySelector('.feature-dates');
+      const datesEl = this.shadowRoot.querySelector('.feature-dates');
       startResize(
         e,
         this.feature,
@@ -898,11 +908,11 @@ export class FeatureCardLit extends LitElement {
 
   _handleClick(e) {
     if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
-    const path = e.composedPath && e.composedPath();
-    if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
+    const path = e.composedPath();
+    if (path.includes(this.shadowRoot.querySelector('.drag-handle'))) return;
     if (e.detail === 2) return;
 
-    const eff = sel.feature.getEffectiveFeatureById(this.feature?.id) || this.feature;
+    const eff = sel.feature.getEffectiveFeatureById(this.feature.id);
     if (sel.view.getHighlightFeatureRelationMode()) {
       if (this._connected) {
         // Card is already in a connected set — navigate within the set
@@ -927,32 +937,27 @@ export class FeatureCardLit extends LitElement {
     }));
   }
 
-  _handleDoubleClick(e) {    const path = (e.composedPath && e.composedPath()) || [];
-    if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
-    if (this.feature?.id) cmd.feature.revertFeature(this.feature.id);
+  _handleDoubleClick(e) {
+    const path = e.composedPath();
+    if (path.includes(this.shadowRoot.querySelector('.drag-handle'))) return;
+    cmd.feature.revertFeature(this.feature.id);
   }
 
   _renderTeamLoadRow() {
     if (this.condensed) return '';
-    const hasChildren = (() => {
-      try {
-        const map = sel.feature.getChildrenByParentMap();
-        const arr = map?.get?.(this.feature.id);
-        return Array.isArray(arr) && arr.length > 0;
-      } catch (e) {
-        return false;
-      }
-    })();
+    const childrenByParent = sel.feature.getChildrenByParentMap();
+    const childIds = childrenByParent.get(String(this.feature.id));
+    const hasChildren = childIds !== undefined && childIds.length > 0;
 
     const orgBox = html`
       <span class="team-load-box" style="background: #23344d;" title="Organization load">
-        ${this.feature.orgLoad || '0%'}
+        ${this.feature.orgLoad === undefined ? '0%' : this.feature.orgLoad}
       </span>
     `;
 
-    const teamBoxes =
-      this.feature.capacity
-        ?.map((tl) => {
+    // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+    const teamBoxes = this.feature.capacity === undefined ? [] :
+      this.feature.capacity.map((tl) => {
           const team = this.teams.find((t) => t.id === tl.team);
           if (!team) return null;
           return html`
@@ -964,8 +969,7 @@ export class FeatureCardLit extends LitElement {
               ${tl.capacity}
             </span>
           `;
-        })
-        .filter(Boolean) || [];
+        }).filter(Boolean);
 
     return html`
       <div
@@ -1007,7 +1011,7 @@ export class FeatureCardLit extends LitElement {
   }
 
   _escapeHtml(s) {
-    return String(s || '')
+    return String(s)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -1015,7 +1019,7 @@ export class FeatureCardLit extends LitElement {
   }
 
   _renderGhostTitleText() {
-    const title = this.feature?.title || '';
+    const title = this.feature.title;
     if (!title) return '';
     if (this.condensed) return title;
 
@@ -1028,8 +1032,15 @@ export class FeatureCardLit extends LitElement {
   }
 
   render() {
-    const isUnplanned = !this.feature.start || !this.feature.end;
-    const projectColor = this.project?.color || '#ccc';
+    const isAnchor = isAnchorPresentation(this.feature);
+    const isUnplanned = !hasTimelinePlacement(this.feature);
+    const presentation = this.feature.presentation;
+    const dateLabel = isUnplanned
+      ? ''
+      : isAnchor
+        ? `${this.feature.state} · ${presentation.date}`
+        : `${this.feature.start} → ${this.feature.end}`;
+    const projectColor = this.project && this.project.color ? this.project.color : '#ccc';
     const isCompleted = sel.filter.getFeatureStateCategory(this.feature.state) === 'Completed';
 
     const cardClasses = {
@@ -1039,6 +1050,7 @@ export class FeatureCardLit extends LitElement {
       condensed: this.condensed,
       ghosted: isUnplanned,
       completed: isCompleted,
+      'historical-anchor': isAnchor,
       'in-group': !!this.groupColor,
       'has-children': this.foldCount > 0,
     };
@@ -1051,6 +1063,7 @@ export class FeatureCardLit extends LitElement {
         data-id=${this.feature.id}
         role="listitem"
         draggable="false"
+        title=${isAnchor ? `${this.feature.state} · historical anchor · ${presentation.date}` : ''}
         style="--project-color: ${projectColor}; --group-color: ${this.groupColor}"
         @click=${this._handleClick}
         @dblclick=${this._handleDoubleClick}
@@ -1084,7 +1097,7 @@ export class FeatureCardLit extends LitElement {
           html`
             <div class="feature-dates">
               <span class="dates-default"
-                >${this.feature.start} → ${this.feature.end}</span
+                >${dateLabel}</span
               >
               <span class="dates-live" aria-hidden="true" style="display:none"></span>
             </div>

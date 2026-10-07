@@ -131,10 +131,8 @@ export function assignFeatureToSwimlane(
       if (!current) break;
       const lane = swimlaneById.get(String(current.project));
       if (!lane) continue;
-      const followsContextParent = feature.ancestorOnly === true || current.ancestorOnly === true;
-      if (!followsContextParent && !featureCanPresent(feature, new Set([String(lane.id)]))) continue;
       if (lane.type === 'plan') return lane.id;
-      if (expandedPlanId === null || followsContextParent) expandedPlanId = lane.id;
+      if (expandedPlanId === null) expandedPlanId = lane.id;
     }
     if (expandedPlanId !== null) return expandedPlanId;
   }

@@ -3,6 +3,7 @@ import { parseDate } from './util.js';
 import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents } from '../core/EventRegistry.js';
+import { getTimelineStart, getTimelineEnd, isAnchorPresentation } from '../application/shared/featurePresentation.js';
 
 // Helper to locate elements inside timeline-board's render root when TimelineBoard
 // uses shadow DOM.
@@ -75,7 +76,7 @@ export const setBoardZoom = (zoom) => {
 };
 
 export const computePosition = (feature, monthsArg) => {
-  const months = monthsArg || getTimelineMonths();
+  const months = monthsArg === undefined ? getTimelineMonths() : monthsArg;
   const monthWidth = getMonthWidth();
   if (
     !_cachedMonthsRef ||
@@ -83,6 +84,11 @@ export const computePosition = (feature, monthsArg) => {
     _cachedMonthsRef[0].getTime() !== months[0].getTime()
   )
     _buildMonthCache(months);
+
+  if (isAnchorPresentation(feature)) {
+    const anchorDate = getTimelineStart(feature);
+    return computePosition({ start: anchorDate, end: getTimelineEnd(feature) }, months);
+  }
 
   // Handle unplanned features
   if (!feature.start || !feature.end) {

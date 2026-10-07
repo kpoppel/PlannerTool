@@ -15,6 +15,27 @@ describe('application/selectors/filterSelectors', () => {
     expect(selectors.getSelectedTaskTypeNames()).toEqual(['Feature', 'Epic']);
   });
 
+  it('treats historical anchor presentations as planned without changing task dates', () => {
+    const state = createInitialAppState();
+    state.selection.taskFilters.schedule = { planned: true, unplanned: false };
+    const selectors = createFilterSelectors({ getState: () => state });
+    const anchor = {
+      id: 'closed-unscheduled',
+      state: 'Closed',
+      start: null,
+      end: null,
+      capacity: [],
+      relations: [],
+      presentation: { renderType: 'anchor', date: '2026-05-19', sourceState: 'Closed' },
+    };
+    const unplanned = { ...anchor, id: 'truly-unplanned', presentation: undefined };
+
+    expect(selectors.getTaskFilterExclusion(anchor)).toBe(null);
+    expect(selectors.getTaskFilterExclusion(unplanned)).toBe('schedule');
+    expect(anchor.start).toBe(null);
+    expect(anchor.end).toBe(null);
+  });
+
   it('does not offer context-only types in ordinary task menus', () => {
     const state = createInitialAppState();
     state.baseline.features = [

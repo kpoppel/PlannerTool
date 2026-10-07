@@ -7,6 +7,7 @@ import {
   featureMatchesPlans,
 } from '../shared/featureProjection.js';
 import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
+import { hasTimelinePlacement } from '../shared/featurePresentation.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
@@ -173,7 +174,7 @@ export function createScopeSelectors(store) {
       if (!canPresentInContext(feature, context)) return 'presentation';
       const dimension = filterSelectors.getTaskFilterExclusion(feature);
       if (dimension === 'schedule'
-        || (!state.view.options.showUnplannedWork && (!feature.start || !feature.end))) return 'schedule';
+        || (!state.view.options.showUnplannedWork && !hasTimelinePlacement(feature))) return 'schedule';
       if (dimension === 'allocation') return 'allocation';
       if (dimension === 'hierarchy'
         || (state.view.options.showOnlyProjectHierarchy

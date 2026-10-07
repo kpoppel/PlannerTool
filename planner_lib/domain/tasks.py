@@ -12,7 +12,7 @@ any changes.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from typing_extensions import TypedDict, NotRequired
+from typing_extensions import Literal, TypedDict, NotRequired
 
 
 class DomainRelation(TypedDict):
@@ -24,6 +24,13 @@ class DomainRelation(TypedDict):
 class DomainCapacity(TypedDict):
     team: str     # team ID (slug)
     capacity: float
+
+
+class AnchorPresentation(TypedDict):
+    renderType: Literal['anchor']
+    date: str
+    reason: Literal['completed-unscheduled']
+    sourceState: str
 
 
 class DomainTask(TypedDict):
@@ -47,6 +54,7 @@ class DomainTask(TypedDict):
     childrenComplete: NotRequired[bool]
     start: NotRequired[Optional[str]]      # ISO date YYYY-MM-DD or None
     end: NotRequired[Optional[str]]        # ISO date YYYY-MM-DD or None
+    presentation: NotRequired[AnchorPresentation]
     iterationPath: NotRequired[Optional[str]]
     parentId: NotRequired[Optional[str]]
     relations: NotRequired[List[DomainRelation]]

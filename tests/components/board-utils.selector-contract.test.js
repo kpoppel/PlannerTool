@@ -16,7 +16,9 @@ vi.mock('../../www/js/application/imports.js', () => ({
   },
 }));
 
-import { laneHeight, getBoardZoom, setBoardZoom } from '../../www/js/components/board-utils.js';
+import {
+  computePosition, laneHeight, getBoardZoom, setBoardZoom,
+} from '../../www/js/components/board-utils.js';
 
 describe('board-utils selector seam', () => {
   beforeEach(() => {
@@ -41,5 +43,22 @@ describe('board-utils selector seam', () => {
     mockView.condensedCards = true;
     setBoardZoom(0.75);
     expect(laneHeight()).to.equal(21);
+  });
+
+  it('positions an anchor on its historical date without assigning schedule dates', () => {
+    const months = Array.from({ length: 12 }, (_, monthIndex) => new Date(2026, monthIndex, 1));
+    const anchor = {
+      state: 'Closed',
+      start: null,
+      end: null,
+      presentation: { renderType: 'anchor', date: '2026-05-19', sourceState: 'Closed' },
+    };
+
+    expect(computePosition(anchor, months)).to.deep.equal(computePosition({
+      start: '2026-05-19',
+      end: '2026-05-19',
+    }, months));
+    expect(anchor.start).to.equal(null);
+    expect(anchor.end).to.equal(null);
   });
 });

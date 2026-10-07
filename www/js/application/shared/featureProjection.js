@@ -56,7 +56,8 @@ export function computeDirtyFields(base, override) {
 export function applyFeatureOverride(baseFeature, override, options = {}) {
   if (options.includeDirtyMetadata === false) {
     if (!override) return { ...baseFeature };
-    return { ...baseFeature, ...override };
+    const effective = { ...baseFeature, ...override };
+    return clearInvalidAnchorPresentation(baseFeature, effective);
   }
 
   const organizationTeamIds = options.organizationTeamIds;
@@ -73,7 +74,17 @@ export function applyFeatureOverride(baseFeature, override, options = {}) {
     dirty: changedFields.length > 0,
   };
   effective.orgLoad = computeFeatureOrgLoad(effective, organizationTeamIds);
-  return effective;
+  return clearInvalidAnchorPresentation(baseFeature, effective);
+}
+
+function clearInvalidAnchorPresentation(baseFeature, effectiveFeature) {
+  const presentation = baseFeature.presentation;
+  if (presentation && presentation.renderType === 'anchor'
+      && (effectiveFeature.start || effectiveFeature.end || effectiveFeature.iterationPath
+        || effectiveFeature.state !== baseFeature.state)) {
+    delete effectiveFeature.presentation;
+  }
+  return effectiveFeature;
 }
 
 export function deriveEffectiveFeatures(state, options = {}) {

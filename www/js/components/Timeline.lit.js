@@ -8,6 +8,11 @@ import { FeatureEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { parseDate, addMonths, dateRangeInclusiveMonths } from './util.js';
 import { featureFlags } from '../config.js';
 import { findInBoard } from './board-utils.js';
+import {
+  getTimelineEnd,
+  getTimelineStart,
+  hasTimelinePlacement,
+} from '../application/shared/featurePresentation.js';
 
 // Timeline rendering config (kept here to centralize cross-module use)
 export const TIMELINE_CONFIG = {
@@ -32,7 +37,8 @@ export const ZOOM_LEVELS = {
  * @returns {number} Month width in pixels
  */
 export function getMonthWidthForScale(scale) {
-  return ZOOM_LEVELS[scale]?.monthWidth ?? 120;
+  const zoom = ZOOM_LEVELS[scale];
+  return zoom === undefined ? 120 : zoom.monthWidth;
 }
 
 let monthsCache = [];
@@ -150,16 +156,20 @@ export class Timeline extends LitElement {
    * @param {Array} newMonths - Array of Date objects
    */
   async renderMonths(newMonths) {
-    const oldMonths = this.months ?? [];
-    const nextMonths = newMonths ?? [];
+    const oldMonths = this.months;
+    const nextMonths = newMonths;
     // shallow compare by length and first/last timestamps to avoid expensive re-renders
     let same = false;
     if (oldMonths.length === nextMonths.length) {
-      const oldFirst = oldMonths[0]?.getTime();
-      const newFirst = nextMonths[0]?.getTime();
-      const oldLast = oldMonths[oldMonths.length - 1]?.getTime();
-      const newLast = nextMonths[nextMonths.length - 1]?.getTime();
-      same = oldFirst === newFirst && oldLast === newLast;
+      if (oldMonths.length === 0) {
+        same = true;
+      } else {
+        const oldFirst = oldMonths[0].getTime();
+        const newFirst = nextMonths[0].getTime();
+        const oldLast = oldMonths[oldMonths.length - 1].getTime();
+        const newLast = nextMonths[nextMonths.length - 1].getTime();
+        same = oldFirst === newFirst && oldLast === newLast;
+      }
     }
     this.months = nextMonths;
     if (!same) {
@@ -168,7 +178,8 @@ export class Timeline extends LitElement {
     }
 
     // Emit event after render completes
-    this.bus?.emit?.(TimelineEvents.MONTHS);
+    // Lifecycle guard: the board assigns the event bus after the element is mounted.
+    if (this.bus) this.bus.emit(TimelineEvents.MONTHS);
   }
 
   updated(changedProperties) {
@@ -200,16 +211,16 @@ customElements.define('timeline-lit', Timeline);
 // ------- Timeline adapter API (replaces legacy ../timeline.js) -------
 
 function computeRange() {
-  const feats = sel.feature?.getEffectiveFeatures?.() || [];
-  if (!feats?.length) {
+  const feats = sel.feature.getEffectiveFeatures();
+  if (!feats.length) {
     const today = new Date();
     return { min: today, max: addMonths(today, 6) };
   }
 
-  // Unplanned features carry no dates and must not stretch the timeline range.
-  const plannedFeats = feats.filter((f) => f.start && f.end);
+  // Historical anchors contribute their display date without becoming scheduled work.
+  const plannedFeats = feats.filter(hasTimelinePlacement);
 
-  if (!plannedFeats?.length) {
+  if (!plannedFeats.length) {
     const today = new Date();
     return { min: today, max: addMonths(today, 6) };
   }
@@ -219,8 +230,8 @@ function computeRange() {
   let max = null;
 
   for (const f of plannedFeats) {
-    const s = parseDate(f.start);
-    const e = parseDate(f.end);
+    const s = parseDate(getTimelineStart(f));
+    const e = parseDate(getTimelineEnd(f));
 
     // Skip features with invalid dates
     if (!s || !e || isNaN(s.getTime()) || isNaN(e.getTime())) continue;
@@ -243,22 +254,22 @@ function computeRange() {
 function ensureComponentMounted(header) {
   if (!timelineElement) {
     // If the header argument is already a timeline-lit element, use it directly
-    if (header?.tagName?.toLowerCase() === 'timeline-lit') {
+    if (header && header.tagName.toLowerCase() === 'timeline-lit') {
       timelineElement = header;
     } else {
-      // prefer existing element in DOM under the header or globally
-      timelineElement =
-        header?.querySelector?.('timeline-lit') ?? findInBoard('timeline-lit');
+      // Lifecycle guard: the timeline header may be absent while the board mounts.
+      timelineElement = header ? header.querySelector('timeline-lit') : null;
+      if (!timelineElement) timelineElement = findInBoard('timeline-lit');
       if (!timelineElement && customElements.get('timeline-lit')) {
         timelineElement = document.createElement('timeline-lit');
         timelineElement.bus = bus;
         timelineElement.monthWidth = TIMELINE_CONFIG.monthWidth;
-        if (header?.appendChild) {
+        if (header) {
           header.innerHTML = '';
           header.appendChild(timelineElement);
         }
-        header?.classList?.remove('timeline-header');
-        if (header?.style) {
+        if (header) {
+          header.classList.remove('timeline-header');
           header.style.position = 'sticky';
           header.style.top = '0';
           header.style.zIndex = '10';
@@ -403,8 +414,9 @@ export async function initTimeline() {
 }
 
 async function renderTimelineHeader(payload) {
-  const shouldInstrument = featureFlags?.timelineInstrumentation;
+  const shouldInstrument = featureFlags.timelineInstrumentation;
   let t0;
+  // Platform guard: performance timing is not available in every browser runtime.
   if (shouldInstrument && typeof performance !== 'undefined' && performance.now)
     t0 = performance.now();
   const header = findInBoard('timeline-lit');
@@ -414,9 +426,10 @@ async function renderTimelineHeader(payload) {
   // monthsCache, do a cheap check of only the changed features to determine
   // whether any of them fall outside the current month range. If none do,
   // we can skip recomputing months and avoid a header re-render.
-  if (monthsCache?.length && payload?.ids?.length) {
+  // Boundary guard: change events may omit IDs when the whole feature set changed.
+  if (monthsCache.length && payload && payload.ids && payload.ids.length) {
     try {
-      const feats = sel.feature?.getEffectiveFeatures?.() || [];
+      const feats = sel.feature.getEffectiveFeatures();
       const firstMonthStart = monthsCache[0].getTime();
       const lastMonth = monthsCache[monthsCache.length - 1];
       const afterLastMonth = new Date(
@@ -428,9 +441,10 @@ async function renderTimelineHeader(payload) {
       for (const id of payload.ids) {
         const f = feats.find((x) => x.id === id);
         if (!f) continue;
-        const s = parseDate(f.start);
-        const e = parseDate(f.end);
+        const s = parseDate(getTimelineStart(f));
+        const e = parseDate(getTimelineEnd(f));
         if (
+          !hasTimelinePlacement(f) ||
           !(s instanceof Date) ||
           isNaN(s.getTime()) ||
           !(e instanceof Date) ||
@@ -487,7 +501,8 @@ async function renderTimelineHeader(payload) {
 
   // Use mounted Lit component
   const comp = ensureComponentMounted(header);
-  if (comp?.renderMonths) {
+  // Lifecycle guard: a timeline element may not be mounted in this board yet.
+  if (comp) {
     comp.bus = bus;
     comp.monthWidth = TIMELINE_CONFIG.monthWidth;
     await comp.renderMonths(monthsCache).catch(() => {});
@@ -639,11 +654,11 @@ export function ensureScrollToMonth(date) {
   // Simplified: accept only a Date (or default to today) and attempt a minimal
   // retry using the TimelineEvents.MONTHS bus event and a short timeout.
   try {
-    const monthWidth = TIMELINE_CONFIG.monthWidth ?? 120;
+    const monthWidth = TIMELINE_CONFIG.monthWidth;
     const targetDate = date instanceof Date && !isNaN(date.getTime()) ? date : new Date();
 
     const resolveIndex = () => {
-      if (!monthsCache?.length) return -1;
+      if (!monthsCache.length) return -1;
       return monthsCache.findIndex(
         (m) =>
           m.getFullYear() === targetDate.getFullYear() &&
@@ -676,7 +691,7 @@ export function ensureScrollToMonth(date) {
     const onMonths = () => {
       if (tryScroll()) {
         didInitialScroll = true;
-        unsub?.();
+        unsub();
       }
     };
 
@@ -684,7 +699,7 @@ export function ensureScrollToMonth(date) {
 
     // Safety timeout: stop listening after 3s
     setTimeout(() => {
-      unsub?.();
+      unsub();
     }, 3000);
   } catch (e) {
     console.warn('[timeline] ensureScrollToMonth failed', e);

@@ -25,6 +25,15 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(root.textContent).to.include('2025-01-01');
   });
 
+  it('does not render a date label for an unplanned card', async () => {
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'unplanned', title: 'Unplanned work', start: null, end: null };
+    await el.updateComplete;
+
+    expect(el.shadowRoot.querySelector('.dates-default').textContent.trim()).to.equal('');
+    expect(el.shadowRoot.querySelector('.feature-dates').textContent).not.to.include('null');
+  });
+
   it('labels ancestor context cards as partial hierarchy without changing ordinary cards', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = { id: 'ancestor', title: 'Ancestor item', ancestorOnly: true,
@@ -37,6 +46,37 @@ describe('FeatureCardLit basic behaviors', () => {
     el.feature = { ...el.feature, ancestorOnly: false, childrenComplete: true };
     await el.updateComplete;
     expect(el.shadowRoot.querySelector('.ancestor-context')).to.be.null;
+  });
+
+  it('renders anchor presentations as completed historical cards, not ghosted unplanned cards', async () => {
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = {
+      id: 'historical',
+      title: 'Closed unscheduled work',
+      state: 'Closed',
+      start: null,
+      end: null,
+      presentation: {
+        renderType: 'anchor', date: '2026-05-19', reason: 'completed-unscheduled',
+        sourceState: 'Closed',
+      },
+    };
+    await el.updateComplete;
+
+    const card = el.shadowRoot.querySelector('.feature-card');
+    expect(card.classList.contains('historical-anchor')).to.be.true;
+    expect(card.classList.contains('ghosted')).to.be.false;
+    expect(el.shadowRoot.querySelector('.feature-dates').textContent).to.include('2026-05-19');
+
+    el.feature = { ...el.feature, start: '2026-05-19', end: '2026-05-20' };
+    await el.updateComplete;
+    expect(card.classList.contains('historical-anchor')).to.be.false;
+    expect(card.classList.contains('ghosted')).to.be.false;
+
+    el.feature = { ...el.feature, start: null, end: null, state: 'Active' };
+    await el.updateComplete;
+    expect(card.classList.contains('historical-anchor')).to.be.false;
+    expect(card.classList.contains('ghosted')).to.be.true;
   });
 
   it('shows a keyboard-accessible fold control only for parents and emits a toggle', async () => {

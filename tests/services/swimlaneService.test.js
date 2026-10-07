@@ -137,6 +137,30 @@ describe('SwimlaneService', () => {
     )).toBe('p1');
   });
 
+  it('keeps a visible unscheduled descendant subtree in the selected ancestor swimlane', () => {
+    const lanes = [
+      { id: 'p1', type: 'plan' },
+      { id: 'p2', type: 'expanded-plan' },
+      { id: 'p3', type: 'expanded-plan' },
+    ];
+    const features = [
+      { ...mkFeature('parent-a', 'p1'), start: '2026-05-01', end: '2026-06-01',
+        presentationPlanIds: ['p1'] },
+      { ...mkFeature('parent-b', 'p2', 'parent-a'), start: null, end: null,
+        presentationPlanIds: ['p1', 'p2'] },
+      { ...mkFeature('child-a', 'p3', 'parent-b'), start: null, end: null,
+        presentationPlanIds: ['p3'] },
+    ];
+    const byId = new Map(features.map((feature) => [feature.id, feature]));
+    const parentContext = { ...noContext, parent: true };
+
+    expect(assignFeatureToSwimlane(features[0], lanes, byId, parentContext)).toBe('p1');
+    expect(assignFeatureToSwimlane(features[1], lanes, byId, parentContext)).toBe('p1');
+    expect(assignFeatureToSwimlane(features[2], lanes, byId, parentContext)).toBe('p1');
+    expect(features[2].start).toBe(null);
+    expect(features[2].end).toBe(null);
+  });
+
   it('uses an expanded source-plan lane for Other allocations', () => {
     const lanes = [{ id: 'p1', type: 'plan' }, { id: 'p3', type: 'expanded-plan' }];
     expect(assignFeatureToSwimlane(
