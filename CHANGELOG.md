@@ -37,6 +37,7 @@ Template - do not change :
 
 ### Changed
 - Improved PlanMenu with half-width color selectors, compact boxed count columns, blank zero cells, content-sized aligned plan names, quieter tabular counts, and a sticky type header.
+- Preserve configured task-type order within hierarchy levels in PlanMenu and other task-type count columns.
 - Give ancestor context swimlanes and details-panel plan labels backend-provided source names, using the final ADO area-path segment for readable origin labels.
 - Indexed scope relationships and cached graph membership and counts to eliminate repeated per-task hierarchy and dependency scans.
 - Restored ownership-anchored board scope and eligible-card addition counts independent of Team Drill-down; dependency overlays attach when the board becomes available after plugin startup.

@@ -61,6 +61,28 @@ function baseState(overrides = {}) {
 }
 
 describe('application/selectors/scopeSelectors', () => {
+  it('orders count columns by configured hierarchy levels and type positions', () => {
+    const state = baseState();
+    state.baseline.projects = [{ id: 'selected', task_type_hierarchy: [
+      { types: ['Epic', 'Initiative'] },
+      { types: ['Feature', 'Change Request'] },
+      { types: ['User Story', 'Bug'] },
+      { types: ['Task'] },
+    ] }];
+    state.baseline.features = ['Zebra', 'Bug', 'Task', 'Change Request', 'Initiative',
+      'User Story', 'Feature', 'Epic', 'Alpha'].map((type) => ({ type }));
+    const selectors = createFeatureSelectors(createStore(state));
+
+    expect(selectors.getAvailableTaskTypesOrdered()).toEqual([
+      'Epic', 'Initiative', 'Feature', 'Change Request', 'User Story', 'Bug', 'Task',
+      'Alpha', 'Zebra',
+    ]);
+    state.baseline.projects[0].task_type_hierarchy[1].types = ['Change Request', 'Feature'];
+    expect(selectors.getAvailableTaskTypesOrdered().slice(2, 4)).toEqual([
+      'Change Request', 'Feature',
+    ]);
+  });
+
   it('honors admin display states for owned and ancestor context without changing resolved work', () => {
     const state = baseState({ view: { context: { parent: true } } });
     state.baseline.projects = state.baseline.projects.map((project) => ({ ...project,

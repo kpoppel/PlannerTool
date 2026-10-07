@@ -56,11 +56,13 @@ function getIterationsForProjectFromStore(state, projectId) {
   return linkedSet.iterations;
 }
 
-function buildTaskTypeOrderMap(taskTypes, hierarchy) {
+function buildTaskTypeOrderMap(hierarchy) {
   const order = new Map();
-  for (const type of taskTypes) {
-    const level = getTypeLevelFromHierarchy(type, hierarchy);
-    order.set(String(type).toLowerCase(), level);
+  for (const level of hierarchy) {
+    for (const type of level.types) {
+      const key = String(type).toLowerCase();
+      if (!order.has(key)) order.set(key, order.size);
+    }
   }
   return order;
 }
@@ -147,14 +149,14 @@ export function createFeatureSelectors(store) {
     getAvailableTaskTypesOrdered() {
       const taskTypes = selectors.getAvailableTaskTypes();
       const hierarchy = selectors.getTaskTypeHierarchy();
-      const orderMap = buildTaskTypeOrderMap(taskTypes, hierarchy);
-      return [...taskTypes].sort((a, b) => {
-        const rawLevelA = orderMap.get(String(a).toLowerCase());
-        const rawLevelB = orderMap.get(String(b).toLowerCase());
-        const levelA = rawLevelA === undefined ? 9999 : rawLevelA;
-        const levelB = rawLevelB === undefined ? 9999 : rawLevelB;
-        if (levelA !== levelB) return levelA - levelB;
-        return String(a).localeCompare(String(b));
+      const orderMap = buildTaskTypeOrderMap(hierarchy);
+      return [...taskTypes].sort((first, second) => {
+        const firstPosition = orderMap.get(String(first).toLowerCase());
+        const secondPosition = orderMap.get(String(second).toLowerCase());
+        const firstOrder = firstPosition === undefined ? orderMap.size : firstPosition;
+        const secondOrder = secondPosition === undefined ? orderMap.size : secondPosition;
+        if (firstOrder !== secondOrder) return firstOrder - secondOrder;
+        return String(first).localeCompare(String(second));
       });
     },
 
