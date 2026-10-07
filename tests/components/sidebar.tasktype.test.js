@@ -474,7 +474,12 @@ describe('Sidebar task-type filter', () => {
     sidebar.requestUpdate();
     await sidebar.updateComplete;
 
-    expect((sidebar.shadowRoot || sidebar).textContent).to.include('Tasks loaded: 12');
+    const root = sidebar.shadowRoot || sidebar;
+    expect(root.textContent).to.include('Loaded dataset: 12 tasks');
+    const loadedCount = root.querySelector('.footer-line[title]');
+    expect(loadedCount.title).to.include('all retrieved plans');
+    expect(loadedCount.title).to.include('capacity/cost calculations');
+    expect(loadedCount.title).to.include('not the current scope or shown count');
   });
 
   it('uses display-only team selection from the Sidebar', () => {

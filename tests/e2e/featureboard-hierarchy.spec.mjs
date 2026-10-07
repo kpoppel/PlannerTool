@@ -468,7 +468,7 @@ test('FeatureBoard handles various parent-child constellations without crashing'
   console.log('Mocked /api/tasks served. Payload length:', tasksPayload.length);
 });
 
-test('linked context follows importing plans without leaking owners or context-only types', async ({ page }) => {
+test('descendant scope includes linked context without leaking owners or context-only types', async ({ page }) => {
   const projectsResponse = await page.request.get('/api/projects');
   const teamsResponse = await page.request.get('/api/teams');
   expect(projectsResponse.ok()).toBe(true);
@@ -504,6 +504,11 @@ test('linked context follows importing plans without leaking owners or context-o
   await page.goto('/');
   await clearOverlays(page);
   await selectAllPlans(page);
+  await page.locator('top-menu-bar #scopeMenuBtn').click();
+  const descendants = page.locator('scope-menu .scope-option').filter({ hasText: 'Descendant work' });
+  if (await descendants.getAttribute('aria-pressed') !== 'true') await descendants.click();
+  await page.locator('top-menu-bar #scopeMenuBtn').click();
+  await page.locator('app-sidebar').getByRole('button', { name: 'Plan overview', exact: true }).click();
   const cards = page.locator('feature-card-lit');
   const cardIds = () => cards.evaluateAll((elements) => elements
     .map((element) => String(element.feature.id)).sort());
@@ -516,7 +521,77 @@ test('linked context follows importing plans without leaking owners or context-o
   await expect(page.locator('plan-menu').getByTitle('context-internal-owner', { exact: true }))
     .toHaveCount(0);
   await originEntry.click();
-  await expect.poll(cardIds).toEqual(['shared']);
+  await expect.poll(cardIds).toEqual([]);
   await page.locator('plan-menu').getByTitle('Other Plan', { exact: true }).click();
   await expect.poll(cardIds).toEqual([]);
+});
+
+test('team focus keeps allocated work, its ancestors and unallocated descendants', async ({ page }) => {
+  const projectsResponse = await page.request.get('/api/projects');
+  const teamsResponse = await page.request.get('/api/teams');
+  expect(projectsResponse.ok()).toBe(true);
+  expect(teamsResponse.ok()).toBe(true);
+  const configuredProjects = await projectsResponse.json();
+  const configuredTeams = await teamsResponse.json();
+  const origin = { ...configuredProjects[0], name: 'Hierarchy Plan', task_type_hierarchy: [
+    { types: ['Epic'] }, { types: ['Feature'] }, { types: ['User Story'] },
+  ] };
+  const primaryTeam = { ...configuredTeams[0], name: 'Selected Team' };
+  const otherTeam = { ...primaryTeam, id: 'team-other-focus', name: 'Other Team' };
+  const common = {
+    ...tasksPayload[1], state: 'Active', start: '2026-10-01', end: '2026-10-15',
+    relations: [], parentId: null, capacity: [],
+    project: 'hierarchy-context', sourcePlanIds: [origin.id], presentationPlanIds: [origin.id],
+  };
+  const imported = [
+    { id: 'purpose', title: 'Top Purpose', type: 'Epic', sourcePlanIds: [],
+      presentationPlanIds: [], ancestorOnly: true },
+    { id: 'feature', title: 'Allocated Feature', type: 'Feature', project: origin.id,
+      parentId: 'purpose', capacity: [{ team: primaryTeam.id, capacity: 30 }] },
+    { id: 'story', title: 'Unallocated Story', type: 'User Story', parentId: 'feature' },
+    { id: 'detail', title: 'Unallocated Detail', type: 'User Story', parentId: 'story' },
+    { id: 'other-feature', title: 'Other Team Feature', type: 'Feature', parentId: 'feature',
+      capacity: [{ team: otherTeam.id, capacity: 30 }] },
+    { id: 'other-story', title: 'Other Branch Story', type: 'User Story', parentId: 'other-feature' },
+    { id: 'unrelated', title: 'Unrelated Feature', type: 'Feature', project: origin.id,
+      capacity: [{ team: otherTeam.id, capacity: 30 }] },
+  ].map((task) => {
+    const feature = { ...common, ...task };
+    if (feature.parentId !== null) feature.relations = [{ type: 'Parent', id: feature.parentId }];
+    return feature;
+  });
+  await page.route('**/api/projects', (route) => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify([origin]),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify([primaryTeam, otherTeam]),
+  }));
+  await page.route('**/api/tasks', (route) => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify(imported),
+  }));
+  await page.goto('/');
+  await clearOverlays(page);
+  await selectAllPlans(page);
+  await page.locator('top-menu-bar #scopeMenuBtn').click();
+  for (const label of ['Ancestors', 'Descendant work']) {
+    const option = page.locator('scope-menu .scope-option').filter({ hasText: label });
+    if (await option.getAttribute('aria-pressed') !== 'true') await option.click();
+  }
+  await page.locator('top-menu-bar #scopeMenuBtn').click();
+  const sidebar = page.locator('app-sidebar');
+  await sidebar.getByRole('button', { name: 'Plan overview', exact: true }).click();
+  const selectedRow = sidebar.locator('.team-drilldown-row[title="Selected Team"]');
+  const otherRow = sidebar.locator('.team-drilldown-row[title="Other Team"]');
+  if (await selectedRow.getAttribute('aria-pressed') !== 'true') await selectedRow.click();
+  if (await otherRow.getAttribute('aria-pressed') === 'true') await otherRow.click();
+  const cards = page.locator('feature-card-lit');
+  const cardIds = () => cards.evaluateAll((elements) => elements
+    .map((element) => String(element.feature.id)).sort());
+  await expect.poll(cardIds).toEqual(imported.map((task) => task.id).sort());
+  await sidebar.getByRole('button', { name: 'Team focus', exact: true }).click();
+  await expect.poll(cardIds).toEqual(['detail', 'feature', 'purpose', 'story']);
+  await expect(selectedRow.locator('.chip-badge[title="Feature: 1"]')).toHaveText('1');
+  await expect(selectedRow.locator('.chip-badge[title^="User Story:"]')).toHaveCount(0);
+  await sidebar.getByRole('button', { name: 'Plan overview', exact: true }).click();
+  await expect.poll(cardIds).toEqual(imported.map((task) => task.id).sort());
 });

@@ -36,6 +36,9 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Plan overview now shows the full scoped tree; Team focus retains selected-team allocations, connecting ancestors and unallocated descendants without changing allocation counts or capacity/cost calculations.
+- Replaced top-bar metrics and the Scope footer with an on-board information menu starting from exact Plan-menu totals, reconciling scope and sidebar-named filter exclusions without double counting; clarified loaded-dataset counts.
+- Fixed asymmetric Ancestors scope previews by evaluating ancestor-only card eligibility against the proposed scope selection.
 - Team focus now hides empty selected-plan swimlanes so the board shows only lanes holding the focused team's work.
 - Improved PlanMenu with half-width color selectors, compact boxed count columns, blank zero cells, content-sized aligned plan names, quieter tabular counts, and a sticky type header.
 - Clarified that sidebar team counts cover explicit allocations across loaded data rather than tasks in the current display or selected scope.

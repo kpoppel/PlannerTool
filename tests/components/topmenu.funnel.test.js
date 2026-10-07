@@ -159,50 +159,51 @@ describe('TopMenu Data Funnel', () => {
     expect(trigger.querySelector('.menu-attention')).to.equal(null);
   });
 
-  it('renders canonical funnel metrics instead of a Team trigger', async () => {
-    const originalGetFunnel = sel.scope.getFunnel;
-    sel.scope.getFunnel = () => ({
-      baseTasks: 4,
-      relatedTasks: 3,
-      tasksInScope: 7,
-      teamsInScope: 3,
+  it('opens a reconciled information menu from the on-board count', async () => {
+    const counts = {
+      selectedPlanTasks: 10, sharedPlanTasks: 2,
+      scopeAddedTasks: 4, scopeExcludedTasks: 3,
+      displayableTasks: 9, taskFilterExcludedTasks: 2, teamExcludedTasks: 2,
+      filterExclusions: { schedule: 1, allocation: 0, hierarchy: 0, relations: 0, state: 0, taskTypes: 1 },
       tasksVisible: 5,
-      teamsInView: 2,
-    });
-    menu.funnel = sel.scope.getFunnel();
-    menu.requestUpdate();
+      teamsInScope: 3,
+    };
+    vi.spyOn(sel.scope, 'getBoardBreakdown').mockReturnValue(counts);
+    menu._onScopeChanged();
     await menu.updateComplete;
 
     const root = menu.shadowRoot || menu;
-    const summary = root.querySelector('#dataFunnelSummary');
-    expect(summary.textContent).to.include('7');
-    expect(summary.textContent).to.include('3');
-    expect(summary.textContent).to.include('5');
-    expect(summary.querySelector('[title="Tasks included in the selected plan scope before display filters"]')).to.exist;
-    expect(summary.querySelector('[title="Participating teams allocated to tasks in the selected plan scope"]')).to.exist;
-    expect(summary.querySelector('[title="Tasks currently displayed after team focus and task filters"]')).to.exist;
-    expect(summary.classList.contains('data-funnel-status')).to.equal(true);
-    expect(summary.parentElement.classList.contains('menu-right')).to.equal(true);
+    const trigger = root.querySelector('#boardInfoBtn');
+    expect(trigger.textContent).to.include('5 on board');
+    expect(root.querySelector('#dataFunnelSummary')).to.equal(null);
     expect(root.querySelector('#teamMenuBtn')).to.equal(null);
-    sel.scope.getFunnel = originalGetFunnel;
+    trigger.click();
+    await menu.updateComplete;
+    expect(trigger.getAttribute('aria-expanded')).to.equal('true');
+    const information = root.querySelector('#boardInformation');
+    expect(information).to.exist;
+    expect([...information.querySelectorAll('.count-value')].map((value) => value.textContent.trim()))
+      .to.deep.equal(['10', '-2', '+4', '-3', '=9', '-1', '-0', '-0', '-0', '-0', '-1', '-2', '=5']);
+    expect(information.textContent).to.include('Selected plans (Plan menu total)');
+    expect(information.textContent).to.include('Added by Scope');
+    expect(information.textContent).to.include('Excluded from current scope');
+    for (const label of ['Schedule', 'Allocation', 'Hierarchy', 'Relations', 'State', 'Task Types']) {
+      expect(information.textContent).to.include(label);
+    }
+    expect(information.textContent).to.include('Team selection / focus');
+    expect(information.textContent).to.include('3 teams in scope');
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await menu.updateComplete;
+    expect(root.querySelector('#boardInformation')).to.equal(null);
+    expect(root.activeElement).to.equal(trigger);
   });
 
-  it('includes Scope as the related-work menu and reports base and related work', async () => {
-    menu.funnel = {
-      baseTasks: 5,
-      relatedTasks: 2,
-      tasksInScope: 7,
-      teamsInScope: 3,
-      tasksVisible: 7,
-      teamsInView: 3,
-    };
-    menu.requestUpdate();
+  it('keeps Scope separate from the board information menu', async () => {
     await menu.updateComplete;
 
     const root = menu.shadowRoot || menu;
     expect(root.querySelector('#scopeMenuBtn')).to.exist;
-    expect(root.querySelector('#dataFunnelSummary').textContent)
-      .to.include('7');
+    expect(root.querySelector('#boardInfoBtn')).to.exist;
   });
 
   it('shows active Scope relationship icons in the top menu', async () => {

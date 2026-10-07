@@ -55,10 +55,11 @@ export function renderSidebarTeams({ model, actions }) {
       <div class="segmented-group context-group team-view-mode" role="group" aria-labelledby="task-view-label">
         <button type="button" class="segment-btn ${model.taskViewMode === 'plan' ? 'active' : ''}"
           aria-pressed=${model.taskViewMode === 'plan'}
+          title="Show all scoped work independently of team selection"
           @click=${() => actions.setTaskViewMode('plan')}>Plan overview</button>
         <button type="button" class="segment-btn ${model.taskViewMode === 'team' ? 'active' : ''}"
           aria-pressed=${model.taskViewMode === 'team'}
-          title="Show work for selected teams and its parents"
+          title="Show selected teams' allocated work, ancestors and unallocated descendants"
           @click=${() => actions.setTaskViewMode('team')}>Team focus</button>
       </div>
     </div>

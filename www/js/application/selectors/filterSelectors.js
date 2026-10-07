@@ -74,27 +74,27 @@ function createFallbackTaskFilterFn(store) {
     const hasParent = !!feature.parentId;
     const hasLinks = feature.relations.length > 0;
 
-    if (!hasAnyTrueOption(schedule)) return false;
-    if (schedule.planned === true && !hasDates && schedule.unplanned !== true) return false;
-    if (schedule.unplanned === true && hasDates && schedule.planned !== true) return false;
+    if (!hasAnyTrueOption(schedule)) return 'schedule';
+    if (schedule.planned === true && !hasDates && schedule.unplanned !== true) return 'schedule';
+    if (schedule.unplanned === true && hasDates && schedule.planned !== true) return 'schedule';
 
-    if (!hasAnyTrueOption(allocation)) return false;
+    if (!hasAnyTrueOption(allocation)) return 'allocation';
     if (allocation.allocated === true && !hasCapacity && allocation.unallocated !== true) {
-      return false;
+      return 'allocation';
     }
     if (allocation.unallocated === true && hasCapacity && allocation.allocated !== true) {
-      return false;
+      return 'allocation';
     }
 
-    if (!hasAnyTrueOption(hierarchy)) return false;
-    if (hierarchy.hasParent === true && !hasParent && hierarchy.noParent !== true) return false;
-    if (hierarchy.noParent === true && hasParent && hierarchy.hasParent !== true) return false;
+    if (!hasAnyTrueOption(hierarchy)) return 'hierarchy';
+    if (hierarchy.hasParent === true && !hasParent && hierarchy.noParent !== true) return 'hierarchy';
+    if (hierarchy.noParent === true && hasParent && hierarchy.hasParent !== true) return 'hierarchy';
 
-    if (!hasAnyTrueOption(relations)) return false;
-    if (relations.hasLinks === true && !hasLinks && relations.noLinks !== true) return false;
-    if (relations.noLinks === true && hasLinks && relations.hasLinks !== true) return false;
+    if (!hasAnyTrueOption(relations)) return 'relations';
+    if (relations.hasLinks === true && !hasLinks && relations.noLinks !== true) return 'relations';
+    if (relations.noLinks === true && hasLinks && relations.hasLinks !== true) return 'relations';
 
-    return true;
+    return null;
   };
 }
 
@@ -170,6 +170,10 @@ export function createFilterSelectors(store) {
     },
 
     featurePassesFilters(feature) {
+      return fallbackTaskFilter(feature) === null;
+    },
+
+    getTaskFilterExclusion(feature) {
       return fallbackTaskFilter(feature);
     },
 

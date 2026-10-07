@@ -31,7 +31,7 @@ export class TopMenuBarLit extends LitElement {
     activeViewData: { type: Object },
     selectedProjectsCount: { type: Number },
     selectedTeamsCount: { type: Number },
-    funnel: { type: Object },
+    boardBreakdown: { type: Object },
     scopeContext: { type: Object },
     menuPlugins: { type: Array },
   };
@@ -206,23 +206,41 @@ export class TopMenuBarLit extends LitElement {
       line-height: 1;
     }
 
-    .data-funnel-status {
+    .board-info-trigger {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
       color: rgba(255, 255, 255, 0.9);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    .status-metric {
-      align-items: center;
+      font: inherit;
+      background: transparent;
+      border: 1px solid transparent;
       border-radius: 4px;
-      display: inline-flex;
-      gap: 4px;
+      cursor: pointer;
       min-height: 28px;
       padding: 0 6px;
+      white-space: nowrap;
     }
-    .status-metric:hover { background: rgba(255, 255, 255, 0.08); }
+    .board-info-trigger:hover, .board-info-trigger.active { background: rgba(255, 255, 255, 0.08); }
+    .board-information {
+      box-sizing: border-box;
+      width: 390px;
+      max-width: calc(100vw - 16px);
+      max-height: calc(100vh - 56px);
+      overflow: auto;
+      background: var(--color-sidebar-bg);
+      color: var(--color-sidebar-text);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 6px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+      padding: 12px;
+      font-size: 13px;
+    }
+    .information-title { font-size: 13px; margin: 0 0 10px; }
+    .count-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 12px; padding: 5px 0; }
+    .count-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .count-subtotal { border-top: 1px solid rgba(255, 255, 255, 0.18); font-weight: 700; margin-top: 4px; }
+    .count-result { color: #8ec8ff; }
+    .information-teams { margin-top: 10px; color: rgba(255, 255, 255, 0.72); font-size: 12px; }
     .status-icon { color: #8ec8ff; font-size: 14px; line-height: 1; }
     .scope-icons { color: #8ec8ff; font-size: 14px; letter-spacing: 2px; }
   `;
@@ -239,13 +257,17 @@ export class TopMenuBarLit extends LitElement {
     this.activeViewData = null;
     this.selectedProjectsCount = 0;
     this.selectedTeamsCount = 0;
-    this.funnel = {
-      baseTasks: 0,
-      relatedTasks: 0,
-      tasksInScope: 0,
-      teamsInScope: 0,
+    this.boardBreakdown = {
+      selectedPlanTasks: 0,
+      sharedPlanTasks: 0,
+      scopeAddedTasks: 0,
+      scopeExcludedTasks: 0,
+      displayableTasks: 0,
+      taskFilterExcludedTasks: 0,
+      filterExclusions: { schedule: 0, allocation: 0, hierarchy: 0, relations: 0, state: 0, taskTypes: 0 },
+      teamExcludedTasks: 0,
       tasksVisible: 0,
-      teamsInView: 0,
+      teamsInScope: 0,
     };
     this.scopeContext = { parent: false, child: false, dependency: false, otherAllocations: false };
     this.menuPlugins = [];
@@ -336,7 +358,7 @@ export class TopMenuBarLit extends LitElement {
       const arr = sel.selection.getTeams();
       this.teams = arr;
       this.selectedTeamsCount = arr.filter((t) => t && t.selected).length;
-      this.funnel = sel.scope.getFunnel();
+      this.boardBreakdown = sel.scope.getBoardBreakdown();
     };
     this._onScenariosList = () => {
       const scenarios = sel.scenario.getScenarios();
@@ -358,11 +380,11 @@ export class TopMenuBarLit extends LitElement {
     this._onViewActivated = (payload) => {
       this.activeViewId = payload?.id || null;
       this.activeViewData = payload?.data || null;
-      this.funnel = sel.scope.getFunnel();
+      this.boardBreakdown = sel.scope.getBoardBreakdown();
     };
 
     this._onScopeChanged = () => {
-      this.funnel = sel.scope.getFunnel();
+      this.boardBreakdown = sel.scope.getBoardBreakdown();
       this.scopeContext = sel.view.getContext();
       this.requestUpdate();
     };
@@ -631,25 +653,19 @@ export class TopMenuBarLit extends LitElement {
         </div>
 
         <div class="menu-right">
-          <div
-            class="data-funnel-status"
-            id="dataFunnelSummary"
-            role="status"
-            aria-label="Current planning scope and displayed task counts"
+          <button
+            class="board-info-trigger ${this.openMenu === 'information' ? 'active' : ''}"
+            id="boardInfoBtn"
+            type="button"
+            title="Board information"
+            aria-haspopup="dialog"
+            aria-expanded=${this.openMenu === 'information' ? 'true' : 'false'}
+            aria-controls="boardInformation"
+            @click=${(event) => this._toggleMenu('information', event)}
           >
-            <span class="status-metric" title="Tasks included in the selected plan scope before display filters">
-              <span class="status-icon" aria-hidden="true">▤</span>
-              <span>${this.funnel.tasksInScope}</span>
-            </span>
-            <span class="status-metric" title="Participating teams allocated to tasks in the selected plan scope">
-              <span class="status-icon" aria-hidden="true">●</span>
-              <span>${this.funnel.teamsInScope}</span>
-            </span>
-            <span class="status-metric" title="Tasks currently displayed after team focus and task filters">
-              <span class="status-icon" aria-hidden="true">◈</span>
-              <span>${this.funnel.tasksVisible}</span>
-            </span>
-          </div>
+            <span class="status-icon" aria-hidden="true">ⓘ</span>
+            <span>${this.boardBreakdown.tasksVisible} on board</span>
+          </button>
           <button class="small-btn" id="openConfigBtn" @click=${this._onConfig}>
             ⚙️
           </button>
@@ -685,6 +701,50 @@ export class TopMenuBarLit extends LitElement {
     `;
 
     switch (this.openMenu) {
+      case 'information': {
+        const counts = this.boardBreakdown;
+        const rows = [
+          ['Selected plans (Plan menu total)', '', counts.selectedPlanTasks, false,
+            'Sum of the task counts displayed for the selected plans in the Plan menu'],
+          ...counts.sharedPlanTasks > 0 ? [['Shared tasks counted once', '-', counts.sharedPlanTasks, false,
+            'Tasks listed under more than one selected plan count only once on the board']] : [],
+          ['Added by Scope', '+', counts.scopeAddedTasks, false,
+            'Displayable tasks not in the selected Plan menu totals; scope overlaps count once'],
+          ['Excluded from current scope', '-', counts.scopeExcludedTasks, false,
+            'Tasks counted by the Plan menu but outside current board ownership or enabled Scope, or excluded by plan presentation rules'],
+          ['Displayable task pool', '=', counts.displayableTasks, true,
+            'Tasks eligible for presentation before your task filters and team selection'],
+          ['Schedule', '-', counts.filterExclusions.schedule, false,
+            'Remaining tasks excluded by Schedule: Planned / Unplanned and unplanned-work visibility'],
+          ['Allocation', '-', counts.filterExclusions.allocation, false,
+            'Remaining tasks excluded by Allocation: Allocated / Unallocated'],
+          ['Hierarchy', '-', counts.filterExclusions.hierarchy, false,
+            'Remaining tasks excluded by Hierarchy: Has Parent / No Parent and project-hierarchy visibility'],
+          ['Relations', '-', counts.filterExclusions.relations, false,
+            'Remaining tasks excluded by Relations: Has Links / No Links'],
+          ['State', '-', counts.filterExclusions.state, false,
+            'Remaining tasks excluded by the selected State values'],
+          ['Task Types', '-', counts.filterExclusions.taskTypes, false,
+            'Remaining tasks excluded by Task Types selections or hidden types'],
+          ['Team selection / focus', '-', counts.teamExcludedTasks, false,
+            'In Team focus, excludes work outside selected-team allocations, their ancestors and unallocated descendant branches; Plan overview does not filter by team'],
+          ['On board', '=', counts.tasksVisible, true,
+            'The final task set supplied to the board after filtering and team selection'],
+        ];
+        return html`<div class="board-information" id="boardInformation"
+          style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;right:8px;z-index:2000"
+          role="dialog" aria-label="Board information" @keydown=${this._onMenuKeyDown}>
+          <h2 class="information-title">Board information</h2>
+          ${rows.map(([label, sign, count, subtotal, title], index) => html`
+            <div class="count-row ${subtotal ? 'count-subtotal' : ''} ${index === rows.length - 1 ? 'count-result' : ''}" title=${title} data-count=${label}>
+              <span>${label}</span><span class="count-value">${sign}${count}</span>
+            </div>
+          `)}
+          <div class="information-teams" title="Unique teams allocated to tasks in scope before display filters and team selection">
+            ${counts.teamsInScope} teams in scope
+          </div>
+        </div>`;
+      }
       case 'view':
         return html`<view-menu
           style="${style}"

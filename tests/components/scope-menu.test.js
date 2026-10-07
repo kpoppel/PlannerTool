@@ -16,7 +16,7 @@ describe('ScopeMenu', () => {
     if (menu && menu.isConnected) menu.remove();
   });
 
-  it('renders related-work options with additions and scope summary', async () => {
+  it('renders related-work options without a scope footer', async () => {
     const originalGetContext = sel.view.getContext;
     sel.view.getContext = () => ({
       parent: false,
@@ -24,7 +24,7 @@ describe('ScopeMenu', () => {
       dependency: false,
       otherAllocations: false,
     });
-    menu.scopeSummary = { baseTasks: 12, relatedTasks: 9, visibleTasks: 21 };
+    menu.context = sel.view.getContext();
     menu.optionCounts = { parent: 3, child: 9, dependency: 4, otherAllocations: 7 };
     menu.requestUpdate();
     await menu.updateComplete;
@@ -35,8 +35,13 @@ describe('ScopeMenu', () => {
     expect(root.textContent).to.include('Dependencies');
     expect(root.textContent).to.include('Other work by participating teams');
     expect([...root.querySelectorAll('.scope-count')].map((count) => count.textContent))
-      .to.deep.equal(['+3', '+9', '+4', '+7']);
-    expect(root.textContent).to.include('12 base + 9 related = 21 shown');
+      .to.deep.equal(['+3', '-9', '+4', '+7']);
+    expect(root.querySelector('.scope-summary')).to.equal(null);
+    const options = root.querySelectorAll('.scope-option');
+    expect(options[0].title).to.include('Enabling adds 3');
+    expect(options[1].title).to.include('Disabling removes 9');
+    expect(options[0].title).to.include('not counted twice');
+    expect(options[0].title).to.include('before team focus');
     sel.view.getContext = originalGetContext;
   });
 
