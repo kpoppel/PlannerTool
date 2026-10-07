@@ -210,12 +210,39 @@ export const SIDEBAR_STYLES = css`
 
     .team-drilldown-grid {
       display: grid;
-      grid-template-columns: calc(100% - (var(--team-type-count) * 34px)) repeat(var(--team-type-count), 30px);
+      grid-template-columns: var(--team-columns);
       gap: 4px;
       align-items: center;
+      overflow-x: auto;
+    }
+    .team-counts-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-height: 24px;
+      background: transparent;
+      border: 0;
+      border-radius: 4px;
+      color: var(--color-sidebar-text);
+      font: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .team-counts-toggle:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .team-counts-toggle:focus-visible {
+      outline: 2px solid #5cc8ff;
+      outline-offset: 2px;
+    }
+    [aria-expanded='true'] > .counts-chevron {
+      transform: rotate(90deg);
     }
     .team-drilldown-header {
-      display: contents;
+      display: grid;
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
       color: var(--color-sidebar-text);
       opacity: 0.9;
       min-height: 22px;
@@ -229,40 +256,44 @@ export const SIDEBAR_STYLES = css`
       height: 16px;
       display: block;
     }
+    #team-drilldown-list > .sidebar-list-item {
+      display: grid;
+      grid-template-columns: subgrid;
+    }
     .team-drilldown-row {
       grid-column: 1 / -1;
       width: 100%;
       min-width: 0;
       position: relative;
       padding: 0;
-      border-radius: 10px;
+      border-radius: 6px;
       display: grid;
-      grid-template-columns: calc(100% - (var(--team-type-count) * 34px)) repeat(var(--team-type-count), 30px);
+      grid-template-columns: subgrid;
       gap: 4px;
-      align-items: center;
+      align-items: stretch;
       overflow: hidden;
     }
     .sidebar-chip.team-drilldown-row {
       display: grid;
-      align-items: center;
+      align-items: stretch;
       padding: 0;
     }
     .sidebar-chip.team-drilldown-row .team-name-col {
-      font-weight: 400;
-      padding-left: 26px;
+      font-weight: 600;
+      padding: 6px 4px;
+      align-self: center;
+      text-align: left;
     }
     .team-drilldown-row .color-dot {
-      width: 16px;
-      height: 25px;
-      border-radius: 0;
-      position: absolute;
-      left: 0;
-      z-index: 1;
+      width: 14px;
+      height: auto;
+      border-radius: 6px 0 0 6px;
+      align-self: stretch;
       cursor: pointer;
     }
     .team-drilldown-row .team-name-col {
       min-width: 0;
-      padding-left: 26px;
+      padding: 6px 4px;
       display: flex;
       flex-direction: column;
       align-items: flex-start;
@@ -272,10 +303,12 @@ export const SIDEBAR_STYLES = css`
       overflow: hidden;
     }
     .team-drilldown-row .team-name-col > span:first-child {
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
+      width: 100%;
+    }
+    .team-drilldown-grid:has(.team-drilldown-header) .team-name-col > span:first-child {
+      white-space: nowrap;
       overflow: hidden;
+      text-overflow: ellipsis;
     }
     .team-drilldown-row .team-name-col small {
       opacity: 0.8;
@@ -288,9 +321,19 @@ export const SIDEBAR_STYLES = css`
       color: var(--color-sidebar-text);
     }
     .team-drilldown-row .chip-badge {
-      width: 26px;
-      height: 18px;
-      font-size: 0.68rem;
+      width: 32px;
+      height: 20px;
+      align-self: center;
+      border-radius: 4px;
+      background: transparent;
+      font-size: 0.75rem;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-sidebar-text);
+      opacity: 0.75;
+    }
+    .team-drilldown-row .chip-badge.has-count {
+      background: rgba(0, 0, 0, 0.18);
     }
 
     /* Data Funnel (dataset status) */

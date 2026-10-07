@@ -113,19 +113,25 @@ export class SidebarController {
     const filters = sel.filter.getTaskFilters();
     const colors = sel.filter.getFeatureStateColors();
     const selectedStates = sel.filter.getSelectedFeatureStateSet();
+    const teamCounts = new Map(teams.map((team) => [team.id, sel.feature.getCountsForTeam(team.id)]));
+    const nonemptyTypes = taskTypes.filter((type) =>
+      teams.some((team) => teamCounts.get(team.id).get(type.toLowerCase()) > 0));
+    const visibleTypes = nonemptyTypes.slice(0, this.host.teamCountsOpen ? nonemptyTypes.length : 2);
     return {
       teams: {
         teams: teams.map((team) => {
-          const counts = sel.feature.getCountsForTeam(team.id);
+          const counts = teamCounts.get(team.id);
           return { ...team, name: team.name ? team.name : team.id,
             color: team.color ? team.color : '#999',
-            counts: taskTypes.map((type) => {
+            counts: visibleTypes.map((type) => {
               const count = counts.get(type.toLowerCase());
               return count === undefined ? 0 : count;
             }),
           };
         }),
-        allSelected: teams.every((team) => team.selected), taskTypes,
+        allSelected: teams.every((team) => team.selected), taskTypes: visibleTypes,
+        countsOpen: this.host.teamCountsOpen,
+        hasMoreCounts: nonemptyTypes.length > 2,
         taskViewMode: sel.view.getTaskViewMode(),
       },
       hierarchy: { active: this.host.foldActive, foldedCount: this.host.foldedCount,

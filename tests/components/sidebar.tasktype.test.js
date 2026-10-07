@@ -403,6 +403,43 @@ describe('Sidebar task-type filter', () => {
     sel.feature.getCountsForTeam = originalGetCounts;
   });
 
+  it('discloses hierarchy-ordered nonempty team counts without changing selection', async () => {
+    sidebar.teams = [
+      { id: 'team-1', name: 'Connectivity & Interaction', selected: true },
+      { id: 'team-2', name: 'Beta', selected: false },
+    ];
+    sinon.stub(sel.scope, 'getContextTeams').returns(['team-1', 'team-2']);
+    sinon.stub(sel.feature, 'getAvailableTaskTypesOrdered')
+      .returns(['Epic', 'Initiative', 'Feature', 'User Story']);
+    sinon.stub(sel.feature, 'getCountsForTeam').callsFake((id) => new Map([
+      ['epic', id === 'team-1' ? 2 : 0], ['initiative', 0],
+      ['feature', 37], ['user story', 120],
+    ]));
+    const selection = sinon.spy(cmd.selection, 'setTeamSelected');
+    sidebar.requestUpdate();
+    await sidebar.updateComplete;
+
+    const root = sidebar.shadowRoot;
+    const toggle = root.querySelector('.team-counts-toggle');
+    const types = () => Array.from(root.querySelectorAll('.team-drilldown-header .type-icon'))
+      .map((element) => element.title);
+    expect(types()).to.deep.equal(['Epic', 'Feature']);
+    expect(toggle.getAttribute('aria-expanded')).to.equal('false');
+    expect(root.textContent).to.include('Connectivity & Interaction');
+    const empty = root.querySelectorAll('.team-drilldown-row')[1].querySelector('.chip-badge');
+    expect(empty.textContent).to.equal('');
+    expect(empty.getAttribute('aria-label')).to.equal('Epic: 0');
+
+    toggle.click();
+    await sidebar.updateComplete;
+    expect(types()).to.deep.equal(['Epic', 'Feature', 'User Story']);
+    expect(toggle.getAttribute('aria-expanded')).to.equal('true');
+    toggle.click();
+    await sidebar.updateComplete;
+    expect(types()).to.deep.equal(['Epic', 'Feature']);
+    expect(selection.called).to.equal(false);
+  });
+
   it('renders Context-scoped teams with select-all and select-none controls', async () => {
     const originalGetContextTeams = sel.scope.getContextTeams;
     sel.scope.getContextTeams = () => ['team-1', 'team-2'];

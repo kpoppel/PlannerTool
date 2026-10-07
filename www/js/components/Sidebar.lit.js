@@ -22,6 +22,7 @@ export class SidebarLit extends LitElement {
     foldedCount: { type: Number },
     foldableCount: { type: Number },
     canCollapse: { type: Boolean },
+    teamCountsOpen: { state: true },
   };
 
   static styles = SIDEBAR_STYLES;
@@ -37,6 +38,7 @@ export class SidebarLit extends LitElement {
     this.foldedCount = 0;
     this.foldableCount = 0;
     this.canCollapse = false;
+    this.teamCountsOpen = false;
     this._controller = new SidebarController(this);
   }
 
@@ -113,6 +115,9 @@ export class SidebarLit extends LitElement {
               <div class="section-title">Team Drill-down</div>
             ${renderSidebarTeams({ model: model.teams, actions: {
               toggleAll: () => this._toggleAllTeamDrilldown(),
+              toggleCounts: () => {
+                this.teamCountsOpen = !this.teamCountsOpen;
+              },
               toggleTeam: (id) => this._toggleTeamDrilldown(id),
               changeColor: (event, id) => this._openTeamColorPopover(event, id),
               setTaskViewMode: (mode) => cmd.view.setTaskViewMode(mode),
