@@ -1,6 +1,7 @@
 import { expect } from '@open-wc/testing';
 import { CapacityCalculator } from '../../www/js/services/CapacityCalculator.js';
 import { bus } from '../../www/js/core/EventBus.js';
+import allocationCases from '../fixtures/allocation_rule/cases.json';
 
 function planConfig(id, type = 'project') {
   const containerTypes = ['program', 'project', 'team'];
@@ -8,8 +9,82 @@ function planConfig(id, type = 'project') {
 }
 
 describe('CapacityCalculator (unit)', () => {
+  it('invalid spans do not distort the date range or suppress planned reservations', () => {
+    const features = [
+      { id: 'root', project: 'p1', state: 'active', start: '2025-01-01', end: '2025-01-02',
+        capacity: [{ team: 'A', capacity: 100 }] },
+      { id: 'invalid-child', parentId: 'root', project: 'p1', state: 'active',
+        start: '2025-02-30', end: 'invalid', capacity: [{ team: 'A', capacity: 20 }] },
+      { id: 'reversed', project: 'p1', state: 'active', start: '2024-12-30', end: '2024-12-01',
+        capacity: [{ team: 'A', capacity: 40 }] },
+    ];
+    const result = new CapacityCalculator(bus).calculate(features,
+      { selectedProjects: ['p1'], selectedStates: ['active'] }, [{ id: 'A' }], [planConfig('p1')]);
+    expect(result.dates).to.deep.equal(['2025-01-01', '2025-01-02']);
+    expect(result.totalOrgDailyCapacity).to.deep.equal([100, 100]);
+  });
+
+  it('unplanned descendant allocations neither count nor suppress the planned parent', () => {
+    const features = [
+      { id: 'root', project: 'p1', state: 'active', start: '2025-01-01', end: '2025-01-02',
+        capacity: [{ team: 'A', capacity: 100 }] },
+      { id: 'leaf', parentId: 'root', project: 'p1', state: 'active',
+        capacity: [{ team: 'A', capacity: 20 }] },
+    ];
+    const result = new CapacityCalculator(bus).calculate(features,
+      { selectedProjects: ['p1'], selectedStates: ['active'] }, [{ id: 'A' }], [planConfig('p1')]);
+    expect(result.totalOrgDailyCapacity).to.deep.equal([100, 100]);
+    expect(result.teamDailyCapacity).to.deep.equal([[100], [100]]);
+  });
+
+  it('matches shared per-team monthly working-day loads', () => {
+    const fixture = allocationCases.find((entry) => entry.monthlyLoad !== undefined);
+    const features = fixture.features.map((feature) => ({ ...feature, state: 'active' }));
+    const teams = Object.keys(fixture.monthlyLoad).map((id) => ({ id }));
+    const result = new CapacityCalculator(bus).calculate(features,
+      { selectedProjects: ['project-1', 'project-2'], selectedStates: ['active'] },
+      teams, [planConfig('project-1'), planConfig('project-2')]);
+    for (const team of teams) {
+      const monthly = {};
+      result.dates.forEach((date, index) => {
+        const weekday = new Date(date).getUTCDay();
+        const load = result.teamDailyCapacity[index][teams.indexOf(team)];
+        if (weekday === 0 || weekday === 6 || load === 0) return;
+        const month = date.slice(0, 7);
+        if (monthly[month] === undefined) monthly[month] = 0;
+        monthly[month] += load / 100;
+      });
+      for (const [month, load] of Object.entries(fixture.monthlyLoad[team.id])) {
+        expect(monthly[month]).to.be.closeTo(load, 0.000001);
+      }
+      expect(Object.keys(monthly)).to.deep.equal(Object.keys(fixture.monthlyLoad[team.id]));
+    }
+  });
+
+  it('resolves grandchild overrides before state and plan filters without mutating prior results', () => {
+    const calc = new CapacityCalculator(bus);
+    const features = [
+      { id: 'root', project: 'p1', state: 'active', start: '2025-01-01', end: '2025-01-02',
+        capacity: [{ team: 'A', capacity: 100 }] },
+      { id: 'middle', parentId: 'root', project: 'p2', capacity: [] },
+      { id: 'leaf', parentId: 'middle', project: 'p2', state: 'closed',
+        start: '2025-01-01', end: '2025-01-02', capacity: [] },
+    ];
+    const filters = { selectedProjects: ['p1'], selectedStates: ['active'] };
+    const teams = [{ id: 'A' }];
+    const projects = [planConfig('p1'), planConfig('p2')];
+    const before = calc.calculate(features, filters, teams, projects);
+    const overridden = features.map((feature) => feature.id === 'leaf'
+      ? { ...feature, capacity: [{ team: 'A', capacity: 20 }] } : feature);
+    const after = calc.calculate(overridden, filters, teams, projects);
+    expect(after.totalOrgDailyCapacity).to.deep.equal([0, 0]);
+    expect(before.totalOrgDailyCapacity).to.deep.equal([100, 100]);
+    expect(calc.calculate(features, filters, teams, projects).totalOrgDailyCapacity)
+      .to.deep.equal([100, 100]);
+  });
+
   it('counts shared hidden context once for any associated selected plan', () => {
-    const calc = new CapacityCalculator(bus, new Map([['seed', ['linked']]]));
+    const calc = new CapacityCalculator(bus);
     const projects = [planConfig('p1'), planConfig('p2')];
     const features = [
       { id: 'seed', project: 'p1', sourcePlanIds: ['p1'], presentationPlanIds: ['p1'],
@@ -20,8 +95,8 @@ describe('CapacityCalculator (unit)', () => {
         start: '2025-01-01', end: '2025-01-01', state: 'active',
         capacity: [{ team: 't1', capacity: 30 }] },
     ];
-    const calculate = (selectedProjects, data = features, changedIds = null) => calc.calculate(
-      data, { selectedProjects, selectedStates: ['active'] }, [{ id: 't1' }], projects, changedIds,
+    const calculate = (selectedProjects, data = features) => calc.calculate(
+      data, { selectedProjects, selectedStates: ['active'] }, [{ id: 't1' }], projects,
     );
 
     expect(calculate(['p1']).totalOrgDailyCapacity).to.deep.equal([30]);
@@ -31,7 +106,7 @@ describe('CapacityCalculator (unit)', () => {
     expect(sharedResult.planDailyCapacityMap[0]).to.deep.equal({ p1: 30, p2: 30 });
     const changed = features.map((feature) => feature.id === 'linked'
       ? { ...feature, capacity: [{ team: 't1', capacity: 40 }] } : feature);
-    expect(calculate(['p1', 'p2'], changed, ['linked']).totalOrgDailyCapacity).to.deep.equal([40]);
+    expect(calculate(['p1', 'p2'], changed).totalOrgDailyCapacity).to.deep.equal([40]);
     expect(calculate([]).totalOrgDailyCapacity).to.deep.equal([]);
   });
 
@@ -155,7 +230,7 @@ describe('CapacityCalculator (unit)', () => {
 
     const changed = features.map((feature) => feature.id === 'f1' ?
       { ...feature, capacity: [{ team: 'f', capacity: 40 }] } : feature);
-    const updated = calc.calculate(changed, filters, [{ id: 'f' }], projects, ['f1']);
+    const updated = calc.calculate(changed, filters, [{ id: 'f' }], projects);
     expect(updated.planDailyCapacityMap[0]['program-1']).to.equal(40);
     expect(updated.planDailyCapacityMap[0]['program-2']).to.equal(20);
     expect(updated.planDailyCapacityMap[0]['team-f']).to.equal(60);
@@ -190,14 +265,14 @@ describe('CapacityCalculator (unit)', () => {
 
     const moved = features.map((feature) => feature.id === 'task' ?
       { ...feature, parentId: 'p2' } : feature);
-    const result = calc.calculate(moved, filters, [{ id: 'f' }], projects, ['task']);
+    const result = calc.calculate(moved, filters, [{ id: 'f' }], projects);
 
     expect(result.planDailyCapacityMap[0]['program-1']).to.equal(undefined);
     expect(result.planDailyCapacityMap[0]['program-2']).to.equal(25);
     expect(result.planDailyCapacityMap[0]['team-f']).to.equal(25);
   });
 
-  it('incremental delta updates adjust cached result', () => {
+  it('recalculation reflects allocation changes', () => {
     const calc = new CapacityCalculator(bus);
     const features = [
       {
@@ -220,7 +295,7 @@ describe('CapacityCalculator (unit)', () => {
     const first = calc.calculate(features, filters, teams, projects);
     expect(first.totalOrgDailyCapacity.every((v) => v === 1)).to.be.true;
 
-    // Modify feature capacity and call calculate with changedFeatureIds to trigger deltas
+    // The next calculation uses the updated feature allocation.
     const newFeatures = [
       {
         id: 'f1',
@@ -231,11 +306,11 @@ describe('CapacityCalculator (unit)', () => {
         capacity: [{ team: 't1', capacity: 3 }],
       },
     ];
-    const updated = calc.calculate(newFeatures, filters, teams, projects, ['f1']);
+    const updated = calc.calculate(newFeatures, filters, teams, projects);
     expect(updated.totalOrgDailyCapacity.every((v) => v === 3)).to.be.true;
   });
 
-  it('incremental delta removes a deleted team allocation from cached results', () => {
+  it('recalculation removes deleted team allocations', () => {
     const calc = new CapacityCalculator(bus);
     const teams = [{ id: 't1' }];
     const projects = [planConfig('p1')];
@@ -260,11 +335,11 @@ describe('CapacityCalculator (unit)', () => {
       [{ ...allocatedFeature, capacity: [] }],
       filters,
       teams,
-      projects,
-      ['f1']
+      projects
     );
 
-    expect(removed.teamDailyCapacityMap[0].t1).to.equal(0);
+    expect(removed.teamDailyCapacity[0][0]).to.equal(0);
+    expect(removed.teamDailyCapacityMap[0]).to.deep.equal({});
     expect(removed.totalOrgDailyCapacity.every((value) => value === 0)).to.be.true;
   });
 
@@ -313,11 +388,6 @@ describe('CapacityCalculator (unit)', () => {
       planConfig('projectA'),
       planConfig('teamB', 'team'),
     ];
-
-    // Set up children map
-    const childrenByParent = new Map();
-    childrenByParent.set('e1', ['f1', 'f2']);
-    calc.setChildrenByParent(childrenByParent);
 
     const filters = {
       selectedProjects: ['projectA', 'teamB'],
@@ -418,10 +488,6 @@ describe('CapacityCalculator (unit)', () => {
     const teams = [{ id: 't1' }];
     const projects = [planConfig('teamB', 'team')];
 
-    const childrenByParent = new Map();
-    childrenByParent.set('e2', ['f3']);
-    calc.setChildrenByParent(childrenByParent);
-
     const filters = {
       selectedProjects: ['teamB'],
       selectedTeams: ['t1'],
@@ -452,7 +518,7 @@ describe('CapacityCalculator (unit)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Team-aware child precedence (USE_PARENT_CAPACITY_GAP_FILLS = true)
+  // Span-independent, per-team descendant precedence
   // ---------------------------------------------------------------------------
 
   it('team-aware: team with children suppresses parent for that team across all parent days', () => {
@@ -494,9 +560,6 @@ describe('CapacityCalculator (unit)', () => {
       selectedTeams: ['teamA', 'teamB'],
       selectedStates: ['s'],
     };
-
-    const childrenByParent = new Map([['epic1', ['child1']]]);
-    calc.setChildrenByParent(childrenByParent);
 
     const result = calc.calculate(features, filters, teams, projects);
 
@@ -564,9 +627,6 @@ describe('CapacityCalculator (unit)', () => {
       selectedStates: ['s'],
     };
 
-    const childrenByParent = new Map([['epic2', ['child2']]]);
-    calc.setChildrenByParent(childrenByParent);
-
     const result = calc.calculate(features, filters, teams, projects);
     expect(result.dates).to.have.lengthOf(3);
 
@@ -583,15 +643,11 @@ describe('CapacityCalculator (unit)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Incremental delta: child capacity change must suppress parent contribution
+  // Child allocation changes must suppress parent contributions on recalculation.
   // ---------------------------------------------------------------------------
 
-  it('incremental delta: adding child Team A capacity removes parent Team A from cache', () => {
-    // Regression: Bug steps:
-    //   1. Parent (epic) has Team A capacity → full calculate → cache stores parent Team A
-    //   2. Child gets Team A capacity → delta update with changedIds = [child.id]
-    // Expected after step 2: total Team A = child value only (parent suppressed).
-    // Before fix: parent Team A stays in cache AND child is added → double-counting.
+  it('adding child Team A capacity replaces the parent reservation', () => {
+    // Recalculation must replace the parent contribution rather than double-count it.
     const calc = new CapacityCalculator(bus);
 
     const epic = {
@@ -616,17 +672,14 @@ describe('CapacityCalculator (unit)', () => {
     const projects = [planConfig('p1')];
     const filters = { selectedProjects: ['p1'], selectedTeams: ['teamA'], selectedStates: ['s'] };
 
-    const childrenByParent = new Map([['epicDelta', ['childDelta']]]);
-    calc.setChildrenByParent(childrenByParent);
-
-    // Step 1: full calculate — parent contributes Team A, child has no capacity
+    // Step 1: parent contributes Team A, child has no allocation.
     const step1 = calc.calculate([epic, childV1], filters, teams, projects);
     const teamAIdx = 0;
     expect(step1.teamDailyCapacity[0][teamAIdx]).to.equal(10, 'Step1: parent Team A = 10');
 
-    // Step 2: child gets Team A capacity — incremental delta (only child.id changed)
+    // Step 2: the child now holds the winning Team A allocation.
     const childV2 = { ...childV1, capacity: [{ team: 'teamA', capacity: 20 }] };
-    const step2 = calc.calculate([epic, childV2], filters, teams, projects, ['childDelta']);
+    const step2 = calc.calculate([epic, childV2], filters, teams, projects);
 
     // Child wins → total must be 20, NOT 30 (which would be the double-count bug)
     for (let d = 0; d < 5; d++) {
@@ -658,8 +711,6 @@ describe('CapacityCalculator (unit)', () => {
       selectedTeams: ['teamA'],
       selectedStates: ['s'],
     };
-
-    calc.setChildrenByParent(new Map());
 
     const result = calc.calculate(features, filters, teams, projects);
     expect(result.dates).to.have.lengthOf(2);
@@ -701,7 +752,7 @@ describe('CapacityCalculator (unit)', () => {
     expect(result.totalOrgDailyPerTeamAvg[0]).to.equal(50);
   });
 
-  it('incremental delta path keeps the full-organization normalization', () => {
+  it('repeated calculations keep full-organization normalization', () => {
     const calc = new CapacityCalculator(bus);
 
     const feature = {
@@ -724,11 +775,11 @@ describe('CapacityCalculator (unit)', () => {
       selectedStates: ['s'],
     };
 
-    // First full calculate to populate the cache
+    // Calculate once before repeating with the same inputs.
     calc.calculate([feature], filters, teams, projects);
 
-    // Trigger the incremental delta path with the same (unchanged) feature
-    const result = calc.calculate([feature], filters, teams, projects, ['fDelta']);
+    // Repeated calculations retain the full organization denominator.
+    const result = calc.calculate([feature], filters, teams, projects);
 
     expect(result.projectDailyCapacity[0][0]).to.equal(50);
     expect(result.totalOrgDailyPerTeamAvg[0]).to.equal(50);

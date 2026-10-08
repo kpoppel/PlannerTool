@@ -1,0 +1,81 @@
+[
+  {
+    "name": "unplanned descendant does not invalidate planned reservation",
+    "features": [
+      {"id": "epic", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 100}, {"team": "B", "capacity": 50}]},
+      {"id": "feature", "parentId": "epic", "capacity": []},
+      {"id": "story", "parentId": "feature", "capacity": [{"team": "A", "capacity": 20}]}
+    ],
+    "expected": {
+      "epic": [{"team": "A", "capacity": 100}, {"team": "B", "capacity": 50}],
+      "feature": [],
+      "story": []
+    }
+  },
+  {
+    "name": "planned grandchild propagates through unplanned intermediary",
+    "features": [
+      {"id": "root", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 100}]},
+      {"id": "middle", "parentId": "root", "capacity": [{"team": "B", "capacity": 50}]},
+      {"id": "leaf", "parentId": "middle", "start": "2025-01-06", "end": "2025-01-10", "capacity": [{"team": "A", "capacity": 20}]}
+    ],
+    "expected": {"root": [], "middle": [], "leaf": [{"team": "A", "capacity": 20}]}
+  },
+  {
+    "name": "per-team monthly winners across owners",
+    "features": [
+      {"id": "epic", "project": "project-1", "start": "2025-01-29", "end": "2025-02-03", "capacity": [{"team": "team-alpha", "capacity": 100}, {"team": "team-beta", "capacity": 100}, {"team": "team-gamma", "capacity": 30}]},
+      {"id": "jan", "parentId": "epic", "project": "project-2", "start": "2025-01-29", "end": "2025-01-30", "capacity": [{"team": "team-alpha", "capacity": 20}]},
+      {"id": "feb", "parentId": "epic", "project": "project-2", "start": "2025-02-03", "end": "2025-02-03", "capacity": [{"team": "team-beta", "capacity": 90}]}
+    ],
+    "expected": {"epic": [{"team": "team-gamma", "capacity": 30}], "jan": [{"team": "team-alpha", "capacity": 20}], "feb": [{"team": "team-beta", "capacity": 90}]},
+    "monthlyLoad": {"team-alpha": {"2025-01": 0.4}, "team-beta": {"2025-02": 0.9}, "team-gamma": {"2025-01": 0.9, "2025-02": 0.3}}
+  },
+  {
+    "name": "child without allocations preserves reservation",
+    "features": [{"id": 1, "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 40}]}, {"id": "2", "parentId": "1", "capacity": []}],
+    "expected": {"1": [{"team": "A", "capacity": 40}], "2": []}
+  },
+  {
+    "name": "excluded and traversal boundary edges",
+    "features": [
+      {"id": "root", "start": "2025-01-01", "end": "2025-01-31", "excludedChildIds": ["excluded"], "capacity": [{"team": "A", "capacity": 100}]},
+      {"id": "excluded", "start": "2025-01-01", "end": "2025-01-31", "parentId": "root", "capacity": [{"team": "A", "capacity": 20}]},
+      {"id": "boundary", "start": "2025-01-01", "end": "2025-01-31", "parentId": "root", "traversalBoundary": true, "capacity": [{"team": "A", "capacity": 30}]},
+      {"id": "leaf", "start": "2025-01-01", "end": "2025-01-31", "parentId": "boundary", "capacity": [{"team": "A", "capacity": 40}]}
+    ],
+    "expected": {"root": [{"team": "A", "capacity": 100}], "excluded": [{"team": "A", "capacity": 20}], "boundary": [{"team": "A", "capacity": 30}], "leaf": [{"team": "A", "capacity": 40}]}
+  },
+  {
+    "name": "short fat descendant suppresses long parent span",
+    "features": [{"id": "root", "start": "2025-01-01", "end": "2025-12-31", "capacity": [{"team": "A", "capacity": 10}]}, {"id": "leaf", "parentId": "root", "start": "2025-06-01", "end": "2025-06-01", "capacity": [{"team": "A", "capacity": 100}]}],
+    "expected": {"root": [], "leaf": [{"team": "A", "capacity": 100}]}
+  },
+  {
+    "name": "relation-only parents and shared descendants",
+    "features": [{"id": "one", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 50}]}, {"id": "two", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 80}]}, {"id": "leaf", "start": "2025-01-01", "end": "2025-01-31", "relations": [{"type": "Parent", "id": "one"}, {"type": "Parent", "id": "two"}], "capacity": [{"team": "A", "capacity": 20}]}],
+    "expected": {"one": [], "two": [], "leaf": [{"team": "A", "capacity": 20}]}
+  },
+  {
+    "name": "removed work and Task-category edges do not suppress ancestors",
+    "features": [{"id": "root", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 50}]}, {"id": "removed", "start": "2025-01-01", "end": "2025-01-31", "parentId": "root", "stateCategory": "Removed", "capacity": [{"team": "A", "capacity": 80}]}, {"id": "task", "start": "2025-01-01", "end": "2025-01-31", "parentId": "root", "type": "Task", "traversalBoundary": true, "capacity": [{"team": "A", "capacity": 20}]}],
+    "expected": {"root": [{"team": "A", "capacity": 50}], "removed": [], "task": [{"team": "A", "capacity": 20}]}
+  },
+  {
+    "name": "incomplete invalid and reversed spans have no allocation precedence",
+    "features": [
+      {"id": "root", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 100}]},
+      {"id": "start-only", "parentId": "root", "start": "2025-01-01", "capacity": [{"team": "A", "capacity": 20}]},
+      {"id": "end-only", "parentId": "root", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 20}]},
+      {"id": "invalid", "parentId": "root", "start": "invalid", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 20}]},
+      {"id": "rollover", "parentId": "root", "start": "2025-02-30", "end": "2025-03-02", "capacity": [{"team": "A", "capacity": 20}]},
+      {"id": "reversed", "parentId": "root", "start": "2025-01-31", "end": "2025-01-01", "capacity": [{"team": "A", "capacity": 20}]}
+    ],
+    "expected": {"root": [{"team": "A", "capacity": 100}], "start-only": [], "end-only": [], "invalid": [], "rollover": [], "reversed": []}
+  },
+  {
+    "name": "cycle fails explicitly",
+    "features": [{"id": "one", "parentId": "two", "capacity": [{"team": "A", "capacity": 50}]}, {"id": "two", "parentId": "one", "capacity": [{"team": "A", "capacity": 20}]}],
+    "error": "Allocation hierarchy contains a cycle"
+  }
+]

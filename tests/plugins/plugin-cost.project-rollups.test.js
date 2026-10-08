@@ -137,11 +137,12 @@ describe('PluginCost Project View deeper branches', () => {
       start: '2026-01-01',
       end: '2026-03-31',
       metrics: {
-        internal: {
-          cost: { '2026-01': 100, '2026-02': 200, '2026-03': 300 },
-          hours: { '2026-01': 10, '2026-02': 20, '2026-03': 30 },
+        teams: {
+          'team-alpha': {
+            cost: { internal: { '2026-01': 100, '2026-02': 200, '2026-03': 300 }, external: {} },
+            hours: { internal: { '2026-01': 10, '2026-02': 20, '2026-03': 30 }, external: {} },
+          },
         },
-        external: { cost: {}, hours: {} },
       },
     };
 
@@ -210,8 +211,10 @@ describe('PluginCost Project View deeper branches', () => {
       start: '2025-11-01', // before window start
       end: '2026-03-15',   // after window end
       metrics: {
-        internal: { cost: { '2026-01': 100 }, hours: {} },
-        external: { cost: {}, hours: {} },
+        teams: { 'team-alpha': {
+          cost: { internal: { '2026-01': 100 }, external: {} },
+          hours: { internal: {}, external: {} },
+        } },
       },
     };
 
@@ -242,8 +245,10 @@ describe('PluginCost Project View deeper branches', () => {
       start: '2025-06-01', // before window
       end: '2026-01-31',
       metrics: {
-        internal: { cost: { '2026-01': 50 }, hours: {} },
-        external: { cost: {}, hours: {} },
+        teams: { 'team-alpha': {
+          cost: { internal: { '2026-01': 50 }, external: {} },
+          hours: { internal: {}, external: {} },
+        } },
       },
     };
 
@@ -274,8 +279,7 @@ describe('PluginCost Project View deeper branches', () => {
       start: '2026-01-01',
       end: '2026-01-31',
       metrics: {
-        internal: { cost: { '2026-01': 100 }, hours: { '2026-01': 10 } },
-        external: { cost: {}, hours: {} },
+        teams: {},
       },
     };
     const child = {
@@ -284,8 +288,10 @@ describe('PluginCost Project View deeper branches', () => {
       start: '2026-01-01',
       end: '2026-01-31',
       metrics: {
-        internal: { cost: { '2026-01': 50 }, hours: { '2026-01': 5 } },
-        external: { cost: {}, hours: {} },
+        teams: { 'team-alpha': {
+          cost: { internal: { '2026-01': 50 }, external: {} },
+          hours: { internal: { '2026-01': 5 }, external: {} },
+        } },
       },
     };
 
@@ -323,8 +329,7 @@ describe('PluginCost Project View deeper branches', () => {
       start: '2026-01-01',
       end: '2026-01-31',
       metrics: {
-        internal: { cost: { '2026-01': 80 }, hours: {} },
-        external: { cost: {}, hours: {} },
+        teams: {},
       },
     };
     const child = {
@@ -333,8 +338,10 @@ describe('PluginCost Project View deeper branches', () => {
       start: '2026-01-01',
       end: '2026-01-31',
       metrics: {
-        internal: { cost: { '2026-01': 40 }, hours: {} },
-        external: { cost: {}, hours: {} },
+        teams: { 'team-alpha': {
+          cost: { internal: { '2026-01': 40 }, external: {} },
+          hours: { internal: {}, external: {} },
+        } },
       },
     };
 
@@ -368,9 +375,8 @@ describe('PluginCost Project View deeper branches', () => {
 
   // ---- Rollup tests ----
 
-  it('rolls up child team cost into parent row (parent own cost is replaced)', () => {
-    // Epic has Team A: 500. Child Feature has Team A: 200.
-    // Displayed parent sum must be 200 (child), not 500 (own).
+  it('rolls up child team cost after the server suppresses parent allocation', () => {
+    // The server has already removed the Epic's Team A reservation.
     const mk = (id, title, teams) => ({
       id: String(id),
       title,
@@ -389,7 +395,7 @@ describe('PluginCost Project View deeper branches', () => {
       },
     });
 
-    const parent = mk('300', 'Epic A', { 'team-alpha': 500 });
+    const parent = mk('300', 'Epic A', {});
     const child = mk('301', 'Feature A', { 'team-alpha': 200 });
 
     mockFeatureState.childrenByParent = new Map([[300, ['301']]]);
@@ -421,7 +427,7 @@ describe('PluginCost Project View deeper branches', () => {
   });
 
   it('keeps own allocation for teams not covered by any child', () => {
-    // Epic has Team A: 500 and Team B: 300. Child only has Team A: 200.
+    // Epic's resolved metrics retain Team B: 300. Child has Team A: 200.
     // Parent displayed sum = Team A (child) 200 + Team B (own) 300 = 500.
     const mk = (id, title, teams) => ({
       id: String(id),
@@ -441,7 +447,7 @@ describe('PluginCost Project View deeper branches', () => {
       },
     });
 
-    const parent = mk('400', 'Epic B', { 'team-alpha': 500, 'team-beta': 300 });
+    const parent = mk('400', 'Epic B', { 'team-beta': 300 });
     const child = mk('401', 'Feature B', { 'team-alpha': 200 });
 
     mockFeatureState.childrenByParent = new Map([[400, ['401']]]);
@@ -510,9 +516,9 @@ describe('PluginCost Project View deeper branches', () => {
   }
 
   it('team table: Team A shows child value when child covers it (no double-count)', () => {
-    // Epic: Team A 500, Team B 300. Child: Team A 200.
+    // Resolved Epic: Team B 300. Child: Team A 200.
     // Expected Team A total = 200 (child), Team B total = 300 (own).
-    const parent = mkMultiTeamFeature(500, 'Epic', { 'team-alpha': 500, 'team-beta': 300 });
+    const parent = mkMultiTeamFeature(500, 'Epic', { 'team-beta': 300 });
     const child = mkMultiTeamFeature(501, 'Feature', { 'team-alpha': 200 });
 
     const comp = renderTeamsView([parent, child], 500, [501]);
@@ -573,9 +579,8 @@ describe('PluginCost Project View deeper branches', () => {
   });
 
   it('project summary Totals row matches rollup (no double-count parent+child)', () => {
-    // Epic: Team A 500. Child: Team A 200.
-    // Summary "Totals: Cost" should be 200 (from child), not 700 (200+500).
-    const parent = mkMultiTeamFeature(700, 'Epic', { 'team-alpha': 500 });
+    // Resolved Epic has no own Team A metrics. Child: Team A 200.
+    const parent = mkMultiTeamFeature(700, 'Epic', {});
     const child = mkMultiTeamFeature(701, 'Feature', { 'team-alpha': 200 });
 
     const comp = renderTeamsView([parent, child], 700, [701]);

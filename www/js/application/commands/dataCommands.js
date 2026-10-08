@@ -6,10 +6,7 @@ import {
 import { CapacityCalculator } from '../../services/CapacityCalculator.js';
 import { ColorService, PALETTE } from '../../services/ColorService.js';
 import { featureFlags } from '../../config.js';
-import {
-  buildChildrenByParentMap,
-  deriveEffectiveFeatures,
-} from '../shared/featureProjection.js';
+import { deriveEffectiveFeatures } from '../shared/featureProjection.js';
 import { deriveOrderedFeatureStateNames } from '../shared/stateDerivations.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
@@ -90,25 +87,21 @@ export function createDataCommands(store, bus, dataService) {
   const capacityCalculator = new CapacityCalculator(NO_OP_BUS);
 
   const commands = {
-    recomputeCapacity(changedFeatureIds = null) {
+    recomputeCapacity() {
       const state = store.getState();
       const features = deriveEffectiveFeatures(state, { includeDirtyMetadata: false });
       const teams = state.baseline.teams;
       const projects = state.baseline.projects;
-      const selectedProjectIds = state.selection.projectIds.map((id) => String(id));
-      const organizationTeamIds = teams.map((team) => String(team.id));
       const organizationStateIds = Array.from(
         new Set(features.map((feature) => String(feature.state)))
       );
       const projectsForFilter = projects.map((p) => String(p.id));
 
-      capacityCalculator.setChildrenByParent(buildChildrenByParentMap(features));
       const result = capacityCalculator.calculate(
         features,
-        { selectedProjects: projectsForFilter, selectedTeams: organizationTeamIds, selectedStates: organizationStateIds },
+        { selectedProjects: projectsForFilter, selectedStates: organizationStateIds },
         teams,
-        projects,
-        changedFeatureIds
+        projects
       );
 
       store.setState(

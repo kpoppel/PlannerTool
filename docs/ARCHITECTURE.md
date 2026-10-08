@@ -222,6 +222,27 @@ The read path is selector-driven:
 
 `sel.scope` separates effective tasks, planning context, and displayed tasks. Plan selection and Scope relationship flags determine planning context; team focus and display filters determine visibility. Capacity recomputation derives effective tasks directly and calculates across all configured plans and teams, independently of display filters, so hiding cards must not change organization totals.
 
+Capacity and cost resolve allocations over the complete effective graph before applying
+report or display scope. Pure mirrored allocation-rule modules under
+`www/js/application/shared/` and `planner_lib/cost/` compute descendant-team sets
+bottom-up over eligible parent edges. A dated descendant allocation suppresses an ancestor's
+reservation for that team across its entire span, including skipped levels. Undated, invalid,
+and reversed spans have no effective allocations and do not suppress ancestor reservations;
+dated descendants still propagate through undated intermediaries.
+Excluded, traversal-boundary and Task-category edges do not participate;
+Removed work contributes nothing. Cyclic eligible graphs fail explicitly. Shared JSON
+fixtures enforce cross-language parity, including per-team monthly working-day loads.
+
+Capacity uses one feature-first calculation path with per-feature ownership lookups,
+without a separate delta cache or per-day precedence mode. Commands still own store
+writes and repaint signals. Cost's browser payload contains the complete scenario
+graph; report filters are applied to the resolved response. Undated, invalid and reversed
+spans contribute zero cost/load. Cost responses expose `unknown_teams` allocation records
+(`feature_id`, `team`, `capacity`); project site totals remain internal-only while team
+site totals retain internal and external work. Ancestor-only context is not charged.
+Cost views sum server-resolved per-team metrics bottom-up without reapplying allocation
+precedence. Presentation rollups are iterative, reject cycles, and accumulate every sibling.
+
 Baseline is a synthetic readonly scenario. Editable scenarios hold task overrides, group overrides, scenario-owned groups, and `pluginData`; selectors project these over baseline data. Task edits, scenario persistence, and explicit publishing to the backend are distinct operations.
 
 The Zustand store is the canonical in-memory model, not the sole persistence layer. REST providers persist server scenarios, views, and configuration. Browser-local providers retain preferences and colors. Shared baseline groups are fetched from the server in batches and cached in `groups.byPlanId`; in-flight requests are deduplicated and account changes invalidate older responses. This browser-session cache is not local-storage persistence. The synthetic Baseline's `pluginData` is stored locally because it has no server-side scenario record; plugin view state can be captured and restored with saved views.

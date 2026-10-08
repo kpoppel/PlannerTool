@@ -43,6 +43,29 @@ class _FakeCostService:
         return {"projects": {}, "project_types": {}}
 
 
+@pytest.mark.parametrize('method', ['get', 'post'])
+def test_repository_cost_requests_preserve_allocation_graph_and_diagnostics(client, method):
+    container = client.app.state.container
+    email = 'allocation@example.com'
+    container.get('account_manager').update_credentials(AccountCredentialsPayload(email=email))
+    sid = container.get('session_manager').create(email)
+    client.cookies.set(session_module.SESSION_COOKIE, sid)
+    features = [{'id': 'child', 'project': 'project-1', 'parentId': 'parent',
+                 'sourcePlanIds': ['project-1'], 'traversalBoundary': True,
+                 'excludedChildIds': ['excluded'], 'capacity': [{'team': 'missing', 'capacity': 20}]}]
+    unknown = [{'feature_id': 'child', 'team': 'missing', 'capacity': 20}]
+    estimate = Mock(return_value={'projects': {}, 'project_types': {}, 'unknown_teams': unknown})
+    container.register_singleton('cost_service', SimpleNamespace(estimate_costs=estimate))
+    container.register_singleton('task_repository', SimpleNamespace(read=Mock(return_value=features)))
+    if method == 'get':
+        response = client.get('/api/cost', headers={'Accept': 'application/json'})
+    else:
+        response = client.post('/api/cost/features', json={}, headers={'Accept': 'application/json'})
+    assert response.status_code == 200
+    assert estimate.call_args.args[0]['features'] == features
+    assert response.json()['unknown_teams'] == unknown
+
+
 @pytest.mark.parametrize('pat', [None, 'updated-token'])
 @pytest.mark.parametrize('method', ['post', 'get'])
 def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monkeypatch, pat, method):

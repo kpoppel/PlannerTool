@@ -78,7 +78,11 @@ def fixtures_dir(tmp_path, request):
     if os.path.isdir(src):
         import shutil
         for name in os.listdir(src):
-            shutil.copy(os.path.join(src, name), str(base / name))
+            source = os.path.join(src, name)
+            if os.path.isdir(source):
+                shutil.copytree(source, base / name)
+            else:
+                shutil.copy(source, base / name)
     return str(base)
 
 

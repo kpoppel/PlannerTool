@@ -56,8 +56,10 @@ describe('PluginCost view rendering', () => {
                 end: '2026-01-15',
                 capacity: [{ team: 'team-1' }],
                 metrics: {
-                  cost: { internal: { '2026-01': 150 }, external: {} },
-                  hours: { internal: { '2026-01': 10 }, external: {} },
+                  teams: { 'team-1': {
+                    cost: { internal: { '2026-01': 150 }, external: {} },
+                    hours: { internal: { '2026-01': 10 }, external: {} },
+                  } },
                 },
               },
             ],

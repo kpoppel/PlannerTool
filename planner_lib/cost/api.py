@@ -30,16 +30,7 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
             _pat = ctx.get('pat')
             account_id = ctx['account_id']
             cred = BackendCredential(token=_pat, user_id=account_id) if _pat else None
-            tasks = await asyncio.to_thread(task_repo.read, credential=cred)
-            features = []
-            for t in (tasks or []):
-                features.append({
-                    'id': t.get('id'),
-                    'project': t.get('project'),
-                    'start': t.get('start'),
-                    'end': t.get('end'),
-                    'capacity': t.get('capacity') or [],
-                })
+            features = await asyncio.to_thread(task_repo.read, credential=cred)
 
         ctx = dict(ctx)
         ctx['features'] = features
@@ -50,7 +41,8 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
         project_types = result.get('project_types', {})
         return build_cost_schema(raw, mode='full', session_features=ctx.get('features'),
                      project_types=project_types,
-                     project_container_order=result.get('project_container_order'))
+                     project_container_order=result.get('project_container_order'),
+                     unknown_teams=result.get('unknown_teams', []))
     except Exception as e:
         logger.exception('Failed to calculate feature costs: %s', e)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -68,20 +60,7 @@ async def api_cost_get(request: Request):
 
         task_repo = resolve_service(request, 'task_repository')
         cred = BackendCredential(token=pat, user_id=ctx['account_id']) if pat else None
-        tasks = await asyncio.to_thread(task_repo.read, credential=cred)
-        features = []
-        for t in tasks or []:
-            features.append({
-                'id': t.get('id'),
-                'project': t.get('project'),
-                'start': t.get('start'),
-                'end': t.get('end'),
-                'capacity': t.get('capacity'),
-                'title': t.get('title'),
-                'type': t.get('type'),
-                'state': t.get('state'),
-                'relations': t.get('relations', []),
-            })
+        features = await asyncio.to_thread(task_repo.read, credential=cred)
 
         ctx = dict(ctx)
         ctx['features'] = features
@@ -95,7 +74,8 @@ async def api_cost_get(request: Request):
         project_types = result.get('project_types', {})
         return build_cost_schema(raw, mode='full', session_features=features,
                      project_types=project_types,
-                     project_container_order=result.get('project_container_order'))
+                     project_container_order=result.get('project_container_order'),
+                     unknown_teams=result.get('unknown_teams', []))
 
     except Exception as e:
         logger.exception('Failed to fetch cost data: %s', e)

@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
-from .engine import calculate, invalidate_team_rates_cache
+from .engine import invalidate_team_rates_cache
+from .allocation_rule import build_allocation_graph, resolve_effective_allocations
 from . import engine as _engine
 import logging
 from datetime import datetime, timezone
@@ -73,49 +74,21 @@ class CostService:
         """Return the raw cost_config dict (working_hours, external_cost, internal_cost, …)."""
         return self._cfg.get("cost", {})
 
-    def estimate_costs(self, session: Dict[str, Any]) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    def estimate_costs(self, session: Dict[str, Any]) -> Dict[str, Any]:
         """Traverse features/tasks from a session-like dict and compute costs.
 
         Returns nested mapping { project_id: { task_id: cost_dict } }
         """
-        cfg = self._cfg
-        features = session.get("features", []) if session else []
-        # Determine allowed project ids and build type mapping via the composed ProjectService.
-        allowed_projects = None
-        project_types: Dict[str, str] = {}
-        project_container_order: Dict[str, int] = {}
-        try:
-            if self._project_service:
-                proj_list = self._project_service.list_projects()
-                allowed_projects = {p.get('id') for p in proj_list if isinstance(p, dict) and p.get('id')}
-                # Build a mapping of project_id -> type for later use
-                for p in proj_list:
-                    if isinstance(p, dict) and p.get('id'):
-                        project_types[p['id']] = p['type']
-                        project_container_order[p['id']] = p['container_order']
-        except Exception:
-            allowed_projects = None
-
-        features_by_id = {str(feature['id']): feature for feature in features}
-        parents_by_child = {}
-        children_by_parent = {}
-        for feature in features:
-            child_id = str(feature['id'])
-            parent_ids = {str(relation['id']) for relation in feature.get('relations', [])
-                          if relation['type'] == 'Parent'}
-            if feature.get('parentId') is not None:
-                parent_ids.add(str(feature['parentId']))
-            parents_by_child[child_id] = []
-            if feature.get('traversalBoundary', False):
-                continue
-            for parent_id in sorted(parent_ids):
-                parent = features_by_id.get(parent_id)
-                if parent is None or parent.get('traversalBoundary', False):
-                    continue
-                if child_id in {str(item_id) for item_id in parent.get('excludedChildIds', [])}:
-                    continue
-                parents_by_child[child_id].append(parent_id)
-                children_by_parent.setdefault(parent_id, []).append(child_id)
+        features = session.get('features', [])
+        plans = self._project_service.list_projects()
+        allowed_projects = {plan['id'] for plan in plans}
+        project_types = {plan['id']: plan['type'] for plan in plans}
+        project_container_order = {plan['id']: plan['container_order'] for plan in plans}
+        graph = build_allocation_graph(features)
+        features_by_id, parents_by_child, _ = graph
+        allocations = resolve_effective_allocations(features, graph)
+        known_teams = {team['id'] for team in self._team_service.list_teams()}
+        unknown_teams = []
 
         targets_by_id = {}
         for feature in features:
@@ -136,167 +109,34 @@ class CostService:
                 target_ids.intersection_update(allowed_projects)
             targets_by_id[str(feature['id'])] = sorted(target_ids)
 
-        projects: Dict[str, Dict[str, Dict[str, Any]]] = {}
-
-        # Second pass: calculate costs and assign to appropriate projects and teams
-        for f in features:
-            if f.get('ancestorOnly', False):
+        projects = {}
+        for feature in features:
+            if feature.get('ancestorOnly', False) or feature.get('stateCategory') == 'Removed':
                 continue
-            fid = f.get("id")
-            project_id = f.get("project")
-            title = f.get("title", "") or f.get("name", "")
-            
-            has_project_parent = bool(parents_by_child[str(fid)])
-            target_projects = targets_by_id[str(fid)]
-            
-            # Skip if no valid project to assign to
+            feature_id = feature['id']
+            for allocation in feature.get('capacity', []):
+                if allocation['team'] not in known_teams:
+                    unknown_teams.append({'feature_id': feature_id, **allocation})
+            target_projects = targets_by_id[str(feature_id)]
             if not target_projects:
-                if project_id:
-                    logger.debug("Skipping feature %s: project %s not in configured projects", fid, project_id)
                 continue
-            
-            start = f.get("start")
-            end = f.get("end")
-            capacity = f.get("capacity", [])
-
-            # Calculate detailed cost for projects (including per-team monthly allocations)
-            cost = _engine.calculate_detailed(cfg, start=start, end=end, capacity=capacity, cache_storage=self._cache_storage)
-            # Add has_project_parent metadata for filtering
-            cost_with_meta = dict(cost)
-            cost_with_meta['has_project_parent'] = has_project_parent
-            # Instrumentation: when inspecting a specific feature, log per-team contributions
-            try:
-                if str(f.get('id')) == '688051':
-                    try:
-                        ta = _engine._team_members(self._cfg, cache_storage=self._cache_storage)
-                        logger.debug("[INSTR][server] feature=688051 start=%s end=%s capacity=%s", start, end, capacity)
-                        for team_entry in (capacity or []):
-                            team_key = team_entry.get('team')
-                            cap_pct = float(team_entry.get('capacity') or 0)
-                            if team_key not in ta:
-                                logger.debug("[INSTR][server] team=%s missing from aggregates", team_key)
-                                continue
-                            summary = ta[team_key]
-                            try:
-                                base_hours_internal = _engine._hours_between(start, end, int(summary.get('internal_hours_total') or 0))
-                            except Exception:
-                                base_hours_internal = float(summary.get('internal_hours_total') or 0)
-                            alloc_hours_internal = round(base_hours_internal * (cap_pct / 100.0), 2)
-                            internal_cost = 0.0
-                            if summary.get('internal_hours_total'):
-                                fraction_internal = base_hours_internal / max(1.0, float(summary.get('internal_hours_total')))
-                                internal_cost = round(float(summary.get('internal_monthly_cost_total', 0.0)) * (cap_pct / 100.0) * fraction_internal, 2)
-
-                            try:
-                                base_hours_external = _engine._hours_between(start, end, int(summary.get('external_hours_total') or 0))
-                            except Exception:
-                                base_hours_external = float(summary.get('external_hours_total') or 0)
-                            alloc_hours_external = round(base_hours_external * (cap_pct / 100.0), 2)
-                            external_cost = 0.0
-                            if summary.get('external_hours_total'):
-                                fraction_external = base_hours_external / max(1.0, float(summary.get('external_hours_total')))
-                                external_cost = round(float(summary.get('external_monthly_cost_total', 0.0)) * (cap_pct / 100.0) * fraction_external, 2)
-
-                            logger.debug("[INSTR][server] feature=688051 team=%s cap=%s alloc_hours_int=%s alloc_hours_ext=%s internal_cost=%s external_cost=%s sites=%s", team_key, cap_pct, alloc_hours_internal, alloc_hours_external, internal_cost, external_cost, summary.get('sites'))
-                    except Exception as e:
-                        logger.exception('Failed to instrument feature 688051 internals: %s', e)
-            except Exception:
-                pass
-            for target_project_id in target_projects:
-                if target_project_id not in projects:
-                    projects[target_project_id] = {}
-                projects[target_project_id][fid] = cost_with_meta
-
-        # Return both the projects dict and the type mapping
-        # Additionally compute per-project per-site monthly totals so the
-        # frontend can present site-level internal breakdown directly.
-        team_aggregates = _engine._team_members(self._cfg, cache_storage=self._cache_storage)
-        project_sites: Dict[str, Dict[str, Dict[str, Dict[str, float]]]] = {}
-
-        def child_covered_teams(fid_s: str) -> set:
-            """Return the set of team keys covered by any direct child."""
-            covered: set = set()
-            for cid in children_by_parent.get(fid_s, []):
-                child = features_by_id.get(cid)
-                if not child:
-                    continue
-                for cap_entry in (child.get('capacity') or []):
-                    t = cap_entry.get('team')
-                    if t:
-                        covered.add(t)
-            return covered
-
-        seen_per_project: Dict[str, set] = {}
-
-        def _add_team_sites(proj_sites: dict, start: str, end: str, team_key: str, cap: float) -> None:
-            """Accumulate site-level hours/cost for one team allocation."""
-            team_summary = team_aggregates.get(team_key)
-            if not team_summary or not team_summary.get('internal_hours_total'):
-                return
-            month_buckets = _engine._allocate_months(start, end, int(team_summary.get('internal_hours_total') or 0))
-            sites_info = team_summary.get('sites', {}) or {}
-            denom = sum((sv.get('internal_hours_total', 0) or 0) for sv in sites_info.values()) or float(team_summary.get('internal_hours_total') or 1)
-            team_cost_per_hour = 0.0
-            if team_summary.get('internal_hours_total'):
-                team_cost_per_hour = float(team_summary.get('internal_monthly_cost_total', 0.0)) / max(1.0, float(team_summary.get('internal_hours_total')))
-            for m_k, base_hours in (month_buckets or {}).items():
-                alloc_hours_team = base_hours * cap
-                for site, sv in sites_info.items():
-                    site_hours_share = (sv.get('internal_hours_total', 0) or 0) / denom if denom else 0
-                    site_hours = alloc_hours_team * site_hours_share
-                    site_cost_per_hour = (
-                        float(sv.get('internal_monthly_cost_total', 0.0)) / max(1.0, float(sv.get('internal_hours_total')))
-                        if sv.get('internal_hours_total')
-                        else team_cost_per_hour
-                    )
-                    site_cost = site_hours * site_cost_per_hour
-                    site_entry = proj_sites.setdefault(site, {'hours': {}, 'cost': {}})
-                    site_entry['hours'][m_k] = site_entry['hours'].get(m_k, 0.0) + round(site_hours, 2)
-                    site_entry['cost'][m_k] = site_entry['cost'].get(m_k, 0.0) + round(site_cost, 2)
-
-        for f in features:
-            fid = f.get('id')
-            fid_s = str(fid) if fid is not None else None
-            project_id = f.get('project')
-            start = f.get('start')
-            end = f.get('end')
-            capacity = f.get('capacity', []) or []
-
-            target_projects = targets_by_id[str(fid)]
-
-            for target_project_id in target_projects:
-                seen = seen_per_project.setdefault(target_project_id, set())
-                if fid_s and fid_s in seen:
-                    continue
-                if fid_s:
-                    seen.add(fid_s)
-                proj_sites = project_sites.setdefault(target_project_id, {})
-
-                # Per-team rollup: for teams this feature owns, only use this
-                # feature's own allocation if no child covers that team.
-                covered = child_covered_teams(fid_s) if fid_s else set()
-                for team in capacity:
-                    team_key = team.get('team')
-                    if not team_key or team_key not in team_aggregates:
-                        continue
-                    cap = float(team.get('capacity', 0)) / 100.0
-                    if team_key in covered:
-                        # A child will contribute this team's hours — skip here
-                        continue
-                    _add_team_sites(proj_sites, start, end, team_key, cap)
-
-        # NOTE: intentionally do not swallow exceptions here — let errors
-        # propagate so issues are visible and cannot be silently ignored.
-
-        # Attach computed site totals into the projects dict under a 'totals' key
-        for pid, pdata in projects.items():
-            totals = pdata.setdefault('totals', {})
-            sites = project_sites.get(pid) or {}
-            if sites:
-                totals['sites'] = sites
-
+            cost = _engine.calculate_detailed(
+                self._cfg, start=feature.get('start'), end=feature.get('end'),
+                capacity=allocations[str(feature_id)], cache_storage=self._cache_storage,
+            )
+            cost['has_project_parent'] = bool(parents_by_child[str(feature_id)])
+            for project_id in target_projects:
+                project = projects.setdefault(project_id, {'totals': {}})
+                project[feature_id] = cost
+                for team in cost['teams'].values():
+                    for site, metrics in team['internalSites'].items():
+                        sites = project['totals'].setdefault('sites', {})
+                        totals = sites.setdefault(site, {'hours': {}, 'cost': {}})
+                        for metric, months in metrics.items():
+                            for month, value in months.items():
+                                totals[metric][month] = round(totals[metric].get(month, 0) + value, 2)
         return {'projects': projects, 'project_types': project_types,
-            'project_container_order': project_container_order}
+                'project_container_order': project_container_order, 'unknown_teams': unknown_teams}
 
 
 def _parse_totals(totals: dict) -> dict:
@@ -313,7 +153,7 @@ def _parse_totals(totals: dict) -> dict:
     return out
 
 
-def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None, project_types: Optional[Dict[str, str]] = None, project_container_order: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None, project_types: Optional[Dict[str, str]] = None, project_container_order: Optional[Dict[str, int]] = None, unknown_teams: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Convert the raw cost mapping returned by `estimate_costs` into the
     normalized strongly-structured schema used by the UI. Optionally enrich
     features with metadata from `session_features` and compute dataset bounds.
@@ -520,7 +360,8 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
     out = {
         "meta": meta,
         "configuration": configuration,
-        "projects": projects
+        "projects": projects,
+        "unknown_teams": [] if unknown_teams is None else unknown_teams,
     }
     if isinstance(src.get("meta"), dict):
         out["meta"].update({k: v for k, v in src["meta"].items() if k in ("scenario_id", "applied_overrides", "deltas")})

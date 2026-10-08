@@ -37,8 +37,7 @@ def _hours_between(start: Optional[str], end: Optional[str], default_hours_per_m
     avg_working_days_per_month = 5 * 52.0 / 12.0  # ~= 21.6667
     try:
         if not start or not end:
-            # return a single-month worth of hours
-            return float(default_hours_per_month)
+            return 0.0
         s = datetime.fromisoformat(start)
         e = datetime.fromisoformat(end)
         total_days = (e - s).days + 1
@@ -52,8 +51,8 @@ def _hours_between(start: Optional[str], end: Optional[str], default_hours_per_m
         working_days = max(0, working_days)
         # Scale the default monthly hours by the fraction of working days covered
         return (working_days / avg_working_days_per_month) * float(default_hours_per_month)
-    except Exception:
-        return float(default_hours_per_month)
+    except ValueError:
+        return 0.0
 
 def _team_members(config: Dict[str, Any], cache_storage: StorageBackend) -> Dict[str, Dict[str, Any]]:
     """Return aggregated team information.
@@ -273,12 +272,6 @@ def calculate_detailed(config: Dict[str, Any], start: Optional[str], end: Option
         capacity = []
 
     teams_out: Dict[str, Any] = {}
-    totals = {
-        "internal_cost": 0.0,
-        "external_cost": 0.0,
-        "internal_hours": 0.0,
-        "external_hours": 0.0,
-    }
 
     for team in (capacity or []):
         team_key = team.get("team")
@@ -329,8 +322,11 @@ def calculate_detailed(config: Dict[str, Any], start: Optional[str], end: Option
                     site_entry["hours"][m_k] = site_entry["hours"].get(m_k, 0.0) + site_hours
                     site_entry["cost"][m_k] = site_entry["cost"].get(m_k, 0.0) + site_cost
 
-            totals["internal_cost"] += team_entry["totalCost"]
-            totals["internal_hours"] += team_entry["totalHours"]
+        # Project site totals represent internal work; team sites also include contractors.
+        team_entry['internalSites'] = {
+            site: {metric: months.copy() for metric, months in values.items()}
+            for site, values in team_entry['sites'].items()
+        }
 
         # External allocations
         if summary.get("external_hours_total"):
@@ -362,9 +358,6 @@ def calculate_detailed(config: Dict[str, Any], start: Optional[str], end: Option
                     site_entry = team_entry["sites"].setdefault(site, {"hours": {}, "cost": {}})
                     site_entry["hours"][m_k] = site_entry["hours"].get(m_k, 0.0) + site_hours
                     site_entry["cost"][m_k] = site_entry["cost"].get(m_k, 0.0) + site_cost
-
-            totals["external_cost"] += team_entry["totalCost"] - team_entry.get("totalCost", 0.0) + 0.0
-            totals["external_hours"] += 0.0
 
         teams_out[team_key] = team_entry
 
@@ -408,21 +401,17 @@ def _allocate_months(start: Optional[str], end: Optional[str], default_hours_per
     def month_key(d: date) -> str:
         return f"{d.year:04d}-{d.month:02d}"
 
-    # If no start/end, allocate a single month worth of hours to a generic key
     if not start or not end:
-        # Use current month as key
-        today = datetime.now().date()
-        return { month_key(today): float(default_hours_per_month) }
+        return {}
 
     try:
         s = datetime.fromisoformat(start).date()
         e = datetime.fromisoformat(end).date()
-    except Exception:
-        today = datetime.now().date()
-        return { month_key(today): float(default_hours_per_month) }
+    except ValueError:
+        return {}
 
     if e < s:
-        s, e = e, s
+        return {}
 
     # Iterate months between s and e inclusive
     cur_year = s.year

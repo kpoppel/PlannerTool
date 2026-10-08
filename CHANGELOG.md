@@ -40,6 +40,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Unified capacity and cost under lowest-level-wins allocations for dated work; unplanned work contributes no load, cost, or precedence; added unknown-team diagnostics and removed obsolete precedence and budget-deviation paths.
 - Plan overview now shows the full scoped tree; Team focus retains selected-team allocations, connecting ancestors and unallocated descendants without changing allocation counts or capacity/cost calculations.
 - Replaced top-bar metrics and the Scope footer with an on-board information menu starting from exact Plan-menu totals, reconciling scope and sidebar-named filter exclusions without double counting; clarified loaded-dataset counts.
 - Fixed asymmetric Ancestors scope previews by evaluating ancestor-only card eligibility against the proposed scope selection.

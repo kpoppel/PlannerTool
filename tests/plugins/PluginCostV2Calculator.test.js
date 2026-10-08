@@ -14,8 +14,6 @@ import {
   buildMonths,
   expandDataset,
   buildTaskTree,
-  calculateBudgetDeviation,
-  hasSignificantDeviation,
   allocateToMonths,
   flattenTree,
   buildByTeam,
@@ -158,94 +156,6 @@ describe('PluginCostCalculator', () => {
     });
   });
 
-  describe('calculateBudgetDeviation', () => {
-    it('should calculate deviation correctly', () => {
-      const parent = {
-        metrics: {
-          internal: { cost: 1000, hours: 100 },
-          external: { cost: 500, hours: 50 },
-        },
-      };
-      const children = [
-        {
-          metrics: {
-            internal: { cost: 600, hours: 60 },
-            external: { cost: 300, hours: 30 },
-          },
-        },
-      ];
-
-      const result = calculateBudgetDeviation(parent, children);
-
-      // Parent has 1500 total cost, children sum is 900 = +66.67% deviation
-      expect(result.deviation.totalCost).to.be.closeTo(66.67, 0.1);
-      expect(result.parentOwn.totalCost).to.equal(1500);
-      expect(result.childrenSum.totalCost).to.equal(900);
-    });
-
-    it('should handle zero children sum', () => {
-      const parent = {
-        metrics: {
-          internal: { cost: 1000, hours: 100 },
-          external: { cost: 0, hours: 0 },
-        },
-      };
-      const children = [];
-
-      const result = calculateBudgetDeviation(parent, children);
-
-      expect(result.deviation.totalCost).to.equal(100); // 100% deviation
-      expect(result.childrenSum.totalCost).to.equal(0);
-    });
-
-    it('should throw if parent is invalid', () => {
-      expect(() => calculateBudgetDeviation(null, [])).to.throw(
-        'parent must be an object'
-      );
-    });
-  });
-
-  describe('hasSignificantDeviation', () => {
-    it('should detect deviation above threshold', () => {
-      const deviation = {
-        totalCost: 15,
-        totalHours: 5,
-        internalCost: 10,
-        internalHours: 0,
-        externalCost: 0,
-        externalHours: 0,
-      };
-
-      expect(hasSignificantDeviation(deviation, 10)).to.be.true;
-    });
-
-    it('should not detect deviation below threshold', () => {
-      const deviation = {
-        totalCost: 5,
-        totalHours: 3,
-        internalCost: 2,
-        internalHours: 0,
-        externalCost: 0,
-        externalHours: 0,
-      };
-
-      expect(hasSignificantDeviation(deviation, 10)).to.be.false;
-    });
-
-    it('should handle negative deviations', () => {
-      const deviation = {
-        totalCost: -15,
-        totalHours: 0,
-        internalCost: 0,
-        internalHours: 0,
-        externalCost: 0,
-        externalHours: 0,
-      };
-
-      expect(hasSignificantDeviation(deviation, 10)).to.be.true;
-    });
-  });
-
   describe('allocateToMonths', () => {
     it('should allocate to single month', () => {
       const feature = {
@@ -344,6 +254,23 @@ describe('PluginCostCalculator', () => {
   describe('buildByTeam', () => {
     const monthKeys = ['2026-01', '2026-02'];
 
+    it('rolls up deep trees without recursion and rejects cycles', () => {
+      const features = Array.from({ length: 5000 }, (_, index) => ({
+        id: String(index), metrics: { teams: {} },
+      }));
+      features[4999].metrics.teams.A = {
+        cost: { internal: { '2026-01': 100 }, external: {} },
+        hours: { internal: { '2026-01': 10 }, external: {} },
+      };
+      const children = new Map(features.slice(0, -1).map((feature, index) =>
+        [feature.id, [String(index + 1)]]));
+      expect(buildByTeam(features, children, monthKeys).get('0').get('A')
+        .hours.internal.get('2026-01')).to.equal(10);
+      children.set('4999', ['0']);
+      expect(() => buildByTeam(features, children, monthKeys))
+        .to.throw('Cost hierarchy contains a cycle');
+    });
+
     it('should return leaf own allocation for a leaf with no children', () => {
       const features = [
         {
@@ -388,7 +315,7 @@ describe('PluginCostCalculator', () => {
       expect(teamA.cost.internal.get('2026-01')).to.equal(100);
     });
 
-    it('parent uses children sum when children cover the same team', () => {
+    it('rolls up resolved metrics additively without applying precedence again', () => {
       const features = [
         {
           id: 'parent',
@@ -428,8 +355,22 @@ describe('PluginCostCalculator', () => {
       const result = buildByTeam(features, childrenMap, ['2026-01']);
 
       const parentAlloc = result.get('parent')?.get('team-a');
-      // Parent should use children's sum (60 + 40 = 100), not its own 500
-      expect(parentAlloc.cost.internal.get('2026-01')).to.equal(100);
+      expect(parentAlloc.cost.internal.get('2026-01')).to.equal(600);
+    });
+
+    it('sums every same-team child when the parent has no winning reservation', () => {
+      const team = (value) => ({ cost: { internal: { '2026-01': value }, external: {} },
+        hours: { internal: { '2026-01': value / 10 }, external: {} } });
+      const features = [
+        { id: 'parent', metrics: { teams: {} } },
+        { id: 'child1', metrics: { teams: { A: team(60) } } },
+        { id: 'child2', metrics: { teams: { A: team(40) } } },
+      ];
+      const original = structuredClone(features);
+      const result = buildByTeam(features, new Map([['parent', ['child1', 'child2']]]), ['2026-01']);
+      expect(result.get('parent').get('A').cost.internal.get('2026-01')).to.equal(100);
+      expect(result.get('parent').get('A').hours.internal.get('2026-01')).to.equal(10);
+      expect(features).to.deep.equal(original);
     });
 
     it('parent keeps own allocation when children do NOT cover that team', () => {

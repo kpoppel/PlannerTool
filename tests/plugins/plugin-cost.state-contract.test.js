@@ -93,6 +93,7 @@ describe('plugin cost pluginState seam', () => {
       capacity: [{ team: 'team-1', capacity: 100 }],
     };
     mockSel.scope.getContextFeatures.mockReturnValue([parent, child]);
+    mockSel.feature.getEffectiveFeatures.mockReturnValue([parent, child]);
     mockSel.scope.getVisibleFeatures.mockImplementation(() => {
       throw new Error('Cost reporting must not use final visible scope');
     });
@@ -123,6 +124,7 @@ describe('plugin cost pluginState seam', () => {
       capacity: [{ team: 'team-2', capacity: 40 }],
     };
     mockSel.scope.getContextFeatures.mockReturnValue([contextFeature]);
+    mockSel.feature.getEffectiveFeatures.mockReturnValue([contextFeature]);
     await plugin.loadData();
 
     expect(getCost.mock.calls[1][0].features.map((feature) => feature.id)).toEqual([

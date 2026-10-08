@@ -1,4 +1,53 @@
 from planner_lib.cost.service import CostService, build_cost_schema
+from planner_lib.cost import engine
+import json
+from pathlib import Path
+import pytest
+
+
+def test_cost_monthly_hours_match_shared_capacity_loads(fake_services, cache_storage, monkeypatch):
+    case = next(case for case in json.loads(
+        (Path(__file__).parents[2] / 'fixtures/allocation_rule/cases.json').read_text()
+    ) if 'monthlyLoad' in case)
+    aggregates = {team: {'internal_hours_total': 160, 'internal_monthly_cost_total': 8000,
+                         'sites': {}} for team in case['monthlyLoad']}
+    monkeypatch.setattr(engine, '_team_members', lambda *args, **kwargs: aggregates)
+    svc = CostService(fake_services['storage'], fake_services['project_repository'],
+                      fake_services['team_repository'], fake_services['people_repository'],
+                      cache_storage)
+    result = svc.estimate_costs({'features': case['features']})['projects']['project-1']
+    for team, expected in case['monthlyLoad'].items():
+        monthly = {}
+        for feature_id, cost in result.items():
+            if feature_id == 'totals' or team not in cost['teams']:
+                continue
+            for month, hours in cost['teams'][team]['hours']['internal'].items():
+                monthly[month] = monthly.get(month, 0) + hours
+        assert set(monthly) == set(expected)
+        for month, load in expected.items():
+            assert monthly[month] == pytest.approx(load * 160 / (260 / 12), abs=0.02)
+
+
+def test_cost_undated_grandchild_preserves_parent_and_reports_unknown_team(fake_services, cache_storage, monkeypatch):
+    monkeypatch.setattr(fake_services['team_repository'], 'list_teams',
+                        lambda: [{'id': 'team-alpha'}])
+    svc = CostService(fake_services['storage'], fake_services['project_repository'],
+                      fake_services['team_repository'], fake_services['people_repository'],
+                      cache_storage)
+    features = [
+        {'id': 'root', 'project': 'project-1', 'start': '2025-01-01', 'end': '2025-01-31',
+         'capacity': [{'team': 'team-alpha', 'capacity': 100}]},
+        {'id': 'middle', 'parentId': 'root', 'capacity': []},
+        {'id': 'leaf', 'parentId': 'middle', 'capacity': [
+            {'team': 'team-alpha', 'capacity': 20}, {'team': 'unknown', 'capacity': 30}]},
+    ]
+    result = svc.estimate_costs({'features': features})
+    parent_only = svc.estimate_costs({'features': [features[0]]})
+    parent_hours = parent_only['projects']['project-1']['root']['internal_hours']
+    assert parent_hours > 0
+    assert result['projects']['project-1']['root']['internal_hours'] == parent_hours
+    assert result['projects']['project-1']['leaf']['internal_hours'] == 0
+    assert result['unknown_teams'] == [{'feature_id': 'leaf', 'team': 'unknown', 'capacity': 30}]
 
 
 def test_cost_context_uses_configured_provenance_and_category_bounded_precedence(
@@ -71,6 +120,17 @@ def test_cost_schema_sorts_by_configured_container_order():
     )
     assert [plan['id'] for plan in schema['projects']] == ['z-root', 'm-middle', 'a-leaf']
     assert [plan['container_order'] for plan in schema['projects']] == [0, 1, 2]
+
+
+def test_project_site_totals_include_only_effective_internal_work(fake_services, cache_storage):
+    svc = CostService(fake_services['storage'], fake_services['project_repository'],
+                      fake_services['team_repository'], fake_services['people_repository'],
+                      cache_storage)
+    feature = {'id': 'one', 'project': 'project-1', 'start': '2026-03-01', 'end': '2026-03-31',
+               'capacity': [{'team': 'team-alpha', 'capacity': 100}]}
+    result = svc.estimate_costs({'features': [feature]})['projects']['project-1']
+    assert result['totals']['sites']['siteA']['hours']['2026-03'] == 162.46
+    assert result['totals']['sites']['siteA']['cost']['2026-03'] == 8123.0
 
 
 def test_cost_service_estimate(fake_services, cache_storage):

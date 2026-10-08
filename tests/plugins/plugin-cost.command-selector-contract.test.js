@@ -13,11 +13,23 @@ const mockCmd = vi.hoisted(() => ({
 const mockSel = vi.hoisted(() => ({
   feature: {
     getAvailableTaskTypes: vi.fn(() => ['feature', 'epic']),
+    getEffectiveFeatures: vi.fn(),
   },
   filter: {
     getAvailableFeatureStates: vi.fn(() => ['New', 'Doing']),
+    getTaskFilters: vi.fn(() => ({ schedule: { unplanned: false } })),
+    featurePassesFilters: vi.fn(() => true),
   },
+  scope: { getContextFeatures: vi.fn() },
+  selection: { getSelectedProjectIds: vi.fn(() => ['p1']) },
 }));
+
+const mockDataService = vi.hoisted(() => ({
+  getCost: vi.fn(),
+  getCostTeams: vi.fn(async () => ({ ok: true, data: [] })),
+}));
+
+vi.mock('../../www/js/services/dataService.js', () => ({ dataService: mockDataService }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
   cmd: mockCmd,
@@ -66,5 +78,26 @@ describe('PluginCostComponent command/selector seam', () => {
     plugin.close();
 
     expect(mockCmd.filter.clearSidebarDisabledElements).toHaveBeenCalled();
+  });
+
+  it('sends the complete effective graph before applying report filters', async () => {
+    const parent = { id: 'parent', project: 'p1', start: '2025-01-01', end: '2025-01-31',
+      capacity: [{ team: 'A', capacity: 100 }], ancestorOnly: false };
+    const child = { id: 'child', parentId: 'parent', project: 'p2', start: null, end: null,
+      capacity: [{ team: 'A', capacity: 20 }], ancestorOnly: false };
+    mockSel.feature.getEffectiveFeatures.mockReturnValue([parent, child]);
+    mockSel.scope.getContextFeatures.mockReturnValue([parent]);
+    mockDataService.getCost.mockResolvedValue({ ok: true, data: { projects: [
+      { id: 'p1', features: [{ id: 'parent' }, { id: 'child' }] },
+      { id: 'p2', features: [{ id: 'child' }] },
+    ] } });
+    const plugin = new PluginCostComponent();
+    await plugin.loadData();
+    expect(plugin.error).toBeNull();
+    expect(mockDataService.getCost.mock.calls[0][0].features.map((feature) => feature.id))
+      .toEqual(['parent', 'child']);
+    expect(mockDataService.getCost.mock.calls[0][0].features[1].ancestorOnly).toBe(false);
+    expect(plugin.data.projects.p1.features.map((feature) => feature.id)).toEqual(['parent']);
+    expect(Object.keys(plugin.data.projects)).toEqual(['p1']);
   });
 });

@@ -4,7 +4,7 @@
  *
  * Views:
  * - Project: Per-project team-month breakdown tables
- * - Task: Parent/child task tree with budget deviation indicators
+ * - Task: Hierarchy-aware cost and hours table
  * - Team: Per-team feature allocation tables
  *
  * All views show monthly Int/Ext cost/hours breakdowns with date range
@@ -284,25 +284,6 @@ export class PluginCostComponent extends LitElement {
 
     .expand-icon.expanded {
       transform: rotate(90deg);
-    }
-
-    .deviation-indicator {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 11px;
-      font-weight: 600;
-      margin-left: 8px;
-    }
-
-    .deviation-indicator.high {
-      background: #ffebee;
-      color: #c62828;
-    }
-
-    .deviation-indicator.medium {
-      background: #fff3e0;
-      color: #ef6c00;
     }
 
     .project-header {
@@ -642,76 +623,25 @@ export class PluginCostComponent extends LitElement {
         );
       }
 
-      // Board type visibility cannot discard financial context or parent-only teams.
-      const filteredFeatures = [...contextFeatures];
-
-      // Apply task filters (planned/unplanned, allocation, etc.) from seam selectors.
-      const taskFilter = sel.filter;
-      // If the schedule.unplanned option is turned off, proactively
-      // filter out features that are truly unplanned. Some backends
-      // set placeholder dates (today) for unplanned items which would
-      // otherwise appear as "planned"; treat those as unplanned too.
-      const taskFilters = taskFilter.getTaskFilters();
-      if (taskFilters.schedule.unplanned === false) {
-        const today = new Date().toISOString().slice(0, 10);
-        const plannedFeatures = filteredFeatures.filter((f) => {
-          const hasStart = !!f.start;
-          const hasEnd = !!f.end;
-          // No dates => unplanned
-          if (!hasStart && !hasEnd) return false;
-          // Placeholder: start===end===today => treat as unplanned
-          if (
-            hasStart &&
-            hasEnd &&
-            String(f.start).startsWith(today) &&
-            String(f.end).startsWith(today) &&
-            String(f.start) === String(f.end)
-          )
-            return false;
-          return true;
-        });
-
-        const ff = plannedFeatures.filter((f) => taskFilter.featurePassesFilters(f));
-        filteredFeatures.length = 0;
-        Array.prototype.push.apply(filteredFeatures, ff);
-      }
-
-      const featuresPayload = filteredFeatures.map((feature) => ({
-        id: feature.id,
-        project: feature.project,
-        sourcePlanIds: feature.sourcePlanIds,
-        presentationPlanIds: feature.presentationPlanIds,
-        parentId: feature.parentId,
-        traversalBoundary: feature.traversalBoundary,
-        excludedChildIds: feature.excludedChildIds,
-        start: feature.start,
-        end: feature.end,
-        capacity: feature.capacity,
-        title: feature.title,
-        type: feature.type,
-        state: feature.state,
-        relations: feature.relations,
-      }));
+      // Resolve winners over the complete scenario graph; filters only select report rows.
+      const reportIds = new Set(contextFeatures
+        .filter((feature) => sel.filter.featurePassesFilters(feature))
+        .map((feature) => String(feature.id)));
+      const featuresPayload = sel.feature.getEffectiveFeatures();
 
       // Fetch cost data
       const costResult = await dataService.getCost({ features: featuresPayload });
       if (!costResult.ok) throw new Error(costResult.error.message, { cause: costResult.error });
       const json = costResult.data;
 
-      // Normalize projects structure: backend returns an array of projects
-      // while older clients expect an object keyed by project id. Convert
-      // an array into a lookup so subsequent code can index by project id.
-      // Also enrich each feature object with `capacity` (from the payload)
-      // and `project` so downstream allocation and filtering works.
-      const payloadById = featuresPayload.reduce((acc, feature) => {
-        acc[String(feature.id)] = feature;
-        return acc;
-      }, {});
+      const payloadById = new Map(featuresPayload.map((feature) => [String(feature.id), feature]));
 
       const projectsById = {};
       for (const project of json.projects) {
-        project.features = project.features.map((feature) => {
-          const source = payloadById[String(feature.id)];
+        const features = project.features.filter((feature) => reportIds.has(String(feature.id)));
+        if (features.length === 0) continue;
+        project.features = features.map((feature) => {
+          const source = payloadById.get(String(feature.id));
           return { ...feature, capacity: source.capacity, project: project.id };
         });
         projectsById[String(project.id)] = project;
@@ -725,19 +655,13 @@ export class PluginCostComponent extends LitElement {
       if (!teamsResult.ok) throw new Error(teamsResult.error.message, { cause: teamsResult.error });
       this.costTeams = teamsResult.data;
 
-      // Start with project sections expanded for all selected projects
-      try {
-        const selectedProjects = sel.selection.getSelectedProjectIds();
-        this.expandedProjects = new Set(selectedProjects);
-      } catch (e) {
-        this.expandedProjects = new Set();
-      }
+      this.expandedProjects = new Set(sel.selection.getSelectedProjectIds());
 
       this.loading = false;
       this.requestUpdate();
     } catch (err) {
       console.error('[PluginCost] Failed to load data:', err);
-      this.error = err.message || 'Failed to load cost data';
+      this.error = err.message;
       this.loading = false;
     }
   }
@@ -939,14 +863,6 @@ export class PluginCostComponent extends LitElement {
 
   renderTaskView() {
     return renderTaskView(this);
-  }
-
-  renderTaskNode(featureId, featureMap, childrenMap, depth) {
-    return null;
-  }
-
-  renderDeviationDetail(parent, children, deviation) {
-    return null;
   }
 
   renderTeamView() {
