@@ -11,6 +11,8 @@
  * for explicit error handling (no silent failures).
  */
 
+import { hasValidAllocationSpan } from '../application/shared/allocationRule.js';
+
 /**
  * Parse an ISO date-only string into a Date in UTC at midnight.
  * @param {string|Date|null} date
@@ -379,4 +381,84 @@ export function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
     result.set(fid, dataMap);
   }
   return result;
+}
+
+function summarizeTeamMetrics(team, monthKeys) {
+  const totals = { cost: 0, hours: 0 };
+  for (const kind of ['cost', 'hours']) {
+    for (const direction of ['internal', 'external']) {
+      for (const month of monthKeys) {
+        const value = team[kind][direction][month];
+        if (value !== undefined) totals[kind] += value;
+      }
+    }
+  }
+  return totals;
+}
+
+function summarizeTeamMaps(teams) {
+  const totals = { cost: 0, hours: 0 };
+  for (const allocation of teams.values()) {
+    for (const kind of ['cost', 'hours']) {
+      for (const direction of ['internal', 'external']) {
+        for (const value of allocation[kind][direction].values()) totals[kind] += value;
+      }
+    }
+  }
+  return totals;
+}
+
+export function buildCostTaskRows(features, childrenMap, monthKeys, dateRange) {
+  const byTeam = buildByTeam(features, childrenMap, monthKeys);
+  const rowsById = new Map();
+  const childIds = new Set([...childrenMap.values()].flat().map(String));
+  for (const feature of features) {
+    const id = String(feature.id);
+    const total = summarizeTeamMaps(byTeam.get(id));
+    const own = { cost: 0, hours: 0 };
+    const comparisons = [];
+    const children = childrenMap.has(id) ? childrenMap.get(id) : [];
+    for (const [team, metrics] of Object.entries(feature.estimateTeams)) {
+      const estimate = summarizeTeamMetrics(metrics, monthKeys);
+      own.cost += estimate.cost;
+      own.hours += estimate.hours;
+      if (!children.some((childId) => byTeam.get(String(childId)).has(team))) continue;
+      const aggregate = summarizeTeamMaps(new Map([[team, byTeam.get(id).get(team)]]));
+      const charged = feature.metrics.teams[team];
+      const retained = charged === undefined ? { cost: 0, hours: 0 }
+        : summarizeTeamMetrics(charged, monthKeys);
+      const breakdown = { cost: aggregate.cost - retained.cost, hours: aggregate.hours - retained.hours };
+      const difference = breakdown.cost - estimate.cost;
+      const hoursDifference = breakdown.hours - estimate.hours;
+      const percent = estimate.cost !== 0 ? difference / estimate.cost * 100
+        : estimate.hours !== 0 ? hoursDifference / estimate.hours * 100 : null;
+      comparisons.push({ team, estimate, breakdown, difference, hoursDifference, percent });
+    }
+    const hasOwnEstimate = Object.keys(feature.estimateTeams).length > 0;
+    const hasValidSpan = hasValidAllocationSpan(feature);
+    const hasOwnAllocation = hasValidSpan
+      && feature.capacity.some((allocation) => Number(allocation.capacity) !== 0);
+    const overlaps = !hasValidSpan
+      || (feature.start <= dateRange.end && feature.end >= dateRange.start);
+    const show = feature.displayMode !== 'excluded' && overlaps
+      && (feature.displayMode === 'normal' || hasOwnAllocation);
+    rowsById.set(id, { feature, totalCost: total.cost, totalHours: total.hours,
+      ownCost: own.cost, ownHours: own.hours, hasOwnEstimate, hasOwnAllocation, comparisons, show });
+  }
+  const roots = features.filter((feature) => !childIds.has(String(feature.id)));
+  const pending = roots.reverse().map((feature) => ({ id: String(feature.id), depth: 0 }));
+  const rows = [];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const { id, depth } = pending.pop();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const row = rowsById.get(id);
+    if (row.show) rows.push({ ...row, depth });
+    const children = childrenMap.has(id) ? childrenMap.get(id) : [];
+    for (let index = children.length - 1; index >= 0; index--) {
+      pending.push({ id: String(children[index]), depth: row.show ? depth + 1 : depth });
+    }
+  }
+  return rows;
 }

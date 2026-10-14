@@ -47,6 +47,7 @@ def test_cost_undated_grandchild_preserves_parent_and_reports_unknown_team(fake_
     assert parent_hours > 0
     assert result['projects']['project-1']['root']['internal_hours'] == parent_hours
     assert result['projects']['project-1']['leaf']['internal_hours'] == 0
+    assert result['projects']['project-1']['leaf']['estimate_teams'] == {}
     assert result['unknown_teams'] == [{'feature_id': 'leaf', 'team': 'unknown', 'capacity': 30}]
 
 
@@ -120,6 +121,54 @@ def test_cost_schema_sorts_by_configured_container_order():
     )
     assert [plan['id'] for plan in schema['projects']] == ['z-root', 'm-middle', 'a-leaf']
     assert [plan['container_order'] for plan in schema['projects']] == [0, 1, 2]
+
+
+def test_cost_keeps_original_estimates_separate_from_winning_cost(fake_services, cache_storage):
+    svc = CostService(fake_services['storage'], fake_services['project_repository'],
+                      fake_services['team_repository'], fake_services['people_repository'],
+                      cache_storage)
+    features = [
+        {'id': 'root', 'project': 'project-1', 'start': '2025-01-01', 'end': '2025-01-31',
+         'capacity': [{'team': 'team-alpha', 'capacity': 100}]},
+        {'id': 'child', 'parentId': 'root', 'project': 'project-1',
+         'start': '2025-01-06', 'end': '2025-01-10',
+         'capacity': [{'team': 'team-alpha', 'capacity': 20}]},
+    ]
+    result = svc.estimate_costs({'features': features})
+    root = result['projects']['project-1']['root']
+    assert root['teams'] == {}
+    assert root['estimate_teams']['team-alpha']['totalHours'] > 0
+    assert root['effective_capacity'] == []
+    schema = build_cost_schema(result['projects'], session_features=features)
+    parent = next(item for item in schema['projects'][0]['features'] if item['id'] == 'root')
+    assert parent['estimateTeams'] == root['estimate_teams']
+    assert parent['effectiveCapacity'] == []
+    child = result['projects']['project-1']['child']
+    assert child['estimate_teams'] == child['teams']
+    assert child['effective_capacity'] == features[1]['capacity']
+
+
+@pytest.mark.parametrize('end, percentage, ratio', [
+    ('2025-01-17', 100, 1), ('2025-01-31', 20, 0.4),
+])
+def test_original_and_breakdown_estimates_use_working_day_costs(
+    fake_services, cache_storage, end, percentage, ratio,
+):
+    svc = CostService(fake_services['storage'], fake_services['project_repository'],
+                      fake_services['team_repository'], fake_services['people_repository'],
+                      cache_storage)
+    features = [
+        {'id': 'epic', 'project': 'project-1', 'start': '2025-01-06', 'end': '2025-05-23',
+         'capacity': [{'team': 'team-alpha', 'capacity': 10}]},
+        {'id': 'feature', 'parentId': 'epic', 'project': 'project-1',
+         'start': '2025-01-06', 'end': end,
+         'capacity': [{'team': 'team-alpha', 'capacity': percentage}]},
+    ]
+    project = svc.estimate_costs({'features': features})['projects']['project-1']
+    expectation = project['epic']['estimate_teams']['team-alpha']['totalCost']
+    breakdown = project['feature']['teams']['team-alpha']['totalCost']
+    assert breakdown / expectation == pytest.approx(ratio, abs=0.0001)
+    assert project['epic']['teams'] == {}
 
 
 def test_project_site_totals_include_only_effective_internal_work(fake_services, cache_storage):

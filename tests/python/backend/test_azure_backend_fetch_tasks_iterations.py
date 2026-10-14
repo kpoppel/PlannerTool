@@ -431,6 +431,7 @@ def test_context_respects_display_states_without_treating_terminated_as_removed(
         {**_context_seed(3, 'plan-a', item_type='Change Request'), 'state': 'Terminated'},
         {**_context_seed(4, 'plan-a'), 'state': 'Closed'},
     ]
+    backend._capacity_service.parse.return_value = [{'team': 'A', 'capacity': 10}]
     client.get_linked_work_items.side_effect = lambda roots: [
         {**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
          'unresolvedChildIds': [], 'traversalBoundary': False}
@@ -516,6 +517,96 @@ def _context_backend(seeds, boundary_ids=()):
     return backend, client
 
 
+def test_context_preserves_completed_empty_subtrees_for_display_filtering():
+    seeds = [
+        _context_seed(1, 'plan-a', (416311, 2, 3)),
+        _context_seed(416311, 'plan-a', (416312,)),
+        _context_seed(416312, 'plan-a'),
+        _context_seed(2, 'plan-a'),
+        _context_seed(3, 'plan-a', (4,)),
+        _context_seed(4, 'plan-a'),
+    ]
+    for seed in seeds:
+        seed['capacity'] = []
+        if seed['id'] not in ('1', '4'):
+            seed['state'] = 'Closed'
+    seeds[2]['state'] = 'Terminated'
+    seeds[2]['capacity'] = [{'team': 'A', 'capacity': 0}]
+    seeds[3]['capacity'] = [{'team': 'unknown', 'capacity': 20}]
+    backend, _client = _context_backend(seeds)
+    backend._metadata_service = MagicMock()
+    backend._metadata_service.get_cached.return_value = {
+        'state_categories': {'Active': 'InProgress', 'Closed': 'Completed',
+                             'Terminated': 'Completed'},
+    }
+
+    tasks = {task['id']: task for task in backend.fetch_task_context(
+        seeds, {'token': 'test', 'user_id': 'test'},
+    )}
+
+    assert set(tasks) == {'1', '2', '3', '4', '416311', '416312'}
+    assert tasks['1']['excludedChildIds'] == []
+    assert tasks['416311']['stateCategory'] == 'Completed'
+    assert tasks['416312']['stateCategory'] == 'Completed'
+    assert tasks['2']['capacity'] == [{'team': 'unknown', 'capacity': 20}]
+    assert tasks['2']['stateCategory'] == 'Completed'
+    assert tasks['4']['stateCategory'] == 'InProgress'
+    assert all(task['sourcePlanIds'] == ['plan-a'] for task in tasks.values())
+
+
+@pytest.mark.parametrize('incomplete', [
+    {'childrenComplete': False}, {'unresolvedChildIds': ['missing']},
+])
+def test_context_keeps_completed_branches_with_unresolved_children(incomplete):
+    seeds = [_context_seed(1, 'plan-a', (2,)), _context_seed(2, 'plan-a')]
+    for seed in seeds:
+        seed['state'] = 'Closed'
+    backend, client = _context_backend(seeds)
+    get_linked = client.get_linked_work_items.side_effect
+    client.get_linked_work_items.side_effect = lambda roots: [
+        {**item, **(incomplete if item['id'] == '1' else {})}
+        for item in get_linked(roots)
+    ]
+    backend._metadata_service = MagicMock()
+    backend._metadata_service.get_cached.return_value = {
+        'state_categories': {'Closed': 'Completed'},
+    }
+
+    tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+
+    assert {task['id'] for task in tasks} == {'1', '2'}
+    assert all(task['excludedChildIds'] == [] for task in tasks)
+
+
+@pytest.mark.parametrize('categories', [{}, {'Closed': 'InProgress'}])
+def test_context_does_not_infer_completion_from_state_names(categories):
+    seed = _context_seed(1, 'plan-a')
+    seed['state'] = 'Closed'
+    backend, _client = _context_backend([seed])
+    backend._metadata_service = MagicMock()
+    backend._metadata_service.get_cached.return_value = {'state_categories': categories}
+
+    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+
+    assert task['id'] == '1'
+
+
+def test_context_preserves_deep_completed_empty_trees_without_recursion():
+    seeds = [_context_seed(index, 'plan-a', (index + 1,) if index < 4999 else ())
+             for index in range(5000)]
+    for seed in seeds:
+        seed['state'] = 'Closed'
+    backend, _client = _context_backend(seeds)
+    backend._metadata_service = MagicMock()
+    backend._metadata_service.get_cached.return_value = {
+        'state_categories': {'Closed': 'Completed'},
+    }
+
+    tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+    assert len(tasks) == 5000
+    assert all(task['sourcePlanIds'] == ['plan-a'] for task in tasks)
+
+
 def test_context_prunes_only_wholly_expired_trees():
     plans = [{'id': 'plan-a', 'area_path': 'A\\plan-a', 'task_types': ['Feature']}]
     seeds = [
@@ -528,9 +619,12 @@ def test_context_prunes_only_wholly_expired_trees():
                                                   'stateChangeDate': '2020-01-01'})
     undated_seed = _context_seed(9, 'plan-a')
     undated_seed['state'] = 'Closed'
+    undated_seed['capacity'] = [{'team': 'A', 'capacity': 10}]
+    seeds[2]['capacity'] = [{'team': 'A', 'capacity': 10}]
     seeds.append(undated_seed)
     backend, client = _context_backend(seeds)
     backend._config = _FakeConfig(plans, {'iteration_sets': []})
+    backend._capacity_service.parse.return_value = [{'team': 'A', 'capacity': 10}]
     children = [
         {**_context_seed(2, 'plan-a'), 'state': 'Closed',
          'stateChangeDate': '2020-01-01'},
@@ -579,6 +673,7 @@ def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
     backend, client = _context_backend([seed])
     backend._config = _FakeConfig([plan], {'iteration_sets': []})
     backend._build_iteration_map = MagicMock(return_value={})
+    backend._capacity_service.parse.return_value = [{'team': 'A', 'capacity': 10}]
     children = [
         {**_context_seed(2, 'plan-a'), 'state': 'Closed',
          'stateChangeDate': '2026-04-30T12:40:34Z'},

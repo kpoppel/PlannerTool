@@ -16,6 +16,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Added `scripts/enroll_account.py` to reuse a valid CLI session, re-enroll only after expiry, rotate the private account key file, and report session status with `--check`.
 - Route REST, publish, session, hydration, export, and uncaught failures into the bell notification log instead of screen-dimming message overlays.
 - Normalize ADO scheduling paths consistently, verify relative request paths against live ADO, and expose generic date presets with backend-owned atomic schedule clearing.
 - Excluded ADO Removed-category work from planning calculations, honored admin display states, and scoped sidebar state/type choices to presentable content.
@@ -40,6 +41,9 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Cost task reports preserve sidebar choices, retain allocating hidden levels as context, show selected tasks without allocations, and compare original per-team estimates against resolved breakdowns without changing charged totals.
+- Hide dated task rows wholly outside the selected cost report dates in both hierarchical views, with inclusive day-level overlap and unchanged allocation inputs.
+- Preserve closed allocation-free trees within existing retention and enable Cost's state, planned/unplanned, and allocated/unallocated sidebar filters without changing financial totals.
 - Unified capacity and cost under lowest-level-wins allocations for dated work; unplanned work contributes no load, cost, or precedence; added unknown-team diagnostics and removed obsolete precedence and budget-deviation paths.
 - Plan overview now shows the full scoped tree; Team focus retains selected-team allocations, connecting ancestors and unallocated descendants without changing allocation counts or capacity/cost calculations.
 - Replaced top-bar metrics and the Scope footer with an on-board information menu starting from exact Plan-menu totals, reconciling scope and sidebar-named filter exclusions without double counting; clarified loaded-dataset counts.
@@ -126,6 +130,7 @@ Template - do not change :
 
 ### Fixed
 - Plan Health checks now use configured container order, independent of container names.
+- Opening the cost plugin closes an open details panel so the cost view is not hidden behind it.
 - FeatureBoard plan-filter parity: when all plans are deselected, card filtering now treats the empty selected-plan set as authoritative and renders an empty board instead of falling back to team-only matches.
 - Hardened Phase 3 hydration strictness: `hydrateBaseline`/`hydrateScenarioData` now reject invalid `ok` payload shapes with explicit `HYDRATION_FAILED` errors and no state mutation, and `application/imports.js` no longer exposes state-store data commands when `USE_STATE_STORE` is false.
 - Fixed admin config screens that were reading provider Result envelopes as raw payloads; groups/system/iterations/users/people/cost/area-mappings now consume `.data` correctly and display returned records, and Azure project browsing now reuses the saved ADO organization URL when calling `/api/azure/projects`.

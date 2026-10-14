@@ -266,6 +266,28 @@ export class PluginCostComponent extends LitElement {
       font-family: 'Courier New', monospace;
     }
 
+    .context-row {
+      background: #f4f6f5;
+      color: #535d58;
+    }
+
+    .context-label {
+      margin-left: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #59655e;
+    }
+
+    .estimate-comparison {
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .estimate-deviation {
+      color: #9b4b15;
+      font-weight: 600;
+    }
+
     .expandable {
       cursor: pointer;
       user-select: none;
@@ -458,6 +480,9 @@ export class PluginCostComponent extends LitElement {
 
   open() {
     this.setAttribute('visible', '');
+    // Cost view stacks above the details panel, so an open panel must close first.
+    const detailsPanel = document.querySelector('details-panel');
+    if (detailsPanel && detailsPanel.open) detailsPanel.hide();
     this._persistPluginState();
     this.loadData();
     // Ensure sidebar disabled state is applied when plugin UI opens
@@ -509,41 +534,15 @@ export class PluginCostComponent extends LitElement {
     }
   }
 
-  // Apply the sidebar disabled configuration
+  // Keep sidebar controls available without changing selections.
   _applySidebarDisabled() {
-    // Ensure unplanned is unchecked, and all other task filters are checked
-    cmd.filter.setTaskFilter('schedule', 'unplanned', false);
-    // Schedule: ensure planned is true
-    cmd.filter.setTaskFilter('schedule', 'planned', true);
-    // Allocation
-    cmd.filter.setTaskFilter('allocation', 'allocated', true);
-    cmd.filter.setTaskFilter('allocation', 'unallocated', true);
-    // Hierarchy
-    cmd.filter.setTaskFilter('hierarchy', 'hasParent', true);
-    cmd.filter.setTaskFilter('hierarchy', 'noParent', true);
-    // Relations
-    cmd.filter.setTaskFilter('relations', 'hasLinks', true);
-    cmd.filter.setTaskFilter('relations', 'noLinks', true);
-
-    // Force all states selected via public State API
-    cmd.filter.setAllStatesSelected(true);
-
-    // Select every loaded type through the atomic visibility/selection command.
-    const availableTaskTypes = sel.feature.getAvailableTaskTypes();
-    cmd.filter.setSelectedTaskTypes(availableTaskTypes);
-
-    // Now disable buttons
-    const disabled = {
-      taskFilters: {
-        schedule: ['planned'],
-        allocation: ['allocated', 'unallocated'],
-        hierarchy: ['hasParent', 'noParent'],
-        relations: ['hasLinks', 'noLinks'],
-      },
-      taskTypes: [],
-      states: sel.filter.getAvailableFeatureStates(),
-    };
-    cmd.filter.setSidebarDisabledElements(disabled);
+    cmd.filter.setTaskFilter('schedule', 'unplanned', false, { suppressEvents: true });
+    const taskFilters = sel.filter.getTaskFilters();
+    cmd.filter.setSidebarDisabledElements({
+      taskFilters: Object.fromEntries(Object.entries(taskFilters)
+        .filter(([dimension]) => dimension !== 'schedule' && dimension !== 'allocation')
+        .map(([dimension, options]) => [dimension, Object.keys(options)])),
+    });
   }
 
   connectedCallback() {
@@ -562,7 +561,7 @@ export class PluginCostComponent extends LitElement {
         this._applyPluginState(pluginState);
       })
     );
-    // Signal sidebar which controls are not relevant while this plugin is active
+    // Keep sidebar filters available while this plugin is active.
     this._applySidebarDisabled();
   }
 
@@ -624,10 +623,14 @@ export class PluginCostComponent extends LitElement {
       }
 
       // Resolve winners over the complete scenario graph; filters only select report rows.
-      const reportIds = new Set(contextFeatures
-        .filter((feature) => sel.filter.featurePassesFilters(feature))
+      const reportIds = new Set(sel.scope.getVisibleFeatures()
         .map((feature) => String(feature.id)));
       const featuresPayload = sel.feature.getEffectiveFeatures();
+      const selectedStates = sel.filter.getSelectedFeatureStateSet();
+      const reportFilterIds = new Set(featuresPayload
+        .filter((feature) => selectedStates.has(feature.state)
+          && sel.filter.featurePassesFilters(feature))
+        .map((feature) => String(feature.id)));
 
       // Fetch cost data
       const costResult = await dataService.getCost({ features: featuresPayload });
@@ -638,11 +641,12 @@ export class PluginCostComponent extends LitElement {
 
       const projectsById = {};
       for (const project of json.projects) {
-        const features = project.features.filter((feature) => reportIds.has(String(feature.id)));
-        if (features.length === 0) continue;
-        project.features = features.map((feature) => {
+        project.features = project.features.map((feature) => {
           const source = payloadById.get(String(feature.id));
-          return { ...feature, capacity: source.capacity, project: project.id };
+          return { ...feature, capacity: source.capacity, stateCategory: source.stateCategory,
+            project: project.id,
+            displayMode: !reportFilterIds.has(String(feature.id)) ? 'excluded'
+              : reportIds.has(String(feature.id)) ? 'normal' : 'context' };
         });
         projectsById[String(project.id)] = project;
       }

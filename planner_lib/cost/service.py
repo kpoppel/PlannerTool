@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 from .engine import invalidate_team_rates_cache
-from .allocation_rule import build_allocation_graph, resolve_effective_allocations
+from .allocation_rule import build_allocation_graph, has_valid_allocation_span, resolve_effective_allocations
 from . import engine as _engine
 import logging
 from datetime import datetime, timezone
@@ -124,6 +124,16 @@ class CostService:
                 self._cfg, start=feature.get('start'), end=feature.get('end'),
                 capacity=allocations[str(feature_id)], cache_storage=self._cache_storage,
             )
+            original_capacity = feature.get('capacity', []) if has_valid_allocation_span(feature) else []
+            if original_capacity == allocations[str(feature_id)]:
+                estimate = cost
+            else:
+                estimate = _engine.calculate_detailed(
+                    self._cfg, start=feature.get('start'), end=feature.get('end'),
+                    capacity=original_capacity, cache_storage=self._cache_storage,
+                )
+            cost['estimate_teams'] = estimate['teams']
+            cost['effective_capacity'] = allocations[str(feature_id)]
             cost['has_project_parent'] = bool(parents_by_child[str(feature_id)])
             for project_id in target_projects:
                 project = projects.setdefault(project_id, {'totals': {}})
@@ -255,7 +265,7 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                     # Preserve the teams structure if present directly on feature value
                     if m_k == 'teams' and isinstance(m_v, dict):
                         metrics["teams"] = m_v
-                    else:
+                    elif m_k not in ('estimate_teams', 'effective_capacity'):
                         metrics.setdefault("misc", {})[m_k] = m_v
 
             fid_s = str(fid)
@@ -282,6 +292,8 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                 "start": feature_start,
                 "end": feature_end,
                 "metrics": metrics,
+                "estimateTeams": fval.get('estimate_teams', {}),
+                "effectiveCapacity": fval.get('effective_capacity', []),
             }
             # Derive per-month maps for metrics.internal and metrics.external
             # from the per-team monthly buckets when available. This allows the

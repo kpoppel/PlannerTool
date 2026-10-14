@@ -1,13 +1,29 @@
 import { html } from '../vendor/lit.js';
 import {
   buildTaskTree,
-  flattenTree,
-  computeEffectiveDataMaps,
+  buildCostTaskRows,
   monthKey,
 } from './PluginCostCalculator.js';
 import { sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
+
+export function renderEstimateComparison(row) {
+  if (!row.hasOwnAllocation) return row.feature.capacity.length > 0 ? 'No dated allocation' : 'No own allocation';
+  if (!row.hasOwnEstimate) return 'Unpriced allocation';
+  if (row.comparisons.length === 0) return '';
+  return html`${row.comparisons.map((comparison) => {
+    const percent = comparison.percent;
+    const matched = percent !== null && Math.abs(percent) < 0.05;
+    const direction = percent !== null && percent > 0 ? 'Overrun' : 'Underrun';
+    const label = percent === null ? 'Unpriced estimate' : matched ? 'Matches estimate'
+      : `${direction} ${Math.abs(percent).toFixed(1)}%`;
+    const title = `Own cost: ${comparison.estimate.cost.toFixed(2)}; breakdown cost: ${comparison.breakdown.cost.toFixed(2)}; own hours: ${comparison.estimate.hours.toFixed(2)}; breakdown hours: ${comparison.breakdown.hours.toFixed(2)}`;
+    return html`<div class="estimate-comparison ${matched ? '' : 'estimate-deviation'}" title="${title}">
+      ${comparison.team}: ${label}
+    </div>`;
+  })}`;
+}
 
 export function renderTaskView(component) {
   if (!component.data || !component.data.projects) {
@@ -106,15 +122,12 @@ function renderTasksInProjectTable(component, features) {
   const monthKeys = component.months.map((m) => monthKey(m));
 
   // Build hierarchy for DFS pre-order display and hierarchy-aware rollup
-  const featureMap = new Map(features.map((f) => [String(f.id), f]));
-  const { roots, childrenMap } = buildTaskTree(
+  const { childrenMap } = buildTaskTree(
     features,
     sel.feature.getChildrenByParentMap()
   );
-  const orderedFeatures = flattenTree(roots, childrenMap, featureMap, 0, []);
-
-  // Rolled-up, window-restricted metrics per feature
-  const effectiveDataMaps = computeEffectiveDataMaps(features, childrenMap, monthKeys);
+  const rows = buildCostTaskRows(features, childrenMap, monthKeys,
+    { start: component.startDate, end: component.endDate });
 
   // Resolve team id/slug to friendly name using component.costTeams (built once)
   const costTeamsList =
@@ -147,25 +160,14 @@ function renderTasksInProjectTable(component, features) {
           <th>Teams</th>
           <th class="numeric">Cost</th>
           <th class="numeric">Hours</th>
+          <th class="numeric">Own Estimate</th>
+          <th class="numeric">Own Hours</th>
+          <th>Estimate vs Breakdown</th>
         </tr>
       </thead>
       <tbody>
-        ${orderedFeatures.map(({ feature, depth }) => {
-          // Use rolled-up, window-restricted dataMap
-          const dataMap = effectiveDataMaps.get(String(feature.id)) || {
-            cost: { internal: new Map(), external: new Map() },
-            hours: { internal: new Map(), external: new Map() },
-          };
-          let totalCost = 0;
-          let totalHours = 0;
-          for (const mKey of monthKeys) {
-            totalCost +=
-              (dataMap.cost.internal.get(mKey) || 0) +
-              (dataMap.cost.external.get(mKey) || 0);
-            totalHours +=
-              (dataMap.hours.internal.get(mKey) || 0) +
-              (dataMap.hours.external.get(mKey) || 0);
-          }
+        ${rows.map((row) => {
+          const { feature, depth, totalCost, totalHours } = row;
 
           const teams =
             Array.isArray(feature.capacity) ?
@@ -185,7 +187,7 @@ function renderTasksInProjectTable(component, features) {
           const iconTemplate = getIconTemplate(ft);
 
           return html`
-            <tr>
+            <tr class="${feature.displayMode === 'context' ? 'context-row' : ''}">
               <td style="text-align:center; white-space:nowrap;">
                 ${headClipped ?
                   html`<span class="clip-warning" title="Starts ${featureStart} — before display window">◀</span>`
@@ -197,12 +199,16 @@ function renderTasksInProjectTable(component, features) {
               </td>
               <td style="padding-left:${8 + depth * 20}px;">
                 ${feature.title || feature.name || feature.id}
+                ${feature.displayMode === 'context' ? html`<span class="context-label">Context</span>` : ''}
               </td>
               <td class="numeric">${feature.start || ''}</td>
               <td class="numeric">${feature.end || ''}</td>
               <td>${teamsLabel}</td>
               <td class="numeric">${formatValue(totalCost)}</td>
               <td class="numeric">${formatValue(totalHours)}</td>
+              <td class="numeric">${formatValue(row.ownCost)}</td>
+              <td class="numeric">${formatValue(row.ownHours)}</td>
+              <td>${renderEstimateComparison(row)}</td>
             </tr>
           `;
         })}

@@ -32,8 +32,22 @@ test('desktop capacity graph and real cost response share monthly allocation win
   const features = fixture.features.map((feature) => ({
     ...feature, project: projects[0].id, sourcePlanIds: [projects[0].id],
     title: feature.id, type: feature.id === 'epic' ? 'Epic' : 'Feature',
-    state: 'Active', tags: '', relations: [], presentationPlanIds: [projects[0].id],
+    state: 'Active', stateCategory: 'InProgress', tags: '', relations: [],
+    presentationPlanIds: feature.id === 'jan' ? [] : [projects[0].id],
   }));
+  features.push({ ...features[1], id: 'selected-empty', title: 'Selected empty Feature',
+    capacity: [], presentationPlanIds: [projects[0].id] });
+  features.push({ ...features[1], id: 'hidden-empty', title: 'Hidden empty task', capacity: [] });
+  features.push({ ...features[1], id: 'outside-period',
+    title: 'BT for F1R1 - CR, defects and maturing 21.19',
+    start: '2025-08-20', end: '2025-11-11', capacity: [],
+    presentationPlanIds: [projects[0].id] });
+  features.push({ ...features[1], id: '416311', parentId: null,
+    title: 'Legacy closed parent', state: 'Closed', stateCategory: 'Completed',
+    start: null, end: null, capacity: [], presentationPlanIds: [projects[0].id] });
+  features.push({ ...features[1], id: '416312', parentId: '416311',
+    title: 'Legacy closed child', state: 'Closed', stateCategory: 'Completed',
+    start: null, end: null, capacity: [], presentationPlanIds: [projects[0].id] });
 
   await page.goto('/static/js/modules.config.json');
   await page.setContent('<main style="max-width:1100px;margin:24px auto;height:720px"></main>');
@@ -89,10 +103,24 @@ test('desktop capacity graph and real cost response share monthly allocation win
     for (let index = 0; index < pixels.length; index += 4) {
       colors.add(`${pixels[index]},${pixels[index + 1]},${pixels[index + 2]},${pixels[index + 3]}`);
     }
-    return { dates: sel.capacity.getCapacityDates(), loads: sel.capacity.getTeamDailyCapacityMap(),
+    const sidebar = {
+      unplanned: sel.filter.getTaskFilters().schedule.unplanned,
+      unplannedDisabled: sel.filter.isSidebarControlDisabled('taskFilter', 'schedule', 'unplanned'),
+      plannedDisabled: sel.filter.isSidebarControlDisabled('taskFilter', 'schedule', 'planned'),
+      allocatedDisabled: sel.filter.isSidebarControlDisabled('taskFilter', 'allocation', 'allocated'),
+      unallocatedDisabled: sel.filter.isSidebarControlDisabled('taskFilter', 'allocation', 'unallocated'),
+      stateDisabled: sel.filter.isSidebarControlDisabled('state', 'Active'),
+      typeDisabled: sel.filter.isSidebarControlDisabled('taskType', 'Feature'),
+    };
+    return { sidebar, dates: sel.capacity.getCapacityDates(), loads: sel.capacity.getTeamDailyCapacityMap(),
       cost: cost.data, error: cost.error, colors: colors.size };
   }, { projects, teams, features });
   expect(result.error).toBeNull();
+  expect(result.cost.projects[projects[0].id].features
+    .find((feature) => feature.id === 'epic').stateCategory).toBe('InProgress');
+  expect(result.sidebar).toEqual({ unplanned: false, unplannedDisabled: false,
+    plannedDisabled: false, allocatedDisabled: false, unallocatedDisabled: false,
+    stateDisabled: false, typeDisabled: false });
   expect(result.colors).toBeGreaterThan(5);
   await expect(page.locator('maingraph-lit canvas')).toBeVisible();
   await expect(page.locator('plugin-cost')).toContainText('Cost Analysis');
@@ -101,6 +129,13 @@ test('desktop capacity graph and real cost response share monthly allocation win
   const parentRow = page.getByRole('row').filter({ hasText: 'epic' });
   await expect(parentRow.getByRole('cell').nth(5)).toHaveText('923');
   await expect(parentRow.getByRole('cell').nth(6)).toHaveText('18');
+  await expect(parentRow).toContainText('Underrun');
+  await expect(page.getByRole('row').filter({ hasText: 'jan' })).toContainText('Context');
+  await expect(page.getByRole('row').filter({ hasText: 'Selected empty Feature' }))
+    .toContainText('No own allocation');
+  await expect(page.locator('plugin-cost')).not.toContainText('Hidden empty task');
+  await expect(page.locator('plugin-cost')).not.toContainText('BT for F1R1');
+  await expect(page.locator('plugin-cost')).not.toContainText('Legacy closed parent');
   for (const [team, expected] of Object.entries(fixture.monthlyLoad)) {
     const monthlyLoad = {};
     result.dates.forEach((date, index) => {
@@ -131,4 +166,45 @@ test('desktop capacity graph and real cost response share monthly allocation win
     body: await page.screenshot({ path: testInfo.outputPath('allocation-policy.png') }),
     contentType: 'image/png',
   });
+  await page.evaluate(async () => {
+    const { cmd } = await import('/static/js/application/imports.js');
+    cmd.filter.setSelectedTaskTypes(['Epic']);
+    const cost = document.querySelector('plugin-cost');
+    await cost.loadData();
+    await cost.updateComplete;
+  });
+  await expect(page.locator('plugin-cost')).not.toContainText('Selected empty Feature');
+  await expect(page.getByRole('row').filter({ hasText: 'feb' })).toContainText('Context');
+  await expect(parentRow.getByRole('cell').nth(5)).toHaveText('923');
+  const expectedTotals = result.cost.projects[projects[0].id].totals;
+  expect(Object.keys(expectedTotals.sites)).toContain('HQ');
+  const reloadWithFilters = async (changes) => page.evaluate(async (changes) => {
+    const { cmd } = await import('/static/js/application/imports.js');
+    cmd.filter.setSelectedTaskTypes(['Epic', 'Feature']);
+    cmd.filter.setSelectedStates(changes.states);
+    cmd.filter.setTaskFilter('schedule', 'unplanned', changes.unplanned);
+    cmd.filter.setTaskFilter('allocation', 'allocated', changes.allocated);
+    cmd.filter.setTaskFilter('allocation', 'unallocated', changes.unallocated);
+    const cost = document.querySelector('plugin-cost');
+    await cost.loadData();
+    await cost.updateComplete;
+    return cost.data.projects[changes.projectId].totals;
+  }, { ...changes, projectId: projects[0].id });
+  const allRows = { states: ['Active', 'Closed'], unplanned: true,
+    allocated: true, unallocated: true };
+  expect(await reloadWithFilters(allRows)).toEqual(expectedTotals);
+  await expect(page.locator('plugin-cost')).toContainText('Legacy closed parent');
+  await expect(page.locator('plugin-cost')).toContainText('Legacy closed child');
+  expect(await reloadWithFilters({ ...allRows, states: ['Active'] })).toEqual(expectedTotals);
+  await expect(page.locator('plugin-cost')).not.toContainText('Legacy closed parent');
+  expect(await reloadWithFilters({ ...allRows, unplanned: false })).toEqual(expectedTotals);
+  await expect(page.locator('plugin-cost')).not.toContainText('Legacy closed child');
+  expect(await reloadWithFilters({ ...allRows, unallocated: false })).toEqual(expectedTotals);
+  await expect(page.locator('plugin-cost')).not.toContainText('Selected empty Feature');
+  await expect(page.locator('plugin-cost')).not.toContainText('Legacy closed parent');
+  expect(await reloadWithFilters({ ...allRows, allocated: false })).toEqual(expectedTotals);
+  await expect(page.locator('plugin-cost')).toContainText('Selected empty Feature');
+  await expect(page.locator('plugin-cost')).toContainText('Legacy closed child');
+  await expect(page.getByRole('row').filter({ hasText: 'jan' })).toHaveCount(0);
+  await expect(page.getByRole('row').filter({ hasText: 'feb' })).toHaveCount(0);
 });

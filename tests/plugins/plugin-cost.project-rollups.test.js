@@ -1,5 +1,5 @@
 import { expect } from '@open-wc/testing';
-import { renderProjectView } from '../../www/js/plugins/PluginCostProjectView.js';
+import { renderProjectView as renderProjectViewSource } from '../../www/js/plugins/PluginCostProjectView.js';
 import { render } from '../../www/js/vendor/lit.js';
 import { vi } from 'vitest';
 
@@ -36,10 +36,43 @@ function mkFeature(id, teamName, monthKey, costInt = 100, hoursInt = 5) {
       },
     },
   };
-  return { id, title: `F${id}`, metrics };
+  return { id, title: `F${id}`, start: '2026-01-01', end: '2026-02-28', metrics };
+}
+
+function renderProjectView(component) {
+  if (!Object.hasOwn(component, 'startDate')) {
+    component.startDate = component.months[0].toISOString().slice(0, 10);
+  }
+  if (!Object.hasOwn(component, 'endDate')) {
+    const month = component.months[component.months.length - 1];
+    component.endDate = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0))
+      .toISOString().slice(0, 10);
+  }
+  for (const project of Object.values(component.data.projects)) {
+    for (const feature of project.features) {
+      feature.displayMode = 'normal';
+      feature.estimateTeams = feature.metrics.teams;
+      feature.capacity = Object.keys(feature.estimateTeams).map((team) => ({ team, capacity: 100 }));
+    }
+  }
+  return renderProjectViewSource(component);
 }
 
 describe('PluginCost Project View deeper branches', () => {
+  it('omits selected feature rows entirely outside the report dates', () => {
+    mockSelectionState.projects = [{ id: 'p1', name: 'P1' }];
+    const current = mkFeature('current', 'team-alpha', '2026-01');
+    const old = { ...mkFeature('old', 'team-alpha', '2025-08'),
+      start: '2025-08-20', end: '2025-11-11' };
+    const component = { months: [new Date('2026-01-01')], startDate: '2026-01-01',
+      endDate: '2026-12-31', expandedProjects: new Set(['p1']),
+      projectViewSelection: { p1: 'features' }, viewMode: 'cost', costTeams: { teams: [] },
+      data: { projects: { p1: { id: 'p1', features: [old, current] } } } };
+    const container = document.createElement('div');
+    render(renderProjectView(component), container);
+    expect(container.textContent).to.include('Fcurrent');
+    expect(container.textContent).not.to.include('Fold');
+  });
   beforeEach(() => {
     mockSelectionState.projects = [{ id: 'p1', name: 'P1', selected: true }];
     mockFeatureState.childrenByParent = new Map();

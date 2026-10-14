@@ -17,7 +17,7 @@ import { sel } from '../application/imports.js';
 export function renderCountingBanner() {
     const taskFilters = sel.filter.getTaskFilters();
     const showUnplanned = taskFilters.schedule.unplanned;
-    const msg = `Complete allocation context · ${showUnplanned ? 'Counting Unplanned work' : 'Excluding Unplanned work'} · Child-team precedence`;
+    const msg = `Complete allocation context · Dated allocations only · ${showUnplanned ? 'Unplanned tasks visible' : 'Unplanned tasks hidden'}`;
     return html`<div
       style="margin-bottom:8px;padding:8px;border-radius:6px;background:#fffbe6;border:1px solid #f0e6b6;color:#333;font-size:13px;"
     >

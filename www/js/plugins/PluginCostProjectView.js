@@ -5,12 +5,13 @@ import {
   monthKey,
   expandDataset,
   buildTaskTree,
-  flattenTree,
+  buildCostTaskRows,
   buildByTeam,
   computeEffectiveDataMaps,
 } from './PluginCostCalculator.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
+import { renderEstimateComparison } from './PluginCostTaskView.js';
 
 function getTeamLabel(component, teamKey) {
   const costTeams =
@@ -97,7 +98,7 @@ function renderProjectTable(component, project, monthKeys) {
   );
   const expandedFeatures = expandDataset(
     projectData.features,
-    sel.feature.getChildrenByParentMap?.() || new Map(),
+    sel.feature.getChildrenByParentMap(),
     allFeatures
   );
 
@@ -189,11 +190,10 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
   // are never double-counted.
     const { roots, childrenMap } = buildTaskTree(
       features,
-      sel.feature.getChildrenByParentMap?.() || new Map()
+      sel.feature.getChildrenByParentMap()
   );
 
-  // Per-team, per-feature rollup (respects the "children are authoritative for
-  // their covered teams; uncovered teams keep the parent's own allocation" rule).
+  // Per-team, per-feature rollup of server-resolved allocations.
   const byTeam = buildByTeam(features, childrenMap, monthKeys);
 
   // Sum only the effective allocations of root features.
@@ -675,18 +675,16 @@ function renderTeamMonthTable(component, teams, teamAllocations, monthKeys) {
   `;
 }
 
-// flattenTree, buildByTeam, computeEffectiveDataMaps are imported from PluginCostCalculator.js
-
 function renderFeatureList(component, features, monthKeys) {
   const formatValue = (val) => formatPlainNumber(component, val);
 
   // Build hierarchy so parents always precede their children.
-  const featureMap = new Map(features.map((f) => [String(f.id), f]));
-    const { roots, childrenMap } = buildTaskTree(
+    const { childrenMap } = buildTaskTree(
       features,
-      sel.feature.getChildrenByParentMap?.() || new Map()
+      sel.feature.getChildrenByParentMap()
   );
-  const orderedFeatures = flattenTree(roots, childrenMap, featureMap, 0, []);
+  const rows = buildCostTaskRows(features, childrenMap, monthKeys,
+    { start: component.startDate, end: component.endDate });
 
   // Compute rolled-up effective metrics once for all features before rendering.
   const effectiveDataMaps = computeEffectiveDataMaps(features, childrenMap, monthKeys);
@@ -701,6 +699,8 @@ function renderFeatureList(component, features, monthKeys) {
             (m) => html`<th class="numeric" colspan="2">${monthLabel(m)}</th>`
           )}
           <th class="numeric">Sum</th>
+          <th class="numeric">Own Estimate</th>
+          <th>Estimate vs Breakdown</th>
         </tr>
         <tr>
           <th></th>
@@ -711,15 +711,14 @@ function renderFeatureList(component, features, monthKeys) {
                 <th class="numeric">Ext</th>`
           )}
           <th></th>
+          <th></th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
-        ${orderedFeatures.map(({ feature, depth }) => {
-          // Use rolled-up effective dataMap; fall back to empty maps if unavailable.
-          const dataMap = effectiveDataMaps.get(String(feature.id)) || {
-            cost: { internal: new Map(), external: new Map() },
-            hours: { internal: new Map(), external: new Map() },
-          };
+        ${rows.map((row) => {
+          const { feature, depth } = row;
+          const dataMap = effectiveDataMaps.get(String(feature.id));
 
           const curMap = component.viewMode === 'cost' ? dataMap.cost : dataMap.hours;
           // Only sum months in the display window; the map may include server data
@@ -739,7 +738,7 @@ function renderFeatureList(component, features, monthKeys) {
             featureEnd && component.endDate && featureEnd > component.endDate;
 
           return html`
-            <tr>
+            <tr class="${feature.displayMode === 'context' ? 'context-row' : ''}">
               <td style="text-align:center; white-space:nowrap;">
                 ${headClipped ?
                   html`<span class="clip-warning" title="Starts ${featureStart} — before display window start (${component.startDate})">◀</span>`
@@ -751,6 +750,7 @@ function renderFeatureList(component, features, monthKeys) {
               </td>
               <td style="vertical-align:top; padding-left:${8 + depth * 20}px;" data-depth="${depth}">
                 ${feature.title || feature.name || feature.id}
+                ${feature.displayMode === 'context' ? html`<span class="context-label">Context</span>` : ''}
               </td>
               ${monthKeys.map((mKey) => {
                 const intVal = curMap.internal.get(mKey) || 0;
@@ -761,6 +761,8 @@ function renderFeatureList(component, features, monthKeys) {
                 `;
               })}
               <td class="numeric sum-column">${formatValue(total)}</td>
+              <td class="numeric">${formatValue(component.viewMode === 'cost' ? row.ownCost : row.ownHours)}</td>
+              <td>${renderEstimateComparison(row)}</td>
             </tr>
           `;
         })}

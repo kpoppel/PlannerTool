@@ -21,6 +21,7 @@ const mockSel = vi.hoisted(() => ({
   },
   filter: {
     getAvailableFeatureStates: vi.fn(() => []),
+    getSelectedFeatureStateSet: vi.fn(() => new Set(['Active'])),
     getSelectedTaskTypeNames: vi.fn(() => ['Epic', 'Feature']),
     getTaskFilters: vi.fn(() => ({ schedule: { unplanned: true } })),
     featurePassesFilters: vi.fn(() => true),
@@ -74,7 +75,7 @@ describe('plugin cost pluginState seam', () => {
     expect(plugin.loadData).toHaveBeenCalledTimes(1);
   });
 
-  it('reports complete Context without applying board type filters', async () => {
+  it('keeps financial input complete while using board visibility only for normal rows', async () => {
     const parent = {
       id: 'parent',
       project: 'plan-1',
@@ -94,9 +95,7 @@ describe('plugin cost pluginState seam', () => {
     };
     mockSel.scope.getContextFeatures.mockReturnValue([parent, child]);
     mockSel.feature.getEffectiveFeatures.mockReturnValue([parent, child]);
-    mockSel.scope.getVisibleFeatures.mockImplementation(() => {
-      throw new Error('Cost reporting must not use final visible scope');
-    });
+    mockSel.scope.getVisibleFeatures.mockReturnValue([parent]);
     mockSel.feature.getChildrenByParentMap.mockReturnValue(
       new Map([['parent', ['child']]])
     );
@@ -132,7 +131,7 @@ describe('plugin cost pluginState seam', () => {
     ]);
     expect(getCost.mock.calls[1][0].features[0].capacity).toBe(contextFeature.capacity);
     expect(mockSel.scope.getContextFeatures).toHaveBeenCalledTimes(2);
-    expect(mockSel.scope.getVisibleFeatures).not.toHaveBeenCalled();
+    expect(mockSel.scope.getVisibleFeatures).toHaveBeenCalledTimes(2);
     expect(querySelector).not.toHaveBeenCalledWith('app-sidebar');
     const previousData = plugin.data;
     getCost.mockResolvedValue({ ok: false, error: { message: 'cost_unavailable', status: 503 } });
@@ -147,7 +146,9 @@ describe('plugin cost pluginState seam', () => {
     const root = document.createElement('div');
     render(renderCountingBanner(), root);
     expect(root.textContent).toContain('Complete allocation context');
-    expect(root.textContent).toContain('Child-team precedence');
+    expect(root.textContent).toContain('Dated allocations only');
+    expect(root.textContent).toContain('Unplanned tasks visible');
+    expect(root.textContent).not.toContain('Counting Unplanned');
     expect(querySelector).not.toHaveBeenCalledWith('app-sidebar');
   });
 

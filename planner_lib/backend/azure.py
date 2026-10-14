@@ -341,6 +341,8 @@ class AzureDevOpsBackend(BackendPort):
                             capacity_service=self._capacity_service,
                         )
                     task['project'] = owner
+                    if raw['state'] in categories_by_project[ado_project]:
+                        task['stateCategory'] = categories_by_project[ado_project][raw['state']]
                     task['sourcePlanName'] = area.strip('/\\').replace('/', '\\').rsplit('\\', 1)[-1]
                     task['excludedChildIds'] = raw['excludedChildIds']
                     task['unresolvedChildIds'] = raw['unresolvedChildIds']
@@ -413,6 +415,11 @@ class AzureDevOpsBackend(BackendPort):
             ]
             if not any(not is_expired(tasks[member_id]) for member_id in descendants):
                 expired_ids.update(component)
+        for task in tasks.values():
+            task['excludedChildIds'] = sorted(set(task['excludedChildIds']) | {
+                str(relation['id']) for relation in task['relations']
+                if relation['type'] == 'Child' and str(relation['id']) in expired_ids
+            })
         for task_id in expired_ids:
             del tasks[task_id]
 

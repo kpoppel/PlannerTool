@@ -18,9 +18,126 @@ import {
   flattenTree,
   buildByTeam,
   computeEffectiveDataMaps,
+  buildCostTaskRows as buildCostTaskRowsSource,
 } from '../../www/js/plugins/PluginCostCalculator.js';
 
+function buildCostTaskRows(features, children, months, range = {
+  start: `${months[0]}-01`,
+  end: lastOfMonth(toDate(`${months[months.length - 1]}-01`)).toISOString().slice(0, 10),
+}) {
+  return buildCostTaskRowsSource(features, children, months, range);
+}
+
 describe('PluginCostCalculator', () => {
+  it('hides filter-excluded allocating rows without changing financial rollups', () => {
+    const base = { start: '2026-01-01', end: '2026-01-31', estimateTeams: {} };
+    const features = [
+      { ...base, id: 'root', displayMode: 'normal', capacity: [], metrics: { teams: {} } },
+      { ...base, id: 'excluded', displayMode: 'excluded', capacity: [{ team: 'A', capacity: 20 }],
+        metrics: { teams: { A: {
+          cost: { internal: { '2026-01': 50 }, external: {} },
+          hours: { internal: { '2026-01': 5 }, external: {} },
+        } } } },
+      { ...base, id: 'hidden-type', displayMode: 'context', capacity: [{ team: 'A', capacity: 20 }],
+        metrics: { teams: {} } },
+    ];
+    const rows = buildCostTaskRows(features, new Map([['root', ['excluded', 'hidden-type']]]),
+      ['2026-01']);
+    expect(rows.map((row) => row.feature.id)).to.deep.equal(['root', 'hidden-type']);
+    expect(rows[0].totalCost).to.equal(50);
+    expect(rows[0].totalHours).to.equal(5);
+  });
+  it('leaves lifecycle pruning to the complete graph producer rather than a projected report', () => {
+    const base = { start: '2026-01-01', end: '2026-01-31', capacity: [],
+      displayMode: 'normal', metrics: { teams: {} }, estimateTeams: {}, stateCategory: 'Completed' };
+    const features = [
+      { ...base, id: 'active-root', stateCategory: 'InProgress' },
+      { ...base, id: 'closed-empty' }, { ...base, id: 'closed-grandchild' },
+      { ...base, id: 'active-empty', state: 'Closed', stateCategory: 'InProgress' },
+      { ...base, id: 'closed-parent' },
+      { ...base, id: 'closed-allocated', capacity: [{ team: 'unknown', capacity: 20 }] },
+      { ...base, id: 'closed-above-active' },
+      { ...base, id: 'active-descendant', stateCategory: 'InProgress' },
+    ];
+    const original = structuredClone(features);
+    const children = new Map([
+      ['active-root', ['closed-empty', 'active-empty', 'closed-parent', 'closed-above-active']],
+      ['closed-empty', ['closed-grandchild']], ['closed-parent', ['closed-allocated']],
+      ['closed-above-active', ['active-descendant']],
+    ]);
+    expect(buildCostTaskRows(features, children, ['2026-01']).map((row) => row.feature.id))
+      .to.deep.equal(['active-root', 'closed-empty', 'closed-grandchild',
+        'active-empty', 'closed-parent', 'closed-allocated',
+        'closed-above-active', 'active-descendant']);
+    expect(features).to.deep.equal(original);
+  });
+  it('limits normal and context rows to exact inclusive report dates', () => {
+    const base = { capacity: [], displayMode: 'normal', metrics: { teams: {} }, estimateTeams: {} };
+    const features = [
+      { ...base, id: 'old', start: '2025-08-20', end: '2025-11-11' },
+      { ...base, id: 'early', start: '2026-01-01', end: '2026-01-09' },
+      { ...base, id: 'boundary', start: '2026-01-10', end: '2026-01-10' },
+      { ...base, id: 'overlap', start: '2026-01-05', end: '2026-01-25' },
+      { ...base, id: 'late', start: '2026-01-21', end: '2026-01-31' },
+      { ...base, id: 'undated' },
+      { ...base, id: 'context', displayMode: 'context', start: '2026-01-01', end: '2026-01-09',
+        capacity: [{ team: 'A', capacity: 20 }] },
+    ];
+    expect(buildCostTaskRows(features, new Map(), ['2026-01'],
+      { start: '2026-01-10', end: '2026-01-20' }).map((row) => row.feature.id))
+      .to.deep.equal(['boundary', 'overlap', 'undated']);
+    const children = new Map([['old', ['boundary']]]);
+    expect(buildCostTaskRows(features, children, ['2026-01'],
+      { start: '2026-01-10', end: '2026-01-20' })[0].depth).to.equal(0);
+  });
+  it('keeps unpriced dated allocations as context without treating them as zero estimates', () => {
+    const feature = { id: 'unknown', start: '2026-01-01', end: '2026-01-31',
+      capacity: [{ team: 'unknown-team', capacity: 20 }], displayMode: 'context',
+      metrics: { teams: {} }, estimateTeams: {} };
+    const rows = buildCostTaskRows([feature], new Map(), ['2026-01']);
+    expect(rows).to.have.lengthOf(1);
+    expect(rows[0].hasOwnAllocation).to.equal(true);
+    expect(rows[0].hasOwnEstimate).to.equal(false);
+    expect(buildCostTaskRows([{ ...feature, start: null, end: null }],
+      new Map(), ['2026-01'])).to.have.lengthOf(0);
+  });
+
+  it('compares each team independently and retains only useful hidden context rows', () => {
+    const team = (cost, hours) => ({
+      cost: { internal: { '2026-01': cost }, external: {} },
+      hours: { internal: { '2026-01': hours }, external: {} },
+    });
+    const features = [
+      { id: 'root', displayMode: 'normal', metrics: { teams: {} },
+        estimateTeams: { A: team(1000, 100), B: team(1000, 100) } },
+      { id: 'bridge', displayMode: 'context', metrics: { teams: {} }, estimateTeams: {} },
+      { id: 'leaf', displayMode: 'context', metrics: { teams: { A: team(400, 40), B: team(1600, 160) } },
+        estimateTeams: { A: team(400, 40), B: team(1600, 160) } },
+      { id: 'empty', displayMode: 'normal', metrics: { teams: {} }, estimateTeams: {} },
+      { id: 'noise', displayMode: 'context', metrics: { teams: {} }, estimateTeams: {} },
+    ].map((feature) => ({ ...feature, start: '2026-01-01', end: '2026-01-31',
+      capacity: Object.keys(feature.estimateTeams).map((team) => ({ team, capacity: 100 })) }));
+    const children = new Map([['root', ['bridge', 'empty', 'noise']], ['bridge', ['leaf']]]);
+    const rows = buildCostTaskRows(features, children, ['2026-01']);
+    expect(rows.map((row) => row.feature.id)).to.deep.equal(['root', 'leaf', 'empty']);
+    expect(rows[1].depth).to.equal(1);
+    expect(rows[0].totalCost).to.equal(2000);
+    expect(rows[0].comparisons.map((comparison) => comparison.percent)).to.deep.equal([-60, 60]);
+    expect(rows[2].hasOwnEstimate).to.equal(false);
+    const equalFeatures = features.map((feature) => feature.id === 'leaf'
+      ? { ...feature, metrics: { teams: { A: team(1000, 100), B: team(1000, 100) } } } : feature);
+    expect(buildCostTaskRows(equalFeatures, children, ['2026-01'])[0]
+      .comparisons.every((comparison) => comparison.percent === 0)).to.equal(true);
+    const zeroRate = features.map((feature) => ({ ...feature,
+      estimateTeams: Object.fromEntries(Object.entries(feature.estimateTeams)
+        .map(([name, metrics]) => [name, { ...metrics, cost: { internal: {}, external: {} } }])),
+      metrics: { teams: Object.fromEntries(Object.entries(feature.metrics.teams)
+        .map(([name, metrics]) => [name, { ...metrics, cost: { internal: {}, external: {} } }])) },
+    }));
+    const freeRows = buildCostTaskRows(zeroRate, children, ['2026-01']);
+    expect(freeRows.map((row) => row.feature.id)).to.deep.equal(['root', 'leaf', 'empty']);
+    expect(freeRows[0].comparisons[0].percent).to.equal(-60);
+  });
   describe('date and month helpers', () => {
     it('parses date-only values at UTC midnight and preserves Date inputs', () => {
       const date = toDate('2026-12-15');
