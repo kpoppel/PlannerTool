@@ -91,6 +91,21 @@ Canonical application state does not include every component-local value or
 replace server persistence. The admin application is a separate composition,
 not another consumer of the main application's store.
 
+### 4.2 Build and runtime assets
+
+[vite.config.js](../vite.config.js) builds the planning page, admin page, and
+admin login page from `www/` into `dist/`, with hashed entry/chunk assets and a
+manifest. Selected native modules, configuration, and static assets are also
+copied for runtime loading. [rollup.config.mjs](../rollup.config.mjs) produces
+shared ES-module vendor bundles for Lit and Zustand under `www/js/vendor/`.
+Both clients and direct component tests use these shared vendor entry points.
+
+The backend serves `dist/` under `/static`; its root HTML base follows the
+installation's reverse-proxy root path. The Vite development server serves `www/`
+and proxies API/admin requests to the Python service. Source-module development
+and built-asset serving are distinct runtime paths; browser tests against the
+backend exercise the built assets, not unsaved source changes.
+
 ## 5. Frontend Runtime Architecture
 
 ```mermaid
@@ -217,11 +232,35 @@ hydration, initialization, uncaught browser/promise, and export failures use the
 same log. Loading indicators and interactive authentication/confirmation dialogs
 are separate UI mechanisms.
 
-## 6. State Architecture
+### 5.4 Board composition and interaction
+
+`TimelineBoard` composes the capacity graph, timeline header, scroll surface,
+FeatureBoard, and overlays. Timeline scale owns horizontal date geometry;
+board row scaling and scroll position belong to the presentation layer.
+`BoardCoordinateService` supplies viewport/coordinate notifications used by
+cards and overlays, separate from canonical planning state.
+
+FeatureBoard derives eligible tasks and groups through selectors, then computes
+hierarchy folding, group bands, swimlanes, ordering, and visible geometry.
+Large task sets use chunked/viewport-aware rendering; render generations prevent
+obsolete scheduled work from publishing stale output. Fold and viewport updates
+are board-local presentation signals, not edits to source tasks or allocations.
+
+Feature cards, detail editors, and drag/resize interactions translate user actions
+into feature/group commands. Scenario-aware commands own the actual changes,
+dirty tracking, capacity recomputation, and signals. Overlay plugins consume
+rendered board geometry and task IDs rather than owning task state. Export
+renderers project application data into an export surface; an export does not
+publish task edits.
+
+## 6. State and Planning Domain
 
 ### 6.1 Canonical store
 
-The runtime state is defined in `www/js/application/store.js`. It is the single source of truth for UI state, selection, filter state, scenarios, plugin state, and capacity data.
+The runtime state is defined in [store.js](../www/js/application/store.js) and
+[createInitialAppState.js](../www/js/application/createInitialAppState.js). It is
+the single source of truth for main-app selection, filters, scenarios, store-backed
+plugin state, capacity results, detail selection, and notifications.
 
 Primary slices include:
 
@@ -273,9 +312,51 @@ side effects and can invalidate reference-based cache assumptions.
 - Services do not own canonical UI state.
 - UI components represent presentation, not state ownership.
 
-### 6.5 Scope, scenarios, and persistence
+### 6.5 Task ownership, scope, and presentation
 
-`sel.scope` separates effective tasks, planning context, and displayed tasks. Plan selection and Scope relationship flags determine planning context; team focus and display filters determine visibility. Capacity recomputation derives effective tasks directly and calculates across all configured plans and teams, independently of display filters, so hiding cards must not change organization totals.
+Task records distinguish ownership, provenance, and presentation:
+
+- `project` is the backend-provided domain owner and anchors base board membership.
+- `sourcePlanIds` identifies importing plans and governs import-scoped reads and
+    per-plan calculation attribution.
+- `presentationPlanIds` identifies plans whose configuration permits presentation.
+    An empty list denotes hidden graph context, not an ordinary filtered card.
+- `parentId`, relations, `excludedChildIds`, and `traversalBoundary` describe
+    hierarchy and which edges are eligible for traversal and calculations.
+- `ancestorOnly`, `childrenComplete`, and `unresolvedParentIds` distinguish
+    partial ancestor context from imported work with complete descendant coverage.
+- `stateCategory`, presentation metadata, and `sourcePlanName` are backend-neutral
+    values; consumers do not derive them from private provider fields.
+
+`sel.scope` separates the effective scenario graph, relationship-expanded planning
+context, and displayed tasks. Scope is derived, not a persisted store slice.
+Selected domain owners form base membership. Context flags add eligible ancestors,
+descendants, dependencies, and other work allocated to participating teams.
+Participating teams come from base-plan allocations, not sidebar team selection.
+
+Plan overview returns all eligible scoped cards. Team focus starts from explicit
+selected-team allocations, retains connecting ancestors, and follows unallocated
+or matching-team descendants. Other-team-only branches stop that descent;
+matching-team work deeper in those branches can seed its own ancestor path.
+Presentation eligibility, state/type/task filters, and folding still apply.
+
+Scope-option counts measure eligible-card set differences for the proposed
+context, before team drill-down. Board breakdowns reconcile selected-plan counts,
+shared-task duplicates, scope additions/removals, display-filter exclusions, and
+team focus without double counting. Neither hidden context records nor loaded
+dataset totals are interchangeable with displayed-card counts.
+
+Ancestor-only records are an explicit Parent Context presentation exception.
+Their source owners remain opaque and may have labeled context lanes without
+becoming selectable configured plans. Their empty import provenance keeps them
+out of plan capacity totals, and they do not create cost charges.
+
+### 6.6 Capacity and allocation precedence
+
+Capacity recomputation derives effective tasks directly across all configured
+plans and teams, independently of display filters. Organization totals count
+canonical tasks once; per-plan totals attribute work by source-plan membership.
+Hiding cards or changing team focus must not change organization totals.
 
 Capacity and cost resolve allocations over the complete effective graph before applying
 report or display scope. Pure mirrored allocation-rule modules under
@@ -284,13 +365,16 @@ bottom-up over eligible parent edges. A dated descendant allocation suppresses a
 reservation for that team across its entire span, including skipped levels. Undated, invalid,
 and reversed spans have no effective allocations and do not suppress ancestor reservations;
 dated descendants still propagate through undated intermediaries.
-Excluded, traversal-boundary and Task-category edges do not participate;
+Excluded, traversal-boundary and `Task` edges do not participate;
 Removed work contributes nothing. Cyclic eligible graphs fail explicitly. Shared JSON
 fixtures enforce cross-language parity, including per-team monthly working-day loads.
 
-Capacity uses one feature-first calculation path with per-feature ownership lookups,
-without a separate delta cache or per-day precedence mode. Commands still own store
-writes and repaint signals. Cost's browser payload contains the complete scenario
+Capacity uses a feature-first calculation path with per-feature ownership lookups.
+Commands write the derived capacity slices and emit their repaint signals.
+
+### 6.7 Cost resolution and report projection
+
+Cost's browser payload contains the complete scenario
 graph; report filters are applied to the resolved response. Undated, invalid and reversed
 spans contribute zero cost/load. Cost responses expose `unknown_teams` allocation records
 (`feature_id`, `team`, `capacity`); project site totals remain internal-only while team
@@ -302,10 +386,9 @@ Cost feature responses also expose `estimateTeams` (original dated per-team esti
 charges. The browser retains complete cost records; board-visible IDs select normal rows,
 while other dated allocating tasks become marked context rows within the report period.
 Selected empty tasks remain visible; empty hidden intermediary levels are compressed.
-ADO context normalization publishes known backend-neutral `stateCategory` values. Closed
-allocation-free subtrees remain in the graph within the existing closed-tree retention policy;
-missing dates or allocations are not additional pruning criteria. Cost views do not prune
-lifecycle branches. Previously pruned cached plan data needs a refresh to restore omitted nodes.
+Backend normalization supplies known `stateCategory` values. Closed allocation-free
+subtrees remain subject to backend lifecycle retention; missing dates or allocations
+are not additional pruning criteria. Cost views do not prune lifecycle branches.
 State and task filters exclude rows even when they have allocations; task-type-hidden allocating
 levels remain context rows when those other filters pass. Financial records and totals stay complete.
 Both hierarchical cost views compare each own team estimate against resolved descendant
@@ -313,13 +396,30 @@ contributions in the displayed months, excluding retained own charges from the b
 Cost differences are compared as percentages; zero-cost estimates with hours use hours instead.
 Flags are displayed to one decimal place, with differences below 0.05% treated as matching
 to avoid flagging pricing roundoff. Unpriced allocations remain visible without an invented
-zero budget. Opening Cost preserves state/task-type selections and initially turns Unplanned off.
-State, task-type, schedule and allocation controls remain editable; hierarchy and relation controls
-remain locked while Cost is open. Closing clears these restrictions.
+zero budget. Cost activation preserves state/task-type selections and initially
+disables Unplanned. Plugin-owned restrictions leave state, task-type, schedule,
+and allocation filters editable while locking hierarchy and relation filters;
+deactivation clears those restrictions. These controls select report presentation,
+not the financial input graph.
+
+### 6.8 Scenario, view, and group persistence
 
 Baseline is a synthetic readonly scenario. Editable scenarios hold task overrides, group overrides, scenario-owned groups, and `pluginData`; selectors project these over baseline data. Task edits, scenario persistence, and explicit publishing to the backend are distinct operations.
 
 The Zustand store is the canonical in-memory model, not the sole persistence layer. REST providers persist server scenarios, views, and configuration. Browser-local providers retain preferences and colors. Shared baseline groups are fetched from the server in batches and cached in `groups.byPlanId`; in-flight requests are deduplicated and account changes invalidate older responses. This browser-session cache is not local-storage persistence. The synthetic Baseline's `pluginData` is stored locally because it has no server-side scenario record; plugin view state can be captured and restored with saved views.
+
+Scenario save clears unsaved-change tracking only after a successful persistence
+Result. Feature/group edits and scenario activation trigger their relevant
+calculation and notification paths. Publishing reports source-write failures
+separately from saving the scenario; local dirty state is not evidence of a
+successful external write.
+
+Saved views capture plan/team selection, state/type/task filters, context,
+display options, and participating plugin view state. Restoration applies these
+through application commands and recomputes capacity. A synthetic Default View
+is provided by the client; the last selected view ID is a browser-local preference.
+Packed-mode preference snapshots belong to the saved-view contract rather than
+Sidebar lifetime state.
 
 ## 7. Event and Signal Model
 
@@ -366,7 +466,7 @@ sequenceDiagram
     App->>Cmd: restoreLastView
     Cmd->>Store: restore view/selection/filter state
     App->>Cmd: recomputeCapacity
-    Cmd->>Store: update capacity for restored selection
+    Cmd->>Store: update capacity for effective scenario
     App->>Sidebar: import and mount after hydration
     App->>Data: fetch plugin config and schemas
     App->>App: merge modules.config.json with server plugin config
@@ -376,7 +476,21 @@ sequenceDiagram
     App->>App: emit AppEvents.READY
 ```
 
-The Top Menu, Timeline Board, and Details components are registered before data hydration. Sidebar mounting is deliberately deferred until baseline, scenarios, saved-view restoration, and capacity recomputation complete. After the ready signal, startup handles first-run onboarding, session-expiry notifications, and keyboard shortcuts.
+The Top Menu, Timeline Board, and Details components are registered before data
+hydration. Sidebar mounting follows the awaited hydration, view-restoration, and
+capacity operations. Failure listeners are registered at the beginning of
+startup; onboarding and keyboard shortcuts follow the ready signal.
+
+Hydration commands validate provider Results and payload shapes before writing
+their respective slices. Failure emits `HYDRATION_FAILED` and returns
+`{ ok: false, error }`. Bootstrap awaits hydration but does not inspect those
+returned Results, so a reported hydration failure is not itself a throwing
+startup gate; later operations may still fail. `AppEvents.READY` is completion
+of the bootstrap path, not proof of successful hydration or complete plugin loading.
+
+Thrown initialization failures are logged, added to the notification store, and
+rethrown after the loading overlay is removed. This is distinct from command
+failures represented as Results.
 
 ## 9. Plugin Architecture
 
@@ -399,7 +513,16 @@ The configured plugin types are `hidden`, `tool`, and `menu`. Presentation inclu
 
 Registration calls `init()`, activation honors dependencies, and unregistering deactivates and destroys the plugin. Disabled definitions are skipped. Dependency sorting controls initialization order while `displayOrder` retains the configured menu order. Only the first non-menu plugin marked `activateOnStartup` is auto-activated. Individual load failures are logged and loading continues; the app ready signal does not certify that every configured plugin loaded successfully.
 
-This is the current source of truth for plugin behavior and runtime configuration.
+Plugin view state is captured/restored through store-backed plugin-state commands;
+scenario-owned plugin data is a separate opaque `pluginData` bag. High-frequency
+viewport and interaction state can remain plugin-local. Plugins own their mounts,
+subscriptions, and delayed work, and must release them during lifecycle teardown.
+
+Menu-plugin initialization can start a background domain runtime independently of
+tool activation. Reconciliation uses this pattern: pure schedule/quality assessments
+are projected by a controller subscribed to application changes; review, markers,
+and menu attention counts share its assessment snapshot. Marker visibility changes
+presentation, not issue detection.
 
 ## 10. Admin Application Architecture
 
@@ -430,7 +553,12 @@ Admin bootstrap attempts shared `dataService` initialization before `/admin/chec
 
 ## 11. Backend Architecture Summary
 
-The Python backend is built from `planner_lib` and assembled in `planner_lib/main.py` via `create_app(config)`. It uses FastAPI with an application-owned `ServiceContainer`: lazy service factories and singleton storage are composed once, and request dependencies resolve services from that container.
+The Python backend is assembled in `planner_lib/main.py` by `create_app(config)`;
+`planner.py` exposes the server entry points and Uvicorn factory. FastAPI uses an
+application-owned `ServiceContainer`. Factories resolve dependencies on first use
+and retain their results as application singletons; request dependencies resolve
+through `request.app.state.container`. Service instances and request-local identity
+or credentials have different lifetimes.
 
 The important backend boundaries are:
 
@@ -442,19 +570,181 @@ The important backend boundaries are:
 
 This creates a clear split between durable server state and volatile remote-data cache state.
 
+```mermaid
+flowchart TD
+    Entry[create_app] --> Prepare[Database preparation]
+    Prepare --> Composition[Storage and service composition]
+    Composition -.->|dependencies| Routes[FastAPI handlers]
+    Routes --> Services[Repositories and domain services]
+    Services --> Ports[Focused backend protocols]
+    Ports --> Config[ConfigBackend]
+    Ports --> UserData[UserDataBackend and local group backend]
+    Config --> Durable[(Authoritative generation)]
+    UserData --> Durable
+    Ports --> Cache[CachingBackend when enabled]
+    Cache --> RemoteCache[(Disposable remote cache)]
+    Cache --> Source[Azure, static, fixture, or generated backend]
+    Ports -->|cache disabled| Source
+```
+
+| Service boundary | Responsibility |
+|---|---|
+| Accounts, AuthManager, SessionManager | Account records, enrollment, device/session validity and revocation |
+| Task and History repositories | Canonical task reads/writes and revision history |
+| Project, Team, People repositories | Domain-facing configuration and roster reads |
+| Plan and Iteration repositories | Plan markers, iteration sets, and schedule presets |
+| Scenario and View repositories | Account-owned durable planning data |
+| Event and Group repositories | Plan-scoped events and shared baseline groups |
+| CapacityService and CostService | Team capacity metadata and financial calculations |
+| AdminService and ReloadOrchestrator | Privileged configuration, accounts, snapshots, reload side effects |
+| CacheCoordinator and metadata service | Registered invalidation and project metadata caching |
+
+Focused protocols in `backend/port.py` isolate repositories from concrete providers.
+`BackendPort` composes planning-data capabilities; local configuration, user-data,
+and optional diagnostic capabilities have separate contracts. The registry selects
+Static, generated mock, fixture mock, or Azure backends in feature-flag priority
+order, with Azure as the default.
+
+Groups use the local group backend. Events use local user-data storage or a
+configured Azure wiki backend. These persistence choices are separate from the
+active work-item backend.
+
 ### 11.1 Database preparation and ownership
 
-Before logging, schema-dependent configuration reads, or service construction, `create_app` calls `Database(config.data_dir).prepare()` for disk-backed installations. Fresh databases initialize the current schema (revision 34); admitted historical databases are upgraded and validated in an independent candidate generation. Unsupported or unverifiable layouts fail before HTTP startup. In-memory test storage must already satisfy the current schema contract.
+Before logging, schema-dependent configuration reads, or service construction,
+`create_app` calls `Database(config.data_dir).prepare()` for disk-backed installations.
+Fresh databases initialize the current schema (revision 34); admitted historical
+databases are upgraded and validated in an independent candidate generation.
+Unsupported or unverifiable layouts fail before HTTP startup. Isolated memory
+storage is initialized when schema metadata is absent, then validated against the
+current schema and record contracts. Application construction admits diskcache or
+isolated memory storage with the raw serializer, not arbitrary storage/serializer
+combinations exposed by lower-level utilities.
 
 `DATA_DIR` is the installation root. `active-generation.json` selects `generations/<id>/cache/`, which contains the complete authoritative DiskCache; `upgrade-state.json` records preparation and recovery phases. Current workers retain a shared lifetime lease; preparation and offline maintenance require exclusive ownership. Validated candidates are durably published and activated before predecessor cleanup, and successful upgrades retain no automatic backup. Shutdown closes database/cache handles and releases ownership. See [Migrations](MIGRATIONS.md) for admission, locks, recovery, and operator backups.
 
-`remote_cache/` remains separate and disposable. Configuration and user-data backends are not wrapped in `CachingBackend`; `fetch_projects` and `fetch_project_map` also bypass its cached-read path to preserve configuration consistency.
+Schema revisions and application versions are separate contracts. Admission uses
+validated schema metadata and migration evidence, not directory timestamps or a
+version label. Current generations are opened without an upgrade copy. Storage
+provides namespaced operations over the complete DiskCache, including external
+value files; recovery cannot treat the SQLite file alone as the database.
+
+`remote_cache/` remains separate and disposable. Its handle is constructed lazily
+when caching is enabled. Configuration and user-data backends are not wrapped in
+`CachingBackend`; `fetch_projects` and `fetch_project_map` bypass its cached-read
+path to preserve configuration consistency.
 
 ### 11.2 Authentication and data-access boundaries
 
-Browser authentication uses `sessionId` and remembered-device cookies. `/api/session` renews from an enrolled device; enrollment and recovery use the account-key workflow. Email-only sessions and `X-Session-Id` are unsupported. Request identity and credential access are separate: account PATs are decrypted only for credential-bearing requests, and Azure client connections are worker-thread scoped. See [Authentication](AUTHENTICATION.md).
+Stable account IDs own user data and credentials. Email is an enrollment lookup
+and display attribute, not the persistent owner identity. Browser authentication
+uses HTTP-only `sessionId` and `plannerDevice` cookies. `/api/session` renews from
+an enrolled device; enrollment uses the generated account-key workflow. Credentials
+are persisted as hashes; account PATs remain encrypted at rest. Email-only sessions
+and `X-Session-Id` are unsupported.
+
+Identity and credential resolution are request-local and separate. Identity-only
+routes do not decrypt PATs. Credential-bearing operations resolve the current
+account PAT once per request; identities and decrypted PATs are not shared across
+requests or users. Azure client connections are worker-thread scoped. Middleware
+rechecks persisted device/session validity before renewing cookies, and cookie
+paths follow the installation root. Backend handlers enforce ordinary and admin
+permissions independently of client mounting. See [Authentication](AUTHENTICATION.md).
 
 Main and admin REST providers share `RestProviderBase` and normalized JSON Results (`{ ok: true, data }` or `{ ok: false, error }`). Consumers must check failures before hydration or persistence; session acquisition and authentication flows also have explicit throwing/control-flow paths rather than treating every operation as a JSON Result.
+
+### 11.3 HTTP and domain operation flow
+
+Routers parse requests, enforce identity/permissions, resolve repositories or
+services, and shape responses. Main operations live under `/api/*`, privileged
+configuration under `/admin/v1/*`, and Azure browsing/cache operations under their
+dedicated prefixes. Cache-management routes are conditionally registered when
+caching is enabled. Health, events, groups, cost, scenarios, and views have distinct
+domain routers rather than a generic persistence endpoint.
+
+A task read resolves the request credential, asks TaskRepository for normalized
+domain records, and returns pending public diagnostics separately from the task
+payload. A task write accepts canonical IDs and supported changes, delegates
+source conversion and mutation to the backend, and returns updated/error results.
+Publishing is not an atomic transaction spanning remote task writes and local
+scenario/group persistence; callers must retain and report partial failures.
+
+Local scenario/view operations resolve stable account ownership and use durable
+storage without the remote cache. Cost resolves allocations from the supplied
+effective graph and configured pricing/rosters. HTTP status and operation Results
+are separate: an HTTP-successful batch may still contain failed writes.
+
+Session middleware and route-level guards enforce access. GZip is always installed
+and Brotli is configurable. Exception handlers shape access-denied, not-found,
+and JSON error responses. The server serves the built SPA under `/static`; the
+root page receives an installation-aware HTML base path.
+
+### 11.4 Task normalization and external scheduling
+
+TaskRepository calls `fetch_plan_tasks(plan, credential)` for configured seeds,
+merges canonical IDs using domain revisions and import provenance, then calls
+`fetch_task_context(seeds)` once for the combined forest. Project-specific reads
+filter the normalized result by `sourcePlanIds`, not provider paths.
+
+Backends return `BackendTask` records with opaque `backendData`. Cached/backend
+records retain it, but TaskRepository strips it from public `DomainTask` records
+and rejects consumer attempts to write it. Only a concrete backend interprets
+source settings, native IDs/types/revisions, ownership, or SDK identity.
+
+ADO loads bounded Child traversal across source areas/projects and applies native
+TaskCategory boundaries. A second bounded Parent pass adds ancestor context
+without expanding sibling branches. Ancestor-only records have partial child
+coverage and empty import/presentation membership; independently imported work
+remains ordinary work. Unresolved references and excluded edges remain explicit.
+Source ownership and labels, presentation eligibility, and known lifecycle
+categories are supplied by the backend, not inferred by repositories or UI.
+
+Removed-category work is omitted before provenance propagation. Completed trees
+are retained whole while any imported member is active, recently completed, or
+lacks verifiable completion age. Trees whose imported members all completed more
+than six calendar months ago are omitted. Missing allocations or schedules are
+not pruning criteria. Historical anchor presentation can place completed work
+without inventing task dates; display placement is not a financial allocation span.
+
+Explicit task dates take precedence. Missing boundaries can be inferred from the
+exact assigned iteration in the native project; context enrichment shares project
+iteration maps and preserves explicit dates. Unmatched or undated iterations
+leave boundaries unset. This inference does not publish dates back to ADO.
+Schedule presets expose validated date ranges with opaque IDs; UI code does not
+parse provider-native paths. Backend-owned clearing of both dates resets the ADO
+iteration assignment and removes supported explicit date fields in one SDK patch.
+
+Per-plan configuration/unavailability failures are logged and skipped, allowing
+partial seed loads; authentication failures propagate. Remote refresh failures
+and missing schedule metadata can produce public diagnostics. Backend-specific
+diagnostic details and credentials do not enter the public task contract.
+
+### 11.5 Remote-cache consistency
+
+CachingBackend transparently implements the inner backend's read protocols.
+Keys derive from method and arguments, excluding credentials; cached snapshots
+are shared rather than per-account. Per-method freshness lives in `taskmeta__*`
+sidecars, not hard DiskCache expiry. Plan-task and context reads share task TTL
+policy. An uncached read fetches from the source; a fresh snapshot returns directly.
+
+For remote ADO reads with a cached snapshot, soft expiry schedules a deduplicated
+background refresh and returns existing data. Failed or empty refreshes can retain
+old content and queue warnings. There is no hard stale-age ceiling. Local/static/
+mock sources do not use remote stale-on-failure handling. Successful task writes
+patch affected cached snapshots without extending their freshness window;
+explicit invalidation removes disposable read entries.
+
+### 11.6 Configuration reload
+
+Admin writes persist authoritative configuration. ReloadOrchestrator rereads
+settings, updates logging and Azure configuration, rebuilds concrete clients,
+and calls registered `Reloadable` or `Invalidatable` services. Backend switches
+invalidate affected domain caches. CacheCoordinator supplies shared invalidation
+operations across registered services.
+
+Reload is not a distributed or transactional commit: individual registered-service
+reload failures can be logged without failing the overall reload Result. Server
+process construction choices, such as installed middleware, remain startup-owned.
 
 ## 12. Quality Constraints
 
@@ -467,7 +757,8 @@ The architecture is designed around a few non-negotiable rules:
 - backend config and user data are durable, cache is not
 - the browser UI is a client to the server, not the system of record for configuration
 
-These rules are enforced in code and are the basis for valid V5 changes.
+These are architectural constraints, not a claim of universal runtime enforcement.
+Relevant limitations are explicit in the startup, event, reload, and cache contracts.
 
 Runtime behavior notes:
 
@@ -491,17 +782,29 @@ Contract-testing rules:
 - New contract tests prefer public interfaces over private-field coupling; existing characterization tests still include private handlers and simulated DOM paths.
 - Tests isolate state per test case.
 
-Python suites mirror `planner_lib` owners under `tests/python/`; database-upgrade suites live in `tests/migrations/`. JavaScript tests mirror application commands, selectors, shared helpers, components, services, and plugins. Vitest has separate jsdom and Node projects. Playwright desktop workflows run against a per-run temporary database and mock dataset, never the active installation. HTTP tests enroll isolated accounts and use real cookie authentication; there is no test-auth bypass. Timing benchmarks are opt-in under `tests/performance/`. See [Testing](TESTING.md) for commands, fixture rules, and remaining coverage gaps.
+Python suites mirror `planner_lib` owners under `tests/python/`; database-upgrade
+suites live in `tests/migrations/`. JavaScript suites mirror commands, selectors,
+shared helpers, components, services, and plugins. Vitest has separate jsdom and
+Node projects. Shared JSON fixtures verify browser/server allocation parity.
+
+Playwright desktop workflows use isolated fixtures. Backend-authenticated
+workflows use per-run temporary databases, mock source data, and enrolled test
+accounts. Frontend-only workflows use in-memory providers without a backend.
+Neither uses the active installation as a fixture. HTTP tests exercise real cookie
+authentication, not a test-auth bypass. Timing benchmarks are opt-in under
+`tests/performance/`. See [Testing](TESTING.md) for commands, fixture contracts,
+and remaining characterization/private-handler coverage gaps.
 
 ## 14. Known Sharp Edges
 
-- **Writes and repaint signals are separate.** A store update alone does not repaint the main UI. Commands must notify relevant consumers unless notification is intentionally suppressed or supplied by a dedicated subscriber path. DevTools action labels are the third argument to `store.setState`, not event metadata.
+- **Writes and repaint signals are separate.** A store update does not universally repaint the main UI. Each consumer needs a bus notification or dedicated subscription. DevTools action labels are the third argument to `store.setState`, not event metadata.
 - **Event shapes differ.** Consumers must handle the payload documented by their producer, including payload-free invalidations and singular versus batch feature IDs. The bus does not validate payloads or provide rollback; a caught listener error may leave one consumer stale while others update.
 - **Selector results are read-only by convention.** Some expose store-owned objects. Mutating those objects bypasses command side effects and can also invalidate reference-based caching assumptions; use commands for changes.
-- **Memoization is selective.** Scope projections are cached, but many selectors still recompute and there is no general fine-grained UI subscription layer. Preserve immutable inputs and measure hot paths before adding caches.
+- **Memoization is selective.** Scope projections are cached, but many selectors recompute and managed subscriptions are local to their consumers. Reference-based caches require immutable inputs.
 - **Multiple notification models coexist.** `cmd.pluginState.subscribe` observes store-backed plugin state through command-owned callbacks, not a second canonical store. Plugin-local viewport/interaction stores provide another path for high-frequency updates; avoid routing every scroll frame through the global bus.
-- **Remote cache freshness is soft.** For remote ADO reads with cached content, stale results can be served immediately while a background refresh runs. Failures or empty refreshes can preserve old content and produce warnings; there is no hard stale-age ceiling. Inspect `taskmeta__*` freshness sidecars and `/api/cache/refresh`, not just configured TTLs. Local/static/mock failures are not covered by the remote stale-on-failure policy.
-- **The active pointer determines authoritative storage.** Configuration, accounts, sessions, and user data live in the selected `data/generations/<id>/cache/`, not normally `data/cache`. Never select a generation by timestamp or delete generation/control/lock files as cache cleanup. Only `data/remote_cache/` is disposable; legacy root `cache/` is handled by database admission and activation.
+- **Success signals have different meanings.** `AppEvents.READY` does not certify hydration or plugin success; HTTP success does not certify every batch write; reload success does not certify every registered service refreshed.
+- **Remote cache freshness is soft.** Stale content may outlive the configured freshness window indefinitely during remote failures. Freshness sidecars and diagnostics, not snapshot existence, describe cache health.
+- **The active pointer determines authoritative storage.** Generation and control/lock files are database state, not disposable caches. Database preparation owns admission and activation; only remote-cache storage is disposable.
 
 ## 15. Quality Attributes
 
@@ -517,12 +820,12 @@ Python suites mirror `planner_lib` owners under `tests/python/`; database-upgrad
 
 ### 15.3 Performance
 
-- Components re-render on explicit event signals rather than on every store write, limiting rerenders to interested listeners.
+- Bus listeners and managed selector subscriptions limit repaints to interested consumers; local viewport paths handle high-frequency geometry updates.
 - Scope projections reuse cached results when their inputs are unchanged. High-frequency plugin-local interactions can use local pub-sub rather than global events; `cmd.pluginState.subscribe` is a separate notification API for canonical store-backed plugin state, not proof that an interaction bypasses the store.
 
 ### 15.4 Reliability
 
-- Startup sequence enforces explicit hydration before ready signal.
+- Startup orders hydration, view restoration, capacity, and plugin loading; Result failures and individual plugin-load failures are not universal readiness gates.
 - Session lifecycle handling is centralized in data-access services.
 - Database compatibility and generation ownership are checked before HTTP startup; authentication is enforced on the server independently of browser mounts.
 
