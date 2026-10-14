@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server.js';
 import '../../www/admin/js/components/admin/Projects.lit.js';
 import { setMetadata } from '../../www/admin/js/services/azureMetadataCache.js';
+import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 
 describe('admin-projects', () => {
   let comp;
@@ -72,6 +73,65 @@ describe('admin-projects', () => {
     comp.newContainerType = 'D';
     comp.addContainerType();
     expect(comp.content.container_types).to.deep.equal(['C', 'B', 'A', 'D']);
+  });
+
+  it('saves a newly added container assignment while the project row is still being edited', async () => {
+    await vi.waitFor(() => expect(comp.loading).to.equal(false));
+    comp.content = {
+      container_types: ['project', 'team'],
+      project_map: [{ name: 'Plan A', type: 'project', area_path: '' }],
+    };
+    await comp.updateComplete;
+
+    comp.newContainerType = 'portfolio';
+    comp.addContainerType();
+    await comp.updateComplete;
+    comp.editProject(0);
+    await comp.updateComplete;
+
+    const select = comp.shadowRoot.querySelector('tr.editing-row select');
+    expect([...select.options].map((option) => option.value)).to.include('portfolio');
+    select.value = 'portfolio';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await comp.updateComplete;
+
+    const save = vi.spyOn(adminProvider, 'saveProjects').mockResolvedValue({ ok: true });
+    try {
+      await comp.saveConfig();
+      expect(save).toHaveBeenCalledWith({
+        container_types: ['project', 'team', 'portfolio'],
+        project_map: [{ name: 'Plan A', type: 'portfolio', area_path: '' }],
+      });
+    } finally {
+      save.mockRestore();
+    }
+  });
+
+  it('saves raw JSON without replacing it with an open project row draft', async () => {
+    await vi.waitFor(() => expect(comp.loading).to.equal(false));
+    comp.content = {
+      container_types: ['project', 'team'],
+      project_map: [{ name: 'Plan A', type: 'project', area_path: '' }],
+    };
+    await comp.updateComplete;
+    comp.editProject(0);
+    comp.updateProjectField(0, 'type', 'team');
+    comp.useRawMode = true;
+    comp.content = {
+      container_types: ['project', 'team', 'portfolio'],
+      project_map: [{ name: 'Raw Plan', type: 'portfolio', area_path: '' }],
+    };
+
+    const save = vi.spyOn(adminProvider, 'saveProjects').mockResolvedValue({ ok: true });
+    try {
+      await comp.saveConfig();
+      expect(save).toHaveBeenCalledWith({
+        container_types: ['project', 'team', 'portfolio'],
+        project_map: [{ name: 'Raw Plan', type: 'portfolio', area_path: '' }],
+      });
+    } finally {
+      save.mockRestore();
+    }
   });
 
   describe('area-path metadata integration', () => {

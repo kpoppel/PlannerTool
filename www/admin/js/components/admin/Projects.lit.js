@@ -347,6 +347,13 @@ export class AdminProjects extends BaseConfigComponent {
     this.requestUpdate();
   }
 
+  async saveConfig() {
+    if (!this.useRawMode && this.editingIndex !== -1) {
+      this.saveEdit(this.editingIndex);
+    }
+    await super.saveConfig();
+  }
+
   get containerTypes() {
     return this.content.container_types;
   }
