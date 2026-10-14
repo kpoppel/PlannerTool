@@ -19,10 +19,13 @@ Assignee
 - The name of the person assigned to, if any.
 
 Scheduling
+- Every work item type needs its own start and end (Target) dates to be planned. Dates are not implicitly inferred from hierarchy, state, dependencies or other factors; items without both dates remain unplanned and display as unplanned. See [Planning principles](best_practices.md#planning-principles).
 - Setting start/end date of the task using 'iterations'.
 - Editable Start and Target date fields. Changes are reflected on the timeline immediately.
 - Context sensitive buttons to move start date, both start and end dates, or end date of a task with descendents to match dates of these.
 - Clear dates button to remove dates and make the task effectively unplanned.
+
+Choosing an iteration or using a date-alignment button is an explicit action that sets dates, not implicit date resolution.
 
 Allocated capacity
 - Add allocation: choose a team and set percentage.

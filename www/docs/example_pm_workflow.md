@@ -15,6 +15,9 @@ This walkthrough follows Marcus, a Project Manager responsible for a portfolio o
 
 ## 3. Look for capacity conflicts
 
+- Before interpreting available capacity, Marcus confirms that team definitions use available project hours rather than total working hours. Holidays, absences and company administration are outside that capacity and are not specified separately in the tool (see [Admin - Teams](admin_teams.md#available-project-hours)).
+- He checks that all work intended for the plan has explicit start and end dates, regardless of work item type. Dates are not inferred from parents, states or dependencies; undated work remains unplanned.
+- He includes maintenance, internal projects and other work competing for the same project capacity with explicit dates and team allocations. PlannerTool provides no implicit buffers for omitted work (see [Planning principles](best_practices.md#planning-principles)).
 - Using [Tool - Portfolio Board](plugin_portfolio.md), Marcus reviews every team's work by state in one Kanban-style screen, which is a faster way to spot idle or overloaded teams than scrolling the full timeline.
 - He switches to [Tool - XY Board](plugin_xyboard.md) with X = Team and Y = State to get a matrix view of exactly how much work each team has in each state, which he uses directly in his status reporting.
 

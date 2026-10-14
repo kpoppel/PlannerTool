@@ -12,7 +12,9 @@ Priya has already configured her email and Personal Access Token (see [Getting S
 ## 2. Review the current backlog on the board
 
 - With Features and Stories expanded under her Epics, Priya scans the board for anything unplanned (no dates) using the "Unplanned" filter.
+- She gives each item she intends to plan its own start and end dates using the [Details panel](details.md). This applies to every work item type: a planned parent, state or dependency does not implicitly date an item. Items without both dates remain unplanned.
 - She opens [Tool - Plan Health](plugin_plan_health.md) to check for ghosted children (stories without dates under a planned Epic) and parent/child date mismatches before she starts moving things around.
+- She confirms with her administrator that team capacity represents available project hours, not total working hours, and includes maintenance and internal projects as explicitly dated, allocated work. There are no implicit buffers for these activities (see [Planning principles](best_practices.md#planning-principles)).
 
 ## 3. Try a scenario
 

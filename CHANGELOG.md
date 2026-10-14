@@ -41,6 +41,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Clarified online planning guidance for explicit task dates, available project hours, and transparent planning without implicit buffers across role and admin guides.
+- Updated the architecture reference to describe current runtime boundaries, ownership, data flows, and verified failure semantics.
 - Cost task reports preserve sidebar choices, retain allocating hidden levels as context, show selected tasks without allocations, and compare original per-team estimates against resolved breakdowns without changing charged totals.
 - Hide dated task rows wholly outside the selected cost report dates in both hierarchical views, with inclusive day-level overlap and unchanged allocation inputs.
 - Preserve closed allocation-free trees within existing retention and enable Cost's state, planned/unplanned, and allocated/unallocated sidebar filters without changing financial totals.

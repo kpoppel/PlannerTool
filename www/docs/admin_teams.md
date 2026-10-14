@@ -10,6 +10,14 @@ Teams are edited with a schema-driven form: fields are generated automatically f
 - Switch to the raw JSON view for bulk edits or to copy configuration between environments.
 - Click Save to persist changes, or Reload to discard local edits and re-fetch the current server value.
 
+## Available project hours
+
+Define each team's available hours as **project hours**, not total working hours. Project hours are the time available for delivering project work and form the capacity against which work is allocated.
+
+Exclude time unavailable for project delivery, such as holidays, absences and company administration, when determining available project hours. The remaining hours up to total working hours are not specified in PlannerTool; the tool does not track or deduct them separately.
+
+Maintenance, internal projects and other activities that consume this project capacity must instead be planned as work with explicit start and end dates and team allocations. There is no implicit buffer for them. Agree on this capacity basis with Product Owners and Project Managers before reviewing allocation graphs. See [Planning principles](best_practices.md#planning-principles).
+
 ## Team hierarchy
 
 Teams can reference a parent team, letting you model reporting or rollup structures (for example sub-teams under a larger delivery team). This hierarchy is used elsewhere in the tool, for example in capacity graphs and cost breakdowns.

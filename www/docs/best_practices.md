@@ -9,6 +9,14 @@ The tool adds consistent conventions on top of Azure DevOps to produce more usef
 
 Below you find guidance on the target conventions supported by the tool.
 
+## Planning principles
+
+PlannerTool is a transparency-based planning tool: it shows the work and capacity you explicitly plan, without hidden scheduling assumptions or capacity buffers.
+
+- **Plan every task with start and end dates.** This applies to every work item type, including Epics, Features, Stories, Tasks and Bugs. No task type has implicit date resolution from its hierarchy, state, dependencies or other factors. Tasks without a start and end date remain unplanned and display as unplanned. Use the [Details panel](details.md) to set dates explicitly.
+- **Configure available project hours, not total working hours.** Team hours represent time available for delivering project work. The remaining working hours covering holidays, absences, company administration and similar overhead are not specified in PlannerTool. See [Admin - Teams](admin_teams.md).
+- **Plan all work consuming project capacity.** Maintenance, internal projects and similar activities must have explicit dates and team allocations. PlannerTool does not reserve implicit buffers for these activities; omitting them makes capacity appear available when it is not.
+
 ## Hierarchy guidance
 
 Use hierarchy to express delivery scope and team ownership:
@@ -59,7 +67,7 @@ Guidance:
 
 This tool considers team capacity in percent.  Not man-hours, FTEs, Story Points, or Velocity.  Experience tells that engineers clearly are eternal optimists, and that _any_ estimate given in directly translatable numbers _will_ be misused by people who does not understand that development is messy, evolving, and emergent.
 
-This tool selects a method of allocating a _percentage_ of a team to a task as a netural measure of how much effort a team of any size would need to set aside, given the team is stable in size.  Using this measure naturally gives a team some slack to absorb emergent development challenges while at the same time allowing planners to work with a measure of capacity as a _derived_ number, given a team size, and a company defined standard number for active project hours per month.
+This tool allocates a _percentage_ of a team to a task as a neutral measure of how much effort a team of any size needs to set aside, given the team is stable in size. Hours are a _derived_ measure based on team size and configured available project hours per month, not total working hours. Percentage allocations do not create automatic slack or hidden buffers; maintenance and internal project work must be planned explicitly.
 
 So:
 - Record capacity allocations as team percentages per work item when teams share work.  Multiple teams can allocate effort on a task.
