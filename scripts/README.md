@@ -28,6 +28,19 @@ file in secure storage and replace the old saved key. Choose a new output filena
 for each enrollment; the CLI will not overwrite an existing key file. If the
 response is lost after enrollment, ask an administrator to reset access.
 
+Enroll `user@example.com` or reuse its session. The script renews an expired session
+first and re-enrolls only when renewal fails. It sends the stored account key from
+`$HOME/planner-account-key.txt` and replaces that file with the rotated key:
+
+```bash
+API_BASE=http://localhost:8001 python3 -m scripts.enroll_account
+```
+
+Defaults are `user@example.com`, name `Example User`, `$HOME/planner-cookies.txt`, and
+`$HOME/planner-account-key.txt`; pass `--email`, `--name`, `--cookies`, or `--key-file` to override.
+Use `--check` to report cookie, key-file, and session status; it exits 2 when the session is not valid
+for the account and never enrolls or rewrites the key file.
+
 Check health:
 
 ```bash
