@@ -1,4 +1,6 @@
 from pathlib import Path
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, Iterable, Optional
 import logging
 import sys
@@ -38,6 +40,13 @@ class DiskCacheStorage(StorageBackend):
     def _require_open(self) -> None:
         if self._closed:
             raise RuntimeError('DiskCache storage is closed')
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Atomically commit writes while excluding concurrent storage writers."""
+        self._require_open()
+        with self._cache.transact():
+            yield
 
     def save(self, namespace: str, key: str, value: Any, ttl_seconds=None) -> None:
         comp = self._composite_key(namespace, key)

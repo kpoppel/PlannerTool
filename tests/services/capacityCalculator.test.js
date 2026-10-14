@@ -9,6 +9,38 @@ function planConfig(id, type = 'project') {
 }
 
 describe('CapacityCalculator (unit)', () => {
+  it('expands winning groups without duplicating organization load or its denominator', () => {
+    const teams = [
+      { id: 'A', kind: 'team', group_id: 'G' },
+      { id: 'B', kind: 'team', group_id: 'G' },
+      { id: 'G', kind: 'group' },
+    ];
+    const features = [{ id: 'root', project: 'p1', state: 'active',
+      start: '2025-01-06', end: '2025-01-06', capacity: [{ team: 'G', capacity: 40 }] }];
+    const result = new CapacityCalculator(bus).calculate(features,
+      { selectedProjects: ['p1'], selectedStates: ['active'] }, teams, [planConfig('p1')]);
+    expect(result.totalOrgDailyCapacity).to.deep.equal([80]);
+    expect(result.totalOrgDailyPerTeamAvg).to.deep.equal([40]);
+    expect(result.teamDailyCapacityMap).to.deep.equal([{ A: 40, B: 40, G: 40 }]);
+    expect(result.teamDailyCapacity).to.deep.equal([[40, 40, 40]]);
+  });
+
+  it('invalidates a whole ancestor group before expanding member load', () => {
+    const teams = [{ id: 'A', kind: 'team', group_id: 'G' },
+      { id: 'B', kind: 'team', group_id: 'G' }, { id: 'G', kind: 'group' }];
+    const features = [
+      { id: 'root', project: 'p1', state: 'active', start: '2025-01-06', end: '2025-01-06',
+        capacity: [{ team: 'G', capacity: 40 }] },
+      { id: 'leaf', parentId: 'root', project: 'p1', state: 'active',
+        start: '2025-01-06', end: '2025-01-06', capacity: [{ team: 'A', capacity: 100 }] },
+    ];
+    const result = new CapacityCalculator(bus).calculate(features,
+      { selectedProjects: ['p1'], selectedStates: ['active'] }, teams, [planConfig('p1')]);
+    expect(result.totalOrgDailyCapacity).to.deep.equal([100]);
+    expect(result.teamDailyCapacityMap).to.deep.equal([{ A: 100, G: 50 }]);
+    expect(result.teamDailyCapacity).to.deep.equal([[100, 0, 50]]);
+  });
+
   it('invalid spans do not distort the date range or suppress planned reservations', () => {
     const features = [
       { id: 'root', project: 'p1', state: 'active', start: '2025-01-01', end: '2025-01-02',

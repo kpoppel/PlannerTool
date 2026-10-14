@@ -2,7 +2,7 @@ import pytest
 import json
 from pathlib import Path
 
-from planner_lib.migrations.contracts import MIGRATION_IDS, SchemaError
+from planner_lib.migrations.contracts import MIGRATION_IDS, TARGET_REVISION, SchemaError
 from planner_lib.migrations.revisions import BASELINE_IDS, admit_legacy, initialize, validate_candidate
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
@@ -90,7 +90,7 @@ def test_fresh_initialization_is_current_without_upgrades(tmp_path):
     try:
         initialize(storage)
         validate_candidate(storage)
-        assert storage.load('system', 'schema_state')['initialized_at_revision'] == 34
+        assert storage.load('system', 'schema_state')['initialized_at_revision'] == TARGET_REVISION
         assert storage.load('system', 'schema_state')['last_applied_migration'] is None
     finally:
         storage.close()

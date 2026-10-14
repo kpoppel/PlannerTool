@@ -21,6 +21,7 @@ from planner_lib.admin import cost_inspector
 from planner_lib.admin import people_inspector
 from planner_lib.admin import area_mapping_service
 from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
+from planner_lib.admin.workforce_config import WorkforceConflictError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -110,6 +111,10 @@ async def admin_save_projects(request: Request):
         return {'ok': True}
     except HTTPException:
         raise
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail={
+            'error': 'invalid_allocation_availability', 'message': str(error),
+        }) from error
     except Exception as e:
         logger.exception('Failed to save projects: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -524,6 +529,10 @@ async def admin_save_teams(request: Request):
         except Exception as e:
             logger.warning('Failed to invalidate cost cache after teams save: %s', e)
         return {'ok': True}
+    except WorkforceConflictError as e:
+        raise HTTPException(status_code=409, detail={
+            'error': 'workforce_endpoint_required', 'message': str(e),
+        }) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -573,6 +582,10 @@ async def admin_save_people(request: Request):
         except Exception as e:
             logger.warning('Failed to invalidate cost cache after people save: %s', e)
         return {'ok': True}
+    except WorkforceConflictError as e:
+        raise HTTPException(status_code=409, detail={
+            'error': 'workforce_endpoint_required', 'message': str(e),
+        }) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -788,6 +801,10 @@ async def admin_save_cost(request: Request):
         admin_svc = resolve_service(request, 'admin_service')
         admin_svc.save_config('cost_config', content)
         return {'ok': True}
+    except WorkforceConflictError as e:
+        raise HTTPException(status_code=409, detail={
+            'error': 'workforce_endpoint_required', 'message': str(e),
+        }) from e
     except Exception as e:
         logger.exception('Failed to save cost config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')

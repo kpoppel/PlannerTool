@@ -61,11 +61,18 @@ from planner_lib.admin.users_routes import (
     admin_cache_invalidate,
     admin_cache_cleanup,
 )
+from planner_lib.admin.workforce_routes import (
+    router as _workforce_router,
+    admin_get_workforce,
+    admin_save_workforce,
+    admin_create_workforce_definition,
+)
 
 router = APIRouter()
 router.include_router(_setup_router)
 router.include_router(_config_router)
 router.include_router(_users_router)
+router.include_router(_workforce_router)
 
 __all__ = [
     'router',
@@ -83,6 +90,7 @@ __all__ = [
     'admin_refresh_area_mapping', 'admin_refresh_all_area_mappings',
     'admin_toggle_plan_enabled',
     'admin_get_teams', 'admin_save_teams',
+    'admin_get_workforce', 'admin_save_workforce', 'admin_create_workforce_definition',
     'admin_get_people', 'admin_save_people', 'admin_inspect_people',
     'admin_get_schema',
     'admin_get_backup', 'admin_restore_backup',

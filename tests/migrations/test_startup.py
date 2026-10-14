@@ -55,4 +55,27 @@ def test_closed_database_handle_cannot_reopen_storage_for_unleased_writes(tmp_pa
 
 
 def test_isolated_app_fixture_keeps_current_schema(app):
-    assert app.state.container.get('storage').load('system', 'schema_state')['schema_revision'] == 34
+    assert app.state.container.get('storage').load('system', 'schema_state')['schema_revision'] == 35
+
+
+def test_fresh_factory_selects_canonical_workforce_and_schema_35(tmp_path):
+    from planner_lib.admin.workforce_service import WorkforceAdminService
+    from planner_lib.backend.config import WorkforceConfigBackend
+    from planner_lib.cost.service import WorkforceCostService
+    from planner_lib.repository.team_repository import WorkforceTeamRepository
+
+    static = tmp_path / 'static'
+    static.mkdir()
+    (static / 'index.html').write_text('<html><head></head></html>')
+    app = create_app(Config(data_dir=str(tmp_path / 'installation'), static_dir=str(static)))
+    with TestClient(app):
+        container = app.state.container
+        storage = container.get('storage')
+        assert storage.load('system', 'schema_state')['schema_revision'] == 35
+        assert storage.load('config', 'teams') == {'schema_version': 3, 'teams': [], 'groups': []}
+        assert storage.load('config', 'workforce') == {'schema_version': 2, 'suppliers': [], 'staffing': []}
+        assert isinstance(container.get('config_backend'), WorkforceConfigBackend)
+        assert isinstance(container.get('team_repository'), WorkforceTeamRepository)
+        assert isinstance(container.get('cost_service'), WorkforceCostService)
+        assert isinstance(container.get('admin_service'), WorkforceAdminService)
+        assert not storage.exists('config', 'people')

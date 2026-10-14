@@ -756,7 +756,7 @@ export class PluginCostComponent extends LitElement {
             class="${this.activeView === 'team-members' ? 'active' : ''}"
             @click="${() => this.handleViewChange('team-members')}"
           >
-            Team Members
+            Workforce
           </button>
         </div>
 

@@ -1,7 +1,7 @@
 import { expect } from '@open-wc/testing';
 import { render } from '../../www/js/vendor/lit.js';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import mainCss from '../../www/css/main.css?raw';
+import componentSource from '../../www/js/plugins/PluginCostComponent.js?raw';
 import { vi } from 'vitest';
 import { renderTaskView } from '../../www/js/plugins/PluginCostTaskView.js';
 import { renderTeamView } from '../../www/js/plugins/PluginCostTeamView.js';
@@ -47,6 +47,41 @@ vi.mock('../../www/js/application/imports.js', () => ({
 }));
 
 describe('PluginCost view rendering', () => {
+  it('rejects a cost project without its required feature collection', () => {
+    mockSelectionState.teams = [{ id: 'A', name: 'Alpha', kind: 'team' }];
+    const component = {
+      months: [new Date('2026-01-01')], startDate: '2026-01-01', endDate: '2026-01-31',
+      data: { projects: { plan: { name: 'Plan' } } },
+    };
+    expect(() => renderTeamView(component)).to.throw(TypeError);
+  });
+  it('renders exact member and group costs from server team buckets without title aliases', () => {
+    const bucket = (cost) => ({ cost: { internal: { '2026-01': cost }, external: {} },
+      hours: { internal: { '2026-01': cost / 10 }, external: {} } });
+    const component = {
+      months: [new Date('2026-01-01')], startDate: '2026-01-01', endDate: '2026-01-31',
+      viewMode: 'cost', _expandedTeams: new Set(['team-A', 'team-G']),
+      costTeams: { catalogue: [
+        { id: 'A', name: 'Alpha', kind: 'team', group_id: 'G' },
+        { id: 'B', name: 'Beta', kind: 'team', group_id: 'G' },
+        { id: 'G', name: 'Group', kind: 'group' },
+      ] },
+      data: { projects: { plan: { name: 'Plan', features: ['first', 'second'].map((id) => ({
+        id, title: 'Same title', project: 'plan', type: 'Feature', start: '2026-01-01', end: '2026-01-31',
+        capacity: [{ team: 'G', capacity: 50 }],
+        metrics: { teams: { A: bucket(100), B: bucket(300) } },
+      })) } } },
+    };
+    const element = document.createElement('div');
+    mockSelectionState.teams = [component.costTeams.catalogue[0]];
+    render(renderTeamView(component), element);
+    expect(element.querySelectorAll('tbody tr:not(.totals-row)').length).to.equal(2);
+    expect(element.querySelector('.totals-row').textContent).to.include('200');
+    mockSelectionState.teams = [component.costTeams.catalogue[2]];
+    render(renderTeamView(component), element);
+    expect(element.querySelectorAll('tbody tr:not(.totals-row)').length).to.equal(2);
+    expect(element.querySelector('.totals-row').textContent).to.include('800');
+  });
   afterEach(() => {
     mockSelectionState.projects = [];
     mockSelectionState.teams = [];
@@ -178,46 +213,35 @@ describe('PluginCost view rendering', () => {
     expect(html).to.include('200');
   });
 
-  it('renderTeamMembersView handles various shapes and expanded members', () => {
-    const comp = { expandedTeams: new Set(['team-A']) };
-    // empty/null
-    const tpl = renderTeamMembersView({});
+  it('renders anonymous supplier profiles and fractional workforce bases', () => {
+    const tpl = renderTeamMembersView({ costTeams: null });
     let container = document.createElement('div');
     render(tpl, container);
-    expect(container.innerHTML).to.include('No Team Members');
-
-    // array shape
+    expect(container.innerHTML).to.include('No Workforce');
     const comp2 = {
-      costTeams: [
-        {
-          id: 'team-A',
-          name: 'Team A',
-          totals: { internal_count: 1, external_count: 0, internal_hours_total: 10 },
-          members: [
-            {
-              name: 'Alice',
-              site: 'Site A',
-              hourly_rate: { parsedValue: 50 },
-              hours_per_month: 10,
-            },
-          ],
-        },
-      ],
+      costTeams: {
+        catalogue: [{ id: 'team-A', name: 'Team A', kind: 'team', archived: false }],
+        teams: { 'team-A': {
+          internal: { fte: 0.5, monthly_hours: 10, monthly_cost: 500 },
+          external: { fte: 0, monthly_hours: 0, monthly_cost: 0 },
+          profiles: [{ supplier_id: 'supplier', profile_id: 'profile', external: false,
+            fte: 0.5, monthly_hours: 10, monthly_cost: 500 }],
+        } }, groups: {},
+        suppliers: [{ id: 'supplier', name: 'Internal provider', external: false,
+          profiles: [{ id: 'profile', name: 'Standard profile', hourly_rate: 50,
+            monthly_project_hours: 20 }] }],
+      },
       expandedTeams: new Set(['team-A']),
     };
     container = document.createElement('div');
     render(renderTeamMembersView(comp2), container);
     expect(container.innerHTML).to.include('Team A');
-    expect(container.innerHTML).to.include('Alice');
-
-    // object-with-teams shape
-    const comp3 = {
-      costTeams: { teams: comp2.costTeams },
-      expandedTeams: new Set(['team-A']),
-    };
-    container = document.createElement('div');
-    render(renderTeamMembersView(comp3), container);
-    expect(container.innerHTML).to.include('Internal Members');
+    expect(container.textContent).to.include('Internal provider');
+    expect(container.textContent).to.include('Standard profile');
+    expect(container.textContent).to.include('0.5');
+    expect(container.textContent).to.include('500.00');
+    expect(container.textContent).not.to.include('Member');
+    expect(container.textContent).not.to.include('Site');
   });
 
   it('clicking a task type icon in the task view opens that task', () => {
@@ -301,11 +325,6 @@ describe('PluginCost view rendering', () => {
   });
 
   it('details panel z-index token stacks above the plugin-cost host z-index', () => {
-    const mainCss = readFileSync(resolve(process.cwd(), 'www/css/main.css'), 'utf8');
-    const componentSource = readFileSync(
-      resolve(process.cwd(), 'www/js/plugins/PluginCostComponent.js'),
-      'utf8',
-    );
     const detailsZ = Number(mainCss.match(/--z-details:\s*(\d+)/)[1]);
     const costHostZ = Number(componentSource.match(/:host\s*\{[^}]*z-index:\s*(\d+)/)[1]);
     expect(detailsZ).to.be.greaterThan(costHostZ);

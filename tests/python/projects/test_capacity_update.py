@@ -1,6 +1,8 @@
 """Test capacity annotation update functionality."""
 import pytest
+from types import SimpleNamespace
 
+from planner_lib.backend.adapter import AzureAdapter
 from planner_lib.repository.team_repository import TeamRepository
 from planner_lib.projects.capacity_service import CapacityService
 from planner_lib.util import slugify
@@ -21,9 +23,53 @@ class FakeTeamRepository:
                 return tm.get("short_name") or tm.get("name")
         return None
 
+    def name_to_id(self, token: str) -> str | None:
+        """Resolve fixture tokens without inventing an identity for unknown source rows."""
+        if not self._teams:
+            return token
+        for team in self._teams:
+            if token.strip().lower() == team['short_name'].strip().lower():
+                return slugify(team['name'], prefix='team-')
+        return None
+
 
 team_repository = FakeTeamRepository()
 cap_service = CapacityService(team_repository)
+
+
+def test_unknown_source_allocations_are_retained_without_guessing_identity() -> None:
+    """An unknown literal token stays unresolved, including repeated None rows."""
+    repository = SimpleNamespace(name_to_id=lambda token: {'ALPHA': 'team-alpha'}.get(token))
+    description = '[PlannerTool Team Capacity]\nALPHA: 40\nNone: 20\nNone: 20\n[/PlannerTool Team Capacity]'
+    task = AzureAdapter().to_domain(
+        {'id': '796147', 'description': description}, 'plan', repository, {}, {},
+        CapacityService(repository),
+    )
+    assert task['capacity'] == [
+        {'team': 'team-alpha', 'capacity': 40},
+        {'team': 'None', 'capacity': 20}, {'team': 'None', 'capacity': 20},
+    ]
+    assert task['description'] == description
+
+
+def test_known_capacity_edit_preserves_original_unresolved_rows() -> None:
+    """Editing known teams cannot erase or reassign an unknown source allocation."""
+    service = CapacityService(FakeTeamRepository([{'name': 'Alpha', 'short_name': 'ALPHA'}]))
+    description = 'Before\n[PlannerTool Team Capacity]\nALPHA: 40\nNone: 20\nNone: 20\n[/PlannerTool Team Capacity]\nAfter'
+    edited = service.update_description(description, [{'team': 'team-alpha', 'capacity': 60}], {})
+    assert edited.count('None: 20') == 2
+    assert 'ALPHA: 60' in edited
+    assert 'Before' in edited and 'After' in edited
+    cleared = service.update_description(description, [], {})
+    assert cleared.count('None: 20') == 2
+    assert 'ALPHA: 40' not in cleared
+
+
+def test_unknown_authored_identity_cannot_serialize_as_none() -> None:
+    """Only retained source rows may contain unknown tokens, not invented publication IDs."""
+    service = CapacityService(FakeTeamRepository([{'name': 'Alpha', 'short_name': 'ALPHA'}]))
+    with pytest.raises(ValueError, match='Unknown allocation'):
+        service.serialize([{'team': 'missing', 'capacity': 20}], {})
 
 
 def test_serialize_team_capacity():

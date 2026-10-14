@@ -3,6 +3,16 @@ export function getCapacityTeamId(capacityEntry) {
   return capacityEntry.team;
 }
 
+export function expandAllocationFocusIds(selectedTeamIds, catalogue) {
+  const expanded = new Set(selectedTeamIds);
+  for (const record of catalogue) {
+    if (record.kind !== 'team' || record.group_id === null) continue;
+    if (selectedTeamIds.has(record.id)) expanded.add(record.group_id);
+    if (selectedTeamIds.has(record.group_id)) expanded.add(record.id);
+  }
+  return expanded;
+}
+
 export function hasFeatureTeamAllocation(feature, selectedTeamIds) {
   for (const entry of feature.capacity) {
     const teamId = getCapacityTeamId(entry);
@@ -25,11 +35,16 @@ export function hasFeatureTeamId(feature, teamId) {
  * @param {Set<string>} organizationTeamIds
  * @returns {string} Percentage with one decimal, e.g. '8.0%'
  */
-export function computeFeatureOrgLoad(feature, organizationTeamIds) {
+export function computeFeatureOrgLoad(feature, organizationTeamIds, groupMembers = new Map()) {
   if (organizationTeamIds.size === 0) return '0.0%';
   let sum = 0;
   for (const entry of feature.capacity) {
-    sum += entry.capacity;
+    if (groupMembers.has(entry.team)) {
+      sum += entry.capacity * groupMembers.get(entry.team)
+        .filter((id) => organizationTeamIds.has(id)).length;
+    } else if (organizationTeamIds.has(entry.team)) {
+      sum += entry.capacity;
+    }
   }
   return (sum / organizationTeamIds.size).toFixed(1) + '%';
 }

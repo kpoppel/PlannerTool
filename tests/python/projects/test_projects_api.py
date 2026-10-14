@@ -4,7 +4,7 @@ from tests.helpers import register_service_on_client
 
 def _make_team_service(teams):
     class TeamSvc:
-        def list_teams(self):
+        def list_teams(self, *, include_archived=False):
             return teams
 
     return TeamSvc()
@@ -122,6 +122,34 @@ def test_teams_happy_path(authenticated_client):
     r = authenticated_client.get('/api/teams')
     assert r.status_code == 200
     assert r.json() == [{'id': 1, 'name': 'TeamA'}]
+
+
+def test_teams_bootstrap_requests_complete_catalogue(authenticated_client) -> None:
+    """Historical identity resolution requires archives in bootstrap, not only new choices."""
+    from unittest.mock import MagicMock
+
+    repository = MagicMock()
+    repository.list_teams.return_value = [{'id': 'archived', 'archived': True}]
+    register_service_on_client(authenticated_client, 'team_repository', repository)
+    response = authenticated_client.get('/api/teams')
+    assert response.json() == [{'id': 'archived', 'archived': True}]
+    repository.list_teams.assert_called_once_with(include_archived=True)
+
+
+def test_tasks_publication_reports_allocation_validation_error(authenticated_client) -> None:
+    """An invalid candidate is a structured client error, not an uncaught server error."""
+    from unittest.mock import MagicMock
+    from fastapi.testclient import TestClient
+
+    repository = MagicMock()
+    repository.write.side_effect = ValueError('Allocation conflict: fixture')
+    register_service_on_client(authenticated_client, 'task_repository', repository)
+    register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
+    client = TestClient(authenticated_client.app, raise_server_exceptions=False,
+                        cookies=authenticated_client.cookies)
+    response = client.post('/api/tasks', json=[{'id': 'item', 'capacity': []}])
+    assert response.status_code == 422
+    assert response.json()['error'] == 'invalid_allocation'
 
 
 def test_teams_missing_service(authenticated_client, monkeypatch):

@@ -36,7 +36,7 @@ config. The v4.2.1 server config can still be the owned writable
 used as a runtime fallback. Its `people` record may lack a schema-version field.
 
 The explicit post-baseline chain is `24 -> 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
--> 33 -> 34`; there was no migration 25. Revisions preserve their historical IDs.
+-> 33 -> 34 -> 35`; there was no migration 25. Revisions preserve their historical IDs.
 Revision 26 drops disposable remote records, 27 fills scenario metadata, 28 adds
 account IDs, 29 converts view Context flags, 30 adds plan container types, 31
 prepares device enrollment, 32 changes ownership to account IDs, and 33 harmonizes
@@ -44,7 +44,7 @@ plugin settings using a fixed packaged menu resource. Revision 34 persists packe
 Unplanned preferences in saved views. The server registry has no
 pre-v4.2.1 migrations or reverse functions; older IDs are admission evidence only.
 
-Fresh installations initialize revision 34 directly and invoke no upgrades.
+Fresh installations initialize revision 35 directly and invoke no upgrades.
 External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
@@ -64,6 +64,29 @@ view already saved `unplanned: false`, its earlier value cannot be recovered; re
 at the persistence boundary. Startup and logical-backup validation require a boolean
 snapshot and reject packed views whose effective Unplanned filter is not disabled;
 runtime read paths do not repair old records.
+
+### Revision 35 workforce contract
+
+`0035.canonical-workforce-and-allocation-availability` converts the supplied private
+candidate to teams v3, anonymous workforce v2 and projects v4. Existing internal team
+IDs and exact ADO allocation tokens are preserved. Unmatched staffing becomes archived,
+incomplete review items; no team is guessed. Anonymous profiles materialize the observed
+legacy monthly hours and effective rates. Active people/cost configuration, their old
+snapshots and derived rate caches are retired only inside the candidate transaction.
+Scenarios, views, account/authentication records and authoritative task references remain
+unchanged. Literal unresolved allocation tokens, including duplicate `None` rows, are not
+an activation blocker and must not be rewritten.
+
+Startup validates the canonical records and selects canonical team, publication, cost and
+admin owners together. A persisted one-time marker clears only normalized `backend_domain`
+caches before serving HTTP; raw source caches and authoritative user records are retained.
+Normal restart does not repeat that cleanup. No ADO writes occur during migration.
+
+Retain a quiesced independent full backup and the matching existing `PLANNER_SECRET_KEY`
+before activation. Missing or incorrect keys fail credential validation before publication;
+never substitute a new key. The canonical admin is served at `/admin/`. Generic logical
+or snapshot restore cannot replace lifecycle-owned workforce definitions; use the offline
+full-database recovery command with its explicit confirmation for complete recovery.
 
 ## Development iterations
 

@@ -4,18 +4,28 @@ import { html } from '../../vendor/lit.js';
  * Project allocation presentation without changing feature or team data.
  * @param {{capacity: object[], orgLoad: string, teams: object[], showAddTeamPopover: boolean}} input
  */
-export function buildDetailsPanelCapacityModel({ capacity, orgLoad, teams, showAddTeamPopover }) {
+export function buildDetailsPanelCapacityModel({ capacity, orgLoad, teams, availability, showAddTeamPopover }) {
   const teamsById = new Map(teams.map((team) => [team.id, team]));
   const rows = [];
   let totalCapacity = 0;
   for (const allocation of capacity) {
     totalCapacity += allocation.capacity;
     const team = teamsById.get(allocation.team);
-    if (team) {
+    if (team === undefined) {
+      rows.push({
+        teamId: allocation.team,
+        name: `Unknown allocation: ${allocation.team}`,
+        color: '#b42318',
+        unknown: true,
+        capacity: allocation.capacity,
+        barWidth: Math.min(allocation.capacity, 100),
+      });
+    } else {
       rows.push({
         teamId: team.id,
         name: team.name,
         color: team.color,
+        unknown: false,
         capacity: allocation.capacity,
         barWidth: Math.min(allocation.capacity, 100),
       });
@@ -24,7 +34,8 @@ export function buildDetailsPanelCapacityModel({ capacity, orgLoad, teams, showA
   const allocatedTeamIds = new Set(capacity.map((allocation) => allocation.team));
   return {
     rows,
-    availableTeams: teams.filter((team) => !allocatedTeamIds.has(team.id)),
+    availableTeams: teams.filter((team) => availability.allowed_ids.includes(team.id)
+      && !allocatedTeamIds.has(team.id)),
     showAddTeamPopover,
     summary: {
       visible: parseFloat(orgLoad) > 0,

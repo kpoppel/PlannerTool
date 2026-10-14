@@ -27,8 +27,8 @@ export function renderTeamView(component) {
   const monthKeys = component.months.map((m) => monthKey(m));
 
   // Collect all unique features across projects for the clip banner
-  const allFeatures = Object.values(component.data.projects || {}).flatMap(
-    (p) => p.features || []
+  const allFeatures = Object.values(component.data.projects).flatMap(
+    (project) => project.features
   );
 
   // Ensure expandedTeams set exists on component; default to expanded
@@ -47,87 +47,59 @@ export function renderTeamView(component) {
 function renderTeamTable(component, team, monthKeys) {
   const teamId = String(team.id);
   // Collect all features from projects and deduplicate by feature id
-  const rawFeatures = Object.values(component.data.projects || {}).flatMap(
-    (p) => p.features || []
+  const rawFeatures = Object.values(component.data.projects).flatMap(
+    (project) => project.features
   );
 
-  // Deduplicate by feature id. When the same feature appears under multiple
-  // projects (e.g., selected plan + its parent), merge `capacity` entries so
-  // team allocations reflect the union of reported capacities. For safety we
-  // take the max capacity per team when conflicts exist.
   const featureById = new Map();
-  for (const f of rawFeatures) {
-    if (!f || f.id == null) continue;
-    const key = String(f.id);
-    const incomingCap = Array.isArray(f.capacity) ? f.capacity : [];
-    if (!featureById.has(key)) {
-      // clone to avoid mutating original objects
-      featureById.set(key, Object.assign({}, f, { capacity: incomingCap.slice() }));
-      continue;
-    }
-
-    // Merge capacities: prefer the maximum capacity for each team
-    const existing = featureById.get(key);
-    const existingCap = Array.isArray(existing.capacity) ? existing.capacity : [];
-    const capMap = new Map();
-    for (const c of existingCap) {
-      if (c && c.team != null) capMap.set(String(c.team), Number(c.capacity) || 0);
-    }
-    for (const c of incomingCap) {
-      if (c && c.team != null) {
-        const t = String(c.team);
-        const val = Number(c.capacity) || 0;
-        const prev = capMap.get(t) || 0;
-        capMap.set(t, Math.max(prev, val));
-      }
-    }
-    // Rebuild merged capacity array
-    const merged = [];
-    for (const [team, cap] of capMap.entries())
-      merged.push({ team: team, capacity: cap });
-    existing.capacity = merged;
+  for (const feature of rawFeatures) {
+    const id = String(feature.id);
+    if (!featureById.has(id)) featureById.set(id, feature);
   }
   const allFeatures = Array.from(featureById.values());
 
   // Build full hierarchy: childrenMap for buildByTeam, parentMap for root detection
   const { childrenMap, parentMap } = buildTaskTree(
     allFeatures,
-    sel.feature.getChildrenByParentMap?.() || new Map()
+    sel.feature.getChildrenByParentMap()
   );
 
   // Hierarchy-aware, window-restricted per-team rollup across all features
   const byTeam = buildByTeam(allFeatures, childrenMap, monthKeys);
-
-  // Filter to features assigned to this team (capacity-based, same as before)
-  const teamFeaturesRaw = allFeatures.filter(
-    (f) =>
-      f.capacity &&
-      f.capacity.some((c) => String(c.team) === teamId && Number(c.capacity) > 0)
-  );
-
-  // Additional dedupe: if multiple features share the same title and project,
-  // treat them as duplicates (helps when backend returns near-duplicates).
-  const seenTitleProject = new Set();
-  const teamFeatures = [];
-  for (const f of teamFeaturesRaw) {
-    const title = (f.title || f.name || '').toString().trim().toLowerCase();
-    const proj = Object.values(component.data.projects || {}).find((p) =>
-      (p.features || []).some((ff) => String(ff.id) === String(f.id))
-    );
-    const projectName = proj ? proj.name : f.project || '';
-    const dedupKey = title ? `${title}::${projectName}` : `id::${String(f.id)}`;
-    if (seenTitleProject.has(dedupKey)) continue;
-    seenTitleProject.add(dedupKey);
-    teamFeatures.push(f);
+  if (team.kind === 'group') {
+    const memberIds = component.costTeams.catalogue
+      .filter((record) => record.kind === 'team' && record.group_id === teamId)
+      .map((record) => record.id);
+    for (const featureTeams of byTeam.values()) {
+      const group = { cost: { internal: new Map(), external: new Map() },
+        hours: { internal: new Map(), external: new Map() } };
+      let matched = false;
+      for (const memberId of memberIds) {
+        if (!featureTeams.has(memberId)) continue;
+        matched = true;
+        const member = featureTeams.get(memberId);
+        for (const metric of ['cost', 'hours']) {
+          for (const account of ['internal', 'external']) {
+            const target = group[metric][account];
+            for (const [month, value] of member[metric][account]) {
+              target.set(month, (target.has(month) ? target.get(month) : 0) + value);
+            }
+          }
+        }
+      }
+      if (matched) featureTeams.set(teamId, group);
+    }
   }
+
+  const teamFeatures = allFeatures.filter((feature) => byTeam.get(String(feature.id)).has(teamId));
 
   // Build DFS-ordered display list (parents precede their children)
   const teamFeatureSet = new Set(teamFeatures.map((f) => String(f.id)));
   const teamChildrenMap = new Map();
-  for (const f of teamFeatures) {
-    const fid = String(f.id);
-    const children = (childrenMap.get(fid) || []).filter((cid) => teamFeatureSet.has(cid));
-    if (children.length > 0) teamChildrenMap.set(fid, children);
+  for (const [featureId, childIds] of childrenMap) {
+    if (!teamFeatureSet.has(featureId)) continue;
+    const children = childIds.filter((childId) => teamFeatureSet.has(childId));
+    if (children.length > 0) teamChildrenMap.set(featureId, children);
   }
   const teamRootIds = teamFeatures
     .filter((f) => {
@@ -165,13 +137,13 @@ function renderTeamTable(component, team, monthKeys) {
     `;
   }
 
-  const formatValue = (val) => {
-    const n = typeof val === 'number' ? val : Number(val || 0);
-    if (n === 0) return '';
+  const amount = (series, month) => series.has(month) ? series.get(month) : 0;
+  const formatValue = (value) => {
+    if (value === 0) return '';
     if (component.viewMode === 'hours') {
-      return Math.round(n).toString();
+      return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
     }
-    return n.toLocaleString(undefined, {
+    return value.toLocaleString(undefined, {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     });
@@ -181,7 +153,7 @@ function renderTeamTable(component, team, monthKeys) {
   const featureAllocations = orderedTeamFeatures
     .map(({ feature, depth }) => {
       const featureTeams = byTeam.get(String(feature.id));
-      const alloc = featureTeams?.get(teamId);
+      const alloc = featureTeams.get(teamId);
       if (!alloc) return null;
       return { feature, depth, allocation: alloc };
     })
@@ -191,24 +163,18 @@ function renderTeamTable(component, team, monthKeys) {
   const teamTotals = {
     cost: { internal: new Map(), external: new Map() },
     hours: { internal: new Map(), external: new Map() },
-    totalCost: 0,
-    totalHours: 0,
   };
   for (const rootId of teamRootIds) {
     const featureTeams = byTeam.get(rootId);
-    const alloc = featureTeams?.get(teamId);
+    const alloc = featureTeams.get(teamId);
     if (!alloc) continue;
     for (const mKey of monthKeys) {
-      const ci = alloc.cost.internal.get(mKey) || 0;
-      const ce = alloc.cost.external.get(mKey) || 0;
-      const hi = alloc.hours.internal.get(mKey) || 0;
-      const he = alloc.hours.external.get(mKey) || 0;
-      teamTotals.cost.internal.set(mKey, (teamTotals.cost.internal.get(mKey) || 0) + ci);
-      teamTotals.cost.external.set(mKey, (teamTotals.cost.external.get(mKey) || 0) + ce);
-      teamTotals.hours.internal.set(mKey, (teamTotals.hours.internal.get(mKey) || 0) + hi);
-      teamTotals.hours.external.set(mKey, (teamTotals.hours.external.get(mKey) || 0) + he);
-      teamTotals.totalCost += ci + ce;
-      teamTotals.totalHours += hi + he;
+      for (const metric of ['cost', 'hours']) {
+        for (const account of ['internal', 'external']) {
+          const target = teamTotals[metric][account];
+          target.set(mKey, amount(target, mKey) + amount(alloc[metric][account], mKey));
+        }
+      }
     }
   }
 
@@ -237,7 +203,7 @@ function renderTeamTable(component, team, monthKeys) {
               ${component.months.map(
                 (m) => html`<th class="numeric" colspan="2">${monthLabel(m)}</th>`
               )}
-              <th class="numeric">Sum</th>
+              <th class="numeric" colspan="2">Period Totals</th>
             </tr>
             <tr>
               <th></th>
@@ -248,7 +214,8 @@ function renderTeamTable(component, team, monthKeys) {
                   html`<th class="numeric">Int</th>
                     <th class="numeric">Ext</th>`
               )}
-              <th></th>
+              <th class="numeric">Int</th>
+              <th class="numeric">Ext</th>
             </tr>
           </thead>
           <tbody>
@@ -256,14 +223,15 @@ function renderTeamTable(component, team, monthKeys) {
               const dataMap =
                 component.viewMode === 'cost' ? allocation.cost : allocation.hours;
               // Window-restricted total (maps already keyed to monthKeys only)
-              let total = 0;
+              let internalTotal = 0;
+              let externalTotal = 0;
               for (const mKey of monthKeys) {
-                total +=
-                  (dataMap.internal.get(mKey) || 0) + (dataMap.external.get(mKey) || 0);
+                internalTotal += amount(dataMap.internal, mKey);
+                externalTotal += amount(dataMap.external, mKey);
               }
 
-              const projectData = Object.values(component.data.projects || {}).find((p) =>
-                (p.features || []).some((f) => String(f.id) === String(feature.id))
+              const projectData = Object.values(component.data.projects).find((project) =>
+                project.features.some((projectFeature) => String(projectFeature.id) === String(feature.id))
               );
               const projectName = projectData ? projectData.name : feature.project || '-';
 
@@ -294,14 +262,15 @@ function renderTeamTable(component, team, monthKeys) {
                   </td>
                   <td style="font-size:11px; color:#666;">${projectName}</td>
                   ${monthKeys.map((mKey) => {
-                    const intVal = dataMap.internal.get(mKey) || 0;
-                    const extVal = dataMap.external.get(mKey) || 0;
+                    const intVal = amount(dataMap.internal, mKey);
+                    const extVal = amount(dataMap.external, mKey);
                     return html`
                       <td class="numeric">${formatValue(intVal)}</td>
                       <td class="numeric">${formatValue(extVal)}</td>
                     `;
                   })}
-                  <td class="numeric sum-column">${formatValue(total)}</td>
+                  <td class="numeric sum-column">${formatValue(internalTotal)}</td>
+                  <td class="numeric sum-column">${formatValue(externalTotal)}</td>
                 </tr>
               `;
             })}
@@ -310,8 +279,8 @@ function renderTeamTable(component, team, monthKeys) {
               ${monthKeys.map((mKey) => {
                 const dataMap =
                   component.viewMode === 'cost' ? teamTotals.cost : teamTotals.hours;
-                const intVal = dataMap.internal.get(mKey) || 0;
-                const extVal = dataMap.external.get(mKey) || 0;
+                const intVal = amount(dataMap.internal, mKey);
+                const extVal = amount(dataMap.external, mKey);
                 return html`
                   <td class="numeric">
                     <strong>${formatValue(intVal)}</strong>
@@ -321,15 +290,11 @@ function renderTeamTable(component, team, monthKeys) {
                   </td>
                 `;
               })}
-              <td class="numeric sum-column">
-                <strong
-                  >${formatValue(
-                    component.viewMode === 'cost' ?
-                      teamTotals.totalCost
-                    : teamTotals.totalHours
-                  )}</strong
-                >
-              </td>
+              ${['internal', 'external'].map((account) => html`<td class="numeric sum-column">
+                <strong>${formatValue(monthKeys.reduce((total, month) => total + amount(
+                  component.viewMode === 'cost' ? teamTotals.cost[account] : teamTotals.hours[account],
+                  month), 0))}</strong>
+              </td>`)}
             </tr>
           </tbody>
         </table>`

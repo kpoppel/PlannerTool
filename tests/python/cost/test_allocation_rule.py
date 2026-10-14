@@ -4,12 +4,29 @@ from pathlib import Path
 
 import pytest
 
-from planner_lib.cost.allocation_rule import resolve_effective_allocations
+from planner_lib.cost.allocation_rule import (
+    allocation_conflicts, expand_group_allocations, resolve_effective_allocations,
+)
 
 
 CASES = json.loads(
     (Path(__file__).parents[2] / 'fixtures/allocation_rule/cases.json').read_text()
 )
+GROUP_CASES = json.loads(
+    (Path(__file__).parents[2] / 'fixtures/allocation_rule/groups.json').read_text()
+)
+
+
+@pytest.mark.parametrize('case', GROUP_CASES, ids=lambda case: case['name'])
+def test_shared_group_allocation_rule(case: dict) -> None:
+    """Both runtimes resolve original reservations before expanding member percentages."""
+    original = deepcopy(case['features'])
+    resolved = resolve_effective_allocations(case['features'], memberships=case['memberships'])
+    assert resolved == case['expected']
+    assert allocation_conflicts(case['features'], case['memberships']) == case['conflicts']
+    if case['expanded'] is not None:
+        assert expand_group_allocations(resolved, case['memberships']) == case['expanded']
+    assert case['features'] == original
 
 
 def test_deep_tree_does_not_require_recursive_traversal():

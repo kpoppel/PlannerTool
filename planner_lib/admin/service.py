@@ -15,6 +15,12 @@ import logging
 from planner_lib.storage.base import StorageBackend
 from planner_lib.admin.config_manager import ConfigManager
 from planner_lib.admin.reload_orchestrator import ReloadOrchestrator
+from planner_lib.admin.workforce_config import (
+    DefinitionKind, WorkforceConfigManager, WorkforceConflictError, WorkforceSnapshot,
+)
+from planner_lib.admin.workforce_deletion import TeamDeletionReview
+from planner_lib.domain.teams import TeamConfiguration
+from planner_lib.domain.workforce import WorkforceConfiguration
 from planner_lib.accounts.constants import AccountPermissions
 
 logger = logging.getLogger(__name__)
@@ -36,12 +42,14 @@ class AdminService:
         account_manager: Any,
         azure_client: Any,
         reloadable_services: Optional[list] = None,
+        *, task_storage: StorageBackend | None = None,
     ) -> None:
         self._project_service = project_repository  # internal alias kept for brevity
         # Composed config manager: owns all config CRUD + backup/restore.
         self._config_manager = ConfigManager(
             storage=storage,
         )
+        self._workforce_config = WorkforceConfigManager(storage, task_storage=task_storage)
         # Composed account manager: owns all account / admin-marker CRUD.
         self._account_manager = account_manager # To replace accountadminservice
         # Composed reload orchestrator: owns hot-reload coordination.
@@ -57,11 +65,54 @@ class AdminService:
 
     def save_config(self, key: str, content) -> None:
         """Create a timestamped backup of *key* then persist *content*.  Delegates to ConfigManager."""
+        self._guard_legacy_workforce_save(key)
         self._config_manager.save_config(key, content)
 
     def save_config_raw(self, key: str, content) -> None:
         """Persist *content* under *key* without a backup.  Delegates to ConfigManager."""
+        self._guard_legacy_workforce_save(key)
         self._config_manager.save_config_raw(key, content)
+
+    def _guard_legacy_workforce_save(self, key: str) -> None:
+        if key in {'teams', 'workforce', 'people', 'cost_config'} and (
+            self._workforce_config.has_canonical_teams()
+        ):
+            raise WorkforceConflictError('Use the canonical Workforce editing endpoint')
+
+    def get_workforce_snapshot(self) -> WorkforceSnapshot:
+        """Return the coherent canonical editing snapshot without legacy conversion."""
+        return self._workforce_config.read_snapshot()
+
+    def save_workforce_configuration(
+        self, teams: TeamConfiguration, workforce: WorkforceConfiguration, revision: str,
+    ) -> WorkforceSnapshot:
+        """Delegate validated, revision-checked paired edits to the canonical owner."""
+        return self._workforce_config.save_configuration(teams, workforce, revision)
+
+    def create_workforce_definition(
+        self, kind: DefinitionKind, fields: dict[str, Any], revision: str,
+        *, supplier_id: str | None = None,
+    ) -> WorkforceSnapshot:
+        """Delegate identity issuance using editable fields only."""
+        return self._workforce_config.create_definition(
+            kind, fields, revision, supplier_id=supplier_id,
+        )
+
+    def review_workforce_team_deletion(
+        self, team_id: str, *, task_storage: StorageBackend,
+    ) -> TeamDeletionReview:
+        """Review retained-reference impact without fetching or rewriting authoritative tasks."""
+        return self._workforce_config.review_team_deletion(team_id, task_storage=task_storage)
+
+    def delete_workforce_team(
+        self, team_id: str, revision: str, *, acknowledged: bool,
+        review_revision: str, task_storage: StorageBackend,
+    ) -> WorkforceSnapshot:
+        """Apply only a freshly reviewed, explicitly acknowledged destructive operation."""
+        return self._workforce_config.delete_team(
+            team_id, revision, acknowledged=acknowledged,
+            review_revision=review_revision, task_storage=task_storage,
+        )
 
     def get_project_map(self):
         """Return the project map from the project service."""

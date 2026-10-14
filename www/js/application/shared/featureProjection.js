@@ -62,7 +62,8 @@ export function applyFeatureOverride(baseFeature, override, options = {}) {
 
   const organizationTeamIds = options.organizationTeamIds;
   if (!override) {
-    return { ...baseFeature, orgLoad: computeFeatureOrgLoad(baseFeature, organizationTeamIds) };
+    return { ...baseFeature,
+      orgLoad: computeFeatureOrgLoad(baseFeature, organizationTeamIds, options.groupMembers) };
   }
 
   const changedFields = computeDirtyFields(baseFeature, override);
@@ -73,7 +74,7 @@ export function applyFeatureOverride(baseFeature, override, options = {}) {
     changedFields,
     dirty: changedFields.length > 0,
   };
-  effective.orgLoad = computeFeatureOrgLoad(effective, organizationTeamIds);
+  effective.orgLoad = computeFeatureOrgLoad(effective, organizationTeamIds, options.groupMembers);
   return clearInvalidAnchorPresentation(baseFeature, effective);
 }
 
@@ -98,7 +99,12 @@ export function deriveEffectiveFeatures(state, options = {}) {
     ...options,
     organizationTeamIds: options.organizationTeamIds !== undefined
       ? options.organizationTeamIds
-      : new Set(state.baseline.teams.map((team) => String(team.id))),
+      : new Set(state.baseline.teams.filter((team) => team.kind !== 'group')
+        .map((team) => String(team.id))),
+    groupMembers: new Map(state.baseline.teams.filter((team) => team.kind === 'group')
+      .map((group) => [group.id, state.baseline.teams
+        .filter((team) => team.kind === 'team' && team.group_id === group.id)
+        .map((team) => team.id)])),
   };
 
   return baselineFeatures.map((feature) => {

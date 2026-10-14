@@ -8,12 +8,15 @@ Covers:
   - AccountManagerCredentialProvider: credential lookup
 """
 import pytest
+from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 from tests.fakes.fake_backend import FakeBackend, FakeCredentialProvider
 from planner_lib.domain.tasks import DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
+from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +200,92 @@ def _make_project_service(projects):
         def get_project_map(self):
             return projects
     return PS()
+
+
+def _canonical_task_repository(storage):
+    """Build a canonical publication fixture with one configured source and explicit membership."""
+    from planner_lib.repository.task_repository import WorkforceTaskRepository
+
+    storage.save('config', 'teams', {'schema_version': 3, 'teams': [
+        {'id': 'A', 'name': 'Alpha', 'short_name': 'Alpha', 'allocation_token': 'ALP',
+         'archived': False, 'group_id': 'G'},
+    ], 'groups': [
+        {'id': 'G', 'name': 'Group', 'short_name': 'Group', 'allocation_token': 'GRP', 'archived': False},
+    ]})
+    features = [
+        {'id': 'parent', 'project': 'plan', 'start': '2026-01-01', 'end': '2026-01-31',
+         'capacity': [{'team': 'A', 'capacity': 80}], 'parentId': None, 'relations': []},
+        {'id': 'child', 'project': 'plan', 'start': None, 'end': None,
+         'capacity': [{'team': 'G', 'capacity': 40}], 'parentId': 'parent', 'relations': []},
+    ]
+    backend = MagicMock()
+    backend.fetch_plan_tasks.return_value = features
+    backend.fetch_task_context.return_value = features
+    backend.write_task.return_value = {'updated': 1, 'errors': []}
+    projects = MagicMock()
+    projects.get_project_map.return_value = [{'id': 'plan'}]
+    projects.list_projects.return_value = [
+        {'id': 'plan', 'type': 'Plan', 'allocation_defaults': {'Plan': ['A', 'G']}},
+    ]
+    credentials = MagicMock()
+    credentials.get_credential.return_value = {'token': 'fixture-pat', 'user_id': 'fixture-user'}
+    repository = WorkforceTaskRepository(backend, projects, credentials,
+                                         storage=storage, task_storage=storage)
+    return repository, backend
+
+
+@pytest.fixture
+def publication_storage(tmp_path: Path) -> Iterator[DiskCacheStorage]:
+    """Use a disposable transactional store at the canonical publication boundary."""
+    storage = DiskCacheStorage(tmp_path / 'publication')
+    yield storage
+    storage._cache.close()
+
+
+@pytest.mark.parametrize('updates,message', [
+    ([{'id': 'child', 'start': '2026-01-10', 'end': '2026-01-20'}], 'Allocation conflict'),
+    ([{'id': 'parent', 'capacity': [{'team': 'A', 'capacity': 80}, {'team': 'G', 'capacity': 20}]}],
+     'Allocation conflict'),
+    ([{'id': 'parent', 'start': '2026-01-02'},
+      {'id': 'child', 'capacity': [{'team': 'missing', 'capacity': 20}]}], 'not offered'),
+])
+def test_canonical_publication_validates_entire_batch_before_writes(publication_storage, updates, message) -> None:
+    """Invalid candidate graphs or choices cannot partially reach the backend."""
+    repository, backend = _canonical_task_repository(publication_storage)
+    with pytest.raises(ValueError, match=message):
+        repository.write(updates, 'fixture-user')
+    backend.write_task.assert_not_called()
+
+
+def test_canonical_publication_rejects_partial_source_reads(publication_storage) -> None:
+    """Publication cannot certify a graph after skipping an unreachable configured source."""
+    repository, backend = _canonical_task_repository(publication_storage)
+    backend.fetch_plan_tasks.side_effect = BackendUnavailableError('fixture offline')
+    with pytest.raises(BackendUnavailableError):
+        repository.write([{'id': 'parent', 'start': '2026-01-02'}], 'fixture-user')
+    backend.write_task.assert_not_called()
+
+
+def test_canonical_publication_accepts_valid_retained_and_offered_capacity(publication_storage) -> None:
+    """Known-team edits retain ordinary publication behavior after candidate validation."""
+    repository, backend = _canonical_task_repository(publication_storage)
+    result = repository.write([{'id': 'parent', 'capacity': [{'team': 'A', 'capacity': 60}]}], 'fixture-user')
+    assert result == {'updated': 1, 'errors': []}
+    assert backend.write_task.call_count == 1
+
+
+def test_canonical_seed_dedup_ignores_opaque_backend_metadata(publication_storage) -> None:
+    """Private payload differences never determine repository identity or graph consistency."""
+    repository, backend = _canonical_task_repository(publication_storage)
+    repository._project_service.get_project_map.return_value = [{'id': 'plan'}, {'id': 'other'}]
+    task = {'id': 'item', 'project': 'plan', 'revision': 1, 'capacity': [], 'start': None, 'end': None}
+    backend.fetch_plan_tasks.side_effect = [
+        [{**task, 'backendData': {'private': 'first'}}],
+        [{**task, 'backendData': {'private': 'second'}}],
+    ]
+    seeds = repository._fetch_seeds(None)
+    assert len(seeds) == 1
+    assert seeds[0]['sourcePlanIds'] == ['other', 'plan']
 
 
 def _make_storage(server_config=None, area_plan_map=None, iterations=None):

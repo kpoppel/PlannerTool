@@ -18,7 +18,17 @@ function makeProvider() {
   return provider;
 }
 
+const WORKFORCE_SNAPSHOT = {
+  revision: 'fixture-revision',
+  teams: { schema_version: 3, teams: [], groups: [] },
+  workforce: { schema_version: 2, suppliers: [], staffing: [] },
+};
+
 const METHOD_ARGS = {
+  reviewWorkforceTeamDeletion: ['team/one'],
+  deleteWorkforceTeam: ['team/one', { revision: 'first', confirmation: {
+    acknowledged: true, review_revision: 'review-one',
+  } }],
   saveAreaMappings: [{ a: 1 }],
   saveProjects: [{ projects: [] }],
   saveSystem: [{ system: true }],
@@ -26,6 +36,11 @@ const METHOD_ARGS = {
   saveEventsConfig: [{ events: [] }],
   saveGroupsConfig: [{ groups: [] }],
   saveTeams: [{ teams: [] }],
+  saveWorkforce: [WORKFORCE_SNAPSHOT],
+  createWorkforceDefinition: ['profile', {
+    revision: 'fixture-revision', supplier_id: 'supplier-one',
+    fields: { name: 'Specialist', monthly_project_hours: 120, hourly_rate: 90 },
+  }],
   savePeople: [{ people: [] }],
   saveCost: [{ rates: [] }],
   createUser: ['new@example.com', []],
@@ -65,6 +80,11 @@ const SUCCESS_JSON_METHODS = [
   'saveGroupsConfig',
   'getTeams',
   'saveTeams',
+  'getWorkforce',
+  'reviewWorkforceTeamDeletion',
+  'deleteWorkforceTeam',
+  'saveWorkforce',
+  'createWorkforceDefinition',
   'getPeople',
   'savePeople',
   'getPeopleInspect',
@@ -190,4 +210,100 @@ describe('AdminProviderREST Result contract', () => {
     expect(out.data).toEqual({ results: {} });
     expect(provider._fetch).not.toHaveBeenCalled();
   });
+
+  it('encodes deletion team IDs and preserves the review receipt and post-commit warnings', async () => {
+    const provider = makeProvider();
+    const review = { revision: 'first', review_revision: 'receipt', team: { id: 'team/one' } };
+    const warnings = [{ error: 'cost_cache_invalidation_failed', message: 'Saved; refresh failed' }];
+    const payload = { revision: 'first', confirmation: { acknowledged: true, review_revision: 'receipt' } };
+    provider._fetch.mockResolvedValueOnce(mockResponse({ jsonData: { content: review } }))
+      .mockResolvedValueOnce(mockResponse({ jsonData: { content: WORKFORCE_SNAPSHOT, warnings } }));
+    expect((await provider.reviewWorkforceTeamDeletion('team/one')).data.content).toEqual(review);
+    const committed = await provider.deleteWorkforceTeam('team/one', payload);
+    expect(committed.data.warnings).toEqual(warnings);
+    expect(provider._fetch.mock.calls[0][0]).toBe('/admin/v1/workforce/teams/team%2Fone/deletion');
+    expect(provider._fetch.mock.calls[1][0]).toBe('/admin/v1/workforce/teams/team%2Fone/deletion');
+    expect(JSON.parse(provider._fetch.mock.calls[1][1].body)).toEqual(payload);
+    expect(provider._fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the full canonical Workforce snapshot envelope without legacy requests', async () => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { content: WORKFORCE_SNAPSHOT } }));
+
+    const result = await provider.getWorkforce();
+
+    expect(result).toEqual({ ok: true, data: { content: WORKFORCE_SNAPSHOT } });
+    expect(provider._fetch).toHaveBeenCalledTimes(1);
+    expect(provider._fetch).toHaveBeenCalledWith('/admin/v1/workforce',
+      expect.objectContaining({ method: 'GET' }));
+  });
+
+  it('saves the exact paired snapshot and preserves committed warnings', async () => {
+    const provider = makeProvider();
+    const warnings = [{ error: 'cost_cache_invalidation_failed', message: 'Saved; refresh failed' }];
+    const committed = { ...WORKFORCE_SNAPSHOT, revision: 'committed-revision' };
+    provider._fetch.mockResolvedValue(mockResponse({
+      jsonData: { ok: true, content: committed, warnings },
+    }));
+
+    const result = await provider.saveWorkforce(WORKFORCE_SNAPSHOT);
+
+    const [url, options] = provider._fetch.mock.calls[0];
+    expect(url).toBe('/admin/v1/workforce');
+    expect(options.method).toBe('POST');
+    expect(options.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(options.body)).toEqual(WORKFORCE_SNAPSHOT);
+    expect(result.data).toEqual({ ok: true, content: committed, warnings });
+    expect(provider._fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates a supplier-scoped profile using only supplied editable fields and revision', async () => {
+    const provider = makeProvider();
+    const payload = METHOD_ARGS.createWorkforceDefinition[1];
+    const committed = {
+      ...WORKFORCE_SNAPSHOT,
+      revision: 'profile-created',
+      workforce: { schema_version: 2, staffing: [], suppliers: [{
+        id: 'supplier-one', profiles: [{ id: 'server-issued-profile', ...payload.fields }],
+      }] },
+    };
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { ok: true, content: committed } }));
+
+    const result = await provider.createWorkforceDefinition('profile', payload);
+
+    const [url, options] = provider._fetch.mock.calls[0];
+    expect(url).toBe('/admin/v1/workforce/definitions/profile');
+    expect(JSON.parse(options.body)).toEqual(payload);
+    expect(result.data.content.workforce.suppliers[0].profiles[0].id).toBe('server-issued-profile');
+  });
+
+  it('encodes definition kinds as one URL segment', async () => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { ok: true } }));
+
+    await provider.createWorkforceDefinition('team/other', { revision: 'first', fields: {} });
+
+    expect(provider._fetch.mock.calls[0][0]).toBe('/admin/v1/workforce/definitions/team%2Fother');
+  });
+
+  for (const [status, code] of [
+    [401, 'access_denied'], [409, 'workforce_conflict'], [409, 'workforce_not_migrated'],
+    [422, 'invalid_workforce'],
+  ]) {
+    it(`preserves ${code} details without retrying a Workforce write`, async () => {
+      const provider = makeProvider();
+      const detail = { error: code, message: 'Fixture server explanation' };
+      provider._fetch.mockResolvedValue(mockResponse({
+        ok: false, status, jsonData: { detail },
+      }));
+
+      const result = await provider.saveWorkforce(WORKFORCE_SNAPSHOT);
+
+      expect(result.ok).toBe(false);
+      expect(result.error.status).toBe(status);
+      expect(result.error.detail).toEqual({ detail });
+      expect(provider._fetch).toHaveBeenCalledTimes(1);
+    });
+  }
 });

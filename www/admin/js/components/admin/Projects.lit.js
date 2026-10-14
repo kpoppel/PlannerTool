@@ -46,11 +46,23 @@ export class AdminProjects extends BaseConfigComponent {
     _editMetadataError: { type: String, state: true },
     _iterationSets: { type: Array, state: true },
     newContainerType: { type: String, state: true },
+    allocationDefinitions: { type: Array, state: true },
+    allocationError: { type: String, state: true },
   };
 
   static styles = [
     BaseConfigComponent.styles,
     adminProjectsStyles,
+    css`
+      .allocation-defaults { margin: 16px 0; }
+      .allocation-defaults h3 { font-size: 14px; margin: 0 0 8px; }
+      .allocation-defaults-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;
+      }
+      .allocation-choices { display: grid; gap: 5px; max-height: 220px; overflow-y: auto; }
+      .allocation-choices label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+      .allocation-defaults fieldset { min-width: 0; }
+    `,
   ];
 
   constructor() {
@@ -74,15 +86,54 @@ export class AdminProjects extends BaseConfigComponent {
     this._editMetadataError = '';
     this._iterationSets = [];
     this.newContainerType = '';
+    this.allocationDefinitions = [];
+    this.allocationError = '';
   }
 
   get configType() { return 'projects'; }
   get title() { return 'Projects Configuration'; }
-  get defaultContent() { return { container_types: ['project', 'team'], project_map: [] }; }
+  get defaultContent() {
+    return { schema_version: 4, container_types: ['project', 'team'], project_map: [],
+      allocation_defaults: { project: [], team: [] } };
+  }
 
   connectedCallback() {
     super.connectedCallback();
     this._loadIterationSets();
+    this._loadAllocationDefinitions();
+  }
+
+  async _loadAllocationDefinitions() {
+    try {
+      const result = await adminProvider.getWorkforce();
+      if (!result.ok) throw new Error(result.message);
+      const teams = result.data.content.teams;
+      if (teams.schema_version !== 3) throw new Error('Canonical workforce catalogue required');
+      this.allocationDefinitions = [...teams.teams, ...teams.groups];
+      this.allocationError = '';
+    } catch (error) {
+      console.error('Loading project allocation catalogue failed', error);
+      this.allocationError = 'Could not load workforce catalogue';
+    }
+  }
+
+  renderAllocationChoices(ids, onChange) {
+    return html`<div class="allocation-choices">
+      ${this.allocationDefinitions.map((record) => html`<label>
+        <input type="checkbox" .checked=${ids.includes(record.id)} ?disabled=${record.archived}
+          @change=${(event) => onChange(record.id, event.target.checked)} />
+        ${record.name} (${record.allocation_token})${record.archived ? ' [archived]' : ''}
+      </label>`)}
+    </div>`;
+  }
+
+  renderProjectAllocationChoices(project, index) {
+    const inherits = !Object.hasOwn(project, 'allocatable_ids');
+    return html`<label><input type="checkbox" .checked=${inherits}
+      @change=${(event) => this.setProjectAllocationMode(index, event.target.checked)} />
+      Inherit level default</label>
+      ${inherits ? '' : this.renderAllocationChoices(project.allocatable_ids,
+        (id, selected) => this.setProjectAllocationChoice(index, id, selected))}`;
   }
 
   async _loadIterationSets() {
@@ -358,6 +409,29 @@ export class AdminProjects extends BaseConfigComponent {
     return this.content.container_types;
   }
 
+  setLevelAllocationChoice(type, id, selected) {
+    const current = this.content.allocation_defaults[type];
+    const ids = selected ? [...new Set([...current, id])] : current.filter((item) => item !== id);
+    this.content = { ...this.content,
+      allocation_defaults: { ...this.content.allocation_defaults, [type]: ids } };
+  }
+
+  setProjectAllocationMode(index, inherit) {
+    const project = { ...this.localProjects[index] };
+    if (inherit) delete project.allocatable_ids;
+    else project.allocatable_ids = [];
+    this.localProjects = this.localProjects.map((item, position) => position === index ? project : item);
+    this.content = { ...this.content, project_map: [...this.localProjects] };
+  }
+
+  setProjectAllocationChoice(index, id, selected) {
+    const current = this.localProjects[index].allocatable_ids;
+    const ids = selected ? [...new Set([...current, id])] : current.filter((item) => item !== id);
+    this.localProjects = this.localProjects.map((item, position) => position === index
+      ? { ...item, allocatable_ids: ids } : item);
+    this.content = { ...this.content, project_map: [...this.localProjects] };
+  }
+
   addContainerType() {
     const type = this.newContainerType.trim();
     if (!type || this.containerTypes.some((item) => item.toLowerCase() === type.toLowerCase())) {
@@ -365,7 +439,8 @@ export class AdminProjects extends BaseConfigComponent {
       this.statusType = 'error';
       return;
     }
-    this.content = { ...this.content, container_types: [...this.containerTypes, type] };
+    this.content = { ...this.content, container_types: [...this.containerTypes, type],
+      allocation_defaults: { ...this.content.allocation_defaults, [type]: [] } };
     this.newContainerType = '';
   }
 
@@ -376,9 +451,12 @@ export class AdminProjects extends BaseConfigComponent {
       this.statusType = 'error';
       return;
     }
+    const defaults = { ...this.content.allocation_defaults };
+    delete defaults[type];
     this.content = {
       ...this.content,
       container_types: this.containerTypes.filter((item) => item !== type),
+      allocation_defaults: defaults,
     };
   }
 

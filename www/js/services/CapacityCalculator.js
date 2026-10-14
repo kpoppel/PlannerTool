@@ -1,7 +1,9 @@
 import { CapacityEvents } from '../core/EventRegistry.js';
 import { getPlanAncestorIds, resolveFundedTargetProject } from '../application/shared/ownership.js';
 import { featureMatchesPlans } from '../application/shared/featureProjection.js';
-import { hasValidAllocationSpan, resolveEffectiveAllocations } from '../application/shared/allocationRule.js';
+import {
+  expandGroupAllocations, hasValidAllocationSpan, resolveEffectiveAllocations,
+} from '../application/shared/allocationRule.js';
 
 // Special project ID for unfunded/orphaned allocations
 const UNFUNDED_PROJECT_ID = '__unfunded__';
@@ -47,7 +49,15 @@ export class CapacityCalculator {
       return this._emptyResult();
     }
 
-    const allocations = resolveEffectiveAllocations(features);
+    const groups = teams.filter((team) => team.kind === 'group');
+    const members = teams.filter((team) => team.kind !== 'group');
+    if (members.length === 0) return this._emptyResult();
+    const groupIds = groups.map((group) => group.id);
+    const memberships = new Map(members.filter((team) => groupIds.includes(team.group_id))
+      .map((team) => [team.id, team.group_id]));
+    const allocations = expandGroupAllocations(
+      resolveEffectiveAllocations(features, undefined, memberships), memberships, groupIds,
+    );
     // Generate date range
     const dates = this._generateDateRange(features);
     if (dates.length === 0) {
@@ -93,11 +103,23 @@ export class CapacityCalculator {
       );
 
     // The full organization roster establishes a stable denominator.
-    const nOrganizationTeams = teams.length;
+    const nOrganizationTeams = members.length;
     const projectDailyNormalized = projectDaily.map((tuple) =>
       tuple.map((v) => v / nOrganizationTeams)
     );
     const totalOrgDailyPerTeamAvg = totalOrgDaily.map((v) => v / nOrganizationTeams);
+    for (const group of groups) {
+      const memberIndices = members.filter((team) => team.group_id === group.id)
+        .map((team) => teamIndexById.get(team.id));
+      const groupIndex = teamIndexById.get(group.id);
+      for (let index = 0; index < dates.length; index++) {
+        const load = memberIndices.length === 0 ? 0
+          : memberIndices.reduce((total, member) => total + teamDaily[index][member], 0)
+            / memberIndices.length;
+        teamDaily[index][groupIndex] = load;
+        teamDailyMap[index][group.id] = load;
+      }
+    }
 
     const result = {
       dates,

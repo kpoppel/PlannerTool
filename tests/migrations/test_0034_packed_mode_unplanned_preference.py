@@ -12,6 +12,9 @@ from planner_lib.views.view_store import save_user_view
 def storage(tmp_path):
     backend = DiskCacheStorage(tmp_path / 'cache')
     initialize(backend)
+    backend.save('config', 'projects', {'schema_version': 3, 'project_map': [],
+                                      'container_types': ['project', 'team']})
+    backend.save('config', 'people', {'schema_version': 1, 'database': {'people': []}})
     yield backend
     backend.close()
 

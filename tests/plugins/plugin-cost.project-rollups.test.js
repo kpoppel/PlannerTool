@@ -40,6 +40,11 @@ function mkFeature(id, teamName, monthKey, costInt = 100, hoursInt = 5) {
 }
 
 function renderProjectView(component) {
+  if (!Object.hasOwn(component, 'costTeams')) {
+    component.costTeams = { catalogue: [], teams: {}, groups: {}, suppliers: [] };
+  } else if (!Object.hasOwn(component.costTeams, 'catalogue')) {
+    component.costTeams = { catalogue: component.costTeams.teams, teams: {}, groups: {}, suppliers: [] };
+  }
   if (!Object.hasOwn(component, 'startDate')) {
     component.startDate = component.months[0].toISOString().slice(0, 10);
   }
@@ -53,12 +58,55 @@ function renderProjectView(component) {
       feature.displayMode = 'normal';
       feature.estimateTeams = feature.metrics.teams;
       feature.capacity = Object.keys(feature.estimateTeams).map((team) => ({ team, capacity: 100 }));
+      for (const basis of Object.values(feature.metrics.teams)) {
+        if (!Object.hasOwn(basis, 'profiles')) {
+          basis.profiles = ['internal', 'external'].map((account) => ({
+            supplier_id: `fixture-${account}`, profile_id: 'fixture-profile', external: account === 'external',
+            fte: 1, cost: basis.cost[account], hours: basis.hours[account],
+          }));
+          for (const account of ['internal', 'external']) {
+            if (!component.costTeams.suppliers.some((entry) => entry.id === `fixture-${account}`)) {
+              component.costTeams.suppliers.push({ id: `fixture-${account}`, name: `${account} provider`,
+                external: account === 'external', profiles: [{ id: 'fixture-profile', name: 'Standard' }] });
+            }
+          }
+        }
+      }
     }
   }
   return renderProjectViewSource(component);
 }
 
 describe('PluginCost Project View deeper branches', () => {
+  it('renders exact supplier profile costs without combined totals or site apportionment', () => {
+    mockSelectionState.projects = [{ id: 'p1', name: 'P1' }];
+    const feature = mkFeature('priced', 'A', '2026-01', 600, 20);
+    feature.metrics.teams.A.profiles = [
+      { supplier_id: 'supplier', profile_id: 'low', external: false, fte: 0.5,
+        hours: { '2026-01': 10 }, cost: { '2026-01': 100 } },
+      { supplier_id: 'supplier', profile_id: 'high', external: false, fte: 0.5,
+        hours: { '2026-01': 10 }, cost: { '2026-01': 500 } },
+    ];
+    const component = {
+      months: [new Date('2026-01-01')], expandedProjects: new Set(['p1']),
+      projectViewSelection: { p1: 'teams' }, viewMode: 'cost',
+      costTeams: { catalogue: [{ id: 'A', name: 'Alpha', kind: 'team' }], teams: {}, groups: {},
+        suppliers: [{ id: 'supplier', name: 'Provider', profiles: [
+          { id: 'low', name: 'Low rate' }, { id: 'high', name: 'High rate' },
+        ] }] },
+      data: { projects: { p1: { id: 'p1', features: [feature] } } },
+    };
+    const container = document.createElement('div');
+    render(renderProjectView(component), container);
+    expect(container.textContent).to.include('Provider / Low rate');
+    expect(container.textContent).to.include('Provider / High rate');
+    const low = [...container.querySelectorAll('tr')].find((row) => row.textContent.includes('Low rate Cost'));
+    const high = [...container.querySelectorAll('tr')].find((row) => row.textContent.includes('High rate Cost'));
+    expect(low.textContent).to.include('100');
+    expect(high.textContent).to.include('500');
+    expect(container.textContent).not.to.include('Sum External');
+    expect(container.textContent).not.to.include('Site');
+  });
   it('omits selected feature rows entirely outside the report dates', () => {
     mockSelectionState.projects = [{ id: 'p1', name: 'P1' }];
     const current = mkFeature('current', 'team-alpha', '2026-01');
@@ -611,7 +659,7 @@ describe('PluginCost Project View deeper branches', () => {
     expect(numCells[0].textContent.trim()).to.equal('400');
   });
 
-  it('project summary Totals row matches rollup (no double-count parent+child)', () => {
+  it('project summary Internal Cost matches rollup without double-counting', () => {
     // Resolved Epic has no own Team A metrics. Child: Team A 200.
     const parent = mkMultiTeamFeature(700, 'Epic', {});
     const child = mkMultiTeamFeature(701, 'Feature', { 'team-alpha': 200 });
@@ -621,14 +669,13 @@ describe('PluginCost Project View deeper branches', () => {
     const container = document.createElement('div');
     render(res, container);
 
-    // Find the summary-table "Cost" row under the "Totals" group-header
+    // Verify the separate internal accounting post.
     const summaryTable = container.querySelector('.summary-table');
     expect(summaryTable, 'summary-table not found').to.be.ok;
 
-    // Look for the Cost row (second group row in Totals section)
     const rows = Array.from(summaryTable.querySelectorAll('tbody tr'));
     const costRow = rows.find(
-      (r) => r.querySelector('td.metric') && r.querySelector('td.metric').textContent.trim() === 'Cost'
+      (row) => row.querySelector('td').textContent.trim() === 'Internal Cost'
     );
     expect(costRow, 'Cost row not found in summary table').to.be.ok;
 
@@ -638,7 +685,7 @@ describe('PluginCost Project View deeper branches', () => {
     expect(sumCell.textContent.trim()).to.equal('200');
   });
 
-  it('summary table Internal site rows use rolled-up allocations (not stale server sites)', () => {
+  it('summary profile rows retain an ancestor team not covered by its child', () => {
     // Epic has Team A (ERL team). Child has Team B (LY team).
     // Old logic: skips parent entirely → ERL = 0 (wrong).
     // New logic: parent's Team A has no child covering it → kept → ERL = parent's hours.
@@ -659,29 +706,12 @@ describe('PluginCost Project View deeper branches', () => {
           p1: {
             id: 'p1',
             features: [parent, child],
-            // Server provided stale site totals (computed with old skip-parent rule)
-            totals: { sites: { ERL: { hours: { '2026-01': 0 }, cost: { '2026-01': 0 } } } },
           },
         },
       },
-      // costTeams: team-alpha has ERL internal members, team-beta has LY internal members
       costTeams: {
-        teams: [
-          {
-            id: 'team-alpha',
-            name: 'Team Alpha',
-            members: [
-              { site: 'ERL', external: false, hours_per_month: 160, hourly_rate: 100 },
-            ],
-          },
-          {
-            id: 'team-beta',
-            name: 'Team Beta',
-            members: [
-              { site: 'LY', external: false, hours_per_month: 160, hourly_rate: 80 },
-            ],
-          },
-        ],
+        catalogue: [{ id: 'team-alpha', name: 'Team Alpha' }, { id: 'team-beta', name: 'Team Beta' }],
+        teams: {}, groups: {}, suppliers: [],
       },
     };
 
@@ -693,9 +723,9 @@ describe('PluginCost Project View deeper branches', () => {
     expect(summaryTable, 'summary-table not found').to.be.ok;
     const rows = Array.from(summaryTable.querySelectorAll('tbody tr'));
 
-    // ERL Hours row must show non-zero (parent's Team A allocation, not server's stale 0)
+    // The supplier profile retains the uncovered ancestor's contribution.
     const erlHoursRow = rows.find(
-      (r) => r.querySelector('td') && r.querySelector('td').textContent.trim() === 'ERL Hours'
+      (row) => row.querySelector('td').textContent.trim() === 'internal provider / Standard Hours'
     );
     expect(erlHoursRow, 'ERL Hours row not found').to.be.ok;
     const erlHoursSum = erlHoursRow.querySelector('td.sum-column');

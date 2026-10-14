@@ -145,13 +145,22 @@ describe('DetailsPanel capacity section contract', () => {
     };
   }
 
+  it('offers only eligible new identities without hiding retained allocations', () => {
+    const model = buildDetailsPanelCapacityModel({
+      capacity: [{ team: 't1', capacity: 40 }, { team: 'missing', capacity: 20 }],
+      orgLoad: '60%', teams, availability: { allowed_ids: ['t2'] }, showAddTeamPopover: true,
+    });
+    expect(model.availableTeams.map((team) => team.id)).to.deep.equal(['t2']);
+    expect(model.rows.map((row) => row.teamId)).to.deep.equal(['t1', 'missing']);
+  });
+
   it('projects allocation rows and scaled summary without mutating inputs', () => {
     const capacity = Object.freeze([
       Object.freeze({ team: 't1', capacity: 80 }),
       Object.freeze({ team: 't2', capacity: 70 }),
     ]);
     const model = buildDetailsPanelCapacityModel({
-      capacity, orgLoad: '150%', teams, showAddTeamPopover: false,
+      capacity, orgLoad: '150%', teams, availability: { allowed_ids: ['t1', 't2', 't3'] }, showAddTeamPopover: false,
     });
 
     expect(model.rows.map((row) => [row.teamId, row.name, row.capacity])).to.deep.equal([
@@ -164,20 +173,22 @@ describe('DetailsPanel capacity section contract', () => {
     expect(capacity[0].capacity).to.equal(80);
   });
 
-  it('keeps unresolved allocations in totals but renders only known teams', () => {
+  it('keeps unresolved allocations visible for explicit correction or removal', () => {
     const model = buildDetailsPanelCapacityModel({
       capacity: [{ team: 'missing', capacity: 40 }, { team: 't1', capacity: 20 }],
-      orgLoad: '60%', teams, showAddTeamPopover: false,
+      orgLoad: '60%', teams, availability: { allowed_ids: ['t1', 't2', 't3'] }, showAddTeamPopover: false,
     });
-    expect(model.rows.map((row) => row.teamId)).to.deep.equal(['t1']);
+    expect(model.rows.map((row) => row.teamId)).to.deep.equal(['missing', 't1']);
+    expect(model.rows[0].name).to.equal('Unknown allocation: missing');
+    expect(model.rows[0].unknown).to.equal(true);
     expect(model.summary.teamCount).to.equal(2);
-    expect(model.summary.segments[0].width).to.equal(20);
+    expect(model.summary.segments[0].width).to.equal(40);
   });
 
   it('renders and dispatches edits without a panel host or application state', async () => {
     const model = buildDetailsPanelCapacityModel({
       capacity: [{ team: 't1', capacity: 40 }],
-      orgLoad: '40%', teams, showAddTeamPopover: false,
+      orgLoad: '40%', teams, availability: { allowed_ids: ['t1', 't2', 't3'] }, showAddTeamPopover: false,
     });
     const actions = createActions();
     const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);
@@ -194,7 +205,7 @@ describe('DetailsPanel capacity section contract', () => {
   it('submits only the selected team and input value to the add action', async () => {
     const model = buildDetailsPanelCapacityModel({
       capacity: [{ team: 't1', capacity: 40 }],
-      orgLoad: '40%', teams, showAddTeamPopover: true,
+      orgLoad: '40%', teams, availability: { allowed_ids: ['t1', 't2', 't3'] }, showAddTeamPopover: true,
     });
     const actions = createActions();
     const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);

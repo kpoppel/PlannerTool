@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../fixtures/allocation_rule/cases.json';
-import { resolveEffectiveAllocations } from '../../www/js/application/shared/allocationRule.js';
+import groupCases from '../fixtures/allocation_rule/groups.json';
+import {
+  allocationConflicts, expandGroupAllocations, resolveEffectiveAllocations,
+} from '../../www/js/application/shared/allocationRule.js';
 
 describe('lowest-level-wins allocation rule', () => {
+  for (const fixture of groupCases) {
+    it(fixture.name, () => {
+      const original = structuredClone(fixture.features);
+      const memberships = new Map(Object.entries(fixture.memberships));
+      const resolved = resolveEffectiveAllocations(fixture.features, undefined, memberships);
+      expect(Object.fromEntries(resolved)).toEqual(fixture.expected);
+      expect(allocationConflicts(fixture.features, memberships)).toEqual(fixture.conflicts);
+      if (fixture.expanded !== null) {
+        expect(Object.fromEntries(expandGroupAllocations(resolved, memberships)))
+          .toEqual(fixture.expanded);
+      }
+      expect(fixture.features).toEqual(original);
+    });
+  }
+
   it('resolves deep trees without recursive traversal', () => {
     const features = Array.from({ length: 5000 }, (_, index) => ({
       id: String(index), parentId: index === 0 ? null : String(index - 1),

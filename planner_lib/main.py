@@ -92,8 +92,9 @@ def _build_services(
         CapacityService,
     )
     from planner_lib.azure import AzureService
-    from planner_lib.cost.service import CostService
-    from planner_lib.admin.service import AdminService
+    from planner_lib.services.workforce_runtime import (
+        refresh_workforce_backend_cache, register_workforce_runtime,
+    )
 
     container = ServiceContainer()
 
@@ -136,13 +137,6 @@ def _build_services(
 
     container.register_factory("capacity_service",
         lambda: CapacityService(team_repository=container.get("team_repository")))
-
-    # --- ConfigBackend (diskcache-backed, peer of UserDataBackend) ---
-    def _make_config_backend():
-        from planner_lib.backend.config import ConfigBackend
-        return ConfigBackend(storage=storage_diskcache)
-
-    container.register_factory("config_backend", _make_config_backend)
 
     # --- Azure ---
     def _make_azure_client():
@@ -197,12 +191,9 @@ def _build_services(
     # Named factory functions rather than __import__ lambdas for readability.
     from planner_lib.repository import (
         ProjectRepository,
-        TeamRepository,
-        TaskRepository,
         HistoryRepository,
         PlanRepository,
         IterationRepository,
-        PeopleRepository,
         ScenarioRepository,
         ViewRepository,
         EventRepository,
@@ -217,18 +208,8 @@ def _build_services(
         lambda: ProjectRepository(
             backend=container.get("backend"),
         ))
-    container.register_factory("team_repository",
-        lambda: TeamRepository(local_backend=container.get("config_backend")))
-
     container.register_factory("credential_provider",
         lambda: AccountManagerCredentialProvider(container.get("account_manager")))
-
-    container.register_factory("task_repository",
-        lambda: TaskRepository(
-            backend=container.get("backend"),
-            project_repository=container.get("project_repository"),
-            credential_provider=container.get("credential_provider"),
-        ))
 
     container.register_factory("history_repository",
         lambda: HistoryRepository(
@@ -251,9 +232,6 @@ def _build_services(
             credential_provider=container.get("credential_provider"),
             iteration_config=container.get("config_backend"),
         ))
-
-    container.register_factory("people_repository",
-        lambda: PeopleRepository(backend=container.get("config_backend")))
 
     container.register_factory("scenario_repository",
         lambda: ScenarioRepository(backend=container.get("user_data_backend")))
@@ -346,28 +324,8 @@ def _build_services(
 
     container.register_factory("group_repository", _make_group_repository)
 
-    # --- Cost ---
-    container.register_factory("cost_service",
-        lambda: CostService(
-            storage=storage_diskcache,
-            people_repository=container.get("people_repository"),
-            project_repository=container.get("project_repository"),
-            team_repository=container.get("team_repository"),
-            cache_storage=storage_diskcache,
-        ))
-
-    # --- Admin ---
-    container.register_factory("admin_service",
-        lambda: AdminService(
-            storage=storage_diskcache,
-            project_repository=container.get("project_repository"),
-            account_manager=container.get("account_manager"),
-            azure_client=container.get("azure_client"),
-            reloadable_services=[
-                container.get("backend"),
-                container.get("cost_service"),
-            ],
-        ))
+    register_workforce_runtime(container)
+    refresh_workforce_backend_cache(container)
 
     # --- Cache coordinator ---
     def _make_cache_coordinator():

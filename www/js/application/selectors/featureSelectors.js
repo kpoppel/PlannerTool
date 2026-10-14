@@ -7,6 +7,7 @@ import {
 } from '../shared/featureProjection.js';
 import { deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
 import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
+import { projectAllocationAvailability } from '../shared/allocationAvailability.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
@@ -98,6 +99,15 @@ export function createFeatureSelectors(store) {
 
     getEffectiveFeatures() {
       return deriveEffectiveFeatures(store.getState());
+    },
+
+    getAllocationAvailability(feature) {
+      const state = store.getState();
+      const projects = state.baseline.projects;
+      return projectAllocationAvailability({
+        feature, projects, catalogue: state.baseline.teams,
+        allocationDefaults: projects.length === 0 ? {} : projects[0].allocation_defaults,
+      });
     },
 
     getEffectiveFeatureById(id) {

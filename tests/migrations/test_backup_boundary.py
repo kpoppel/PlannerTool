@@ -1,6 +1,7 @@
 import pytest
 
 from planner_lib.admin.config_manager import ConfigManager
+from planner_lib.migrations.contracts import TARGET_REVISION
 from planner_lib.migrations.revisions import initialize
 from planner_lib.storage.memory_backend import MemoryStorage
 
@@ -14,14 +15,14 @@ def manager():
 
 def test_logical_backup_exports_revision_without_recovery_metadata(manager):
     backup = manager.get_backup()
-    assert backup['schema_revision'] == 34
+    assert backup['schema_revision'] == TARGET_REVISION
     assert 'system' not in backup
     assert 'active-generation' not in backup
 
 
 @pytest.mark.parametrize('payload', [
     {'schema_revision': 32, 'config': {'server_config': {'feature_flags': {}}}},
-    {'schema_revision': 35, 'config': {}},
+    {'schema_revision': TARGET_REVISION + 1, 'config': {}},
     {'config': {'schema_state': {'schema_revision': 34}}},
     {'system': {'schema_state': {'schema_revision': 34}}},
     {'active-generation': {'generation': 'not-a-generation'}},
@@ -33,14 +34,15 @@ def test_incompatible_backup_rejected_before_mutation(manager, payload):
     with pytest.raises(ValueError):
         manager.restore_backup(payload)
     assert manager._storage.load('config', 'server_config') == original
-    assert manager._storage.load('system', 'schema_state')['schema_revision'] == 34
+    assert manager._storage.load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
 
 
 def test_unversioned_current_selective_backup_is_admitted(manager):
     manager.restore_backup({'config': {'projects': {
-        'schema_version': 3, 'project_map': [], 'container_types': ['project', 'team'],
+        'schema_version': 4, 'project_map': [], 'container_types': ['project', 'team'],
+        'allocation_defaults': {'project': [], 'team': []},
     }}})
-    assert manager._storage.load('system', 'schema_state')['initialized_at_revision'] == 34
+    assert manager._storage.load('system', 'schema_state')['initialized_at_revision'] == TARGET_REVISION
 
 
 def test_saved_view_backup_requires_packed_mode_preference(manager):

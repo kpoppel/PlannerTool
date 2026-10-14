@@ -186,6 +186,9 @@ export const renderRowTemplate = (ctx, project, index) => {
           @change=${(e) => ctx.updateProjectField(index, 'type', e.target.value)}>
           ${ctx.containerTypes.map((type) => html`<option value=${type}>${type}</option>`)}
         </select>
+        <fieldset><legend>Allocatable workforce</legend>
+          ${ctx.renderProjectAllocationChoices(project, index)}
+        </fieldset>
       </td>
       <td style="min-width:220px">
         <div style="display:flex;gap:4px;align-items:center">
@@ -338,6 +341,16 @@ export const renderMainTemplate = (ctx) => {
                 </div>
               </div>
 
+              <div class="allocation-defaults">
+                <h3>Allocation defaults</h3>
+                  ${ctx.allocationError ? html`<div role="alert">${ctx.allocationError}</div>` : ''}
+                <div class="allocation-defaults-grid">
+                  ${ctx.containerTypes.map((type) => html`<fieldset><legend>${type}</legend>
+                    ${ctx.renderAllocationChoices(ctx.content.allocation_defaults[type],
+                      (id, selected) => ctx.setLevelAllocationChoice(type, id, selected))}
+                  </fieldset>`)}
+                </div>
+              </div>
               <div class="search-bar">
                 <span class="small">🔎</span>
                 <input type="text" class="search-input"

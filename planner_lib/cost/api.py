@@ -85,71 +85,10 @@ async def api_cost_get(request: Request):
 @router.get('/cost/teams')
 @require_session
 async def api_cost_teams(request: Request):
+    """Return anonymous bases and supplier profiles without personal workforce data."""
     try:
-        from planner_lib.util import slugify
-        from planner_lib.services.resolver import resolve_service
-
         cost_svc = resolve_service(request, 'cost_service')
-        people_repo = resolve_service(request, 'people_repository')
-        cost_cfg = cost_svc.get_cost_config()
-
-        try:
-            people = people_repo.list_people()
-        except Exception:
-            people = []
-
-        site_hours_map = cost_cfg.get('working_hours', {}) or {}
-        external_cfg = cost_cfg.get('external_cost', {}) or {}
-        ext_rates = external_cfg.get('external', {}) or {}
-        default_ext_rate = float(external_cfg.get('default_hourly_rate', 0) or 0)
-        internal_default_rate = float(cost_cfg.get('internal_cost', {}).get('default_hourly_rate', 0) or 0)
-
-        teams_map = {}
-        for p in people:
-            raw_team = p.get('team_name') or p.get('team') or ''
-            team_key = slugify(raw_team)
-            if not team_key:
-                continue
-            entry = teams_map.setdefault(team_key, {
-                'id': 'team-' + team_key,
-                'name': raw_team or team_key,
-                'members': [],
-                'totals': {
-                    'internal_count': 0,
-                    'external_count': 0,
-                    'internal_hours_total': 0,
-                    'external_hours_total': 0,
-                    'internal_hourly_rate_total': 0.0,
-                    'external_hourly_rate_total': 0.0,
-                }
-            })
-
-            name = p.get('name') or ''
-            site = p.get('site') or ''
-            is_external = bool(p.get('external'))
-            if is_external:
-                hourly_rate = float(ext_rates.get(name, default_ext_rate) or 0)
-                hours = int(site_hours_map.get(site, {}).get('external', 0) or 0)
-                entry['totals']['external_count'] += 1
-                entry['totals']['external_hourly_rate_total'] += hourly_rate
-                entry['totals']['external_hours_total'] += hours
-            else:
-                hourly_rate = float(internal_default_rate or 0)
-                hours = int(site_hours_map.get(site, {}).get('internal', 0) or 0)
-                entry['totals']['internal_count'] += 1
-                entry['totals']['internal_hourly_rate_total'] += hourly_rate
-                entry['totals']['internal_hours_total'] += hours
-
-            entry['members'].append({
-                'name': name,
-                'external': is_external,
-                'site': site,
-                'hourly_rate': hourly_rate,
-                'hours_per_month': hours,
-            })
-
-        teams = list(teams_map.values())
-        return { 'teams': teams }
+        return await asyncio.to_thread(cost_svc.team_bases)
     except Exception as e:
         logger.exception('Failed to build teams data: %s', e)
         raise HTTPException(status_code=500, detail="Internal server error")

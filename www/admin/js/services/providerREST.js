@@ -105,6 +105,32 @@ export class AdminProviderREST extends RestProviderBase {
     return this._saveContent('/admin/v1/teams', content);
   }
 
+  async getWorkforce() {
+    return this._requestJson('/admin/v1/workforce', { method: 'GET' });
+  }
+
+  async saveWorkforce(snapshot) {
+    return this._requestWithBody('/admin/v1/workforce', snapshot);
+  }
+
+  async reviewWorkforceTeamDeletion(teamId) {
+    return this._requestJson(
+      `/admin/v1/workforce/teams/${encodeURIComponent(teamId)}/deletion`, { method: 'GET' },
+    );
+  }
+
+  async deleteWorkforceTeam(teamId, payload) {
+    return this._requestWithBody(
+      `/admin/v1/workforce/teams/${encodeURIComponent(teamId)}/deletion`, payload,
+    );
+  }
+
+  async createWorkforceDefinition(kind, payload) {
+    return this._requestWithBody(
+      `/admin/v1/workforce/definitions/${encodeURIComponent(kind)}`, payload,
+    );
+  }
+
   async getPeople() {
     return this._getContent('/admin/v1/people', null);
   }

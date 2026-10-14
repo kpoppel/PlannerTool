@@ -5,6 +5,32 @@ from pathlib import Path
 import pytest
 
 
+def test_archived_team_keeps_historical_cost_and_known_identity(
+    fake_services: dict, cache_storage,
+) -> None:
+    from planner_lib.backend.config import ConfigBackend
+    from planner_lib.repository.team_repository import TeamRepository
+
+    storage = fake_services['storage']
+    config = {'schema_version': 2, 'teams': [
+        {'name': 'Alpha', 'short_name': 'ALP', 'exclude': False},
+    ]}
+    cache_storage.save('config', 'teams', config)
+    repository = TeamRepository(ConfigBackend(storage=cache_storage))
+    service = CostService(storage, fake_services['project_repository'], repository,
+                          fake_services['people_repository'], cache_storage)
+    features = [{'id': 'historic', 'project': 'project-1', 'start': '2025-01-01',
+                 'end': '2025-01-31', 'capacity': [{'team': 'team-alpha', 'capacity': 100}]}]
+    before = service.estimate_costs({'features': features})
+    config['teams'][0]['exclude'] = True
+    cache_storage.save('config', 'teams', config)
+    after = service.estimate_costs({'features': features})
+    assert repository.list_teams() == []
+    assert after['projects'] == before['projects']
+    assert after['projects']['project-1']['historic']['internal_hours'] > 0
+    assert after['unknown_teams'] == []
+
+
 def test_cost_monthly_hours_match_shared_capacity_loads(fake_services, cache_storage, monkeypatch):
     case = next(case for case in json.loads(
         (Path(__file__).parents[2] / 'fixtures/allocation_rule/cases.json').read_text()
@@ -30,7 +56,7 @@ def test_cost_monthly_hours_match_shared_capacity_loads(fake_services, cache_sto
 
 def test_cost_undated_grandchild_preserves_parent_and_reports_unknown_team(fake_services, cache_storage, monkeypatch):
     monkeypatch.setattr(fake_services['team_repository'], 'list_teams',
-                        lambda: [{'id': 'team-alpha'}])
+                        lambda *, include_archived=False: [{'id': 'team-alpha'}])
     svc = CostService(fake_services['storage'], fake_services['project_repository'],
                       fake_services['team_repository'], fake_services['people_repository'],
                       cache_storage)
@@ -121,6 +147,22 @@ def test_cost_schema_sorts_by_configured_container_order():
     )
     assert [plan['id'] for plan in schema['projects']] == ['z-root', 'm-middle', 'a-leaf']
     assert [plan['container_order'] for plan in schema['projects']] == [0, 1, 2]
+
+
+def test_cost_schema_exposes_canonical_posts_and_missing_basis() -> None:
+    """Incomplete canonical calculations remain explicit through the public response formatter."""
+    missing = [{'team': 'deleted', 'capacity': 20}]
+    totals = {'internal': {'cost': {'2025-01': 100}, 'hours': {'2025-01': 2}},
+              'external': {'cost': {'2025-01': 200}, 'hours': {'2025-01': 1}}, 'complete': False}
+    schema = build_cost_schema({'plan': {
+        'totals': totals,
+        'item': {'teams': {}, 'complete': False, 'missing_basis': missing},
+    }}, unknown_teams=[{'feature_id': 'item', **missing[0]}])
+    assert schema['projects'][0]['totals'] == totals
+    task = schema['projects'][0]['features'][0]
+    assert task['complete'] is False
+    assert task['missingBasis'] == missing
+    assert schema['complete'] is False
 
 
 def test_cost_keeps_original_estimates_separate_from_winning_cost(fake_services, cache_storage):

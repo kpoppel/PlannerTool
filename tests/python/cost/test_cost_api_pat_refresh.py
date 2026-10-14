@@ -43,6 +43,24 @@ class _FakeCostService:
         return {"projects": {}, "project_types": {}}
 
 
+def test_cost_metadata_uses_only_anonymous_workforce(client) -> None:
+    """The public metadata endpoint never resolves people or legacy name-keyed rates."""
+    container = client.app.state.container
+    email = 'workforce-metadata@example.com'
+    container.get('account_manager').update_credentials(AccountCredentialsPayload(email=email))
+    client.cookies.set(session_module.SESSION_COOKIE, container.get('session_manager').create(email))
+    metadata = {'catalogue': [], 'teams': {}, 'groups': {}, 'suppliers': []}
+    service = SimpleNamespace(team_bases=Mock(return_value=metadata))
+    people = SimpleNamespace(list_people=Mock(side_effect=AssertionError('Personal data must not be read')))
+    container.register_singleton('cost_service', service)
+    container.register_singleton('people_repository', people)
+    response = client.get('/api/cost/teams', headers={'Accept': 'application/json'})
+    assert response.status_code == 200
+    assert response.json() == metadata
+    service.team_bases.assert_called_once_with()
+    people.list_people.assert_not_called()
+
+
 @pytest.mark.parametrize('method', ['get', 'post'])
 def test_repository_cost_requests_preserve_allocation_graph_and_diagnostics(client, method):
     container = client.app.state.container

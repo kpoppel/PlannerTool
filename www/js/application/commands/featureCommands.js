@@ -2,7 +2,10 @@ import { CapacityEvents, FeatureEvents, ScenarioEvents } from '../../core/EventR
 import {
   buildChildrenByParentMap,
   buildFeatureMap,
+  deriveEffectiveFeatures,
 } from '../shared/featureProjection.js';
+import { projectAllocationAvailability, validateAllocationChange } from '../shared/allocationAvailability.js';
+import { allocationConflicts } from '../shared/allocationRule.js';
 import {
   getActiveScenario,
   getActiveScenarioId,
@@ -48,6 +51,28 @@ function addActiveScenarioToChangedIds(state) {
   return Array.from(new Set([...state.scenarios.changedIds, String(activeId)]));
 }
 
+function assertScenarioAllocationMutation(snapshot, mutation, restoringBaseline = false) {
+  const candidate = { ...snapshot, scenarios: { ...snapshot.scenarios, items: mutation.items } };
+  const before = buildFeatureMap(deriveEffectiveFeatures(snapshot, { includeDirtyMetadata: false }));
+  const features = deriveEffectiveFeatures(candidate, { includeDirtyMetadata: false });
+  const projects = snapshot.baseline.projects;
+  for (const feature of features) {
+    const original = before.get(String(feature.id));
+    if (!restoringBaseline && JSON.stringify(feature.capacity) !== JSON.stringify(original.capacity)) {
+      const availability = projectAllocationAvailability({
+        feature: original, projects, catalogue: snapshot.baseline.teams,
+        allocationDefaults: projects.length === 0 ? {} : projects[0].allocation_defaults,
+      });
+      validateAllocationChange(availability, feature.capacity);
+    }
+  }
+  const memberships = new Map(snapshot.baseline.teams
+    .filter((team) => team.kind === 'team' && team.group_id !== null)
+    .map((team) => [team.id, team.group_id]));
+  const conflicts = allocationConflicts(features, memberships);
+  if (conflicts.length > 0) throw new Error(`Allocation conflict: ${JSON.stringify(conflicts)}`);
+}
+
 /**
  * @param {StoreApi} store
  * @param {EventBusLike} bus
@@ -55,20 +80,10 @@ function addActiveScenarioToChangedIds(state) {
  * @returns {object}
  */
 export function createFeatureCommands(store, bus, recomputeCapacity = null) {
-  function requireRecomputeCapacity() {
-    if (typeof recomputeCapacity !== 'function') {
-      throw new TypeError('featureCommands requires recomputeCapacity');
-    }
-  }
-
   /**
    * @param {string[]|null} [changedFeatureIds]
    */
   function recomputeAndEmitCapacity(changedFeatureIds = null) {
-    requireRecomputeCapacity();
-    if (typeof recomputeCapacity !== 'function') {
-      throw new TypeError('featureCommands requires recomputeCapacity');
-    }
     recomputeCapacity(changedFeatureIds);
   }
 
@@ -244,6 +259,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
         return safeUpdates;
       }
 
+      assertScenarioAllocationMutation(snapshot, mutation);
       store.setState(
         (state) => ({
           ...state,
@@ -280,6 +296,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
         return { id: String(id), [field]: value };
       }
 
+      assertScenarioAllocationMutation(snapshot, mutation);
       store.setState(
         (state) => ({
           ...state,
@@ -320,6 +337,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
         };
       }
 
+      assertScenarioAllocationMutation(snapshot, mutation);
       store.setState(
         (state) => ({
           ...state,
@@ -363,6 +381,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
         return false;
       }
 
+      assertScenarioAllocationMutation(snapshot, mutation, true);
       store.setState(
         (state) => ({
           ...state,

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from planner_lib.backend.port import (
     AdoConfigBackend,
@@ -39,8 +39,9 @@ from planner_lib.backend.port import (
     PlanConfigBackend,
 )
 from planner_lib.domain.people import DomainPerson
+from planner_lib.domain.allocation_availability import validate_project_availability
 from planner_lib.domain.projects import DomainProject
-from planner_lib.domain.teams import DomainTeam
+from planner_lib.domain.teams import DomainTeam, TeamCatalogue
 from planner_lib.storage.base import StorageBackend
 from planner_lib.util import slugify
 
@@ -153,8 +154,10 @@ class ConfigBackend(
     def fetch_config_teams(
         self,
         credential: Optional[BackendCredential] = None,
+        *,
+        include_archived: bool = False,
     ) -> List[DomainTeam]:
-        """Return all active (non-excluded) teams."""
+        """Return active choices, or include archives when resolving existing allocations."""
         cfg = self._storage.load("config", "teams") or {}
         return [
             DomainTeam(
@@ -163,7 +166,7 @@ class ConfigBackend(
                 short_name=t.get("short_name"),
             )
             for t in (cfg.get("teams") or [])
-            if not t.get("exclude", False)
+            if include_archived or not t.get("exclude", False)
         ]
 
     # ------------------------------------------------------------------
@@ -271,4 +274,35 @@ class ConfigBackend(
         """No-op — ConfigBackend writes directly to diskcache; reads are always
         consistent.  There is no separate TTL cache layer to flush."""
         return {"ok": True, "invalidated": [], "errors": []}
+
+
+class WorkforceConfigBackend(ConfigBackend):
+    """Canonical configuration port selected at the coordinated workforce cutover."""
+
+    def fetch_projects(
+        self, credential: Optional[BackendCredential] = None,
+    ) -> List[DomainProject]:
+        """Expose validated level defaults and plan overrides without inventing availability."""
+        with self._storage.transaction():
+            config = self._storage.load('config', 'projects')
+            catalogue = TeamCatalogue(self._storage.load('config', 'teams'))
+            validate_project_availability(config, catalogue.definitions())
+            defaults = config['allocation_defaults']
+            projects = super().fetch_projects(credential)
+            for project, definition in zip(projects, config['project_map'], strict=True):
+                project['allocation_defaults'] = {level: list(ids) for level, ids in defaults.items()}
+                if 'allocatable_ids' in definition:
+                    project['allocatable_ids'] = list(definition['allocatable_ids'])
+            return projects
+
+    def fetch_config_teams(
+        self,
+        credential: Optional[BackendCredential] = None,
+        *,
+        include_archived: bool = False,
+    ) -> List[DomainTeam]:
+        """Read persisted team/group identities directly, never derive IDs from labels."""
+        catalogue = TeamCatalogue(self._storage.load('config', 'teams'))
+        entries = catalogue.definitions() if include_archived else catalogue.allocation_choices()
+        return [cast(DomainTeam, entry) for entry in entries]
 

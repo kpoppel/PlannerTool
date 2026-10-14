@@ -95,9 +95,7 @@ export class AdminApp extends LitElement {
       'Global Project Settings',
       'Plugins',
       'Projects',
-      'Teams',
-      'People',
-      'Cost',
+      'Workforce',
       'Area Mappings',
       'Iterations',
       'Utilities',
@@ -170,12 +168,8 @@ export class AdminApp extends LitElement {
         return html`<admin-global-settings></admin-global-settings>`;
       case 'Projects':
         return html`<admin-projects></admin-projects>`;
-      case 'Teams':
-        return html`<admin-teams></admin-teams>`;
-      case 'People':
-        return html`<admin-people></admin-people>`;
-      case 'Cost':
-        return html`<admin-cost></admin-cost>`;
+      case 'Workforce':
+        return html`<admin-workforce></admin-workforce>`;
       case 'Area Mappings':
         return html`<area-mappings-new></area-mappings-new>`;
       case 'Iterations':

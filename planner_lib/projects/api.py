@@ -27,7 +27,7 @@ def _get_credential(request: Request):
 @require_session
 async def api_teams(request: Request):
     team_repo = resolve_service(request, 'team_repository')
-    return await asyncio.to_thread(team_repo.list_teams)
+    return await asyncio.to_thread(team_repo.list_teams, include_archived=True)
 
 
 @router.get('/projects')
@@ -100,7 +100,16 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
 
     task_repo = resolve_service(request, 'task_repository')
     _credential, account_id = _get_credential(request)
-    result = await asyncio.to_thread(task_repo.write, payload or [], user_id=account_id)
+    try:
+        result = await asyncio.to_thread(task_repo.write, payload or [], user_id=account_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={'error': 'invalid_allocation', 'message': str(exc)}) from exc
+    except BackendAuthError as exc:
+        raise HTTPException(status_code=401, detail={'error': 'invalid_pat', 'message': 'Publication requires valid credentials'}) from exc
+    except BackendUnavailableError as exc:
+        raise HTTPException(status_code=503, detail={'error': 'backend_unavailable', 'message': 'Publication requires the complete task forest'}) from exc
+    except BackendConfigError as exc:
+        raise HTTPException(status_code=500, detail={'error': 'backend_misconfigured', 'message': 'Task source configuration is invalid'}) from exc
     if not result.get('ok', True) and result.get('errors'):
         logger.warning("Task update completed with errors: %s", result['errors'])
 

@@ -179,6 +179,7 @@ export class DetailsPanelController {
 			}),
 			capacity: buildDetailsPanelCapacityModel({
 				capacity: feature.capacity, orgLoad: feature.orgLoad, teams,
+				availability: sel.feature.getAllocationAvailability(feature),
 				showAddTeamPopover: this.editor.showAddTeamPopover,
 			}),
 			tags: buildDetailsPanelTagsModel({

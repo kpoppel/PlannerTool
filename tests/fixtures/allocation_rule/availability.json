@@ -1,0 +1,24 @@
+{
+  "catalogue": [
+    {"id": "A", "kind": "team", "group_id": "G", "archived": false},
+    {"id": "B", "kind": "team", "group_id": "G", "archived": false},
+    {"id": "G", "kind": "group", "archived": false},
+    {"id": "old", "kind": "team", "group_id": null, "archived": true}
+  ],
+  "defaults": {"Program": ["G", "old"], "Plan": ["A", "B"]},
+  "projects": [
+    {"id": "program", "type": "Program"},
+    {"id": "inherit", "type": "Plan"},
+    {"id": "override", "type": "Plan", "allocatable_ids": ["G"]},
+    {"id": "empty", "type": "Plan", "allocatable_ids": []}
+  ],
+  "cases": [
+    {"name": "a group default offers the group only", "owner": "program", "capacity": [], "allowed": ["G"], "existing": []},
+    {"name": "absent override inherits the level default", "owner": "inherit", "capacity": [], "allowed": ["A", "B"], "existing": []},
+    {"name": "plan override replaces rather than extends defaults", "owner": "override", "capacity": [], "allowed": ["G"], "existing": []},
+    {"name": "explicit empty override offers nothing", "owner": "empty", "capacity": [], "allowed": [], "existing": []},
+    {"name": "unconfigured context owner cannot borrow importing plan choices", "owner": "context", "capacity": [{"team": "A", "capacity": 40}], "allowed": [], "existing": [{"team": "A", "capacity": 40, "known": true, "archived": false, "eligible": false}]},
+    {"name": "archived and unknown allocations stay readable", "owner": "program", "capacity": [{"team": "old", "capacity": 40}, {"team": "deleted", "capacity": 20}], "allowed": ["G"], "existing": [{"team": "old", "capacity": 40, "known": true, "archived": true, "eligible": false}, {"team": "deleted", "capacity": 20, "known": false, "archived": false, "eligible": false}]},
+    {"name": "existing eligible allocation stays editable without changing choices", "owner": "inherit", "capacity": [{"team": "A", "capacity": 40}], "allowed": ["A", "B"], "existing": [{"team": "A", "capacity": 40, "known": true, "archived": false, "eligible": true}]}
+  ]
+}

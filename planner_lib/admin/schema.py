@@ -82,14 +82,14 @@ _SCHEMAS: dict[str, Any] = {
     'projects': {
         'type': 'object',
         'title': 'Project Configuration',
-        'description': 'Map projects to Azure DevOps area paths (schema v3)',
+        'description': 'Plan hierarchy and canonical workforce availability (schema v4)',
         'properties': {
             'schema_version': {
                 'type': 'integer',
                 'title': 'Schema Version',
                 'description': 'Configuration schema version',
-                'default': 3,
-                'minimum': 1,
+                'default': 4,
+                'const': 4,
             },
             'container_types': {
                 'type': 'array',
@@ -100,12 +100,24 @@ _SCHEMAS: dict[str, Any] = {
                 'minItems': 1,
                 'default': ['project', 'team'],
             },
+            'allocation_defaults': {
+                'type': 'object', 'title': 'Allocation Defaults By Container Type',
+                'additionalProperties': {
+                    'type': 'array', 'items': {'type': 'string', 'minLength': 1},
+                    'uniqueItems': True,
+                },
+            },
             'project_map': {
                 'type': 'array',
                 'title': 'Project Mappings',
                 'items': {
                     'type': 'object',
                     'properties': {
+                        'allocatable_ids': {
+                            'type': 'array', 'title': 'Allocation Override',
+                            'items': {'type': 'string', 'minLength': 1},
+                            'uniqueItems': True,
+                        },
                         'name': {
                             'type': 'string',
                             'title': 'Project Name',
@@ -152,7 +164,7 @@ _SCHEMAS: dict[str, Any] = {
                 },
             },
         },
-        'required': ['container_types', 'project_map'],
+        'required': ['schema_version', 'container_types', 'allocation_defaults', 'project_map'],
     },
     'teams': {
         'type': 'object',

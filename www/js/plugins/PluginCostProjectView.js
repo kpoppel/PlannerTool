@@ -14,32 +14,8 @@ import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
 import { renderEstimateComparison } from './PluginCostTaskView.js';
 
 function getTeamLabel(component, teamKey) {
-  const costTeams =
-    component && component.costTeams && Array.isArray(component.costTeams.teams) ?
-      component.costTeams.teams
-    : [];
-  for (const t of costTeams) {
-    if (!t) continue;
-    if (
-      t.id === teamKey ||
-      t.name === teamKey ||
-      (t.short_name && t.short_name === teamKey)
-    )
-      return t.name;
-  }
-  // Fallback: strip common prefixes and titleize slug
-  if (!teamKey) return '';
-  let key = String(teamKey);
-  key = key.replace(/^team-/, '');
-  key = key.replace(/[-_]+/g, ' ');
-  // simple title-case
-  key = key
-    .split(' ')
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(' ');
-  // replace ' And ' with ' & '
-  key = key.replace(/\bAnd\b/g, '&');
-  return key;
+  const definition = component.costTeams.catalogue.find((entry) => entry.id === teamKey);
+  return definition === undefined ? `Unknown allocation: ${teamKey}` : definition.name;
 }
 
 function formatPlainNumber(component, val) {
@@ -93,8 +69,8 @@ function renderProjectTable(component, project, monthKeys) {
     `;
   }
 
-  const allFeatures = Object.values(component.data.projects || {}).flatMap(
-    (p) => p.features || []
+  const allFeatures = Object.values(component.data.projects).flatMap(
+    (project) => project.features
   );
   const expandedFeatures = expandDataset(
     projectData.features,
@@ -127,7 +103,7 @@ function renderProjectTable(component, project, monthKeys) {
           <div style="margin-top:8px; margin-left:8px;">
             ${renderProjectSummaryTable(
               component,
-              projectData,
+              expandedFeatures,
               teams,
               teamAllocations,
               monthKeys
@@ -242,344 +218,83 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
 
 function renderProjectSummaryTable(
   component,
-  projectData,
+  features,
   teams,
   teamAllocations,
   monthKeys
 ) {
-  const formatValue = (val) => formatPlainNumber(component, val);
-  // Compute monthly totals for hours and cost, internal & external
-  const totals = {
-    internal: { hours: new Map(), cost: new Map() },
-    external: { hours: new Map(), cost: new Map() },
-  };
-
-  for (const teamName of teams) {
-    const teamData = teamAllocations.get(teamName);
-    // DEBUG: print team allocation for server/client comparison
-    // eslint-disable-next-line no-constant-condition --- IGNORE ---
-    if (false) {
-      if (!component.__dbg_logged_team_arch && teamName === 'team-architecture') {
-        component.__dbg_logged_team_arch = true;
-        console.debug('[PluginCost][DBG][client] team-architecture', teamData);
+  const profileDefinitions = new Map();
+  const profileFeatures = features.map((feature) => {
+    const buckets = {};
+    for (const [teamId, basis] of Object.entries(feature.metrics.teams)) {
+      for (const profile of basis.profiles) {
+        const identity = JSON.stringify([teamId, profile.supplier_id, profile.profile_id]);
+        if (Object.hasOwn(buckets, identity)) throw new Error(`Duplicate priced profile: ${identity}`);
+        profileDefinitions.set(identity, profile);
+        buckets[identity] = {
+          cost: { internal: profile.external ? {} : profile.cost,
+            external: profile.external ? profile.cost : {} },
+          hours: { internal: profile.external ? {} : profile.hours,
+            external: profile.external ? profile.hours : {} },
+        };
       }
     }
-
-    if (!teamData) continue;
-    for (const mKey of monthKeys) {
-      const iHours = teamData.hours.internal.get(mKey) || 0;
-      const eHours = teamData.hours.external.get(mKey) || 0;
-      const iCost = teamData.cost.internal.get(mKey) || 0;
-      const eCost = teamData.cost.external.get(mKey) || 0;
-
-      totals.internal.hours.set(mKey, (totals.internal.hours.get(mKey) || 0) + iHours);
-      totals.external.hours.set(mKey, (totals.external.hours.get(mKey) || 0) + eHours);
-      totals.internal.cost.set(mKey, (totals.internal.cost.get(mKey) || 0) + iCost);
-      totals.external.cost.set(mKey, (totals.external.cost.get(mKey) || 0) + eCost);
-    }
-  }
-
-  // DEBUG: show totals and server-provided project totals for inspection
-  // eslint-disable-next-line no-constant-condition --- IGNORE ---
-  if (false) {
-    const pid = projectData && projectData.id ? projectData.id : '(unknown)';
-    console.debug('[PluginCost][DBG][client][summary]', {
-      project: pid,
-      monthKeys,
-      totals_internal_hours: Object.fromEntries(
-        Array.from(totals.internal.hours.entries())
-      ),
-      totals_internal_cost: Object.fromEntries(
-        Array.from(totals.internal.cost.entries())
-      ),
-      projectTotals: projectData && projectData.totals ? projectData.totals : null,
-    });
-  }
-
-  // Only sum the months inside the display window; the map may contain server data
-  // for months outside the selected period which must not be included in the totals.
-  const sum = (map) => monthKeys.reduce((a, mKey) => a + (map.get(mKey) || 0), 0);
-
-  // Pair index to ensure Hours+Cost rows are styled as a unit across the table
-  let pairIndex = 0;
-  const pairClass = () => (pairIndex++ % 2 === 0 ? 'alt' : '');
-
-  // Compute per-site internal breakdown client-side from rolled-up teamAllocations
-  // and costTeams membership. This is always consistent with the team table because
-  // both use the same teamAllocations object (which already applied the per-team
-  // rollup rule). We no longer rely on projectTotals.sites from the server because
-  // that was computed with a different (stale) skip-parent rule.
-  const siteTotals = {};
-  const externalSiteTotals = {};
-
-  // Build team → site membership maps from costTeams
-  const teamSiteInternal = new Map(); // teamId → { site → fractionOfTeamHours }
-  const teamSiteExternal = new Map(); // teamId → { site → fractionOfTeamHours }
-  const rawCostTeams =
-    component.costTeams && Array.isArray(component.costTeams.teams) ?
-      component.costTeams.teams
-    : Array.isArray(component.costTeams) ? component.costTeams
-    : [];
-
-  for (const team of rawCostTeams) {
-    if (!team) continue;
-    const teamId = team.id || team.name;
-    if (!teamId) continue;
-    const members = Array.isArray(team.members) ? team.members : [];
-
-    // Internal site hours
-    const intSiteHours = {};
-    let intTotalHours = 0;
-    for (const m of members) {
-      if (m && !m.external && m.site) {
-        const h = Number(m.hours_per_month || 0);
-        intSiteHours[m.site] = (intSiteHours[m.site] || 0) + h;
-        intTotalHours += h;
-      }
-    }
-    if (intTotalHours > 0) {
-      const fracs = {};
-      for (const [site, h] of Object.entries(intSiteHours))
-        fracs[site] = h / intTotalHours;
-      teamSiteInternal.set(teamId, fracs);
-    }
-
-    // External site hours
-    const extSiteHours = {};
-    let extTotalHours = 0;
-    for (const m of members) {
-      if (m && m.external && m.site) {
-        const h = Number(m.hours_per_month || 0);
-        extSiteHours[m.site] = (extSiteHours[m.site] || 0) + h;
-        extTotalHours += h;
-      }
-    }
-    if (extTotalHours > 0) {
-      const fracs = {};
-      for (const [site, h] of Object.entries(extSiteHours))
-        fracs[site] = h / extTotalHours;
-      teamSiteExternal.set(teamId, fracs);
-    }
-  }
-
-  // Distribute each team's rolled-up monthly hours/cost across sites
-  for (const [teamId, teamData] of teamAllocations.entries()) {
-    // Internal sites
-    const intFracs = teamSiteInternal.get(teamId) || {};
-    for (const [site, frac] of Object.entries(intFracs)) {
-      if (!siteTotals[site]) siteTotals[site] = { hours: new Map(), cost: new Map() };
-      for (const mKey of monthKeys) {
-        const h = (teamData.hours.internal.get(mKey) || 0) * frac;
-        const c = (teamData.cost.internal.get(mKey) || 0) * frac;
-        siteTotals[site].hours.set(mKey, (siteTotals[site].hours.get(mKey) || 0) + h);
-        siteTotals[site].cost.set(mKey, (siteTotals[site].cost.get(mKey) || 0) + c);
-      }
-    }
-    // External sites
-    const extFracs = teamSiteExternal.get(teamId) || {};
-    for (const [site, frac] of Object.entries(extFracs)) {
-      if (!externalSiteTotals[site])
-        externalSiteTotals[site] = { hours: new Map(), cost: new Map() };
-      for (const mKey of monthKeys) {
-        const h = (teamData.hours.external.get(mKey) || 0) * frac;
-        const c = (teamData.cost.external.get(mKey) || 0) * frac;
-        externalSiteTotals[site].hours.set(
-          mKey, (externalSiteTotals[site].hours.get(mKey) || 0) + h
-        );
-        externalSiteTotals[site].cost.set(
-          mKey, (externalSiteTotals[site].cost.get(mKey) || 0) + c
-        );
+    return { ...feature, metrics: { ...feature.metrics, teams: buckets } };
+  });
+  const profileAllocations = buildTeamMonthAllocations(component, profileFeatures, monthKeys);
+  const suppliers = new Map(component.costTeams.suppliers.map((supplier) => [supplier.id, supplier]));
+  const accounts = ['internal', 'external'];
+  const totals = new Map(accounts.map((account) => [account, {
+    hours: new Map(monthKeys.map((month) => [month, 0])),
+    cost: new Map(monthKeys.map((month) => [month, 0])),
+  }]));
+  const profiles = new Map();
+  const amount = (series, month) => series.has(month) ? series.get(month) : 0;
+  for (const teamId of teams) {
+    const allocation = teamAllocations.get(teamId);
+    for (const account of accounts) {
+      for (const metric of ['hours', 'cost']) {
+        for (const month of monthKeys) {
+          const series = totals.get(account)[metric];
+          series.set(month, series.get(month) + amount(allocation[metric][account], month));
+        }
       }
     }
   }
-
-  return html`
-    <table class="summary-table" style="margin-bottom:12px;">
-      <thead>
-        <tr>
-          <th>Metric</th>
-          ${component.months.map((m) => html`<th class="numeric">${monthLabel(m)}</th>`)}
-          <th class="numeric sum-column">Sum</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr class="group-header-row">
-          <td colspan="${component.months.length + 2}">Totals</td>
-        </tr>
-        ${(() => {
-          const cls = pairClass();
-          return html`
-            <tr class="group-row ${cls}">
-              <td class="metric">Hours</td>
-              ${monthKeys.map(
-                (mKey) =>
-                  html`<td class="numeric">
-                    ${formatValue(
-                      (totals.internal.hours.get(mKey) || 0) +
-                        (totals.external.hours.get(mKey) || 0)
-                    )}
-                  </td>`
-              )}
-              <td class="numeric totals-row sum-column">
-                <strong
-                  >${formatValue(
-                    sum(totals.internal.hours) + sum(totals.external.hours)
-                  )}</strong
-                >
-              </td>
-            </tr>
-            <tr class="group-row ${cls}">
-              <td class="metric">Cost</td>
-              ${monthKeys.map(
-                (mKey) =>
-                  html`<td class="numeric">
-                    ${formatValue(
-                      (totals.internal.cost.get(mKey) || 0) +
-                        (totals.external.cost.get(mKey) || 0)
-                    )}
-                  </td>`
-              )}
-              <td class="numeric totals-row sum-column">
-                <strong
-                  >${formatValue(
-                    sum(totals.internal.cost) + sum(totals.external.cost)
-                  )}</strong
-                >
-              </td>
-            </tr>
-          `;
-        })()}
-
-        <tr class="group-header-row">
-          <td colspan="${component.months.length + 2}">External</td>
-        </tr>
-        ${(() => {
-          // If any external sites computed, render them as pairs
-          const keys = Object.keys(externalSiteTotals || {});
-          if (keys.length > 0) {
-            return html`${keys.sort().map((site) => {
-              const cls = pairClass();
-              const hoursMap = externalSiteTotals[site].hours;
-              const costMap = externalSiteTotals[site].cost;
-              return html`
-                <tr class="site-pair ${cls}">
-                  <td>${site} Hours</td>
-                  ${monthKeys.map(
-                    (mKey) =>
-                      html`<td class="numeric">
-                        ${formatValue(hoursMap.get(mKey) || 0)}
-                      </td>`
-                  )}
-                  <td class="numeric sum-column">${formatValue(sum(hoursMap))}</td>
-                </tr>
-                <tr class="site-pair ${cls}">
-                  <td>${site} Cost</td>
-                  ${monthKeys.map(
-                    (mKey) =>
-                      html`<td class="numeric">
-                        ${formatValue(costMap.get(mKey) || 0)}
-                      </td>`
-                  )}
-                  <td class="numeric sum-column">${formatValue(sum(costMap))}</td>
-                </tr>
-              `;
-            })}`;
-          }
-          const cls = pairClass();
-          return html`
-            <tr class="group-row ${cls}">
-              <td class="metric">Sum External Hours</td>
-              ${monthKeys.map(
-                (mKey) =>
-                  html`<td class="numeric">
-                    ${formatValue(totals.external.hours.get(mKey) || 0)}
-                  </td>`
-              )}
-              <td class="numeric sum-column">
-                ${formatValue(sum(totals.external.hours))}
-              </td>
-            </tr>
-            <tr class="group-row ${cls}">
-              <td class="metric">Sum External Cost</td>
-              ${monthKeys.map(
-                (mKey) =>
-                  html`<td class="numeric">
-                    ${formatValue(totals.external.cost.get(mKey) || 0)}
-                  </td>`
-              )}
-              <td class="numeric sum-column">
-                ${formatValue(sum(totals.external.cost))}
-              </td>
-            </tr>
-          `;
-        })()}
-
-        <tr class="group-header-row">
-          <td colspan="${component.months.length + 2}">Internal</td>
-        </tr>
-        ${Object.keys(siteTotals)
-          .sort()
-          .map((site) => {
-            const cls = pairClass();
-            return html`
-              <tr class="site-pair ${cls}">
-                <td>${site} Hours</td>
-                ${monthKeys.map(
-                  (mKey) =>
-                    html`<td class="numeric">
-                      ${formatValue(siteTotals[site].hours.get(mKey) || 0)}
-                    </td>`
-                )}
-                <td class="numeric sum-column">
-                  ${formatValue(sum(siteTotals[site].hours))}
-                </td>
-              </tr>
-              <tr class="site-pair ${cls}">
-                <td>${site} Cost</td>
-                ${monthKeys.map(
-                  (mKey) =>
-                    html`<td class="numeric">
-                      ${formatValue(siteTotals[site].cost.get(mKey) || 0)}
-                    </td>`
-                )}
-                <td class="numeric sum-column">
-                  ${formatValue(sum(siteTotals[site].cost))}
-                </td>
-              </tr>
-            `;
-          })}
-        ${(() => {
-          const cls = pairClass();
-          return html`
-            <tr class="group-row ${cls}">
-              <td class="metric">Sum Internal Hours</td>
-              ${monthKeys.map(
-                (mKey) =>
-                  html`<td class="numeric">
-                    ${formatValue(totals.internal.hours.get(mKey) || 0)}
-                  </td>`
-              )}
-              <td class="numeric sum-column">
-                ${formatValue(sum(totals.internal.hours))}
-              </td>
-            </tr>
-            <tr class="group-row ${cls}">
-              <td class="metric">Sum Internal Cost</td>
-              ${monthKeys.map(
-                (mKey) =>
-                  html`<td class="numeric">
-                    ${formatValue(totals.internal.cost.get(mKey) || 0)}
-                  </td>`
-              )}
-              <td class="numeric sum-column">
-                ${formatValue(sum(totals.internal.cost))}
-              </td>
-            </tr>
-          `;
-        })()}
-      </tbody>
-    </table>
-  `;
+  for (const [identity, allocation] of profileAllocations) {
+    const profile = profileDefinitions.get(identity);
+    const account = profile.external ? 'external' : 'internal';
+    const key = JSON.stringify([profile.supplier_id, profile.profile_id]);
+    if (!profiles.has(key)) {
+      const supplier = suppliers.get(profile.supplier_id);
+      const definition = supplier.profiles.find((entry) => entry.id === profile.profile_id);
+      profiles.set(key, { account, label: `${supplier.name} / ${definition.name}`,
+        hours: new Map(monthKeys.map((month) => [month, 0])),
+        cost: new Map(monthKeys.map((month) => [month, 0])) });
+    }
+    const row = profiles.get(key);
+    for (const metric of ['hours', 'cost']) {
+      for (const month of monthKeys) {
+        row[metric].set(month, row[metric].get(month) + amount(allocation[metric][account], month));
+      }
+    }
+  }
+  const renderPair = (label, series) => ['hours', 'cost'].map((metric) => html`<tr>
+    <td>${label} ${metric === 'hours' ? 'Hours' : 'Cost'}</td>
+    ${monthKeys.map((month) => html`<td class="numeric">${formatPlainNumber(component, series[metric].get(month))}</td>`)}
+    <td class="numeric sum-column">${formatPlainNumber(component,
+      monthKeys.reduce((sum, month) => sum + series[metric].get(month), 0))}</td>
+  </tr>`);
+  return html`<table class="summary-table" style="margin-bottom:12px">
+    <thead><tr><th>Metric</th>${component.months.map((month) => html`<th>${monthLabel(month)}</th>`)}
+      <th>Sum</th></tr></thead>
+    <tbody>${accounts.map((account) => html`
+      <tr class="group-header-row"><td colspan=${monthKeys.length + 2}>${account === 'internal' ? 'Internal' : 'External'}</td></tr>
+      ${[...profiles.values()].filter((row) => row.account === account)
+        .sort((left, right) => left.label.localeCompare(right.label)).map((row) => renderPair(row.label, row))}
+      ${renderPair(account === 'internal' ? 'Internal' : 'External', totals.get(account))}
+    `)}</tbody>
+  </table>`;
 }
 
 function renderTeamMonthTable(component, teams, teamAllocations, monthKeys) {

@@ -1,168 +1,49 @@
 import { html } from '../vendor/lit.js';
 
 export function renderTeamMembersView(component) {
-  let teams = component.costTeams;
-  // Accept different shapes: null, array, object with `teams`, or object map
-  if (!teams)
-    return html`<div class="empty-state">
-      <h3>No Team Members</h3>
-      <p>No team membership data available.</p>
-    </div>`;
-  if (!Array.isArray(teams) && typeof teams === 'object') {
-    if (Array.isArray(teams.teams)) teams = teams.teams;
-    else teams = Object.values(teams || {});
+  const metadata = component.costTeams;
+  if (metadata === null || metadata.catalogue.length === 0) {
+    return html`<div class="empty-state"><h3>No Workforce</h3></div>`;
   }
-  if (!Array.isArray(teams) || teams.length === 0)
-    return html`<div class="empty-state">
-      <h3>No Team Members</h3>
-      <p>No team membership data available.</p>
-    </div>`;
-
-  const fmtCurrency = (v) =>
-    (typeof v === 'number' ? v
-    : v && v.parsedValue ? v.parsedValue
-    : Number(v) || 0
-    ).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-
-  return html`<div style="display:flex; flex-direction:column; gap:12px; padding:8px">
-    ${teams.map((team) => {
-      const totals = team.totals || {};
-      const internalCount = totals.internal_count || 0;
-      const externalCount = totals.external_count || 0;
-      const internalHours = totals.internal_hours_total || 0;
-      const externalHours = totals.external_hours_total || 0;
-      const internalRateTotal = totals.internal_hourly_rate_total || 0;
-      const externalRateTotal = totals.external_hourly_rate_total || 0;
-      const members = Array.isArray(team.members) ? team.members : [];
-      const teamKey = team.id || team.name || JSON.stringify(team);
-      const expanded = component.expandedTeams && component.expandedTeams.has(teamKey);
-      return html` <div
-        style="border:1px solid #e6e6e6; padding:10px; border-radius:6px; background:#fff"
-      >
-        <div class="team-summary" @click="${() => component.toggleTeam(teamKey)}">
-          <div class="team-name">${expanded ? '▾ ' : '▸ '}${team.name || team.id}</div>
-          <div class="team-metrics">
-            <div class="team-metric">Int: ${internalCount}</div>
-            <div class="team-metric">Ext: ${externalCount}</div>
-            <div class="team-metric">Int hrs: ${internalHours}</div>
-            <div class="team-metric">Ext hrs: ${externalHours}</div>
-            <div class="team-metric">Int rate: ${fmtCurrency(internalRateTotal)}</div>
-            <div class="team-metric">Ext rate: ${fmtCurrency(externalRateTotal)}</div>
-          </div>
-        </div>
-        ${expanded ?
-          html`<div>
-            <table class="table" style="min-width:700px; margin-bottom:4px">
-              <thead>
-                <tr>
-                  <th class="left">Member</th>
-                  <th>Site</th>
-                  <th>Budget Hourly Rate</th>
-                  <th>Budget Hours / mo</th>
-                  <th>Budget Monthly Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${(() => {
-                  const externals = members
-                    .filter((x) => x && x.external)
-                    .slice()
-                    .sort((a, b) =>
-                      String(a.name || '').localeCompare(String(b.name || ''))
-                    );
-                  const internals = members
-                    .filter((x) => (!x || !x.external ? true : false))
-                    .slice()
-                    .sort((a, b) =>
-                      String(a.name || '').localeCompare(String(b.name || ''))
-                    );
-                  const rows = [];
-                  if (internals.length) {
-                    rows.push(
-                      html`<tr>
-                        <td
-                          class="left"
-                          colspan="5"
-                          style="background:#f6fff6; font-weight:600"
-                        >
-                          Internal Members
-                        </td>
-                      </tr>`
-                    );
-                    for (const m of internals) {
-                      const rate =
-                        (m &&
-                          m.hourly_rate &&
-                          (typeof m.hourly_rate.parsedValue === 'number' ?
-                            m.hourly_rate.parsedValue
-                          : Number(m.hourly_rate.source || m.hourly_rate) || 0)) ||
-                        0;
-                      const hours = (m && (m.hours_per_month || m.hours || 0)) || 0;
-                      const monthly = +(rate * hours || 0);
-                      rows.push(
-                        html`<tr>
-                          <td class="left">${m && m.name}</td>
-                          <td>${m && m.site}</td>
-                          <td style="text-align:right">
-                            ${fmtCurrency(m && m.hourly_rate)}
-                          </td>
-                          <td style="text-align:right">${hours}</td>
-                          <td style="text-align:right">${fmtCurrency(monthly)}</td>
-                        </tr>`
-                      );
-                    }
-                  }
-                  if (externals.length) {
-                    rows.push(
-                      html`<tr>
-                        <td
-                          class="left"
-                          colspan="5"
-                          style="background:#f9f9fb; font-weight:600"
-                        >
-                          External Members
-                        </td>
-                      </tr>`
-                    );
-                    for (const m of externals) {
-                      const rate =
-                        (m &&
-                          m.hourly_rate &&
-                          (typeof m.hourly_rate.parsedValue === 'number' ?
-                            m.hourly_rate.parsedValue
-                          : Number(m.hourly_rate.source || m.hourly_rate) || 0)) ||
-                        0;
-                      const hours = (m && (m.hours_per_month || m.hours || 0)) || 0;
-                      const monthly = +(rate * hours || 0);
-                      rows.push(
-                        html`<tr>
-                          <td class="left">${m && m.name}</td>
-                          <td>${m && m.site}</td>
-                          <td style="text-align:right">
-                            ${fmtCurrency(m && m.hourly_rate)}
-                          </td>
-                          <td style="text-align:right">${hours}</td>
-                          <td style="text-align:right">${fmtCurrency(monthly)}</td>
-                        </tr>`
-                      );
-                    }
-                  }
-                  if (rows.length === 0)
-                    rows.push(
-                      html`<tr>
-                        <td class="left" colspan="5">No members</td>
-                      </tr>`
-                    );
-                  return rows;
-                })()}
-              </tbody>
-            </table>
-          </div>`
-        : ''}
-      </div>`;
+  const suppliers = new Map(metadata.suppliers.map((supplier) => [supplier.id, supplier]));
+  const currency = (amount) => amount.toLocaleString(undefined,
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return html`<div class="workforce-bases">
+    ${metadata.catalogue.map((definition) => {
+      const basis = definition.kind === 'team'
+        ? metadata.teams[definition.id] : metadata.groups[definition.id];
+      const memberDefinitions = definition.kind === 'team' ? [definition]
+        : metadata.catalogue.filter((entry) => entry.kind === 'team' && entry.group_id === definition.id);
+      const expanded = component.expandedTeams.has(definition.id);
+      return html`<section style="border-bottom:1px solid #e6e6e6; padding:10px 0">
+        <button class="team-summary" aria-expanded=${expanded}
+          style="border:0;width:100%;background:transparent;text-align:left"
+          @click=${() => component.toggleTeam(definition.id)}>
+          <span class="team-name">${expanded ? '\u25be' : '\u25b8'} ${definition.name}
+            ${definition.archived ? '(archived)' : ''}</span>
+          <span class="team-metrics">
+            <span>Internal FTE: ${basis.internal.fte}</span>
+            <span>External FTE: ${basis.external.fte}</span>
+            <span>Internal hours: ${basis.internal.monthly_hours}</span>
+            <span>External hours: ${basis.external.monthly_hours}</span>
+            <span>Internal cost: ${currency(basis.internal.monthly_cost)}</span>
+            <span>External cost: ${currency(basis.external.monthly_cost)}</span>
+          </span>
+        </button>
+        ${expanded ? html`<table class="table" style="width:100%">
+          <thead><tr><th class="left">Team</th><th class="left">Supplier</th>
+            <th class="left">Profile</th><th>Account</th><th>FTE</th><th>Hourly Rate</th>
+            <th>Monthly Hours</th><th>Monthly Cost</th></tr></thead>
+          <tbody>${memberDefinitions.flatMap((member) => metadata.teams[member.id].profiles.map((row) => {
+            const supplier = suppliers.get(row.supplier_id);
+            const profile = supplier.profiles.find((entry) => entry.id === row.profile_id);
+            return html`<tr><td>${member.name}</td><td>${supplier.name}</td><td>${profile.name}</td>
+              <td>${row.external ? 'External' : 'Internal'}</td><td>${row.fte}</td>
+              <td>${currency(profile.hourly_rate)}</td><td>${row.monthly_hours}</td>
+              <td>${currency(row.monthly_cost)}</td></tr>`;
+          }))}</tbody>
+        </table>` : ''}
+      </section>`;
     })}
   </div>`;
 }

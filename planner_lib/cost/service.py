@@ -1,10 +1,15 @@
 from typing import List, Dict, Any, Optional
 from .engine import invalidate_team_rates_cache
-from .allocation_rule import build_allocation_graph, has_valid_allocation_span, resolve_effective_allocations
+from .allocation_rule import (
+    allocation_conflicts, build_allocation_graph, has_valid_allocation_span,
+    resolve_effective_allocations,
+)
 from . import engine as _engine
 import logging
 from datetime import datetime, timezone
 from planner_lib.storage.base import StorageBackend
+from planner_lib.domain.teams import TeamCatalogue
+from planner_lib.domain.workforce import WorkforceCatalogue
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +92,9 @@ class CostService:
         graph = build_allocation_graph(features)
         features_by_id, parents_by_child, _ = graph
         allocations = resolve_effective_allocations(features, graph)
-        known_teams = {team['id'] for team in self._team_service.list_teams()}
+        known_teams = {
+            team['id'] for team in self._team_service.list_teams(include_archived=True)
+        }
         unknown_teams = []
 
         targets_by_id = {}
@@ -149,9 +156,110 @@ class CostService:
                 'project_container_order': project_container_order, 'unknown_teams': unknown_teams}
 
 
+class WorkforceCostService:
+    """Canonical runtime pricing; requires migrated schemas and has no people/rate fallback."""
+
+    def __init__(self, storage: StorageBackend, project_repository: Any) -> None:
+        self._storage = storage
+        self._projects = project_repository
+
+    def _catalogues(self) -> tuple[TeamCatalogue, WorkforceCatalogue]:
+        with self._storage.transaction():
+            teams = TeamCatalogue(self._storage.load('config', 'teams'))
+            workforce = WorkforceCatalogue(self._storage.load('config', 'workforce'), teams)
+            return teams, workforce
+
+    def invalidate_cache(self) -> None:
+        """No derived rate cache exists: every estimate reads a coherent current snapshot."""
+        return None
+
+    def reload(self) -> None:
+        """Validate the current canonical snapshot without retaining stale workforce bases."""
+        self._catalogues()
+
+    def team_bases(self) -> dict[str, Any]:
+        """Expose anonymous member bases and separately identified non-charged group rollups."""
+        teams, workforce = self._catalogues()
+        return {'catalogue': teams.definitions(), 'teams': workforce.team_bases(),
+            'groups': workforce.group_bases(), 'suppliers': workforce.definitions()['suppliers']}
+
+    def estimate_costs(self, session: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve complete reservations before projecting costs into configured owner plans."""
+        teams, workforce = self._catalogues()
+        definitions = teams.definitions()
+        memberships = {
+            item['id']: item['group_id'] for item in definitions
+            if item['kind'] == 'team' and item['group_id'] is not None
+        }
+        features = session['features']
+        graph = build_allocation_graph(features)
+        by_id, parents, _ = graph
+        conflicts = allocation_conflicts(features, memberships)
+        if conflicts:
+            raise ValueError(f'Allocation graph has group/member conflicts: {conflicts}')
+        allocations = resolve_effective_allocations(features, graph, memberships)
+        plans = self._projects.list_projects()
+        plan_ids = {plan['id'] for plan in plans}
+        known = {item['id'] for item in definitions}
+        unknown = []
+        projects: dict[str, Any] = {}
+        for feature in features:
+            if feature.get('stateCategory') == 'Removed' or feature.get('ancestorOnly', False):
+                continue
+            feature_id = str(feature['id'])
+            unknown.extend({'feature_id': feature['id'], **item}
+                           for item in feature.get('capacity', []) if item['team'] not in known)
+            target_ids: set[str] = set()
+            pending = [feature_id]
+            visited: set[str] = set()
+            while pending:
+                current_id = pending.pop()
+                if current_id in visited:
+                    continue
+                visited.add(current_id)
+                current = by_id[current_id]
+                if current.get('project') and not current.get('ancestorOnly', False):
+                    target_ids.add(current['project'])
+                target_ids.update(current.get('sourcePlanIds', []))
+                pending.extend(parents[current_id])
+            target_ids.intersection_update(plan_ids)
+            cost = _engine.calculate_workforce_detailed(
+                teams, workforce, feature.get('start'), feature.get('end'), allocations[feature_id],
+            )
+            original = feature.get('capacity', []) if has_valid_allocation_span(feature) else []
+            estimate = _engine.calculate_workforce_detailed(
+                teams, workforce, feature.get('start'), feature.get('end'), original,
+            )
+            cost['estimate_teams'] = estimate['teams']
+            cost['effective_capacity'] = allocations[feature_id]
+            cost['has_project_parent'] = bool(parents[feature_id])
+            for project_id in sorted(target_ids):
+                project = projects.setdefault(project_id, {'totals': {
+                    'internal': {'hours': {}, 'cost': {}},
+                    'external': {'hours': {}, 'cost': {}}, 'complete': True,
+                }})
+                project[feature['id']] = cost
+                project['totals']['complete'] = project['totals']['complete'] and cost['complete']
+                for team in cost['teams'].values():
+                    for account in ('internal', 'external'):
+                        for metric in ('hours', 'cost'):
+                            months = project['totals'][account][metric]
+                            for month, value in team[metric][account].items():
+                                months[month] = round(months.get(month, 0) + value, 2)
+        return {
+            'projects': projects,
+            'project_types': {plan['id']: plan['type'] for plan in plans},
+            'project_container_order': {plan['id']: plan['container_order'] for plan in plans},
+            'unknown_teams': unknown, 'complete': not unknown,
+        }
+
+
 def _parse_totals(totals: dict) -> dict:
     out: Dict[str, Any] = {}
     for k, v in (totals or {}).items():
+        if k in {'internal', 'external', 'complete'}:
+            out[k] = v
+            continue
         parts = k.rsplit('_', 2)
         if len(parts) == 3:
             period, direction, metric = parts
@@ -265,7 +373,7 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                     # Preserve the teams structure if present directly on feature value
                     if m_k == 'teams' and isinstance(m_v, dict):
                         metrics["teams"] = m_v
-                    elif m_k not in ('estimate_teams', 'effective_capacity'):
+                    elif m_k not in ('estimate_teams', 'effective_capacity', 'complete', 'missing_basis'):
                         metrics.setdefault("misc", {})[m_k] = m_v
 
             fid_s = str(fid)
@@ -295,6 +403,9 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                 "estimateTeams": fval.get('estimate_teams', {}),
                 "effectiveCapacity": fval.get('effective_capacity', []),
             }
+            if 'complete' in fval:
+                feature_obj['complete'] = fval['complete']
+                feature_obj['missingBasis'] = fval['missing_basis']
             # Derive per-month maps for metrics.internal and metrics.external
             # from the per-team monthly buckets when available. This allows the
             # frontend to render month columns directly from feature.metrics
@@ -375,6 +486,9 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
         "projects": projects,
         "unknown_teams": [] if unknown_teams is None else unknown_teams,
     }
+    out['complete'] = not out['unknown_teams'] and all(
+        project['totals']['complete'] for project in projects if 'complete' in project['totals']
+    )
     if isinstance(src.get("meta"), dict):
         out["meta"].update({k: v for k, v in src["meta"].items() if k in ("scenario_id", "applied_overrides", "deltas")})
     return out

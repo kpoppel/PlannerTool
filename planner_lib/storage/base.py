@@ -10,6 +10,7 @@ backend with a serializer for transparent serialization.
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from contextlib import AbstractContextManager
 from typing import Any, Iterable, Optional
 from .serializer import Serializer
 
@@ -52,6 +53,10 @@ class StorageBackend(ABC):
     def configure(self, **options) -> None:
         """Configure backend-specific options."""
 
+    def transaction(self) -> AbstractContextManager[None]:
+        """Serialize read/modify/write operations and roll back on failure, or reject support."""
+        raise NotImplementedError('This storage backend does not support transactions')
+
 
 # --- Composition helpers -------------------------------------------------
 
@@ -92,4 +97,8 @@ class SerializerBackend(StorageBackend):
 
     def configure(self, **options) -> None:
         return self._backend.configure(**options)
+
+    def transaction(self) -> AbstractContextManager[None]:
+        """Keep serialization inside the underlying backend's atomic transaction."""
+        return self._backend.transaction()
 

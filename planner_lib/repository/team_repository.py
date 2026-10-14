@@ -7,9 +7,9 @@ DI key) so that team data benefits from the TTL cache.  Adds utility methods
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, cast
 
-from planner_lib.domain.teams import DomainTeam
+from planner_lib.domain.teams import AllocationTarget, DomainTeam
 
 logger = logging.getLogger(__name__)
 
@@ -31,22 +31,43 @@ class TeamRepository:
     # Public API
     # ------------------------------------------------------------------
 
-    def list_teams(self) -> List[DomainTeam]:
-        """Return all configured teams (excluding entries marked exclude=True)."""
-        return self._backend.fetch_config_teams()
+    def list_teams(self, *, include_archived: bool = False) -> List[DomainTeam]:
+        """Return active choices, with archives available for existing calculations."""
+        return self._backend.fetch_config_teams(include_archived=include_archived)
 
     def name_to_id(self, name: str) -> Optional[str]:
-        """Map a team display name or short_name to its canonical slug id."""
+        """Resolve existing names/tokens, including archives, to the current team id."""
         tkn = name.strip().lower()
-        for t in self._backend.fetch_config_teams():
+        for t in self._backend.fetch_config_teams(include_archived=True):
             if tkn == t.get("name", "").lower() or tkn == (t.get("short_name") or "").lower():
                 return t["id"]
         return None
 
     def id_to_short_name(self, team_id: str) -> Optional[str]:
-        """Map a team slug id back to its short_name (or full name)."""
+        """Resolve existing team IDs, including archives, for allocation serialization."""
         tid = team_id.strip()
-        for t in self._backend.fetch_config_teams():
+        for t in self._backend.fetch_config_teams(include_archived=True):
             if t["id"] == tid:
                 return t.get("short_name") or t.get("name")
+        return None
+
+
+class WorkforceTeamRepository(TeamRepository):
+    """Canonical token-only repository, retaining unknown source tokens as unresolved."""
+
+    def name_to_id(self, name: str) -> Optional[str]:
+        """Resolve only immutable persisted tokens, including archived identities."""
+        normalized = name.strip().lower()
+        for record in self._backend.fetch_config_teams(include_archived=True):
+            target = cast(AllocationTarget, record)
+            if normalized == target['allocation_token'].strip().lower():
+                return target['id']
+        return None
+
+    def id_to_short_name(self, team_id: str) -> Optional[str]:
+        """Return the original immutable token through the capacity writer's existing port."""
+        for record in self._backend.fetch_config_teams(include_archived=True):
+            target = cast(AllocationTarget, record)
+            if target['id'] == team_id:
+                return target['allocation_token']
         return None

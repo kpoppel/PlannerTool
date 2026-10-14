@@ -1,0 +1,65 @@
+[
+  {
+    "name": "descendant member invalidates entire ancestor group through an undated node",
+    "memberships": {"A": "G", "B": "G"},
+    "features": [
+      {"id": "root", "start": "2025-01-01", "end": "2025-12-31", "capacity": [{"team": "G", "capacity": 40}, {"team": "C", "capacity": 20}]},
+      {"id": "middle", "parentId": "root", "capacity": []},
+      {"id": "leaf", "parentId": "middle", "start": "2025-06-02", "end": "2025-06-02", "capacity": [{"team": "A", "capacity": 100}]}
+    ],
+    "expected": {"root": [{"team": "C", "capacity": 20}], "middle": [], "leaf": [{"team": "A", "capacity": 100}]},
+    "expanded": {"root": [{"team": "C", "capacity": 20}], "middle": [], "leaf": [{"team": "A", "capacity": 100}]},
+    "conflicts": []
+  },
+  {
+    "name": "winning group applies full percentage to every member without adding a group row",
+    "memberships": {"A": "G", "B": "G"},
+    "features": [{"id": "root", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "G", "capacity": 40}]}],
+    "expected": {"root": [{"team": "G", "capacity": 40}]},
+    "expanded": {"root": [{"team": "A", "capacity": 40}, {"team": "B", "capacity": 40}]},
+    "conflicts": []
+  },
+  {
+    "name": "undated and excluded members do not invalidate a group",
+    "memberships": {"A": "G", "B": "G"},
+    "features": [
+      {"id": "root", "excludedChildIds": ["excluded"], "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "G", "capacity": 40}]},
+      {"id": "undated", "parentId": "root", "capacity": [{"team": "A", "capacity": 100}]},
+      {"id": "excluded", "parentId": "root", "start": "2025-01-06", "end": "2025-01-10", "capacity": [{"team": "B", "capacity": 20}]}
+    ],
+    "expected": {"root": [{"team": "G", "capacity": 40}], "undated": [], "excluded": [{"team": "B", "capacity": 20}]},
+    "expanded": {"root": [{"team": "A", "capacity": 40}, {"team": "B", "capacity": 40}], "undated": [], "excluded": [{"team": "B", "capacity": 20}]},
+    "conflicts": []
+  },
+  {
+    "name": "descendant group replaces the same ancestor group",
+    "memberships": {"A": "G", "B": "G"},
+    "features": [
+      {"id": "root", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "G", "capacity": 40}]},
+      {"id": "leaf", "parentId": "root", "start": "2025-02-03", "end": "2025-02-03", "capacity": [{"team": "G", "capacity": 20}]}
+    ],
+    "expected": {"root": [], "leaf": [{"team": "G", "capacity": 20}]},
+    "expanded": {"root": [], "leaf": [{"team": "A", "capacity": 20}, {"team": "B", "capacity": 20}]},
+    "conflicts": []
+  },
+  {
+    "name": "same-item group member overlap remains explicit for preflight",
+    "memberships": {"A": "G", "B": "G"},
+    "features": [{"id": "root", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "G", "capacity": 40}, {"team": "A", "capacity": 20}]}],
+    "expected": {"root": [{"team": "G", "capacity": 40}, {"team": "A", "capacity": 20}]},
+    "expanded": null,
+    "conflicts": [{"kind": "same-item", "ancestor": "root", "descendant": "root", "group": "G", "team": "A"}]
+  },
+  {
+    "name": "descendant group below ancestor member is rejected even through undated nodes",
+    "memberships": {"A": "G", "B": "G"},
+    "features": [
+      {"id": "root", "start": "2025-01-01", "end": "2025-01-31", "capacity": [{"team": "A", "capacity": 40}]},
+      {"id": "middle", "parentId": "root", "capacity": []},
+      {"id": "leaf", "parentId": "middle", "start": "2025-01-06", "end": "2025-01-10", "capacity": [{"team": "G", "capacity": 20}]}
+    ],
+    "expected": {"root": [{"team": "A", "capacity": 40}], "middle": [], "leaf": [{"team": "G", "capacity": 20}]},
+    "expanded": null,
+    "conflicts": [{"kind": "descendant-group", "ancestor": "root", "descendant": "leaf", "group": "G", "team": "A"}]
+  }
+]

@@ -28,6 +28,10 @@ from typing import Any, Dict, List, Optional
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 from planner_lib.backend.port import TaskBackend, BackendCredential
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
+from planner_lib.domain.teams import TeamCatalogue
+from planner_lib.domain.allocation_availability import project_allocation_availability, validate_allocation_change
+from planner_lib.cost.allocation_rule import allocation_conflicts
+from planner_lib.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -224,4 +228,84 @@ class TaskRepository:
             return self._credential_provider.get_credential(user_id)
         except Exception:
             return None
+
+
+class WorkforceTaskRepository(TaskRepository):
+    """Canonical publication boundary requiring a complete forest and valid allocation graph."""
+
+    def __init__(
+        self, backend: TaskBackend, project_repository, credential_provider,
+        *, storage: StorageBackend, task_storage: StorageBackend,
+    ) -> None:
+        super().__init__(backend, project_repository, credential_provider)
+        self._storage = storage
+        self._task_storage = task_storage
+
+    def _fetch_seeds(self, credential: Optional[BackendCredential]) -> List[BackendTask]:
+        """Fail on any configured source error instead of certifying a partial forest."""
+        items: dict[str, BackendTask] = {}
+        for project in self._project_service.get_project_map():
+            for task in self._backend.fetch_plan_tasks(plan=project, credential=credential):
+                identity = str(task['id'])
+                previous = items.get(identity)
+                sources = set(task.get('sourcePlanIds', [])) | {project['id']}
+                if previous is not None:
+                    sources.update(previous['sourcePlanIds'])
+                if previous is None or task.get('revision', 0) > previous.get('revision', 0):
+                    items[identity] = dict(task)
+                elif task.get('revision', 0) == previous.get('revision', 0):
+                    comparable = {key: value for key, value in previous.items()
+                                  if key not in {'sourcePlanIds', 'backendData'}}
+                    incoming = {key: value for key, value in task.items()
+                                if key not in {'sourcePlanIds', 'backendData'}}
+                    if comparable != incoming:
+                        raise ValueError(f'Conflicting task snapshots at the same revision: {identity}')
+                items[identity]['sourcePlanIds'] = sorted(sources)
+        return list(items.values())
+
+    def write(self, updates: List[dict], user_id: str) -> Dict[str, Any]:
+        """Validate the entire authored batch before issuing the first external mutation."""
+        if not updates:
+            return {'updated': 0, 'errors': []}
+        credential = self._credential_provider.get_credential(user_id)
+        if credential is None:
+            raise BackendAuthError('No credential available for publication')
+        with self._storage.transaction(), self._task_storage.transaction():
+            catalogue = TeamCatalogue(self._storage.load('config', 'teams'))
+            definitions = catalogue.definitions()
+            projects = self._project_service.list_projects()
+            defaults = {} if not projects else projects[0]['allocation_defaults']
+            originals = {str(task['id']): task for task in self.read(credential=credential)}
+            candidate = {identity: dict(task) for identity, task in originals.items()}
+            seen: set[str] = set()
+            editable = {'id', 'capacity', 'start', 'end', 'state', 'iterationPath', 'tags', 'relations'}
+            for update in updates:
+                identity = str(update['id'])
+                if identity in seen or identity not in originals:
+                    raise ValueError(f'Unknown or duplicate publication task: {identity}')
+                if set(update) - editable:
+                    raise ValueError(f'Unsupported publication fields: {sorted(set(update) - editable)}')
+                seen.add(identity)
+                original = originals[identity]
+                if 'capacity' in update:
+                    availability = project_allocation_availability(original, projects, definitions, defaults)
+                    validate_allocation_change(availability, update['capacity'])
+                candidate[identity].update(update)
+                if 'state' in update:
+                    owner = next((project for project in projects if project['id'] == original['project']), None)
+                    if owner is None or update['state'] not in owner['state_categories']:
+                        raise ValueError(f'Unknown publication state: {update["state"]}')
+                    candidate[identity]['stateCategory'] = owner['state_categories'][update['state']]
+                if 'relations' in update:
+                    for relation in update['relations']:
+                        if relation['type'] in ('Parent', 'Child') and str(relation['id']) not in candidate:
+                            raise ValueError('Cannot publish hierarchy links without loaded context')
+            memberships = {
+                entry['id']: entry['group_id'] for entry in definitions
+                if entry['kind'] == 'team' and entry['group_id'] is not None
+            }
+            conflicts = allocation_conflicts(list(candidate.values()), memberships)
+            if conflicts:
+                raise ValueError(f'Allocation conflict: {conflicts}')
+            return super().write(updates, user_id)
 

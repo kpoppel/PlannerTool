@@ -254,6 +254,8 @@ class TeamConfigBackend(Protocol):
     def fetch_config_teams(
         self,
         credential: Optional[BackendCredential] = None,
+        *,
+        include_archived: bool = False,
     ) -> List[DomainTeam]: ...
 
 

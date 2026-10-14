@@ -22,3 +22,5 @@ class DomainProject(TypedDict):
     display_states: List[str]
     state_categories: Dict[str, StateCategory]  # state name → ADO category
     iteration_uuid: NotRequired[Optional[str]]  # associated iteration set id
+    allocation_defaults: NotRequired[Dict[str, List[str]]]
+    allocatable_ids: NotRequired[List[str]]

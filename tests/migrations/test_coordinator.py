@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from planner_lib.migrations.contracts import SchemaError, schema_state
+from planner_lib.migrations.contracts import SchemaError, TARGET_REVISION, schema_state
 from planner_lib.migrations.coordinator import Database, read_json
 from planner_lib.migrations.revisions import BASELINE_IDS
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
@@ -18,6 +18,7 @@ def seed_legacy(root):
     storage.save('config', 'server_config', {'schema_version': 2, 'feature_flags': {}})
     storage.save('config', 'projects', {'schema_version': 3, 'project_map': []})
     storage.save('config', 'people', {'schema_version': 1, 'database': {'people': []}})
+    storage.save('config', 'teams', {'schema_version': 2, 'teams': []})
     storage.save('opaque', 'large', b'a' * 100_000)
     storage.close()
     (root / 'migrations.json').write_text(json.dumps({'applied': list(BASELINE_IDS)}))
@@ -30,7 +31,7 @@ def test_external_inputs_only_initialize_without_migrations(tmp_path, monkeypatc
     database = Database(tmp_path)
     monkeypatch.setattr(database, '_upgrade', lambda *args: pytest.fail('fresh install ran upgrades'))
     handle = database.prepare()
-    assert handle.storage.load('system', 'schema_state')['schema_revision'] == 34
+    assert handle.storage.load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
     handle.close()
     assert external.read_text() == 'external'
     assert len(list((tmp_path / 'generations').iterdir())) == 1
@@ -99,6 +100,11 @@ def test_previous_target_journal_allows_status_and_next_upgrade(tmp_path, phase)
     previous_generation = handle.storage.data_dir.parent.name
     view_key = '11111111-1111-4111-8111-111111111111_saved'
     handle.storage.save('system', 'schema_state', schema_state(33, initialized=True))
+    handle.storage.save('config', 'projects', {'schema_version': 3, 'project_map': [],
+                                             'container_types': ['project', 'team']})
+    handle.storage.save('config', 'teams', {'schema_version': 2, 'teams': []})
+    handle.storage.save('config', 'people', {'schema_version': 1, 'database': {'people': []}})
+    handle.storage.delete('config', 'workforce')
     handle.storage.save('views', view_key, {'name': 'Preserved', 'viewOptions': {}})
     handle.close()
     journal_path = tmp_path / 'upgrade-state.json'
@@ -113,18 +119,18 @@ def test_previous_target_journal_allows_status_and_next_upgrade(tmp_path, phase)
     handle = database.prepare()
     try:
         assert handle.storage.data_dir.parent.name != previous_generation
-        assert handle.storage.load('system', 'schema_state')['schema_revision'] == 34
+        assert handle.storage.load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
         assert handle.storage.load('views', view_key) == {
             'name': 'Preserved', 'viewOptions': {'packedModeUnplannedPreference': True},
         }
     finally:
         handle.close()
-    assert read_json(journal_path)['target_revision'] == 34
+    assert read_json(journal_path)['target_revision'] == TARGET_REVISION
     assert read_json(journal_path)['phase'] == 'complete'
     assert len(list((tmp_path / 'generations').iterdir())) == 1
 
 
-@pytest.mark.parametrize('target', [None, True, '33', 33.0, 25, 35])
+@pytest.mark.parametrize('target', [None, True, '33', 33.0, 25, TARGET_REVISION + 1])
 def test_invalid_journal_target_is_rejected(tmp_path, target):
     handle = Database(tmp_path).prepare()
     handle.close()
@@ -156,6 +162,7 @@ def test_status_of_missing_installation_creates_nothing(tmp_path):
     'journal-preparing', 'copy-file', 'copy-complete', 'journal-migrating',
     'migration-26', 'migration-27', 'migration-28', 'migration-29',
     'migration-30', 'migration-31', 'migration-32', 'migration-33', 'migration-34',
+    'migration-35',
     'journal-validated', 'candidate-flushed', 'pointer-published',
     'journal-published', 'journal-activated', 'source-removed', 'journal-complete',
 ])
@@ -179,7 +186,7 @@ Database(sys.argv[1], fault=fault).prepare()
         source.close()
     handle = Database(tmp_path).prepare()
     assert handle.storage.load('opaque', 'large') == b'a' * 100_000
-    assert handle.storage.load('system', 'schema_state')['schema_revision'] == 34
+    assert handle.storage.load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
     handle.close()
     assert not (tmp_path / 'cache').exists()
     assert len(list((tmp_path / 'generations').iterdir())) == 1
@@ -263,9 +270,9 @@ def test_expiring_schema_metadata_is_rejected(tmp_path):
 def test_status_reports_newer_schema_without_service_compatibility(tmp_path):
     handle = Database(tmp_path).prepare()
     state = handle.storage.load('system', 'schema_state')
-    handle.storage.save('system', 'schema_state', {**state, 'schema_revision': 35})
+    handle.storage.save('system', 'schema_state', {**state, 'schema_revision': TARGET_REVISION + 1})
     handle.close()
-    assert Database(tmp_path).status()['active_revision'] == 35
+    assert Database(tmp_path).status()['active_revision'] == TARGET_REVISION + 1
     assert Database(tmp_path).status()['compatibility_error']
     with pytest.raises(SchemaError):
         Database(tmp_path).prepare()
@@ -400,7 +407,10 @@ def test_v421_adopts_authoritative_server_yaml_and_unversioned_people(tmp_path):
     handle = database.prepare()
     try:
         assert handle.storage.load('config', 'server_config') == server
-        assert handle.storage.load('config', 'people') == people
+        assert not handle.storage.exists('config', 'people')
+        assert handle.storage.load('config', 'workforce') == {
+            'schema_version': 2, 'suppliers': [], 'staffing': [],
+        }
     finally:
         handle.close()
     assert not server_path.exists()
@@ -470,4 +480,4 @@ def test_restore_over_legacy_yaml_cleans_owned_source_only(tmp_path):
     Database(root).restore(backup, confirmed=True)
     assert not owned.exists()
     assert external.read_text() == 'external-input'
-    assert Database(root).status()['active_revision'] == 34
+    assert Database(root).status()['active_revision'] == TARGET_REVISION

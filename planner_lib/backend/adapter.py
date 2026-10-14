@@ -80,7 +80,7 @@ class AzureAdapter:
                 for entry in parsed:
                     mapped = team_repository.name_to_id(entry['team'])
                     if mapped is None:
-                        continue
+                        mapped = entry['team']
                     filtered_capacity.append(
                         DomainCapacity(team=mapped, capacity=entry.get('capacity', 0))
                     )

@@ -194,12 +194,19 @@ def upgrade_34(storage):
         storage.save('views', key, {**view, 'viewOptions': options})
 
 
+def upgrade_35(storage):
+    from .workforce_candidate import upgrade_workforce_candidate
+
+    upgrade_workforce_candidate(storage)
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
         (26, 24, upgrade_26), (27, 26, upgrade_27), (28, 27, upgrade_28),
         (29, 28, upgrade_29), (30, 29, upgrade_30), (31, 30, upgrade_31),
         (32, 31, upgrade_32), (33, 32, upgrade_33), (34, 33, upgrade_34),
+        (35, 34, upgrade_35),
     )
 )
 
@@ -207,9 +214,10 @@ REGISTRY = tuple(
 def initialize(storage):
     defaults = {
         'server_config': {'schema_version': 2, 'log_level': 'INFO', 'feature_flags': {}},
-        'projects': {'schema_version': 3, 'project_map': [], 'container_types': ['project', 'team']},
-        'people': {'schema_version': 1, 'database': {'people': []}},
-        'teams': {'schema_version': 2, 'teams': []},
+        'projects': {'schema_version': 4, 'project_map': [], 'container_types': ['project', 'team'],
+                 'allocation_defaults': {'project': [], 'team': []}},
+        'teams': {'schema_version': 3, 'teams': [], 'groups': []},
+        'workforce': {'schema_version': 2, 'suppliers': [], 'staffing': []},
         'ado_config': {'organization_url': '', 'feature_flags': {}},
         'plugin_runtime_config': {'schema_version': 2, 'plugins': []},
     }
@@ -217,6 +225,7 @@ def initialize(storage):
         if not storage.exists('config', key):
             storage.save('config', key, value)
     storage.save('system', 'schema_state', schema_state(TARGET_REVISION, initialized=True))
+    storage.save('system', 'workforce_backend_refresh_required', False)
 
 
 def admit_legacy(storage, ledger, *, server_config=None):
@@ -253,13 +262,19 @@ def validate_records(storage, revision, *, server_config=None):
     try:
         server = storage.load('config', 'server_config') if server_config is None else server_config
         projects = storage.load('config', 'projects')
-        people = storage.load('config', 'people')
         if (server['schema_version'] != 2 or not isinstance(server['feature_flags'], dict)
-                or projects['schema_version'] != 3
-                or ('schema_version' in people and people['schema_version'] != 1)
-                or not isinstance(people['database']['people'], list)
                 or 'enable_azure_cache' in server['feature_flags']):
-            raise SchemaError('Legacy configuration invariants disagree with the ledger')
+            raise SchemaError('Server configuration invariants disagree with the ledger')
+        if revision >= 35:
+            from .workforce_candidate import validate_workforce_records
+
+            validate_workforce_records(storage)
+        else:
+            people = storage.load('config', 'people')
+            if (projects['schema_version'] != 3
+                    or ('schema_version' in people and people['schema_version'] != 1)
+                    or not isinstance(people['database']['people'], list)):
+                raise SchemaError('Legacy configuration invariants disagree with the ledger')
         for key in storage.list_keys('config'):
             if key != 'plugin_runtime_config' and not isinstance(storage.load('config', key), dict):
                 raise SchemaError('Configuration records must be objects')

@@ -28,7 +28,7 @@ import { renderGroupsRow } from './datasources/groups-row.js';
  * This file is responsible for:
  *   • Loading all config (events, ADO, system) in parallel
  *   • Holding all reactive state
- *   • Table shell, locked domain rows (Scenarios, Views, People, Teams)
+ *   • Table shell, locked domain rows (Scenarios, Views, Workforce, Projects)
  *   • Unified Save (three sequential endpoint calls)
  *   • Restart banner and status feedback
  *
@@ -44,7 +44,6 @@ const TTL_DEFAULTS = {
   fetch_iterations: 480,
   fetch_markers:    120,
   fetch_teams:      240,
-  fetch_people:     60,
 };
 
 /**
@@ -610,11 +609,11 @@ export class DataSources extends LitElement {
             ${this._lockedRow('Views', 'Saved timeline view state (zoom, filters, selected projects).', 'Local database')}
             <tr>
               <td>
-                <div class="domain-name">People</div>
-                <div class="domain-desc">Team-member roster and capacity data.</div>
+                <div class="domain-name">Workforce</div>
+                <div class="domain-desc">Anonymous supplier profiles and team staffing.</div>
               </td>
               <td><span class="locked-badge">🔒 Local database</span></td>
-              <td class="ttl-col">${this._ttlInput('fetch_people')}</td>
+              <td class="ttl-col"></td>
             </tr>
             <tr>
               <td>

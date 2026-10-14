@@ -64,7 +64,7 @@ class FakeProjectService:
 
 
 class FakeTeamService:
-    def list_teams(self):
+    def list_teams(self, *, include_archived: bool = False):
         return []
 
 

@@ -8,18 +8,50 @@ import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 describe('admin-projects', () => {
   let comp;
   beforeEach(() => {
+    server.use(http.get('/admin/v1/projects', () => HttpResponse.json({ content: {
+      schema_version: 4, container_types: ['project', 'team'], project_map: [],
+      allocation_defaults: { project: [], team: [] },
+    } })));
+    vi.spyOn(adminProvider, 'getWorkforce').mockResolvedValue({ ok: true, data: { content: {
+      teams: { schema_version: 3, teams: [], groups: [] },
+    } } });
     comp = document.createElement('admin-projects');
     document.body.appendChild(comp);
   });
 
   afterEach(() => {
     if (comp) comp.remove();
+    vi.restoreAllMocks();
+  });
+
+  it('edits canonical level defaults and distinguishes an empty override from inheritance', async () => {
+    await vi.waitFor(() => expect(comp.loading).to.equal(false));
+    comp.content = {
+      schema_version: 4, container_types: ['project'],
+      allocation_defaults: { project: ['opaque-team'] },
+      project_map: [{ id: 'plan', name: 'Plan', type: 'project', area_path: 'Area' }],
+    };
+    await comp.updateComplete;
+    comp.setProjectAllocationMode(0, false);
+    expect(comp.localProjects[0].allocatable_ids).to.deep.equal([]);
+    comp.setProjectAllocationChoice(0, 'opaque-team', true);
+    expect(comp.localProjects[0].allocatable_ids).to.deep.equal(['opaque-team']);
+    comp.setProjectAllocationMode(0, true);
+    expect(Object.hasOwn(comp.localProjects[0], 'allocatable_ids')).to.equal(false);
+    comp.setLevelAllocationChoice('project', 'opaque-team', false);
+    expect(comp.content.allocation_defaults.project).to.deep.equal([]);
+    comp.newContainerType = 'portfolio';
+    comp.addContainerType();
+    expect(comp.content.allocation_defaults.portfolio).to.deep.equal([]);
+    comp.removeContainerType('portfolio');
+    expect(Object.hasOwn(comp.content.allocation_defaults, 'portfolio')).to.equal(false);
   });
 
   it('syncs display_states when include_states are added and removed', async () => {
     // initialize content with one project with empty states
     comp.content = {
       container_types: ['project', 'team'],
+      allocation_defaults: { project: [], team: [] },
       project_map: [{ name: 'P1', include_states: [], display_states: [] }],
     };
     await comp.requestUpdate();
@@ -52,6 +84,7 @@ describe('admin-projects', () => {
     await vi.waitFor(() => expect(comp.loading).to.equal(false));
     comp.content = {
       container_types: ['B', 'A', 'C'],
+      allocation_defaults: { B: [], A: [], C: [] },
       project_map: [{ name: 'Plan A', type: 'A' }],
     };
     await comp.updateComplete;
@@ -79,6 +112,7 @@ describe('admin-projects', () => {
     await vi.waitFor(() => expect(comp.loading).to.equal(false));
     comp.content = {
       container_types: ['project', 'team'],
+      allocation_defaults: { project: [], team: [] },
       project_map: [{ name: 'Plan A', type: 'project', area_path: '' }],
     };
     await comp.updateComplete;
@@ -100,6 +134,7 @@ describe('admin-projects', () => {
       await comp.saveConfig();
       expect(save).toHaveBeenCalledWith({
         container_types: ['project', 'team', 'portfolio'],
+        allocation_defaults: { project: [], team: [], portfolio: [] },
         project_map: [{ name: 'Plan A', type: 'portfolio', area_path: '' }],
       });
     } finally {
@@ -111,6 +146,7 @@ describe('admin-projects', () => {
     await vi.waitFor(() => expect(comp.loading).to.equal(false));
     comp.content = {
       container_types: ['project', 'team'],
+      allocation_defaults: { project: [], team: [] },
       project_map: [{ name: 'Plan A', type: 'project', area_path: '' }],
     };
     await comp.updateComplete;
@@ -119,6 +155,7 @@ describe('admin-projects', () => {
     comp.useRawMode = true;
     comp.content = {
       container_types: ['project', 'team', 'portfolio'],
+      allocation_defaults: { project: [], team: [], portfolio: [] },
       project_map: [{ name: 'Raw Plan', type: 'portfolio', area_path: '' }],
     };
 
@@ -127,6 +164,7 @@ describe('admin-projects', () => {
       await comp.saveConfig();
       expect(save).toHaveBeenCalledWith({
         container_types: ['project', 'team', 'portfolio'],
+        allocation_defaults: { project: [], team: [], portfolio: [] },
         project_map: [{ name: 'Raw Plan', type: 'portfolio', area_path: '' }],
       });
     } finally {
@@ -156,6 +194,7 @@ describe('admin-projects', () => {
     it('fetches metadata when editProject is called on a project with an area_path', async () => {
       comp.content = {
         container_types: ['project', 'team'],
+        allocation_defaults: { project: [], team: [] },
         project_map: [
           { name: 'My Team', area_path: 'MyProj\\TeamA', task_types: [], include_states: [], display_states: [] },
         ],
@@ -176,6 +215,7 @@ describe('admin-projects', () => {
     it('clears _editMetadata when cancelEdit is called', async () => {
       comp.content = {
         container_types: ['project', 'team'],
+        allocation_defaults: { project: [], team: [] },
         project_map: [
           { name: 'My Team', area_path: 'MyProj\\TeamA', task_types: [], include_states: [], display_states: [] },
         ],
@@ -196,6 +236,7 @@ describe('admin-projects', () => {
     it('clears stale metadata when area_path input changes', async () => {
       comp.content = {
         container_types: ['project', 'team'],
+        allocation_defaults: { project: [], team: [] },
         project_map: [
           { name: 'My Team', area_path: 'MyProj\\TeamA', task_types: [], include_states: [], display_states: [] },
         ],
@@ -219,6 +260,7 @@ describe('admin-projects', () => {
     it('does not fetch metadata when editProject is called on a project without area_path', async () => {
       comp.content = {
         container_types: ['project', 'team'],
+        allocation_defaults: { project: [], team: [] },
         project_map: [
           { name: 'New Project', area_path: '', task_types: [], include_states: [], display_states: [] },
         ],
@@ -241,6 +283,7 @@ describe('admin-projects', () => {
 
       comp.content = {
         container_types: ['project', 'team'],
+        allocation_defaults: { project: [], team: [] },
         project_map: [
           { name: 'My Team', area_path: 'MyProj\\TeamA', task_types: [], include_states: [], display_states: [] },
         ],

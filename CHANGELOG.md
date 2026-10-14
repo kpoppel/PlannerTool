@@ -15,7 +15,26 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Wire the canonical Workforce admin and runtime with revision-35 anonymous staffing migration, validated plan availability, strict publication and separate group/member accounting.
+- Activate and verify revision-35 Workforce cutover with preserved identities, saved records and pricing bases, including idempotent live restart.
+- Preserve unresolved ADO allocation entries during reads and known-team edits, with token-only canonical repository ports and clarified local-ID migration rules.
 ### Added
+- Added anonymous workforce candidate conversion with archived incomplete review items, explicit admin review completion and measured per-team/accounting parity.
+- Added shared canonical allocation availability, group-aware precedence/capacity, retained-scenario membership validation and anonymous pricing with explicit missing-basis completeness; live cutover remains gated by migration preflight.
+- Added confirmed canonical team deletion with authenticated impact review, fresh-review receipts, atomic staffing/availability cleanup and an archive alternative while preserving retained task/scenario/view references.
+- Added server-owned `last_updated` metrics and canonical supplier/profile editing with affected-staffing review, inherited monthly costs and draft-preserving profile navigation.
+- Added the stage 3b canonical team/group catalogue contract with persisted identity, archive-aware lookup and strict configuration validation; runtime integration remains pending.
+- Added the anonymous workforce-v2 domain contract with supplier profiles, fractional-FTE bases, separate accounting/group rollups and archive-reference validation; runtime integration remains pending.
+- Added atomic canonical workforce editing with server-issued timestamp/entropy identities, immutable tokens, protected saves, stale-edit rejection and complete workforce backup coverage; live API integration remains pending.
+- Added authenticated canonical Workforce read/save/create APIs with migration gating, legacy-save bypass protection, structured errors and explicit post-commit cache warnings; UI and migration activation remain pending.
+- Added the canonical grouped Workforce composition editor and provider operations with revision-aware team/group/staffing edits, server-issued creation and visible save warnings; live cutover and supplier/profile editing remain pending.
+- Specified the stage 3b merged Teams/People/Cost administration, archive and warned team deletion, immutable allocation identity, workforce and application-wide allocation contract design.
+- Added the first Workforce admin UI with anonymous staffing summaries, archive/restore, warned deletion and archive-inclusive ADO token and cost identity resolution.
+- Consolidated Workforce team totals and expandable anonymous composition into one view, with a separate legacy site inventory and visible unconfigured staffing.
+- DetailsPanel exposes a plugin-independent `focusSchedulingEditor()` API for opening the existing date editor from reconciliation.
+- Reconciliation Slice 4 stages reasoned scenario exceptions with pending/saved check-shield markers, an accepted-decisions view, task-evidence revocation and save-race protection; live publication remains Slice 5.
+- Reconciliation Slice 3 adds configured-state corrections, impact-reviewed date and recorded-dependency actions, read-only guards, and retained quality/scheduling warnings and selection through scenario edits and revert.
+- Reconciliation Slice 2 documents isolated temporary board context, reports incomplete relationship data, and explains each finding's constraint, owning/affected plans, drift, scenario status, and navigation impact.
 - Added `scripts/enroll_account.py` to reuse a valid CLI session, re-enroll only after expiry, rotate the private account key file, and report session status with `--check`.
 - Route REST, publish, session, hydration, export, and uncaught failures into the bell notification log instead of screen-dimming message overlays.
 - Normalize ADO scheduling paths consistently, verify relative request paths against live ADO, and expose generic date presets with backend-owned atomic schedule clearing.
@@ -41,6 +60,11 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Task warning markers now scroll the reconciliation toolbox to the selected task's expanded details and actions, including repeated selection and hidden review.
+- Reconciliation groups labelled Sidebar-style controls and issue actions into two blue sections, re-highlights tasks on repeated clicks, and shows only class-specific multiple-finding counts.
+- Reconciliation adopts Sidebar-styled issue-class accordions, inline task actions, clearer local/cross-plan labels, a top marker toggle, and automatic task location with temporary board context.
+- Reconciliation now toggles directly from its active top-bar button, keeps an independent status footer visible, and separates category controls, issue classes, and selected-task details without an internal close button.
+- Reconciliation Slice 1 adds separate category task counts and a non-modal Sidebar toolbox with retained review state, task-first navigation, and hide/restore controls.
 - Clarified online planning guidance for explicit task dates, available project hours, and transparent planning without implicit buffers across role and admin guides.
 - Updated the architecture reference to describe current runtime boundaries, ownership, data flows, and verified failure semantics.
 - Cost task reports preserve sidebar choices, retain allocating hidden levels as context, show selected tasks without allocations, and compare original per-team estimates against resolved breakdowns without changing charged totals.
@@ -131,6 +155,7 @@ Template - do not change :
   without waiting for JavaScript, improving load time especially on first visit.
 
 ### Fixed
+- Restored the reconciliation review's missing `findingExplanation` and `categoryCounts` presentation exports.
 - Plan Health checks now use configured container order, independent of container names.
 - Opening the cost plugin closes an open details panel so the cost view is not hidden behind it.
 - FeatureBoard plan-filter parity: when all plans are deselected, card filtering now treats the empty selected-plan set as authoritative and renders an empty board instead of falling back to team-only matches.

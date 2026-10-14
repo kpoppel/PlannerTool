@@ -3,15 +3,13 @@ import { renderTeamMembersView } from '../../www/js/plugins/PluginCostTeamMember
 
 describe('PluginCost TeamMembers View render paths', () => {
   it('returns an empty-state when no data present', () => {
-    const res = renderTeamMembersView({});
+    const res = renderTeamMembersView({ costTeams: null });
     expect(res).to.be.ok;
   });
 
-  it('renders team members table when teams present but no members', () => {
+  it('renders a canonical workforce empty state', () => {
     const component = {
-      months: [new Date('2026-01-01')],
-      monthsMap: {},
-      data: { teams: [{ id: 't1', name: 'T1', members: [] }] },
+      costTeams: { catalogue: [], teams: {}, groups: {}, suppliers: [] },
     };
     const res = renderTeamMembersView(component);
     expect(res).to.be.ok;

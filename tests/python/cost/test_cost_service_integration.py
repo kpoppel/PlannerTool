@@ -42,7 +42,7 @@ def test_estimate_costs_empty():
             return []
 
     class _DummyTeamService:
-        def list_teams(self):
+        def list_teams(self, *, include_archived: bool = False):
             return []
 
     class _DummyPeopleService:
@@ -123,7 +123,7 @@ def test_estimate_costs_simple_feature(monkeypatch):
             return []
 
     class _DummyTeamService:
-        def list_teams(self):
+        def list_teams(self, *, include_archived: bool = False):
             # provide configured team list that matches the people entry
             return [{
                 'id': 'team-team-a',

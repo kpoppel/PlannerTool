@@ -6,7 +6,7 @@ import {
   featureHasEligibleParent,
   featureMatchesPlans,
 } from '../shared/featureProjection.js';
-import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
+import { expandAllocationFocusIds, hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
 import { hasTimelinePlacement } from '../shared/featurePresentation.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
@@ -211,10 +211,11 @@ export function createScopeSelectors(store) {
     const eligibleFeatures = getCardEligibleFeatures(contextFeatures, context);
     if (!teamFocus) return eligibleFeatures;
     if (selectedTeamIds.size === 0) return [];
+    const focusIds = expandAllocationFocusIds(selectedTeamIds, store.getState().baseline.teams);
     const graph = getGraph();
     const focusedFeatureIds = new Set(
       contextFeatures
-        .filter((feature) => hasFeatureTeamAllocation(feature, selectedTeamIds))
+        .filter((feature) => hasFeatureTeamAllocation(feature, focusIds))
         .map((feature) => String(feature.id))
     );
     const focusedAncestorIds = collectReachableIds(focusedFeatureIds, graph.parents);
@@ -229,7 +230,7 @@ export function createScopeSelectors(store) {
       if (children === undefined) continue;
       for (const childId of children) {
         const child = graph.featuresById.get(childId);
-        if (child.capacity.length > 0 && !hasFeatureTeamAllocation(child, selectedTeamIds)) continue;
+        if (child.capacity.length > 0 && !hasFeatureTeamAllocation(child, focusIds)) continue;
         focusedDescendantIds.add(childId);
         if (!expanded.has(childId)) pending.push(childId);
       }

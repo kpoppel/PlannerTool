@@ -97,6 +97,65 @@ describe('application/commands/featureCommands', () => {
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
   });
 
+  function prepareAllocationState() {
+    const state = buildState();
+    state.baseline.projects = [{ id: 'plan', type: 'Plan', allocatable_ids: ['A', 'G'],
+      allocation_defaults: { Plan: ['A', 'G'] } }];
+    state.baseline.teams = [
+      { id: 'A', kind: 'team', group_id: 'G', archived: false },
+      { id: 'G', kind: 'group', archived: false },
+    ];
+    state.baseline.features = state.baseline.features.map((feature) => ({
+      ...feature, project: 'plan', capacity: [],
+    }));
+    return state;
+  }
+
+  it('rejects a capacity choice outside the explicit owner override without side effects', () => {
+    const state = prepareAllocationState();
+    state.baseline.projects[0].allocatable_ids = [];
+    store.setState(state, true, 'test.allocationAvailability');
+    const bus = { emit: vi.fn() };
+    const recompute = vi.fn();
+    const commands = createFeatureCommands(store, bus, recompute);
+    const before = store.getState();
+    expect(() => commands.updateFeatureField('f1', 'capacity',
+      [{ team: 'A', capacity: 40 }])).toThrow('not offered');
+    expect(store.getState()).toBe(before);
+    expect(bus.emit).not.toHaveBeenCalled();
+    expect(recompute).not.toHaveBeenCalled();
+  });
+
+  it('rejects descendant group allocation below an ancestor member before committing', () => {
+    const state = prepareAllocationState();
+    state.baseline.features[0].capacity = [{ team: 'A', capacity: 80 }];
+    store.setState(state, true, 'test.allocationConflict');
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn());
+    const before = store.getState();
+    expect(() => commands.updateFeatureField('f1', 'capacity',
+      [{ team: 'G', capacity: 40 }])).toThrow('Allocation conflict');
+    expect(store.getState()).toBe(before);
+  });
+
+  it('rejects date changes that activate an invalid descendant group reservation', () => {
+    for (const edit of ['updateFeatureDates', 'setScenarioOverride', 'updateFeatureField']) {
+      const state = prepareAllocationState();
+      state.baseline.features[0].capacity = [{ team: 'A', capacity: 80 }];
+      state.baseline.features[1] = { ...state.baseline.features[1], start: null, end: '2026-01-20',
+        capacity: [{ team: 'G', capacity: 40 }] };
+      store.setState(state, true, 'test.dateAllocationConflict');
+      const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn());
+      const before = store.getState();
+      const apply = edit === 'updateFeatureDates'
+        ? () => commands.updateFeatureDates([{ id: 'f1', start: '2026-01-10', end: '2026-01-20' }])
+        : edit === 'setScenarioOverride'
+          ? () => commands.setScenarioOverride('f1', '2026-01-10', '2026-01-20')
+          : () => commands.updateFeatureField('f1', 'start', '2026-01-10');
+      expect(apply).toThrow('Allocation conflict');
+      expect(store.getState()).toBe(before);
+    }
+  });
+
   it('fails loudly when the recomputeCapacity seam is missing', () => {
     const commands = createFeatureCommands(store, { emit: vi.fn() }, undefined);
     expect(() => commands.updateFeatureField('f2', 'state', 'Blocked')).toThrow(TypeError);
