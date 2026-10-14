@@ -1,12 +1,12 @@
-# PlannerTool Architecture (v5.0.0)
+# PlannerTool Architecture
 
-> Status: current architecture reference for the PlannerTool web application and backend runtime.
+> Current architecture of the browser applications and backend runtime.
 
-> Verified against the workspace implementation on 2026-10-02. Detailed operational contracts live in [Migrations](MIGRATIONS.md), [Authentication](AUTHENTICATION.md), and [Testing](TESTING.md).
+> Reviewed against the workspace implementation on 2026-10-14. Detailed contracts live in [Migrations](MIGRATIONS.md), [Authentication](AUTHENTICATION.md), and [Testing](TESTING.md).
 
 ## 1. Purpose
 
-This document describes the architecture of PlannerTool as implemented in the v5.0.0 codebase. The design is centered on a single canonical runtime state store, explicit command/selector seams, and a plugin runtime that loads feature modules from configuration rather than hard-wired UI code.
+PlannerTool combines Lit browser applications with a FastAPI service. The main application uses a canonical runtime state store, explicit command and selector interfaces, and a configuration-driven plugin runtime. The backend owns configuration, authentication, and durable user data, and integrates external planning data through backend-neutral repository interfaces.
 
 This document covers:
 
@@ -15,7 +15,9 @@ This document covers:
 - the backend service built from `planner_lib/` and `planner.py`
 - the runtime boundaries between state, events, services, plugins, and persistence
 
-It deliberately excludes deployment specifics, which are covered in `docs/DEPLOYMENT.md`.
+Detailed backend contracts are described in [Backend Data](ARCHITECTURE_BACKEND_DATA.md).
+Deployment procedures are covered in [Deployment](DEPLOYMENT.md). This document
+describes runtime structure and contracts, not release history or user workflows.
 
 ## 2. Scope
 
@@ -31,7 +33,7 @@ Out of scope:
 
 - exact low-level Azure SDK behavior
 - infrastructure and cluster deployment
-- browser-specific performance tuning beyond the V5 application model
+- browser-specific performance tuning
 
 ## 3. System Context
 
@@ -44,6 +46,7 @@ flowchart LR
     Backend[(Active database generation\nconfig + accounts + auth + user data)]
     Cache[(Remote cache\nADO/static/mock data)]
     ADO[Azure DevOps]
+    Sources[Static and mock sources]
 
     User --> Browser
     User --> Admin
@@ -52,6 +55,7 @@ flowchart LR
     API --> Backend
     API --> Cache
     API --> ADO
+    API --> Sources
 ```
 
 ## 4. Technology Profile
@@ -69,6 +73,23 @@ flowchart LR
 | Persistence | Server-owned authoritative DiskCache generations and separate disposable remote cache |
 | Build | Vite + Rollup |
 | Test stack | Vitest, Playwright, pytest |
+
+### 4.1 Data ownership
+
+| Data | Runtime owner | Persistence |
+|---|---|---|
+| Baseline work items and source metadata | Backend repositories; main-client snapshot | Source backend and disposable read cache |
+| Scenario overrides and scenario-owned groups | Main-client store | Server records owned by stable account ID |
+| Saved views and captured plugin state | Main-client store | Server records owned by stable account ID |
+| Selection, filters, capacity results, notifications | Main-client store | Transient; views capture selected preferences |
+| Shared baseline groups | Server; browser-session cache | Authoritative database |
+| Preferences, colors, synthetic Baseline plugin data | Browser-local providers | Browser storage |
+| Configuration, accounts, devices, sessions | Server services | Authoritative database |
+| Temporary editor and plugin interaction state | Component or plugin | Transient unless explicitly captured |
+
+Canonical application state does not include every component-local value or
+replace server persistence. The admin application is a separate composition,
+not another consumer of the main application's store.
 
 ## 5. Frontend Runtime Architecture
 
@@ -109,8 +130,10 @@ flowchart TD
     Cmd --> Store
     Sel --> Store
     Cmd --> Bus
+    Cmd --> DomainSvc
     Bus -.->|"bus.on() -> requestUpdate()"| Comp
     Bus -.->|"bus.on() -> requestUpdate()"| Plugins
+    Store -.->|managed selector subscriptions| Comp
     Registry -.->|event identifiers| Cmd
     Registry -.->|event identifiers| PM
     PM --> Plugins
@@ -118,11 +141,17 @@ flowchart TD
     DomainSvc --> DataSvc
 ```
 
-For the main UI, reactivity flows Cmd → Store (write) and, separately, Cmd → Bus → listener → Lit update (repaint signal). A listener either requests an update or assigns reactive properties from selectors; rendering then uses the refreshed data. There is no general store subscription that automatically repaints every component. Plugin-state commands have their own subscriber notifications, and some plugin-local stores have a separate update path; not every store mutation emits a bus event. See §14 Known Sharp Edges.
+State writes and repaint signals are separate. Commands update the store and
+notify interested consumers. Bus listeners request Lit updates or assign reactive
+properties from selectors. Managed store subscriptions supply another repaint
+path. There is no universal subscription that repaints every component after
+every write. Store-backed plugin state has command-owned subscriber callbacks;
+plugin-local interaction stores have their own notifications. See section 14.
 
 DetailsPanel and Sidebar use managed `StoreController` subscriptions in their dedicated
-controllers, alongside explicit event subscriptions. This is local component reactivity,
-not a replacement for the compatibility signals used by other consumers.
+controllers, alongside explicit event subscriptions. `StoreController` subscribes
+on connection and unsubscribes on disconnection. These subscriptions are local to
+their consumers; other components still depend on bus signals.
 
 ### 5.1 DetailsPanel section contracts
 
@@ -144,18 +173,18 @@ actions and delayed work against feature, scenario, close, and disconnect change
 The shell adapts named actions to application commands. Iteration-select synchronization
 also rejects obsolete requests after awaiting the current render.
 
-`DetailsPanel.styles.lit.js` exports the panel's unchanged CSS result. All sections render
-inside the existing `details-panel` shadow root, preserving the stylesheet cascade and
-DOM hooks. Tests that render icon-bearing sections directly use the bundled Lit renderer
-to match the directive implementation used by the application.
+`DetailsPanel.styles.lit.js` supplies a shared stylesheet. Sections render within
+one `details-panel` shadow root; render modules do not introduce independent
+styling or event boundaries. Icon-bearing section tests use the bundled Lit
+renderer to match the application's directive implementation.
 
 ### 5.2 Sidebar section contracts
 
 `Sidebar.lit.js` composes Team Drill-down, Hierarchy Controls, Task Filters, and Footer
 renderers under `components/sidebar/`. Renderers receive explicit `{ model, actions }`
-values and do not read selectors, subscribe, or call host methods. The shell preserves
-`app-sidebar`, its shadow root, layout, and programmatic command adapters.
-`Sidebar.styles.lit.js` preserves the original CSS order and cascade.
+values and do not read selectors, subscribe, or call host methods. The
+`app-sidebar` shell owns the shadow root and adapts actions to commands.
+`Sidebar.styles.lit.js` supplies the shared stylesheet and cascade.
 
 `SidebarController` projects presentation from stable store dependencies, manages board
 fold-state notifications, and owns health requests and queued animation frames.
@@ -170,6 +199,23 @@ Packed-mode transitions atomically snapshot `packedModeUnplannedPreference`, dis
 Unplanned, and restore the snapshot when leaving packed mode. Saving and restoring views
 preserves that preference. Intrinsic packed-mode restrictions are unioned with plugin
 restrictions by a selector, without changing the plugin-owned restrictions map.
+
+### 5.3 Notifications and diagnostics
+
+The `notifications` store slice is a session-local application log. UI commands
+collect entries, deduplicate repeated messages, track occurrence counts and
+first/last timestamps, and support read/clear actions. The log retains the latest
+100 distinct entries; it is neither persisted across reloads nor broadcast to
+other users.
+
+REST response observation collects public backend diagnostics from the
+`X-Backend-Diagnostics` header and reports HTTP failures without consuming the
+response body. Network failures are reported after retries are exhausted;
+failed operation Results also contribute errors. Observers run outside network
+retry handling so an observer failure cannot replay a completed write. Session,
+hydration, initialization, uncaught browser/promise, and export failures use the
+same log. Loading indicators and interactive authentication/confirmation dialogs
+are separate UI mechanisms.
 
 ## 6. State Architecture
 
@@ -188,6 +234,7 @@ Primary slices include:
 - `pluginState`
 - `capacity`
 - `featureDisplay`
+- `notifications`
 
 Planning scope is derived by `sel.scope` from selection, view context, and effective tasks; it is not a separate persisted store slice. `featureDisplay` holds the currently selected task ID.
 
@@ -200,7 +247,10 @@ The write path is command-driven:
 - commands emit typed events for cross-module coordination
 - initial hydration is done from `app.js` using `cmd.data.hydrateBaseline()`, `cmd.data.hydrateScenarioData()`, and `cmd.viewRestore.restoreLastView()`
 
-`application/imports.js` composes the store-backed command/selector surface; there is no alternate legacy-state runtime. It also synchronizes incoming scenario data into the store on `DataEvents.SCENARIOS_CHANGED` and `SCENARIOS_DATA`. This application-level synchronization is an existing write path outside the command modules.
+`application/imports.js` composes the command/selector surface. It also
+synchronizes incoming scenario data on `DataEvents.SCENARIOS_CHANGED` and
+`SCENARIOS_DATA`. This is an explicit application-level write path outside the
+command modules, not a general presentation-layer mutation interface.
 
 ### 6.3 Read path
 
@@ -210,6 +260,11 @@ The read path is selector-driven:
 - components read from `sel.*`, either during rendering or in event listeners that refresh reactive properties
 - most UI reactivity is driven by `EventBus` subscriptions: commands mutate the store and signal interested consumers, which schedule Lit updates
 - `sel.scope` caches resolved, context, and visible task projections using input references and selection/view keys; other selectors may recompute on each call
+
+Scope caching also includes indexed parent/child and dependency relationships,
+plan membership, and eligible-card counts. Selector results are read-only by
+convention and may contain store-owned references. Mutating them bypasses command
+side effects and can invalidate reference-based cache assumptions.
 
 ### 6.4 Invariants
 
@@ -242,6 +297,25 @@ spans contribute zero cost/load. Cost responses expose `unknown_teams` allocatio
 site totals retain internal and external work. Ancestor-only context is not charged.
 Cost views sum server-resolved per-team metrics bottom-up without reapplying allocation
 precedence. Presentation rollups are iterative, reject cycles, and accumulate every sibling.
+Cost feature responses also expose `estimateTeams` (original dated per-team estimates) and
+`effectiveCapacity` (winning allocations). Estimates are comparison data, never additional
+charges. The browser retains complete cost records; board-visible IDs select normal rows,
+while other dated allocating tasks become marked context rows within the report period.
+Selected empty tasks remain visible; empty hidden intermediary levels are compressed.
+ADO context normalization publishes known backend-neutral `stateCategory` values. Closed
+allocation-free subtrees remain in the graph within the existing closed-tree retention policy;
+missing dates or allocations are not additional pruning criteria. Cost views do not prune
+lifecycle branches. Previously pruned cached plan data needs a refresh to restore omitted nodes.
+State and task filters exclude rows even when they have allocations; task-type-hidden allocating
+levels remain context rows when those other filters pass. Financial records and totals stay complete.
+Both hierarchical cost views compare each own team estimate against resolved descendant
+contributions in the displayed months, excluding retained own charges from the breakdown.
+Cost differences are compared as percentages; zero-cost estimates with hours use hours instead.
+Flags are displayed to one decimal place, with differences below 0.05% treated as matching
+to avoid flagging pricing roundoff. Unpriced allocations remain visible without an invented
+zero budget. Opening Cost preserves state/task-type selections and initially turns Unplanned off.
+State, task-type, schedule and allocation controls remain editable; hierarchy and relation controls
+remain locked while Cost is open. Closing clears these restrictions.
 
 Baseline is a synthetic readonly scenario. Editable scenarios hold task overrides, group overrides, scenario-owned groups, and `pluginData`; selectors project these over baseline data. Task edits, scenario persistence, and explicit publishing to the backend are distinct operations.
 
