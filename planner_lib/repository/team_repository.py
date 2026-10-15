@@ -1,8 +1,7 @@
 """TeamRepository: single authoritative source for configured team data.
 
-Delegates all reads to LocalConfigBackend (via the ``local_backend``
-DI key) so that team data benefits from the TTL cache.  Adds utility methods
-(name_to_id, id_to_short_name) that search the cached domain list.
+Delegates reads to the canonical configuration backend. Identity resolution
+uses immutable allocation tokens, never mutable display labels.
 """
 from __future__ import annotations
 
@@ -20,7 +19,7 @@ class TeamRepository:
     Parameters
     ----------
     local_backend:
-        TeamConfigBackend implementation (reads from teams.yml).
+        TeamConfigBackend implementation (reads persisted team/group identities).
     """
 
     def __init__(self, local_backend) -> None:
@@ -34,26 +33,6 @@ class TeamRepository:
     def list_teams(self, *, include_archived: bool = False) -> List[DomainTeam]:
         """Return active choices, with archives available for existing calculations."""
         return self._backend.fetch_config_teams(include_archived=include_archived)
-
-    def name_to_id(self, name: str) -> Optional[str]:
-        """Resolve existing names/tokens, including archives, to the current team id."""
-        tkn = name.strip().lower()
-        for t in self._backend.fetch_config_teams(include_archived=True):
-            if tkn == t.get("name", "").lower() or tkn == (t.get("short_name") or "").lower():
-                return t["id"]
-        return None
-
-    def id_to_short_name(self, team_id: str) -> Optional[str]:
-        """Resolve existing team IDs, including archives, for allocation serialization."""
-        tid = team_id.strip()
-        for t in self._backend.fetch_config_teams(include_archived=True):
-            if t["id"] == tid:
-                return t.get("short_name") or t.get("name")
-        return None
-
-
-class WorkforceTeamRepository(TeamRepository):
-    """Canonical token-only repository, retaining unknown source tokens as unresolved."""
 
     def name_to_id(self, name: str) -> Optional[str]:
         """Resolve only immutable persisted tokens, including archived identities."""

@@ -53,7 +53,6 @@ class FakeBackend(BackendPort):
         self._teams: Dict[str, List[dict]] = {}
         self._plans: Dict[str, List[dict]] = {}
         self._iterations: Dict[str, Dict[str, Any]] = {}
-        self._people: list = []
         self._raise_on_write = raise_on_write
         self._project_map: List[dict] = []
 
@@ -187,12 +186,6 @@ class FakeBackend(BackendPort):
     def invalidate_cache(self) -> Dict[str, Any]:
         self.invalidate_cache_calls += 1
         return {'ok': True, 'invalidated': [], 'errors': []}
-
-    def fetch_people(self, credential=None):
-        return list(self._people)
-
-    def set_people(self, people: list) -> None:
-        self._people = list(people)
 
     # ------------------------------------------------------------------
     # ProjectConfigBackend implementation

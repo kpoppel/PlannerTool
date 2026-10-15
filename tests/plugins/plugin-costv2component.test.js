@@ -32,6 +32,7 @@ describe('PluginCostComponent', () => {
   });
 
   it('switches views when tab buttons are clicked', async () => {
+    expect(el.costTeams).to.equal(null);
     const buttons = el.shadowRoot.querySelectorAll('.tab-buttons button');
     buttons[1].click(); // Task View
     await el.updateComplete;
@@ -39,9 +40,10 @@ describe('PluginCostComponent', () => {
     buttons[2].click(); // Team View
     await el.updateComplete;
     expect(el.activeView).to.equal('team');
-    buttons[3].click(); // Team Members
+    buttons[3].click(); // Workforce
     await el.updateComplete;
     expect(el.activeView).to.equal('team-members');
+    expect(el.shadowRoot.textContent).to.include('No Workforce');
   });
 
   it('calls loadData on open()', async () => {

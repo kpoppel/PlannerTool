@@ -119,40 +119,29 @@ def test_fetch_projects_preserves_custom_container_hierarchy_without_leaf_plans(
     assert projects[0]['container_types'] == ['portfolio', 'program', 'squad']
 
 
-def test_fetch_config_teams_reads_from_storage():
-    """fetch_config_teams returns non-excluded teams."""
+def test_fetch_config_teams_reads_from_storage(canonical_team_config):
+    """Team choices expose persisted identities and omit archived records."""
     storage = _MemStore()
-    storage.save('config', 'teams', {
-        'teams': [
-            {'name': 'Alpha', 'short_name': 'ALP'},
-            {'name': 'Beta', 'short_name': 'BET', 'exclude': True},
-        ]
-    })
+    storage.save('config', 'teams', canonical_team_config)
     cb = ConfigBackend(storage=storage)
     teams = cb.fetch_config_teams()
-    assert len(teams) == 1
+    assert [team['id'] for team in teams] == ['team-alpha', 'group-engineering']
     assert teams[0]['name'] == 'Alpha'
 
 
 @pytest.mark.parametrize('cached', [False, True])
-def test_archived_team_resolves_for_existing_allocations(cached: bool) -> None:
+def test_archived_team_resolves_for_existing_allocations(cached: bool, canonical_team_config: dict) -> None:
     from planner_lib.backend.caching import CachingBackend
     from planner_lib.projects.capacity_service import CapacityService
     from planner_lib.repository.team_repository import TeamRepository
 
     storage = _MemStore()
-    storage.save('config', 'teams', {
-        'schema_version': 2,
-        'teams': [
-            {'name': 'Alpha', 'short_name': 'ALP', 'exclude': False},
-            {'name': 'Beta', 'short_name': 'BET', 'exclude': True},
-        ],
-    })
+    storage.save('config', 'teams', canonical_team_config)
     backend = ConfigBackend(storage=storage)
     if cached:
         backend = CachingBackend(backend, storage=_MemStore())
     repository = TeamRepository(backend)
-    assert [team['id'] for team in repository.list_teams()] == ['team-alpha']
+    assert [team['id'] for team in repository.list_teams()] == ['team-alpha', 'group-engineering']
     assert repository.name_to_id(' bet ') == 'team-beta'
     assert repository.id_to_short_name('team-beta') == 'BET'
     service = CapacityService(repository)
@@ -302,11 +291,11 @@ def test_canonical_catalogue_requires_migrated_schema(canonical_team_config: dic
 def test_canonical_repository_uses_tokens_and_persisted_ids(canonical_team_config: dict) -> None:
     """Renames cannot silently change read/write identity or revive archived choices."""
     from planner_lib.backend.config import WorkforceConfigBackend
-    from planner_lib.repository.team_repository import WorkforceTeamRepository
+    from planner_lib.repository.team_repository import TeamRepository
 
     storage = _MemStore()
     storage.save('config', 'teams', canonical_team_config)
-    repository = WorkforceTeamRepository(WorkforceConfigBackend(storage))
+    repository = TeamRepository(WorkforceConfigBackend(storage))
     assert [team['id'] for team in repository.list_teams()] == ['team-alpha', 'group-engineering']
     assert len(repository.list_teams(include_archived=True)) == 4
     assert repository.name_to_id(' bet ') == 'team-beta'
@@ -328,11 +317,11 @@ def test_canonical_repository_round_trip_preserves_unknown_source_rows(canonical
     from planner_lib.backend.adapter import AzureAdapter
     from planner_lib.backend.config import WorkforceConfigBackend
     from planner_lib.projects.capacity_service import CapacityService
-    from planner_lib.repository.team_repository import WorkforceTeamRepository
+    from planner_lib.repository.team_repository import TeamRepository
 
     storage = _MemStore()
     storage.save('config', 'teams', canonical_team_config)
-    repository = WorkforceTeamRepository(WorkforceConfigBackend(storage))
+    repository = TeamRepository(WorkforceConfigBackend(storage))
     service = CapacityService(repository)
     description = '[PlannerTool Team Capacity]\nBET: 25\nNone: 20\nNone: 20\n[/PlannerTool Team Capacity]'
     task = AzureAdapter().to_domain({'id': 'item', 'description': description}, 'plan', repository, {}, {}, service)

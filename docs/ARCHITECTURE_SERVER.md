@@ -157,7 +157,6 @@ independent from construction details.
 | `TaskRepository` | Work-item reads, writes, project scoping, and credential use |
 | `HistoryRepository` | Work-item revision history |
 | `ProjectRepository` / `TeamRepository` | Configured projects and teams |
-| `PeopleRepository` | Configured people and team members |
 | `PlanRepository` / `IterationRepository` | Plans, markers, and iterations |
 | `ScenarioRepository` / `ViewRepository` | User-scoped scenarios and views |
 | `EventRepository` / `GroupRepository` | Plan-scoped events and task groups |
@@ -172,8 +171,8 @@ on route handlers.
   loads account credentials during session creation.
 - `CapacityService` calculates capacity from configured team data.
 - `AzureProjectMetadataService` obtains project metadata.
-- `CostService` coordinates calculations across people, projects, teams, and
-  storage.
+- `WorkforceCostService` prices anonymous supplier/profile staffing with separate
+  internal/external accounting and non-charged group rollups.
 - `AdminService` handles privileged configuration, account, cache, backup, and
   reload operations.
 - `CacheCoordinator` coordinates invalidation and reload behavior.
@@ -183,9 +182,9 @@ on route handlers.
 
 `planner_lib/backend/port.py` defines focused protocols: `TaskBackend`,
 `HistoryBackend`, `TeamsBackend`, `PlansBackend`, `IterationsBackend`,
-`PeopleBackend`, project/team/iteration/plan configuration backends,
+project/team/iteration/plan configuration backends,
 scenario/view backends, and event backends. `BackendPort` is the composite
-remote-data contract and deliberately excludes local people/configuration data.
+remote-data contract and deliberately excludes local configuration data.
 
 Remote operations receive a `BackendCredential` containing an opaque token and
 session user ID. Cache-satisfied reads may not need a credential; local config

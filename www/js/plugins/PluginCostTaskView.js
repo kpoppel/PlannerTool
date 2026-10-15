@@ -192,7 +192,9 @@ function renderTasksInProjectTable(component, features) {
                 ${headClipped ?
                   html`<span class="clip-warning" title="Starts ${featureStart} — before display window">◀</span>`
                 : ''}
-                <span class="type-icon ${ft}" title="${feature.type || 'Task'}">${iconTemplate}</span>
+                <button type="button" class="type-icon ${ft}"
+                  title="Open task ${feature.id}" aria-label="Open task ${feature.id}"
+                  @click=${() => component.openFeatureDetails(String(feature.id))}>${iconTemplate}</button>
                 ${tailClipped ?
                   html`<span class="clip-warning" title="Ends ${featureEnd} — after display window">▶</span>`
                 : ''}

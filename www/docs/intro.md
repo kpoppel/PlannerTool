@@ -28,7 +28,7 @@ For detailed, topic-specific instructions see the manual pages in this Help inde
 - Details panel and editing: [Details Panel](details.md)
 - Scenarios & saving: [Scenarios & Saving](scenarios.md)
 - Configuration and PAT setup: [Getting Started](getting_started.md)
-- Review modal: [Review Modal (Save to Azure)](review_modal.md)
+- Review modal: [Review Modal (Publish scenario)](review_modal.md)
 - Tools (plugins) available in the Tools menu: [Tools Overview](tools_overview.md)
 - Administering the server (projects, teams, people, cost, users): [Admin Overview](admin_overview.md)
 - Keyboard shortcuts: [Keyboard Shortcuts](keyboard_shortcuts.md)

@@ -5,13 +5,11 @@ from typing import Any
 from types import SimpleNamespace
 
 import pytest
-import yaml
 
 from planner_lib.cost import engine
 from planner_lib.cost.service import WorkforceCostService
 from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.domain.workforce import WorkforceCatalogue
-from planner_lib.storage.base import StorageBackend
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
 
@@ -392,60 +390,3 @@ def test_active_assignments_and_removal_of_archived_rows_are_allowed(
     workforce_config['staffing'] = [deepcopy(workforce_config['staffing'][0])]
     workforce_config['staffing'][0].update(id='new-row', team_id='team-empty')
     WorkforceCatalogue(workforce_config, teams).validate_staffing_changes(previous)
-
-
-def test_anonymous_profile_basis_matches_legacy_cost_fixture(
-    fixtures_dir: Any, cache_storage: StorageBackend,
-) -> None:
-    """Explicit anonymous profiles preserve the established fixture's monthly cost basis."""
-    with (Path(fixtures_dir) / 'cost_config_test.yml').open(encoding='utf-8') as source:
-        legacy = yaml.safe_load(source)
-    with (Path(fixtures_dir) / 'people_test.yml').open(encoding='utf-8') as source:
-        people = yaml.safe_load(source)
-    legacy['database'] = {'people': people}
-    old_bases = engine._team_members(legacy, cache_storage)
-    teams = TeamCatalogue({
-        'schema_version': 3,
-        'teams': [
-            {'id': 'team-alpha', 'allocation_token': 'Alpha', 'name': 'Renamed Alpha',
-             'short_name': 'Renamed', 'archived': False, 'group_id': None},
-            {'id': 'team-beta', 'allocation_token': 'Beta', 'name': 'Renamed Beta',
-             'short_name': 'Renamed', 'archived': False, 'group_id': None},
-        ],
-        'groups': [],
-    })
-    catalogue = WorkforceCatalogue({
-        'schema_version': 2,
-        'suppliers': [
-            {'id': 'internal-a', 'name': 'Site A', 'external': False, 'archived': False,
-             'profiles': [{'id': 'standard', 'name': 'Standard', 'monthly_project_hours': 160,
-                           'hourly_rate': 50, 'archived': False}]},
-            {'id': 'internal-b', 'name': 'Site B', 'external': False, 'archived': False,
-             'profiles': [{'id': 'standard', 'name': 'Standard', 'monthly_project_hours': 150,
-                           'hourly_rate': 50, 'archived': False}]},
-            {'id': 'external-company', 'name': 'Fixture company', 'external': True,
-             'archived': False,
-             'profiles': [{'id': 'specialist', 'name': 'Specialist', 'monthly_project_hours': 20,
-                           'hourly_rate': 150, 'archived': False}]},
-        ],
-        'staffing': [
-            {'id': 'row-alpha-internal', 'team_id': 'team-alpha', 'supplier_id': 'internal-a',
-             'profile_id': 'standard', 'fte': 1},
-            {'id': 'row-alpha-external', 'team_id': 'team-alpha',
-             'supplier_id': 'external-company', 'profile_id': 'specialist', 'fte': 1},
-            {'id': 'row-beta', 'team_id': 'team-beta', 'supplier_id': 'internal-b',
-             'profile_id': 'standard', 'fte': 1},
-        ],
-    }, teams)
-    for team_id, basis in catalogue.team_bases().items():
-        for classification in ('internal', 'external'):
-            expected = old_bases[team_id]
-            assert basis[classification]['fte'] == expected[f'{classification}_count']
-            assert basis[classification]['monthly_hours'] == expected[
-                f'{classification}_hours_total'
-            ]
-            assert basis[classification]['monthly_cost'] == expected[
-                f'{classification}_monthly_cost_total'
-            ]
-    for person in people:
-        assert person['name'] not in str(catalogue.definitions())

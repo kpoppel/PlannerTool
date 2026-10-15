@@ -37,9 +37,29 @@ export function assessSchedule(featuresById, scopeIds) {
       visited.add(parentId);
       path.push(parentId);
       const parent = featuresById.get(parentId);
-      if (!parent) break;
+      if (!parent) {
+        if (path.length > 2 && path.slice(0, -1).some((id) => scopeIds.has(id))) {
+          issues.push({
+            id: `unavailable-ancestor:${childId}:${parentId}`,
+            type: 'unavailable-ancestor', category: 'schedule',
+            featureId: childId, relatedId: parentId, path: [...path], severity: 'info',
+            title: 'Ancestor context unavailable',
+            description: `Ancestor ${parentId} of "${child.title}" is not loaded; containment along this path cannot be fully assessed.`,
+          });
+        }
+        break;
+      }
       if (scopeIds.has(childId) || scopeIds.has(parentId)) {
         const overhang = drift(child, parent);
+        if (overhang === null) {
+          issues.push({
+            id: `unavailable-containment-dates:${childId}:${parentId}`,
+            type: 'unavailable-containment-dates', category: 'schedule',
+            featureId: childId, relatedId: parentId, path: [...path], severity: 'info',
+            title: 'Hierarchy dates unavailable',
+            description: `"${child.title}" and "${parent.title}" need complete, valid date ranges to assess containment.`,
+          });
+        }
         if (overhang && (overhang.earlyDays > 0 || overhang.lateDays > 0)) {
           const magnitude = Math.max(overhang.earlyDays, overhang.lateDays);
           issues.push({
@@ -61,12 +81,33 @@ export function assessSchedule(featuresById, scopeIds) {
       const otherId = String(relation.id);
       const featureId = String(feature.id);
       const other = featuresById.get(otherId);
-      if (!other || (!scopeIds.has(featureId) && !scopeIds.has(otherId))) continue;
+      if (!scopeIds.has(featureId) && !scopeIds.has(otherId)) continue;
+      if (!other) {
+        const id = `unavailable-dependency:${featureId}:${relation.type}:${otherId}`;
+        dependencies.set(id, {
+          id, type: 'unavailable-dependency', category: 'schedule',
+          featureId, relatedId: otherId, path: [featureId, otherId], severity: 'info',
+          title: 'Dependency context unavailable',
+          description: `${relation.type} ${otherId} of "${feature.title}" is not loaded; dependency ordering cannot be assessed.`,
+        });
+        continue;
+      }
       const predecessor = relation.type === 'Predecessor' ? other : feature;
       const successor = relation.type === 'Predecessor' ? feature : other;
       const before = calendarDay(predecessor.start);
       const after = calendarDay(successor.start);
-      if (before === null || after === null || after >= before) continue;
+      if (before === null || after === null) {
+        const id = `unavailable-dependency-dates:${predecessor.id}:${successor.id}`;
+        dependencies.set(id, {
+          id, type: 'unavailable-dependency-dates', category: 'schedule',
+          featureId: String(successor.id), relatedId: String(predecessor.id),
+          path: [String(successor.id), String(predecessor.id)], severity: 'info',
+          title: 'Dependency dates unavailable',
+          description: `"${predecessor.title}" and "${successor.title}" need valid start dates to assess dependency ordering.`,
+        });
+        continue;
+      }
+      if (after >= before) continue;
       const id = `dependency:${predecessor.id}:${successor.id}`;
       dependencies.set(id, {
         id, type: 'dependency-order', category: 'schedule',

@@ -36,6 +36,7 @@ export class PluginCostComponent extends LitElement {
     startDate: { type: String },
     endDate: { type: String },
     data: { type: Object },
+    costTeams: { state: true },
     loading: { type: Boolean },
     error: { type: String },
     expandedProjects: { type: Object },
@@ -48,6 +49,7 @@ export class PluginCostComponent extends LitElement {
     this.activeView = 'project';
     this.viewMode = 'cost';
     this.data = null;
+    this.costTeams = null;
     this.loading = false;
     this.error = null;
     this.expandedProjects = new Set();
@@ -431,6 +433,16 @@ export class PluginCostComponent extends LitElement {
       height: 16px;
       display: block;
     }
+    button.type-icon {
+      padding: 2px;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+    button.type-icon:focus-visible {
+      outline: 2px solid #3498db;
+      outline-offset: 2px;
+    }
     /* Clip-window indicators: shown on features whose dates extend outside the selected period */
     .clip-warning {
       display: inline-flex;
@@ -599,6 +611,13 @@ export class PluginCostComponent extends LitElement {
   _closeClicked() {
     const plugin = pluginManager.get(this._getPluginId());
     if (plugin) plugin.deactivate();
+  }
+
+  async openFeatureDetails(featureId) {
+    const feature = sel.feature.getEffectiveFeatureById(String(featureId));
+    if (feature === null) throw new Error(`Task ${featureId} is not loaded`);
+    await pluginManager.deactivate(this._getPluginId());
+    cmd.feature.setSelectedFeature(feature);
   }
 
   async loadData() {

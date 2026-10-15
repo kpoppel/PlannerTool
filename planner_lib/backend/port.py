@@ -11,7 +11,6 @@ Focused protocols
   TeamsBackend           — fetch_teams
   PlansBackend           — fetch_plans, fetch_markers
   IterationsBackend      — fetch_iterations
-  PeopleBackend          — fetch_people
   ProjectConfigBackend   — fetch_projects, fetch_project_map
   TeamConfigBackend      — fetch_config_teams
   IterationConfigBackend — fetch_iterations_config
@@ -28,15 +27,13 @@ BackendPort (composite)
 -----------------------
   Alias for the full remote-data contract (TaskBackend + HistoryBackend +
   TeamsBackend + PlansBackend + IterationsBackend).  Used by ADO-family
-  and mock backends.  Does NOT include PeopleBackend — people data lives
-  in local config, not in the remote work-item system.
+    and mock backends. Local configuration is not part of the remote contract.
 
 DI keys
 -------
   ``backend``           → BackendPort implementation (AzureDevOpsBackend,
                            MockFixtureBackend, StaticBackend, …).
   ``config_backend``    → ConfigBackend backed by diskcache.  Implements
-                           PeopleBackend (via optional yaml_storage),
                            ProjectConfigBackend, TeamConfigBackend,
                            IterationConfigBackend, PlanConfigBackend,
                            AdoConfigBackend.
@@ -65,7 +62,7 @@ Adding a new external-data backend (e.g. Jira)
 Credential handling
 -------------------
 Operations that require a live backend call receive a BackendCredential.
-Cache-satisfied reads never need one.  Local-config backends (people, etc.)
+Cache-satisfied reads never need one. Local-config backends
 never require a credential at all.
 """
 from __future__ import annotations
@@ -75,7 +72,6 @@ from typing_extensions import TypedDict, Protocol, runtime_checkable
 
 from planner_lib.domain.tasks import BackendTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
-from planner_lib.domain.people import DomainPerson
 from planner_lib.domain.projects import DomainProject
 from planner_lib.domain.teams import DomainTeam
 from planner_lib.domain.scenarios import DomainScenario
@@ -215,21 +211,6 @@ class IterationsBackend(Protocol):
         root_paths: Optional[List[str]] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
-
-
-@runtime_checkable
-class PeopleBackend(Protocol):
-    """Backend that can read people / team-member records.
-
-    Implemented by LocalConfigBackend (reads from people.yml).
-    Remote work-item backends (ADO, Jira, mock) do NOT implement this —
-    people data is not stored in a remote work-item system.
-    """
-
-    def fetch_people(
-        self,
-        credential: Optional[BackendCredential] = None,
-    ) -> List[DomainPerson]: ...
 
 
 @runtime_checkable
@@ -473,12 +454,12 @@ class BackendPort(TaskBackend, HistoryBackend, TeamsBackend, PlansBackend, Itera
     MockGeneratorBackend) and self-contained demo backends (StaticBackend)
     implement this composite protocol.
 
-    LocalConfigBackend does NOT implement BackendPort — it owns only the
-    ``PeopleBackend`` domain.  CachingBackend transparently mirrors the
+    ConfigBackend does NOT implement BackendPort; it owns local configuration.
+    CachingBackend transparently mirrors the
     capability of whichever inner backend it wraps, so:
 
       isinstance(CachingBackend(AzureDevOpsBackend(…)), BackendPort) → True
       isinstance(CachingBackend(LocalConfigBackend(…)), BackendPort)  → False
-      isinstance(CachingBackend(LocalConfigBackend(…)), PeopleBackend) → True
+    isinstance(CachingBackend(ConfigBackend(...)), TeamConfigBackend) -> True
     """
     ...

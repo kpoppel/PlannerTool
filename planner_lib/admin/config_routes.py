@@ -1,8 +1,7 @@
 """Admin configuration CRUD route handlers.
 
 Covers: projects, global-settings, iterations, area-mappings (CRUD +
-refresh + toggle), teams, people (CRUD + inspect), schema, backup,
-restore, cost (CRUD + inspect), system, ado (Azure DevOps config), and
+refresh + toggle), schema, backup, restore, system, ado (Azure DevOps config), and
 events-config (event backend selection).
 """
 import asyncio
@@ -17,50 +16,11 @@ from planner_lib.middleware.session import (
     get_session_context_from_request, get_session_credentials_from_request,
 )
 from planner_lib.admin import schema as admin_schema
-from planner_lib.admin import cost_inspector
-from planner_lib.admin import people_inspector
 from planner_lib.admin import area_mapping_service
 from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
-from planner_lib.admin.workforce_config import WorkforceConflictError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Private helper — kept for backward compatibility with existing tests
-# ---------------------------------------------------------------------------
-
-def _backup_existing(storage, key, backup_prefix=None):
-    """Create a timestamped backup of *key* in the ``config`` namespace.
-
-    Falls back to ``storage._backend.save`` when the primary
-    ``storage.save`` raises (e.g. serialiser cannot handle raw bytes).
-    Note: config CRUD via route handlers now delegates to ConfigManager;
-    this helper is retained for isolated unit-test use.
-    """
-    try:
-        existing = storage.load('config', key)
-    except KeyError:
-        return
-    from datetime import datetime, timezone
-    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    backup_key = f"{(backup_prefix or key)}_backup_{ts}"
-    try:
-        storage.save('config', backup_key, existing)
-    except Exception as e:
-        logger.debug('storage.save backup failed for %s: %s; falling back to backend save', backup_key, e)
-        backend = getattr(storage, '_backend', None)
-        if backend is not None:
-            try:
-                backend.save('config', backup_key, existing)
-            except Exception as e2:
-                logger.exception('Backend save also failed for backup %s: %s', backup_key, e2)
-        else:
-            try:
-                storage.save('config', backup_key, str(existing))
-            except Exception:
-                logger.exception('Failed to write backup %s', backup_key)
 
 
 # ---------------------------------------------------------------------------
@@ -497,119 +457,6 @@ async def admin_toggle_plan_enabled(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Teams
-# ---------------------------------------------------------------------------
-
-@router.get('/admin/v1/teams')
-@require_admin_session
-async def admin_get_teams(request: Request):
-    """Return teams configuration as JSON."""
-    try:
-        admin_svc = resolve_service(request, 'admin_service')
-        return {'content': admin_svc.get_config('teams', default='')}
-    except Exception as e:
-        logger.exception('Failed to load teams: %s', e)
-        raise HTTPException(status_code=500, detail='Internal server error')
-
-
-@router.post('/admin/v1/teams')
-@require_admin_session
-async def admin_save_teams(request: Request):
-    """Save teams configuration; invalidates cost cache on success."""
-    try:
-        payload = await request.json()
-        content = payload.get('content', '')
-        if not content:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
-        admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('teams', content)
-        try:
-            cost_service = resolve_service(request, 'cost_service')
-            cost_service.invalidate_cache()
-        except Exception as e:
-            logger.warning('Failed to invalidate cost cache after teams save: %s', e)
-        return {'ok': True}
-    except WorkforceConflictError as e:
-        raise HTTPException(status_code=409, detail={
-            'error': 'workforce_endpoint_required', 'message': str(e),
-        }) from e
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception('Failed to save teams: %s', e)
-        raise HTTPException(status_code=500, detail='Internal server error')
-
-
-# ---------------------------------------------------------------------------
-# People
-# ---------------------------------------------------------------------------
-
-@router.get('/admin/v1/people')
-@require_admin_session
-async def admin_get_people(request: Request):
-    """Return people configuration as JSON."""
-    try:
-        admin_svc = resolve_service(request, 'admin_service')
-        data = admin_svc.get_config('people')
-        if data is None:
-            import yaml
-            data = yaml.safe_dump({'schema_version': 1, 'database_file': 'config/database.yaml', 'database': {'people': []}}, sort_keys=False)
-        return {'content': data}
-    except Exception as e:
-        logger.exception('Failed to load people config: %s', e)
-        raise HTTPException(status_code=500, detail='Internal server error')
-
-
-@router.post('/admin/v1/people')
-@require_admin_session
-async def admin_save_people(request: Request):
-    """Save people configuration; reloads PeopleService and invalidates cost cache."""
-    try:
-        payload = await request.json()
-        content = payload.get('content', '')
-        if not content:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
-        admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('people', content)
-        try:
-            people_repo = resolve_service(request, 'people_repository')
-            people_repo.reload()
-        except Exception as e:
-            logger.warning('Failed to reload people service after save: %s', e)
-        try:
-            cost_service = resolve_service(request, 'cost_service')
-            cost_service.invalidate_cache()
-        except Exception as e:
-            logger.warning('Failed to invalidate cost cache after people save: %s', e)
-        return {'ok': True}
-    except WorkforceConflictError as e:
-        raise HTTPException(status_code=409, detail={
-            'error': 'workforce_endpoint_required', 'message': str(e),
-        }) from e
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception('Failed to save people config: %s', e)
-        raise HTTPException(status_code=500, detail='Internal server error')
-
-
-@router.get('/admin/v1/people/inspect')
-@require_admin_session
-async def admin_inspect_people(request: Request):
-    """Inspect people data grouped by team; delegates to people_inspector."""
-    try:
-        admin_svc = resolve_service(request, 'admin_service')
-        people_repo = resolve_service(request, 'people_repository')
-        team_repo = resolve_service(request, 'team_repository')
-        return await asyncio.to_thread(
-            people_inspector.inspect, admin_svc, people_repo, team_repo
-        )
-    except Exception as e:
-        logger.exception('Failed to inspect people data: %s', e)
-        raise HTTPException(status_code=500, detail='Internal server error')
-
-
-# ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
 
@@ -750,63 +597,6 @@ async def admin_delete_backup_snapshot(request: Request, key: str):
         raise HTTPException(status_code=404, detail=f'Snapshot not found: {key}')
     except Exception as e:
         logger.exception('Failed to delete backup snapshot %s: %s', key, e)
-        raise HTTPException(status_code=500, detail='Internal server error')
-
-
-# ---------------------------------------------------------------------------
-# Cost
-# ---------------------------------------------------------------------------
-
-@router.get('/admin/v1/cost')
-@require_admin_session
-async def admin_get_cost(request: Request):
-    """Return cost configuration as JSON."""
-    try:
-        admin_svc = resolve_service(request, 'admin_service')
-        data = admin_svc.get_config('cost_config')
-        return {'content': data if data is not None else ''}
-    except Exception as e:
-        logger.exception('Failed to load cost config: %s', e)
-        raise HTTPException(status_code=500, detail='Internal server error')
-
-
-@router.get('/admin/v1/cost/inspect')
-@require_admin_session
-async def admin_inspect_cost(request: Request):
-    """Inspect team/cost matching for debugging.  Delegates to cost_inspector."""
-    try:
-        admin_svc = resolve_service(request, 'admin_service')
-        people_repo = resolve_service(request, 'people_repository')
-        team_repo = resolve_service(request, 'team_repository')
-        return await asyncio.to_thread(
-            cost_inspector.inspect, admin_svc, people_repo, team_repo
-        )
-    except Exception as e:
-        logger.exception('Failed to inspect cost configuration: %s', e)
-        raise HTTPException(status_code=500, detail='Internal server error')
-
-
-@router.post('/admin/v1/cost')
-@require_admin_session
-async def admin_save_cost(request: Request):
-    """Save cost configuration."""
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expecting JSON body'})
-    content = payload.get('content')
-    if content is None:
-        raise HTTPException(status_code=400, detail={'error': 'missing_content', 'message': 'Payload must include content field'})
-    try:
-        admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('cost_config', content)
-        return {'ok': True}
-    except WorkforceConflictError as e:
-        raise HTTPException(status_code=409, detail={
-            'error': 'workforce_endpoint_required', 'message': str(e),
-        }) from e
-    except Exception as e:
-        logger.exception('Failed to save cost config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
 
 

@@ -1,4 +1,4 @@
-"""Anonymous workforce candidate conversion, without live migration registration."""
+"""Revision-35 workforce conversion and canonical startup contracts."""
 from itertools import count
 from copy import deepcopy
 from collections.abc import Iterator
@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from planner_lib.cost import engine
 from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.domain.workforce import WorkforceCatalogue
 from planner_lib.migrations.workforce_candidate import build_workforce_candidate
@@ -47,9 +46,7 @@ def legacy_fixture() -> dict:
     }
 
 
-def test_candidate_archives_incomplete_items_and_preserves_anonymous_basis(
-    cache_storage: StorageBackend,
-) -> None:
+def test_candidate_archives_incomplete_items_and_preserves_anonymous_basis() -> None:
     """Unknown staffing is retained for admin review, not silently assigned or discarded."""
     source = legacy_fixture()
     original = deepcopy(source)
@@ -66,15 +63,19 @@ def test_candidate_archives_incomplete_items_and_preserves_anonymous_basis(
     for identity in ['team-unconfigured', 'team-']:
         assert definitions[identity]['migration_incomplete'] is True
         assert definitions[identity]['archived'] is True
-    legacy = engine._team_members({'database': source['people']['database'], 'cost': source['cost']},
-                                 cache_storage)
+    expected = {
+        'team-alpha': {'internal': (2, 232, 14848), 'external': (0, 0, 0)},
+        'team-beta': {'internal': (1, 116, 7424), 'external': (0, 0, 0)},
+        'team-unconfigured': {'internal': (0, 0, 0), 'external': (1, 160, 12000)},
+        'team-': {'internal': (0, 0, 0), 'external': (1, 160, 8000)},
+    }
     bases = workforce.team_bases()
-    for identity, old in legacy.items():
+    assert set(bases) == set(expected)
+    for identity, accounts in expected.items():
         for account in ('internal', 'external'):
+            fte, hours, cost = accounts[account]
             assert bases[identity][account] == {
-                'fte': old[f'{account}_count'],
-                'monthly_hours': old[f'{account}_hours_total'],
-                'monthly_cost': old.get(f'{account}_monthly_cost_total', 0),
+                'fte': fte, 'monthly_hours': hours, 'monthly_cost': cost,
             }
     assert candidate['projects']['schema_version'] == 4
     assert candidate['projects']['allocation_defaults'] == {
@@ -182,7 +183,7 @@ def test_canonical_runtime_registration_uses_only_migrated_workforce_owners(
     from planner_lib.cost.service import WorkforceCostService
     from planner_lib.migrations.workforce_candidate import upgrade_workforce_candidate
     from planner_lib.repository.task_repository import WorkforceTaskRepository
-    from planner_lib.repository.team_repository import WorkforceTeamRepository
+    from planner_lib.repository.team_repository import TeamRepository
     from planner_lib.services.container import ServiceContainer
     from planner_lib.services.workforce_runtime import register_workforce_runtime
 
@@ -198,7 +199,7 @@ def test_canonical_runtime_registration_uses_only_migrated_workforce_owners(
     container.register_singleton('remote_cache_storage', candidate_storage)
     register_workforce_runtime(container)
     assert isinstance(container.get('config_backend'), WorkforceConfigBackend)
-    assert isinstance(container.get('team_repository'), WorkforceTeamRepository)
+    assert isinstance(container.get('team_repository'), TeamRepository)
     assert isinstance(container.get('task_repository'), WorkforceTaskRepository)
     assert isinstance(container.get('cost_service'), WorkforceCostService)
     assert isinstance(container.get('admin_service'), WorkforceAdminService)

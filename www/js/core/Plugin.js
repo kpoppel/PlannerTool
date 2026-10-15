@@ -70,6 +70,10 @@ export class Plugin {
       fullscreen: this.isFullscreen,
       menuPosition: this.config.menuPosition,
       attentionCount: 0,
+      attentionCounts: [],
+      attentionStatus: '',
+      menuBehavior: 'dropdown',
+      menuActive: false,
     };
   }
 

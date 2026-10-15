@@ -62,7 +62,7 @@ def test_fresh_factory_selects_canonical_workforce_and_schema_35(tmp_path):
     from planner_lib.admin.workforce_service import WorkforceAdminService
     from planner_lib.backend.config import WorkforceConfigBackend
     from planner_lib.cost.service import WorkforceCostService
-    from planner_lib.repository.team_repository import WorkforceTeamRepository
+    from planner_lib.repository.team_repository import TeamRepository
 
     static = tmp_path / 'static'
     static.mkdir()
@@ -75,7 +75,7 @@ def test_fresh_factory_selects_canonical_workforce_and_schema_35(tmp_path):
         assert storage.load('config', 'teams') == {'schema_version': 3, 'teams': [], 'groups': []}
         assert storage.load('config', 'workforce') == {'schema_version': 2, 'suppliers': [], 'staffing': []}
         assert isinstance(container.get('config_backend'), WorkforceConfigBackend)
-        assert isinstance(container.get('team_repository'), WorkforceTeamRepository)
+        assert isinstance(container.get('team_repository'), TeamRepository)
         assert isinstance(container.get('cost_service'), WorkforceCostService)
         assert isinstance(container.get('admin_service'), WorkforceAdminService)
         assert not storage.exists('config', 'people')

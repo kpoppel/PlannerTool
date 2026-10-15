@@ -514,7 +514,7 @@ def test_task_repository_read_filters_by_project():
     assert result[0]['id'] == '1'
 
 
-def test_task_repository_read_skips_misconfigured_project_and_logs_error(caplog):
+def test_task_repository_read_rejects_misconfigured_sources():
     from planner_lib.repository.task_repository import TaskRepository
 
     class PartialFailureBackend(FakeBackend):
@@ -559,15 +559,9 @@ def test_task_repository_read_skips_misconfigured_project_and_logs_error(caplog)
     ])
     repo = TaskRepository(backend, project_service, FakeCredentialProvider())
 
-    caplog.set_level('ERROR')
-    result = repo.read()
-
-    assert len(result) == 1
-    assert result[0]['id'] == '1'
+    with pytest.raises(BackendConfigError, match='MissingArea'):
+        repo.read()
     assert len(backend.fetch_tasks_calls) == 1
-    assert "skipping project 'project-b'" in caplog.text
-    assert "MissingArea" in caplog.text
-    assert "backend_misconfigured" in caplog.text
 
 
 def test_task_repository_read_raises_auth_error():

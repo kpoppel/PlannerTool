@@ -1,4 +1,4 @@
-"""Team and system configuration handlers honor the admin-service boundary."""
+"""System configuration handlers honor the admin-service boundary."""
 
 import asyncio
 import json
@@ -11,7 +11,6 @@ from planner_lib.admin import api as admin_api
 
 
 @pytest.mark.parametrize('get_handler, save_handler, config_key', [
-    (admin_api.admin_get_teams, admin_api.admin_save_teams, 'teams'),
     (admin_api.admin_get_system, admin_api.admin_save_system, 'server_config'),
 ])
 def test_configuration_handlers_forward_content(get_handler, save_handler, config_key):

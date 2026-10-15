@@ -154,14 +154,16 @@ def test_get_backup_includes_config_keys():
         'plugins': [{'id': 'portfolio', 'enabled': True, 'activated': True, 'order': 0, 'custom_config': {}}],
     }
     # Missing keys are stored as None
-    assert bk['config']['people'] is None
+    assert bk['config']['workforce'] is None
+    assert 'people' not in bk['config']
+    assert 'cost_config' not in bk['config']
 
 
 def test_get_backup_covers_all_live_config_keys():
     """Every key in CONFIG_KEYS must appear in the backup output (regression guard)."""
     from planner_lib.admin.config_manager import ConfigManager
     expected = {
-        "projects", "teams", "workforce", "people", "cost_config",
+        "projects", "teams", "workforce",
         "area_plan_map", "iterations", "global_settings", "ado_config", "plugin_runtime_config", "server_config",
     }
     assert set(ConfigManager.CONFIG_KEYS) == expected, (

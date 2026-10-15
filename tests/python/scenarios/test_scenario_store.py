@@ -114,6 +114,31 @@ def test_load_user_scenario_preserves_domain_id_and_adds_storage_meta():
     assert got['_meta']['id'] == '1'
 
 
+def test_acceptance_only_scenario_round_trip_stays_user_scoped(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    backend = InMemoryBackend()
+    decision = {
+        'id': 'containment:child:parent',
+        'identity': {'rule': 'containment', 'taskId': 'child', 'relatedId': 'parent',
+                     'path': ['child', 'parent']},
+        'actor': 'editor@example.test',
+        'acceptedAt': '2026-10-05T12:00:00Z',
+        'reason': 'Agreed delivery window',
+        'evidence': 'cached-task-and-scenario-evidence',
+        'status': 'active',
+    }
+    payload = {'name': 'What-if', 'overrides': {}, 'pluginData': {
+        'plugin-reconciliation': {'version': 1, 'decisions': [decision]},
+    }}
+    meta = ss.save_user_scenario(backend, 'editor@example.test', None, payload)
+    loaded = ss.load_user_scenario(backend, 'editor@example.test', meta['id'])
+    assert loaded['overrides'] == {}
+    assert loaded['pluginData'] == payload['pluginData']
+    assert meta['shared'] is False
+    assert ss.list_user_scenarios(backend, 'other@example.test') == []
+    assert {namespace for namespace, _ in backend.store} == {ss.SCENARIO_NS}
+
+
 def test_delete_user_scenario_success_and_failure(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     b = InMemoryBackend()

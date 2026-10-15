@@ -10,7 +10,6 @@ from planner_lib.domain.plans import DomainMarker
 from planner_lib.domain.iterations import DomainIteration
 from planner_lib.domain.teams import DomainTeam
 from planner_lib.domain.projects import DomainProject
-from planner_lib.domain.people import DomainPerson
 
 __all__ = [
     'DomainTask',
@@ -21,5 +20,4 @@ __all__ = [
     'DomainIteration',
     'DomainTeam',
     'DomainProject',
-    'DomainPerson',
 ]

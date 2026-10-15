@@ -88,6 +88,13 @@ never substitute a new key. The canonical admin is served at `/admin/`. Generic 
 or snapshot restore cannot replace lifecycle-owned workforce definitions; use the offline
 full-database recovery command with its explicit confirmation for complete recovery.
 
+People, Cost and Teams administration is now exclusively served through
+`/admin/v1/workforce`. The old `/admin/v1/people`, `/admin/v1/cost` and
+`/admin/v1/teams` routes, inspection routes and schemas are removed. Logical
+backups contain `teams` and `workforce`, not retired `people` or `cost_config`
+keys. Only revision-35 conversion and validation retain the legacy data contract;
+runtime backends and mock generation do not read or recreate it.
+
 ## Development iterations
 
 Known historical marker renames are explicit admission aliases, not permission to

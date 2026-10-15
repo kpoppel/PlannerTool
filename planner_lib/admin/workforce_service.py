@@ -48,9 +48,8 @@ class WorkforceAdminService(AdminService):
         with self._config_manager._storage.transaction():
             self._config_manager._validate_compatibility(data)
             config = data.get('config', {})
-            for key in ('teams', 'workforce', 'people', 'cost_config'):
-                if key in config and (key in {'people', 'cost_config'}
-                                      or config[key] != self.get_config(key)):
+            for key in ('teams', 'workforce'):
+                if key in config and config[key] != self.get_config(key):
                     raise WorkforceConflictError(
                         'Use the canonical Workforce editing endpoint; '
                         'complete database recovery requires the offline restore command',

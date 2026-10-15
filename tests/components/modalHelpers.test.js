@@ -3,7 +3,7 @@ import { expect, fixture } from '@open-wc/testing';
 import {
   openConfigModal,
   openHelpModal,
-  openAzureDevopsModal,
+  openPublishScenarioModal,
   openScenarioCloneModal,
   openScenarioRenameModal,
   openScenarioDeleteModal,
@@ -57,20 +57,20 @@ describe('modalHelpers', () => {
     expect(document.querySelector('help-modal')).to.be.null;
   });
 
-  it('openAzureDevopsModal resolves on save and close appropriately', async () => {
+  it('openPublishScenarioModal resolves on save and close appropriately', async () => {
     // Test save path
-    const savePromise = openAzureDevopsModal({
-      overrides: { a: 1 },
+    const savePromise = openPublishScenarioModal({
+      overrides: {},
       state: null,
     });
-    let el = await waitFor('azure-devops-modal');
-    el.dispatchEvent(new CustomEvent('azure-save', { detail: [{ id: 'x' }] }));
+    let el = await waitFor('publish-scenario-modal');
+    el.dispatchEvent(new CustomEvent('scenario-publish', { detail: [{ id: 'x' }] }));
     const saved = await savePromise;
     expect(saved).to.deep.equal([{ id: 'x' }]);
 
     // Test close path
-    const closePromise = openAzureDevopsModal({ overrides: {}, state: null });
-    el = await waitFor('azure-devops-modal');
+    const closePromise = openPublishScenarioModal({ overrides: {}, state: null });
+    el = await waitFor('publish-scenario-modal');
     el.dispatchEvent(new CustomEvent('modal-close'));
     const closed = await closePromise;
     expect(closed).to.be.null;

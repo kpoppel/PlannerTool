@@ -74,9 +74,7 @@ class AdminService:
         self._config_manager.save_config_raw(key, content)
 
     def _guard_legacy_workforce_save(self, key: str) -> None:
-        if key in {'teams', 'workforce', 'people', 'cost_config'} and (
-            self._workforce_config.has_canonical_teams()
-        ):
+        if key in {'teams', 'workforce', 'people', 'cost_config'}:
             raise WorkforceConflictError('Use the canonical Workforce editing endpoint')
 
     def get_workforce_snapshot(self) -> WorkforceSnapshot:

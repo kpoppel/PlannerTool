@@ -4,9 +4,6 @@ Implements the focused config protocols; reads and writes go directly to the
 injected diskcache StorageBackend.  ConfigBackend is a peer of UserDataBackend:
 both operate directly on diskcache with no separate TTL-caching layer.
 
-People config (people.yml) is stored in diskcache after migration 0022.  The
-``config::people`` key holds a dict ``{database: {people: [...]}}``.
-
 Adding new config domains
 --------------------------
 1.  Add a new focused Protocol to port.py (e.g. BudgetBackend).
@@ -32,13 +29,11 @@ from planner_lib.backend.port import (
     BackendCredential,
     EventConfigBackend,
     GroupsConfigBackend,
-    PeopleBackend,
     ProjectConfigBackend,
     TeamConfigBackend,
     IterationConfigBackend,
     PlanConfigBackend,
 )
-from planner_lib.domain.people import DomainPerson
 from planner_lib.domain.allocation_availability import validate_project_availability
 from planner_lib.domain.projects import DomainProject
 from planner_lib.domain.teams import DomainTeam, TeamCatalogue
@@ -52,7 +47,6 @@ class ConfigBackend(
     AdoConfigBackend,
     EventConfigBackend,
     GroupsConfigBackend,
-    PeopleBackend,
     ProjectConfigBackend,
     TeamConfigBackend,
     IterationConfigBackend,
@@ -64,9 +58,8 @@ class ConfigBackend(
     ----------
     storage:
         StorageBackend backed by diskcache — the authoritative store for all
-        config domains (people, projects, teams, cost_config, iterations,
-        area_plan_map, global_settings, ado_config).  Run migration 0022
-        to populate ``config::people`` before starting the server.
+        config domains (projects, teams, workforce, iterations,
+        area_plan_map, global_settings, ado_config).
     """
 
     def __init__(
@@ -75,24 +68,6 @@ class ConfigBackend(
     ) -> None:
         self._storage = storage
         logger.info("ConfigBackend: initialised (diskcache storage)")
-
-    # ------------------------------------------------------------------
-    # PeopleBackend  (diskcache-backed after migration 0022)
-    # ------------------------------------------------------------------
-
-    def fetch_people(
-        self,
-        credential: Optional[BackendCredential] = None,
-    ) -> List[DomainPerson]:
-        """Return all people records from diskcache (populated by migration 0022)."""
-        if not self._storage.exists("config", "people"):
-            logger.warning(
-                "ConfigBackend: config::people not in diskcache — "
-                "run migration 0022 to populate it from people.yml"
-            )
-            return []
-        cfg = self._storage.load("config", "people") or {}
-        return (cfg.get("database") or {}).get("people") or []
 
     # ------------------------------------------------------------------
     # ProjectConfigBackend
@@ -157,17 +132,10 @@ class ConfigBackend(
         *,
         include_archived: bool = False,
     ) -> List[DomainTeam]:
-        """Return active choices, or include archives when resolving existing allocations."""
-        cfg = self._storage.load("config", "teams") or {}
-        return [
-            DomainTeam(
-                id=slugify(t.get("name"), prefix="team-"),
-                name=t.get("name") or "",
-                short_name=t.get("short_name"),
-            )
-            for t in (cfg.get("teams") or [])
-            if include_archived or not t.get("exclude", False)
-        ]
+        """Read persisted team/group identities directly, never derive IDs from labels."""
+        catalogue = TeamCatalogue(self._storage.load('config', 'teams'))
+        entries = catalogue.definitions() if include_archived else catalogue.allocation_choices()
+        return [cast(DomainTeam, entry) for entry in entries]
 
     # ------------------------------------------------------------------
     # IterationConfigBackend
@@ -294,15 +262,4 @@ class WorkforceConfigBackend(ConfigBackend):
                 if 'allocatable_ids' in definition:
                     project['allocatable_ids'] = list(definition['allocatable_ids'])
             return projects
-
-    def fetch_config_teams(
-        self,
-        credential: Optional[BackendCredential] = None,
-        *,
-        include_archived: bool = False,
-    ) -> List[DomainTeam]:
-        """Read persisted team/group identities directly, never derive IDs from labels."""
-        catalogue = TeamCatalogue(self._storage.load('config', 'teams'))
-        entries = catalogue.definitions() if include_archived else catalogue.allocation_choices()
-        return [cast(DomainTeam, entry) for entry in entries]
 

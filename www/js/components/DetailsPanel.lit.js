@@ -379,6 +379,14 @@ export class DetailsPanelLit extends LitElement {
     }
   }
 
+  async focusSchedulingEditor() {
+    await this.updateComplete;
+    const input = this.shadowRoot.querySelector('.date-input');
+    if (input === null) throw new Error('Scheduling editor is not rendered');
+    input.focus();
+    input.scrollIntoView({ block: 'nearest' });
+  }
+
   _onEndDateChange(value) {
     const val = value === '' ? null : value;
     if (!this.feature) return;

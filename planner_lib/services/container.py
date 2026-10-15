@@ -28,7 +28,6 @@ class ServiceKeys:
     HEALTH_CONFIG = "health_config"
     HISTORY_REPOSITORY = "history_repository"
     ITERATION_REPOSITORY = "iteration_repository"
-    PEOPLE_REPOSITORY = "people_repository"
     PLAN_REPOSITORY = "plan_repository"
     PROJECT_REPOSITORY = "project_repository"
     SCENARIO_REPOSITORY = "scenario_repository"

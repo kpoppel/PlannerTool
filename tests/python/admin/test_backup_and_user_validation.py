@@ -38,19 +38,6 @@ class FakeStorageBase:
         return []
 
 
-class FakeStorageFailSave(FakeStorageBase):
-    def __init__(self):
-        super().__init__()
-        class Backend:
-            def __init__(self):
-                self.saved = []
-            def save(self, ns, key, value):
-                self.saved.append((ns, key, value))
-        self._backend = Backend()
-    def save(self, ns, key, value):
-        raise RuntimeError('simulated save failure')
-
-
 class FakeAdminService:
     def __init__(self, storage):
         self._config_storage = storage
@@ -135,16 +122,6 @@ class SessMgr:
 def make_request(container, headers=None, cookies=None):
     app = SimpleNamespace(state=SimpleNamespace(container=container))
     return SimpleNamespace(headers=headers or {}, cookies=cookies or {}, app=app, url=SimpleNamespace(path='/'))
-
-
-def test_backup_existing_fallback_uses_backend():
-    storage = FakeStorageFailSave()
-    storage.data['config']['projects'] = b'rawbytes'
-    admin_api._backup_existing(storage, 'projects', 'projects')
-    assert storage._backend.saved, 'backend.save was not called as fallback'
-    ns, key, val = storage._backend.saved[0]
-    assert ns == 'config'
-    assert key.startswith('projects_backup_')
 
 
 def test_admin_create_user_rejects_non_object_payload():

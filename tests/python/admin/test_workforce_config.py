@@ -1,4 +1,4 @@
-"""Transactional configuration contracts for the pending workforce cutover."""
+"""Transactional configuration contracts for canonical workforce administration."""
 from concurrent.futures import ThreadPoolExecutor
 from base64 import b32decode
 from copy import deepcopy
@@ -19,11 +19,22 @@ from planner_lib.admin import api as admin_api
 from planner_lib.admin.config_manager import ConfigManager
 from planner_lib.admin.service import AdminService
 from planner_lib.admin.workforce_service import WorkforceAdminService
+from planner_lib.admin.workforce_graphs import retained_allocation_graphs
 from planner_lib.admin.workforce_config import (
     DefinitionKind, WorkforceConfigManager, WorkforceConflictError,
 )
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 from planner_lib.middleware.session import SESSION_COOKIE, SessionManager, SessionMiddleware
+
+
+def test_admin_routes_expose_workforce_without_legacy_configuration_endpoints() -> None:
+    """People, cost configuration and team editing belong exclusively to workforce."""
+    paths = {route.path for route in admin_api.router.routes}
+    assert '/admin/v1/workforce' in paths
+    assert not paths.intersection({
+        '/admin/v1/people', '/admin/v1/people/inspect',
+        '/admin/v1/cost', '/admin/v1/cost/inspect', '/admin/v1/teams',
+    })
 
 
 def test_configuration_transaction_rolls_back_all_writes(tmp_path: Path) -> None:
@@ -130,7 +141,10 @@ def test_http_membership_change_rejects_retained_allocation_conflicts(
         target['capacity'] = proposed
     else:
         manager._storage.save('scenarios', 'scenario-one', {
-            'overrides': {target['id']: {'capacity': proposed}},
+            'overrides': {
+                'absent-task': {'capacity': proposed},
+                target['id']: {'capacity': proposed},
+            },
         })
     manager._storage.save('backend_domain', 'fetch_task_context__forest', [root, leaf])
     before = manager.read_snapshot()
@@ -141,6 +155,55 @@ def test_http_membership_change_rejects_retained_allocation_conflicts(
     assert kind in response.json()['detail']['message']
     assert 'team-one' in response.json()['detail']['message']
     assert manager.read_snapshot() == before
+
+
+@pytest.mark.parametrize('override', [
+    {'capacity': [{'team': 'team-one', 'capacity': 40}]},
+    {'start': '2026-04-20'},
+    {'end': '2026-05-15'},
+    {'parentId': 'root'},
+    {'relations': [{'type': 'Parent', 'id': 'root'}]},
+])
+def test_http_membership_change_preserves_overrides_for_absent_tasks(
+    manager: WorkforceConfigManager, workforce_client: TestClient, override: dict,
+) -> None:
+    """Historical overrides remain stored without inventing tasks in the effective graph."""
+    task = {'id': 'root', 'revision': 2, 'capacity': []}
+    scenario = {'overrides': {'688188': override}}
+    manager._storage.save('backend_domain', 'fetch_task_context__forest', [task])
+    manager._storage.save('scenarios', 'scenario-one', scenario)
+    before = manager.read_snapshot()
+    candidate = deepcopy(before)
+    candidate['teams']['teams'][0]['group_id'] = 'group-one'
+    response = workforce_client.post('/admin/v1/workforce', json=candidate)
+    assert response.status_code == 200
+    assert manager.read_snapshot()['teams']['teams'][0]['group_id'] == 'group-one'
+    assert manager._storage.load('scenarios', 'scenario-one') == scenario
+    assert manager._storage.load('backend_domain', 'fetch_task_context__forest') == [task]
+    assert retained_allocation_graphs(manager._storage, manager._storage) == {
+        'baseline': [task], 'scenario:scenario-one': [task],
+    }
+
+
+@pytest.mark.parametrize('state_category, expected_status', [('Removed', 200), ('InProgress', 422)])
+def test_http_membership_change_uses_latest_backend_state(
+    manager: WorkforceConfigManager, workforce_client: TestClient,
+    state_category: str, expected_status: int,
+) -> None:
+    """Latest backend removal suppresses reservations without rewriting scenario history."""
+    task = {'id': 'root', 'revision': 1, 'stateCategory': 'InProgress', 'capacity': []}
+    newest = dict(task, revision=2, stateCategory=state_category)
+    scenario = {'overrides': {'root': {'capacity': [
+        {'team': 'team-one', 'capacity': 40}, {'team': 'group-one', 'capacity': 20},
+    ]}}}
+    manager._storage.save('backend_domain', 'fetch_plan_tasks__old', [task])
+    manager._storage.save('backend_domain', 'fetch_task_context__new', [newest])
+    manager._storage.save('scenarios', 'scenario-one', scenario)
+    candidate = manager.read_snapshot()
+    candidate['teams']['teams'][0]['group_id'] = 'group-one'
+    response = workforce_client.post('/admin/v1/workforce', json=candidate)
+    assert response.status_code == expected_status
+    assert manager._storage.load('scenarios', 'scenario-one') == scenario
 
 
 def test_membership_validation_uses_newest_tasks_without_private_metadata(
@@ -159,6 +222,54 @@ def test_membership_validation_uses_newest_tasks_without_private_metadata(
     after = manager.save_configuration(candidate['teams'], candidate['workforce'], before['revision'])
     assert after['teams']['teams'][0]['group_id'] == 'group-one'
     assert manager._storage.load('backend_domain', 'fetch_task_context__new') == [newest]
+
+
+@pytest.mark.parametrize('enriched_first', [False, True])
+def test_membership_validation_merges_same_revision_context_enrichment(
+    manager: WorkforceConfigManager, enriched_first: bool,
+) -> None:
+    """Context-only fields do not turn identical upstream revisions into conflicts."""
+    task = {'id': '751031', 'revision': 19, 'capacity': [],
+            'start': '2026-04-20', 'end': '2026-05-15', 'parentId': None,
+            'relations': [], 'type': 'Feature'}
+    enriched = dict(task, stateCategory='Completed', traversalBoundary=False,
+                    excludedChildIds=[])
+    first, second = (enriched, task) if enriched_first else (task, enriched)
+    manager._storage.save('backend_domain', 'fetch_plan_tasks__first', [first])
+    manager._storage.save('backend_domain', 'fetch_task_context__second', [second])
+    before = manager.read_snapshot()
+    candidate = deepcopy(before)
+    candidate['teams']['teams'][0]['group_id'] = 'group-one'
+    after = manager.save_configuration(candidate['teams'], candidate['workforce'], before['revision'])
+    assert after['teams']['teams'][0]['group_id'] == 'group-one'
+    assert manager._storage.load('backend_domain', 'fetch_plan_tasks__first') == [first]
+    assert manager._storage.load('backend_domain', 'fetch_task_context__second') == [second]
+    assert retained_allocation_graphs(manager._storage, manager._storage)['baseline'] == [enriched]
+
+
+@pytest.mark.parametrize('changes', [
+    {'capacity': [{'team': 'team-one', 'capacity': 40}]},
+    {'end': '2026-05-16'},
+    {'parentId': 'another-root'},
+    {'stateCategory': 'InProgress'},
+    {'traversalBoundary': True},
+    {'excludedChildIds': ['child']},
+])
+def test_membership_validation_rejects_contradictory_same_revision_snapshots(
+    manager: WorkforceConfigManager, changes: dict,
+) -> None:
+    """Complementary enrichment must not hide contradictory retained task evidence."""
+    task = {'id': '751031', 'revision': 19, 'capacity': [], 'end': '2026-05-15',
+            'parentId': None, 'stateCategory': 'Completed', 'traversalBoundary': False,
+            'excludedChildIds': []}
+    manager._storage.save('backend_domain', 'fetch_plan_tasks__first', [task])
+    manager._storage.save('backend_domain', 'fetch_task_context__second', [dict(task, **changes)])
+    before = manager.read_snapshot()
+    candidate = deepcopy(before)
+    candidate['teams']['teams'][0]['group_id'] = 'group-one'
+    with pytest.raises(ValueError, match='Conflicting retained task snapshots.*751031'):
+        manager.save_configuration(candidate['teams'], candidate['workforce'], before['revision'])
+    assert manager.read_snapshot() == before
 
 
 def test_membership_edit_keeps_task_transaction_held_through_persistence(
@@ -686,11 +797,11 @@ def test_canonical_workforce_snapshot_cannot_bypass_lifecycle_owner(
         service.restore_snapshot_entry(f'{key}_backup_fixture')
 
 
-@pytest.mark.parametrize('key', ['teams', 'workforce', 'people', 'cost_config'])
+@pytest.mark.parametrize('key', ['teams', 'workforce'])
 def test_canonical_logical_restore_cannot_bypass_workforce_owner(
     manager: WorkforceConfigManager, key: str,
 ) -> None:
-    """Logical config restore cannot silently replace lifecycle-owned definitions or people."""
+    """Logical config restore cannot silently replace lifecycle-owned definitions."""
     service = WorkforceAdminService(manager._storage, None, Mock(), None,
                                     task_storage=manager._storage)
     before = manager.read_snapshot()
@@ -872,21 +983,19 @@ def test_workforce_http_domain_validation_rejects_client_identity(
     assert manager.read_snapshot() == before
 
 
-@pytest.mark.parametrize('path,key', [
-    ('/admin/v1/teams', 'teams'), ('/admin/v1/people', 'people'),
-    ('/admin/v1/cost', 'cost_config'),
+@pytest.mark.parametrize('path', [
+    '/admin/v1/teams', '/admin/v1/people', '/admin/v1/people/inspect',
+    '/admin/v1/cost', '/admin/v1/cost/inspect',
 ])
-def test_legacy_http_saves_cannot_bypass_canonical_workforce_owner(
-    manager: WorkforceConfigManager, workforce_client: TestClient, path: str, key: str,
+@pytest.mark.parametrize('method', ['GET', 'POST'])
+def test_removed_admin_endpoints_are_not_available(
+    manager: WorkforceConfigManager, workforce_client: TestClient, path: str, method: str,
 ) -> None:
-    """The old whole-document endpoints cannot bypass canonical identity/cost protection."""
+    """Removed configuration and inspection routes cannot read or mutate workforce."""
     before = manager.read_snapshot()
-    response = workforce_client.post(path, json={'content': {'schema_version': 2, 'teams': []}})
-    assert response.status_code == 409
-    assert response.json()['detail']['error'] == 'workforce_endpoint_required'
+    response = workforce_client.request(method, path, json={'content': {}})
+    assert response.status_code == 404
     assert manager.read_snapshot() == before
-    if key != 'teams':
-        assert not manager._storage.exists('config', key)
 
 
 def test_workforce_http_refuses_unmigrated_store_without_conversion(

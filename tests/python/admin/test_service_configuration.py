@@ -1,9 +1,7 @@
-"""Tests for the four modules extracted from admin/api.py god handler.
+"""Contracts for current admin schemas and area mapping services.
 
 Covers:
 - schema.get_schema / get_schema deep copy / enrich_projects_schema
-- cost_inspector.inspect return shape and computation
-- people_inspector.inspect return shape and categorisation
 - area_mapping_service._merge_plans / refresh_single / refresh_all
 """
 import copy
@@ -21,7 +19,7 @@ class TestAdminSchema:
         self.schema = _s
 
     def test_get_schema_known_types(self):
-        for type_name in ('system', 'projects', 'teams', 'people', 'area_mappings', 'cost'):
+        for type_name in ('system', 'projects', 'area_mappings'):
             result = self.schema.get_schema(type_name)
             assert isinstance(result, dict), f"Expected dict for {type_name}"
             assert result.get('type') == 'object'
@@ -29,6 +27,8 @@ class TestAdminSchema:
     def test_get_schema_unknown_returns_none(self):
         assert self.schema.get_schema('nonexistent') is None
         assert self.schema.get_schema('') is None
+        for removed in ('teams', 'people', 'cost'):
+            assert self.schema.get_schema(removed) is None
 
     def test_get_schema_returns_deep_copy(self):
         s1 = self.schema.get_schema('system')
@@ -84,155 +84,6 @@ class TestAdminSchema:
             pat='token',
             admin_svc=admin_svc,
         )
-
-
-# ===========================================================================
-# cost_inspector
-# ===========================================================================
-
-class TestCostInspector:
-    def _make_stubs(self, people=(), teams_cfg=None, cost_cfg=None):
-        admin_svc = MagicMock()
-        admin_svc.get_config.side_effect = lambda key, **_: {
-            'cost_config': cost_cfg or {},
-            'teams': teams_cfg or {'teams': []},
-        }.get(key, {})
-
-        people_svc = MagicMock()
-        people_svc.get_people.return_value = list(people)
-        people_svc.list_people.return_value = list(people)
-        people_svc.get_config.return_value = {'database_file': 'test.yaml'}
-
-        team_svc = MagicMock()
-        team_svc.list_teams.return_value = []
-
-        return admin_svc, people_svc, team_svc
-
-    def test_returns_expected_top_level_keys(self):
-        from planner_lib.admin import cost_inspector
-        admin_svc, people_svc, team_svc = self._make_stubs()
-        result = cost_inspector.inspect(admin_svc, people_svc, team_svc)
-
-        for key in ('configured_teams', 'excluded_teams', 'database_teams',
-                    'matched_teams', 'config_only_teams', 'database_only_teams',
-                    'unmatched_people', 'summary', 'cost_config'):
-            assert key in result, f"Missing key: {key}"
-
-    def test_person_without_team_goes_to_unmatched(self):
-        from planner_lib.admin import cost_inspector
-        people = [{'name': 'Alice', 'site': 'NYC'}]
-        admin_svc, people_svc, team_svc = self._make_stubs(people=people)
-        result = cost_inspector.inspect(admin_svc, people_svc, team_svc)
-
-        assert len(result['unmatched_people']) == 1
-        assert result['unmatched_people'][0]['name'] == 'Alice'
-
-    def test_internal_person_computed_cost(self):
-        from planner_lib.admin import cost_inspector
-        people = [{'name': 'Bob', 'team_name': 'Backend', 'site': 'NYC'}]
-        cost_cfg = {
-            'working_hours': {'NYC': {'internal': 160, 'external': 140}},
-            'internal_cost': {'default_hourly_rate': 100},
-            'external_cost': {'default_hourly_rate': 80, 'external': {}},
-        }
-        teams_cfg = {'teams': [{'name': 'Backend'}]}
-        admin_svc, people_svc, team_svc = self._make_stubs(
-            people=people, teams_cfg=teams_cfg, cost_cfg=cost_cfg
-        )
-        result = cost_inspector.inspect(admin_svc, people_svc, team_svc)
-
-        assert result['summary']['total_internal_cost_monthly'] == 16000.0
-        assert result['summary']['total_internal_hours_monthly'] == 160.0
-
-    def test_excluded_teams_populated(self):
-        from planner_lib.admin import cost_inspector
-        people = [{'name': 'Carol', 'team_name': 'Contractors', 'site': 'LON', 'external': True}]
-        cost_cfg = {
-            'working_hours': {'LON': {'internal': 160, 'external': 140}},
-            'internal_cost': {'default_hourly_rate': 100},
-            'external_cost': {'default_hourly_rate': 50, 'external': {}},
-        }
-        teams_cfg = {'teams': [{'name': 'Contractors', 'exclude': True}]}
-        admin_svc, people_svc, team_svc = self._make_stubs(
-            people=people, teams_cfg=teams_cfg, cost_cfg=cost_cfg
-        )
-        result = cost_inspector.inspect(admin_svc, people_svc, team_svc)
-
-        # Contractor team is excluded, so its cost should not appear in totals
-        assert result['summary']['total_external_cost_monthly'] == 0.0
-        assert len(result['excluded_teams']) == 1
-
-
-# ===========================================================================
-# people_inspector
-# ===========================================================================
-
-class TestPeopleInspector:
-    def _make_stubs(self, people=(), teams_cfg=None):
-        admin_svc = MagicMock()
-
-        def _get_config(key, **_):
-            if key == 'teams':
-                return teams_cfg or {'teams': []}
-            if key == 'people':
-                return {'database_file': 'test.yaml'}
-            return {}
-
-        admin_svc.get_config.side_effect = _get_config
-
-        people_svc = MagicMock()
-        people_svc.get_people.return_value = list(people)
-        people_svc.list_people.return_value = list(people)
-
-        team_svc = MagicMock()
-        team_svc.list_teams.return_value = []
-
-        return admin_svc, people_svc, team_svc
-
-    def test_returns_expected_top_level_keys(self):
-        from planner_lib.admin import people_inspector
-        admin_svc, people_svc, team_svc = self._make_stubs()
-        result = people_inspector.inspect(admin_svc, people_svc, team_svc)
-
-        for key in ('configured_teams', 'excluded_teams', 'matched_teams',
-                    'unmatched_teams', 'teams_without_people',
-                    'unassigned_people', 'summary'):
-            assert key in result, f"Missing key: {key}"
-
-    def test_person_without_team_goes_to_unassigned(self):
-        from planner_lib.admin import people_inspector
-        people = [{'name': 'Dave', 'site': 'NYC'}]
-        admin_svc, people_svc, team_svc = self._make_stubs(people=people)
-        result = people_inspector.inspect(admin_svc, people_svc, team_svc)
-
-        assert len(result['unassigned_people']) == 1
-        assert result['unassigned_people'][0]['name'] == 'Dave'
-
-    def test_matched_team_shows_in_matched(self):
-        from planner_lib.admin import people_inspector
-        people = [{'name': 'Eve', 'team_name': 'Alpha', 'site': 'NYC'}]
-        teams_cfg = {'teams': [{'name': 'Alpha'}]}
-        admin_svc, people_svc, team_svc = self._make_stubs(
-            people=people, teams_cfg=teams_cfg
-        )
-        result = people_inspector.inspect(admin_svc, people_svc, team_svc)
-
-        assert len(result['matched_teams']) == 1
-        assert result['matched_teams'][0]['name'] == 'Alpha'
-        assert len(result['unassigned_people']) == 0
-
-    def test_db_only_team_goes_to_unmatched(self):
-        from planner_lib.admin import people_inspector
-        # Person belongs to a team not in configuration
-        people = [{'name': 'Frank', 'team_name': 'GhostTeam', 'site': 'NYC'}]
-        teams_cfg = {'teams': []}  # no configured teams
-        admin_svc, people_svc, team_svc = self._make_stubs(
-            people=people, teams_cfg=teams_cfg
-        )
-        result = people_inspector.inspect(admin_svc, people_svc, team_svc)
-
-        assert len(result['unmatched_teams']) == 1
-        assert result['unmatched_teams'][0]['name'] == 'GhostTeam'
 
 
 # ===========================================================================

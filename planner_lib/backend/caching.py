@@ -91,7 +91,6 @@ class CacheTTLConfig:
     fetch_markers: Optional[timedelta] = dataclasses.field(default_factory=lambda: timedelta(hours=2))
     fetch_iterations: Optional[timedelta] = dataclasses.field(default_factory=lambda: timedelta(hours=8))
     # Config backend methods — None = no time-based expiry, invalidate on admin write
-    fetch_people: Optional[timedelta] = None
     fetch_config_teams: Optional[timedelta] = None
     fetch_iterations_config: Optional[timedelta] = None
     fetch_area_plan_map: Optional[timedelta] = None

@@ -7,6 +7,7 @@ import { cmd } from '../../www/js/application/imports.js';
 import { dataService } from '../../www/js/services/dataService.js';
 import { reconciliation } from '../../www/js/plugins/reconciliation/runtime.js';
 import * as boardUtils from '../../www/js/components/board-utils.js';
+import * as publication from '../../www/js/components/scenarioPublication.js';
 import { openReconciliationReview } from '../../www/js/plugins/reconciliation/ReconciliationReview.lit.js';
 import '../../www/js/plugins/reconciliation/ReconciliationTaskMarker.lit.js';
 import * as presentation from '../../www/js/plugins/reconciliation/presentation.js';
@@ -19,7 +20,8 @@ const schemaFiles = import.meta.glob('../../www/js/plugins/*.schema.json', {
 describe('Reconciliation detection menu', () => {
   it('exports presentation helpers used by the review with constraint and plan context', () => {
     const snapshot = {
-      groups: [{ category: 'quality' }, { category: 'schedule' }, { category: 'schedule' }],
+      groups: [{ category: 'quality', featureId: 'task' },
+        { category: 'schedule', featureId: 'task' }, { category: 'schedule', featureId: 'related' }],
       featuresById: new Map([
         ['task', { title: 'Delivery', project: 'one' }],
         ['related', { title: 'Prerequisite', project: 'two' }],
@@ -116,6 +118,25 @@ describe('Reconciliation detection menu', () => {
     expect(config.activateOnStartup).toBe(false);
     expect(config.exclusive).toBe(false);
     expect(config.menuPosition).toBe('before-tools');
+  });
+
+  it('opens publication from the toolbox without losing selected issue context', async () => {
+    const { element } = await openMenu();
+    seedActions();
+    await element.updateComplete;
+    const group = reconciliation.snapshot.groups[0];
+    element._onSelectTask(group, group.issues[0].type);
+    await element.updateComplete;
+    const selectedId = element.selectedId;
+    const issueId = element.selectedIssueId;
+    const publish = vi.spyOn(publication, 'publishScenario').mockResolvedValue({ ok: true,
+      data: { cancelled: true } });
+    element.shadowRoot.querySelector('[data-action="publish-scenario"]').click();
+    await element.updateComplete;
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ id: 'review' }));
+    expect(element.selectedId).toBe(selectedId);
+    expect(element.selectedIssueId).toBe(issueId);
+    expect(element.isConnected).toBe(true);
   });
 
   it('stages individual exceptions without task edits or suppressing baseline findings', async () => {

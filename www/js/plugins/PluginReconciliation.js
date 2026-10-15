@@ -2,7 +2,9 @@ import { MenuPlugin } from './MenuPlugin.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
 import { reconciliation } from './reconciliation/runtime.js';
-import { closeReconciliationReview } from './reconciliation/ReconciliationReview.lit.js';
+import { categoryCounts, statusText } from './reconciliation/presentation.js';
+import { closeReconciliationReview, isReconciliationReviewOpen,
+  toggleReconciliationReview } from './reconciliation/ReconciliationReview.lit.js';
 
 export class PluginReconciliation extends MenuPlugin {
   static get defaultId() { return 'plugin-reconciliation'; }
@@ -12,7 +14,6 @@ export class PluginReconciliation extends MenuPlugin {
   }
 
   async init() {
-    await import('./PluginReconciliationComponent.lit.js');
     await import('./reconciliation/ReconciliationTaskMarker.lit.js');
     this._unsubscribe = reconciliation.subscribe(() => {
       bus.emit(PluginEvents.MENU_STATUS_CHANGED, { id: this.id });
@@ -22,7 +23,15 @@ export class PluginReconciliation extends MenuPlugin {
   }
 
   getMetadata() {
-    return { ...super.getMetadata(), attentionCount: reconciliation.snapshot.groups.length };
+    return { ...super.getMetadata(), attentionCount: reconciliation.snapshot.groups.length,
+      attentionCounts: categoryCounts(reconciliation.snapshot),
+      attentionStatus: statusText(reconciliation.snapshot),
+      menuBehavior: 'toggle', menuActive: isReconciliationReviewOpen() };
+  }
+
+  toggleMenu() {
+    if (!this.initialized) throw new Error(`Menu plugin ${this.id} is not initialized`);
+    toggleReconciliationReview();
   }
 
   async destroy() {
@@ -34,11 +43,6 @@ export class PluginReconciliation extends MenuPlugin {
     await super.destroy();
   }
 
-  createMenuElement() {
-    if (!this.initialized) throw new Error(`Menu plugin ${this.id} is not initialized`);
-    const Component = customElements.get('plugin-reconciliation-content');
-    return new Component();
-  }
 }
 
 export default PluginReconciliation;

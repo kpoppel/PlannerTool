@@ -120,6 +120,8 @@ async function init() {
 
     const mod = await import('./components/Sidebar.lit.js');
     await mod.initSidebar();
+    const footer = await import('./components/sidebar/SidebarFooter.lit.js');
+    footer.initAppFooter();
 
     // Load Plugin system
     // Load modules config via fetch to avoid JSON module import and

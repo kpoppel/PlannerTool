@@ -7,7 +7,7 @@ const _modalImports = {
   './ConfigModal.lit.js': () => import('./ConfigModal.lit.js'),
   './HelpModal.lit.js': () => import('./HelpModal.lit.js'),
   './OnboardingModal.lit.js': () => import('./OnboardingModal.lit.js'),
-  './AzureDevopsModal.lit.js': () => import('./AzureDevopsModal.lit.js'),
+  './PublishScenarioModal.lit.js': () => import('./PublishScenarioModal.lit.js'),
   './EmptyBoardModal.lit.js': () => import('./EmptyBoardModal.lit.js'),
   './ScenarioCloneModal.lit.js': () => import('./ScenarioCloneModal.lit.js'),
   './ScenarioRenameModal.lit.js': () => import('./ScenarioRenameModal.lit.js'),
@@ -96,36 +96,39 @@ export const openOnboardingModal = async (opts = { parent: document.body }) => {
   });
 };
 
-export const openAzureDevopsModal = async ({
+export const openPublishScenarioModal = async ({
   overrides = {},
   pendingGroupChanges = [],
+  decisions = [],
+  publicationContext,
   state = null,
   parent = document.body,
 } = {}) => {
   const { el, cleanup } = await _createModal(
-    './AzureDevopsModal.lit.js',
-    'azure-devops-modal',
+    './PublishScenarioModal.lit.js',
+    'publish-scenario-modal',
     {
       parent,
-      attrs: { overrides, pendingGroupChanges, state },
+      attrs: { overrides, pendingGroupChanges, decisions, state,
+        ...(publicationContext === undefined ? {} : { publicationContext }) },
     }
   );
   return new Promise((resolve) => {
     const onSave = (e) => {
       cleanup(e, [
-        ['azure-save', onSave],
+        ['scenario-publish', onSave],
         ['modal-close', onClose],
       ]);
-      resolve(e.detail ?? []);
+      resolve(e.detail);
     };
     const onClose = () => {
       cleanup(null, [
-        ['azure-save', onSave],
+        ['scenario-publish', onSave],
         ['modal-close', onClose],
       ]);
       resolve(null);
     };
-    el.addEventListener('azure-save', onSave);
+    el.addEventListener('scenario-publish', onSave);
     el.addEventListener('modal-close', onClose);
   });
 };

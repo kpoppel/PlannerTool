@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
+from planner_lib.backend.errors import BackendAuthError
 from planner_lib.backend.port import TaskBackend, BackendCredential
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.teams import TeamCatalogue
@@ -85,9 +85,8 @@ class TaskRepository:
 
         Notes
         -----
-        Per-project BackendUnavailableError and BackendConfigError failures are
-        logged with project context and skipped so one broken source does
-        not fail the complete task load. BackendAuthError remains fatal.
+        Source configuration, availability and authentication failures propagate;
+        an incomplete forest cannot certify allocation or publication validity.
         """
         tasks = self._fetch_context(credential)
         if project_id is not None:
@@ -98,54 +97,25 @@ class TaskRepository:
         self,
         credential: Optional[BackendCredential],
     ) -> List[BackendTask]:
-        """Merge canonical seed records without interpreting private metadata."""
-        project_map = self._project_service.get_project_map()
-        items = {}
-
-        for project in project_map:
-            pid = project.get('id')
-
-            try:
-                tasks = self._backend.fetch_plan_tasks(
-                    plan=project,
-                    credential=credential,
-                )
-            except BackendAuthError:
-                # Auth failures must remain explicit to the API layer.
-                raise
-            except BackendConfigError as exc:
-                logger.error(
-                    "TaskRepository.read: skipping project '%s' (name=%r) due to backend_misconfigured: %s",
-                    pid,
-                    project.get('name'),
-                    exc,
-                )
-                continue
-            except BackendUnavailableError as exc:
-                logger.error(
-                    "TaskRepository.read: skipping project '%s' (name=%r) due to backend_unavailable: %s",
-                    pid,
-                    project.get('name'),
-                    exc,
-                )
-                continue
-
-            for task in tasks or []:
-                task_id = str(task['id'])
-                previous = items.get(task_id)
-                sources = set(task.get('sourcePlanIds', [])) | {pid}
+        """Require every configured source and ignore opaque metadata when merging seeds."""
+        items: dict[str, BackendTask] = {}
+        for project in self._project_service.get_project_map():
+            for task in self._backend.fetch_plan_tasks(plan=project, credential=credential):
+                identity = str(task['id'])
+                previous = items.get(identity)
+                sources = set(task.get('sourcePlanIds', [])) | {project['id']}
                 if previous is not None:
                     sources.update(previous['sourcePlanIds'])
                 if previous is None or task.get('revision', 0) > previous.get('revision', 0):
-                    items[task_id] = dict(task)
-                items[task_id]['sourcePlanIds'] = sorted(sources)
-            logger.debug(
-                "TaskRepository.read: %d tasks for project '%s'",
-                len(tasks or []),
-                pid,
-            )
-
-        logger.debug("TaskRepository.read: %d total seed tasks returned", len(items))
+                    items[identity] = dict(task)
+                elif task.get('revision', 0) == previous.get('revision', 0):
+                    comparable = {key: value for key, value in previous.items()
+                                  if key not in {'sourcePlanIds', 'backendData'}}
+                    incoming = {key: value for key, value in task.items()
+                                if key not in {'sourcePlanIds', 'backendData'}}
+                    if comparable != incoming:
+                        raise ValueError(f'Conflicting task snapshots at the same revision: {identity}')
+                items[identity]['sourcePlanIds'] = sorted(sources)
         return list(items.values())
 
     def _fetch_context(
@@ -240,28 +210,6 @@ class WorkforceTaskRepository(TaskRepository):
         super().__init__(backend, project_repository, credential_provider)
         self._storage = storage
         self._task_storage = task_storage
-
-    def _fetch_seeds(self, credential: Optional[BackendCredential]) -> List[BackendTask]:
-        """Fail on any configured source error instead of certifying a partial forest."""
-        items: dict[str, BackendTask] = {}
-        for project in self._project_service.get_project_map():
-            for task in self._backend.fetch_plan_tasks(plan=project, credential=credential):
-                identity = str(task['id'])
-                previous = items.get(identity)
-                sources = set(task.get('sourcePlanIds', [])) | {project['id']}
-                if previous is not None:
-                    sources.update(previous['sourcePlanIds'])
-                if previous is None or task.get('revision', 0) > previous.get('revision', 0):
-                    items[identity] = dict(task)
-                elif task.get('revision', 0) == previous.get('revision', 0):
-                    comparable = {key: value for key, value in previous.items()
-                                  if key not in {'sourcePlanIds', 'backendData'}}
-                    incoming = {key: value for key, value in task.items()
-                                if key not in {'sourcePlanIds', 'backendData'}}
-                    if comparable != incoming:
-                        raise ValueError(f'Conflicting task snapshots at the same revision: {identity}')
-                items[identity]['sourcePlanIds'] = sorted(sources)
-        return list(items.values())
 
     def write(self, updates: List[dict], user_id: str) -> Dict[str, Any]:
         """Validate the entire authored batch before issuing the first external mutation."""

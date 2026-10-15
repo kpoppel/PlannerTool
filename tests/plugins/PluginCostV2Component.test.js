@@ -35,12 +35,12 @@ describe('PluginCostComponent', () => {
       await el.updateComplete;
 
       const buttons = el.shadowRoot.querySelectorAll('.tab-buttons button');
-      // The component now exposes a fourth "Team Members" tab
+      // The fourth tab displays canonical anonymous workforce composition.
       expect(buttons).to.have.length(4);
       expect(buttons[0].textContent.trim()).to.include('Plan');
       expect(buttons[1].textContent.trim()).to.include('Task');
       expect(buttons[2].textContent.trim()).to.include('Team View');
-      expect(buttons[3].textContent.trim()).to.include('Team Members');
+      expect(buttons[3].textContent.trim()).to.include('Workforce');
     });
 
     it('should highlight active tab', async () => {

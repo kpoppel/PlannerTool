@@ -4,13 +4,13 @@ Instead of replaying pre-recorded SDK responses, this module programmatically
 builds a coherent, referentially consistent dataset that mirrors the structure
 and statistical variety of real Azure DevOps data.
 
-Data is derived from the existing planner config files:
+Data is derived from canonical planner configuration:
 
-  data/config/projects.yml  — area paths, team names, allowed task types,
+    config::projects          — area paths, team names, allowed task types,
                               include/display states per team
-  data/config/teams.yml     — team short names
-  data/config/people.yml    — person pool (optional; falls back to
-                              ``people_per_team`` synthetic persons)
+    config::teams             — immutable allocation tokens
+
+Source person identities are synthetic and never read or populate workforce records.
 
 The generator is a drop-in replacement for ``AzureMockClient``::
 
@@ -25,7 +25,7 @@ The generator is a drop-in replacement for ``AzureMockClient``::
         sprints_per_pi: 4
         revisions_min: 2
         revisions_max: 12
-        people_per_team: 7       # used when people.yml is empty
+        people_per_team: 7       # synthetic source person pool size
         state_weights:           # New / Defined / Active / Resolved / Closed
           Feature:   [35, 20, 25, 12, 8]
           Epic:      [40, 20, 20, 12, 8]
@@ -273,10 +273,9 @@ def _load_projects_config(storage: Optional[StorageBackend]) -> List[dict]:
 
 
 def _load_teams_config(storage: Optional[StorageBackend]) -> Dict[str, str]:
-    """Return ``{team_name: short_name}`` from storage namespace 'config' key 'teams'.
+    """Return active team names mapped to immutable allocation tokens.
 
-    Teams with ``exclude: true`` are omitted.  Falls back to empty dict when no
-    storage is provided or data is missing.
+    Standalone source generation has no configured team catalogue.
     """
     if storage is None:
         return {}
@@ -284,39 +283,19 @@ def _load_teams_config(storage: Optional[StorageBackend]) -> Dict[str, str]:
         cfg = storage.load("config", "teams") or {}
         teams = cfg.get("teams", [])
         return {
-            t["name"]: t.get("short_name", t["name"][:3].upper())
-            for t in teams if "name" in t and not t.get("exclude", False)
+            team['name']: team['allocation_token']
+            for team in teams if not team['archived']
         }
     except KeyError:
         return {}
 
 
 def _build_person_pool(
-    storage: Optional[StorageBackend],
     area_configs: List[dict],
     config: GeneratorConfig,
     base_url: str,
 ) -> List[dict]:
-    """Build the person pool from storage or generate synthetic entries."""
-    real_people: List[dict] = []
-    if storage is not None:
-        try:
-            cfg = storage.load("config", "people") or {}
-            db_people = (cfg.get("database") or {}).get("people", [])
-            for p in db_people:
-                name = p.get("name", "")
-                if name:
-                    uid = _det_uuid(f"person:{name}")
-                    email = name.lower().replace(" ", ".") + "@example.com"
-                    real_people.append(_person_dict(name, uid, email, base_url))
-        except KeyError:
-            pass
-
-    if real_people:
-        return real_people
-
-    # Fallback: synthetic pool.  Generate people_per_team per distinct team, but
-    # cap total count so the pool stays manageable.
+    """Build synthetic source identities without accessing workforce configuration."""
     n_teams = len(area_configs)
     total = max(config.people_per_team, min(n_teams * 2, 60))
     result = []
@@ -863,7 +842,7 @@ class AzureDataset:
         under *data_dir* for configuration loading only.
     data_dir:
         Root directory containing the ``config/`` sub-directory with
-        ``projects.yml``, ``teams.yml``, and ``people.yml``.  Only used as a
+        project and team configuration. Only used as a
         fallback when *storage* is None.
     persist_dir:
         Optional path to a directory where all generated ``sdk_*.json``
@@ -936,7 +915,7 @@ class AzureDataset:
 
         projects = sorted(set(_area_to_project(a["area_path"]) for a in area_configs))
         project_ids = {p: _det_uuid(f"project:{p}") for p in projects}
-        person_pool = _build_person_pool(self.storage, area_configs, self.config, self.base_url)
+        person_pool = _build_person_pool(area_configs, self.config, self.base_url)
 
         # Iteration trees
         for proj in projects:
@@ -1064,7 +1043,8 @@ class AzureDataset:
         if self.storage.exists("config", "projects"):
             projects_config = self.storage.load("config", "projects")
         else:
-            projects_config = {"schema_version": 3, "container_types": ["project", "team"]}
+            projects_config = {"schema_version": 4, "container_types": ["project", "team"],
+                               "allocation_defaults": {"project": [], "team": []}}
 
         # projects config (project_map)
         project_map = []
@@ -1088,33 +1068,6 @@ class AzureDataset:
                         "display_states": _STATE_NAMES,
                     })
         self.storage.save("config", "projects", {**projects_config, "project_map": project_map})
-
-        # teams config
-        teams_data = {"teams": []}
-        for proj_key, team_list in self.teams.items():
-            for t in team_list:
-                teams_data["teams"].append({
-                    "name": t["name"],
-                    "short_name": t["name"][:3].upper(),
-                    "project_id": t.get("project_id", ""),
-                })
-        self.storage.save("config", "teams", teams_data)
-
-        # people config (synthetic pool used during generation)
-        people_data = {"database": {"people": []}}
-        for wid, item in self.work_item_by_id.items():
-            created_by = item["fields"].get("System.CreatedBy")
-            if isinstance(created_by, dict):
-                dn = created_by.get("displayName", "")
-                if dn and not any(p["name"] == dn for p in people_data["database"]["people"]):
-                    email = dn.lower().replace(" ", ".") + "@example.com"
-                    uid = _det_uuid(f"person:{dn}")
-                    people_data["database"]["people"].append({
-                        "name": dn,
-                        "email": email,
-                        "id": uid,
-                    })
-        self.storage.save("config", "people", people_data)
 
         # global_settings (task_type_hierarchy and state_display_sequence)
         gs = {
@@ -1531,7 +1484,7 @@ class AzureMockGeneratorClient(AzureClient):
         Same storage backend used by the caching client.
     data_dir:
         Root directory containing the ``config/`` sub-directory with
-        ``projects.yml``, ``teams.yml``, and ``people.yml``.
+        project and team configuration.
     config_dict:
         Optional overrides for the generator (see ``GeneratorConfig``).
         If this dict contains a ``persist_dir`` key, the generated data

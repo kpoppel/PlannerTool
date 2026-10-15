@@ -1,5 +1,4 @@
 from typing import List, Dict, Any, Optional
-from .engine import invalidate_team_rates_cache
 from .allocation_rule import (
     allocation_conflicts, build_allocation_graph, has_valid_allocation_span,
     resolve_effective_allocations,
@@ -12,148 +11,6 @@ from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.domain.workforce import WorkforceCatalogue
 
 logger = logging.getLogger(__name__)
-
-
-class CostService:
-    """Service responsible for cost estimation and schema formatting.
-
-    The service is composed with a YAML `storage` instance so it can read
-    `projects.yml`, `teams.yml` and `cost_config.yml` via the storage layer.
-    It uses PeopleService to access people data.
-    """
-
-    def __init__(
-        self,
-        storage: StorageBackend,
-        project_repository,
-        team_repository,
-        people_repository,
-        cache_storage: StorageBackend,
-    ):
-        self._storage = storage
-        self._people_repository = people_repository
-        self._project_service = project_repository  # internal alias kept for brevity
-        self._team_service = team_repository         # internal alias kept for brevity
-        self._cache_storage = cache_storage
-        self._cfg = self._load_cfg()
-
-    def _load_cfg(self) -> dict:
-        """Load cost configuration and people data from storage.
-
-        Only catches expected missing-key / file-not-found errors. Unexpected
-        exceptions (schema errors, corrupt data, etc.) are allowed to propagate
-        so they are visible rather than silently producing empty config.
-        """
-        try:
-            # cost_config lives in the diskcache config namespace after migration 0021.
-            cost_cfg = self._storage.load("config", "cost_config") or {}
-        except KeyError:
-            cost_cfg = {}
-        people = []
-        try:
-            people = self._people_repository.list_people()
-        except KeyError:
-            pass
-        return {"cost": cost_cfg, "database": {"people": people}}
-
-    def invalidate_cache(self) -> None:
-        """Invalidate the team rates cache.
-
-        Call this after updating teams, people, or cost configuration to force
-        recomputation of team aggregates on the next cost calculation.
-        """
-        invalidate_team_rates_cache(self._cache_storage)
-        logger.debug("CostService: team rates cache invalidated")
-
-    def reload(self) -> None:
-        """Reload cost configuration and people data from storage, then invalidate caches.
-
-        Satisfies the Reloadable protocol. Call after an admin config save so
-        subsequent requests see updated cost config without a restart.
-        """
-        self._cfg = self._load_cfg()
-        self.invalidate_cache()
-        logger.info("CostService: configuration reloaded")
-
-    def get_cost_config(self) -> dict:
-        """Return the raw cost_config dict (working_hours, external_cost, internal_cost, …)."""
-        return self._cfg.get("cost", {})
-
-    def estimate_costs(self, session: Dict[str, Any]) -> Dict[str, Any]:
-        """Traverse features/tasks from a session-like dict and compute costs.
-
-        Returns nested mapping { project_id: { task_id: cost_dict } }
-        """
-        features = session.get('features', [])
-        plans = self._project_service.list_projects()
-        allowed_projects = {plan['id'] for plan in plans}
-        project_types = {plan['id']: plan['type'] for plan in plans}
-        project_container_order = {plan['id']: plan['container_order'] for plan in plans}
-        graph = build_allocation_graph(features)
-        features_by_id, parents_by_child, _ = graph
-        allocations = resolve_effective_allocations(features, graph)
-        known_teams = {
-            team['id'] for team in self._team_service.list_teams(include_archived=True)
-        }
-        unknown_teams = []
-
-        targets_by_id = {}
-        for feature in features:
-            target_ids = set()
-            pending = [str(feature['id'])]
-            visited = set()
-            while pending:
-                current_id = pending.pop()
-                if current_id in visited:
-                    continue
-                visited.add(current_id)
-                current = features_by_id[current_id]
-                if current.get('project') and not current.get('ancestorOnly', False):
-                    target_ids.add(current['project'])
-                target_ids.update(current.get('sourcePlanIds', []))
-                pending.extend(parents_by_child[current_id])
-            if allowed_projects:
-                target_ids.intersection_update(allowed_projects)
-            targets_by_id[str(feature['id'])] = sorted(target_ids)
-
-        projects = {}
-        for feature in features:
-            if feature.get('ancestorOnly', False) or feature.get('stateCategory') == 'Removed':
-                continue
-            feature_id = feature['id']
-            for allocation in feature.get('capacity', []):
-                if allocation['team'] not in known_teams:
-                    unknown_teams.append({'feature_id': feature_id, **allocation})
-            target_projects = targets_by_id[str(feature_id)]
-            if not target_projects:
-                continue
-            cost = _engine.calculate_detailed(
-                self._cfg, start=feature.get('start'), end=feature.get('end'),
-                capacity=allocations[str(feature_id)], cache_storage=self._cache_storage,
-            )
-            original_capacity = feature.get('capacity', []) if has_valid_allocation_span(feature) else []
-            if original_capacity == allocations[str(feature_id)]:
-                estimate = cost
-            else:
-                estimate = _engine.calculate_detailed(
-                    self._cfg, start=feature.get('start'), end=feature.get('end'),
-                    capacity=original_capacity, cache_storage=self._cache_storage,
-                )
-            cost['estimate_teams'] = estimate['teams']
-            cost['effective_capacity'] = allocations[str(feature_id)]
-            cost['has_project_parent'] = bool(parents_by_child[str(feature_id)])
-            for project_id in target_projects:
-                project = projects.setdefault(project_id, {'totals': {}})
-                project[feature_id] = cost
-                for team in cost['teams'].values():
-                    for site, metrics in team['internalSites'].items():
-                        sites = project['totals'].setdefault('sites', {})
-                        totals = sites.setdefault(site, {'hours': {}, 'cost': {}})
-                        for metric, months in metrics.items():
-                            for month, value in months.items():
-                                totals[metric][month] = round(totals[metric].get(month, 0) + value, 2)
-        return {'projects': projects, 'project_types': project_types,
-                'project_container_order': project_container_order, 'unknown_teams': unknown_teams}
 
 
 class WorkforceCostService:
@@ -254,23 +111,6 @@ class WorkforceCostService:
         }
 
 
-def _parse_totals(totals: dict) -> dict:
-    out: Dict[str, Any] = {}
-    for k, v in (totals or {}).items():
-        if k in {'internal', 'external', 'complete'}:
-            out[k] = v
-            continue
-        parts = k.rsplit('_', 2)
-        if len(parts) == 3:
-            period, direction, metric = parts
-            period_group = out.setdefault(period, {})
-            dir_group = period_group.setdefault(direction, {})
-            dir_group[metric] = v
-        else:
-            out.setdefault('misc', {})[k] = v
-    return out
-
-
 def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None, project_types: Optional[Dict[str, str]] = None, project_container_order: Optional[Dict[str, int]] = None, unknown_teams: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Convert the raw cost mapping returned by `estimate_costs` into the
     normalized strongly-structured schema used by the UI. Optionally enrich
@@ -348,13 +188,7 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
             name = proj_id.replace("team-", "", 1).capitalize()
         else:
             name = proj_id
-        totals = _parse_totals(val.get("totals", {}) if isinstance(val.get("totals", {}), dict) else {})
-        # If the raw project data provided a structured 'sites' totals mapping,
-        # carry that through to the schema so the frontend can render per-site
-        # monthly totals directly.
-        raw_totals = val.get('totals') if isinstance(val.get('totals'), dict) else {}
-        if isinstance(raw_totals.get('sites'), dict):
-            totals.setdefault('sites', raw_totals.get('sites'))
+        totals = dict(val['totals'])
         features = []
         for fid, fval in val.items():
             if fid == "totals":
@@ -492,4 +326,3 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
     if isinstance(src.get("meta"), dict):
         out["meta"].update({k: v for k, v in src["meta"].items() if k in ("scenario_id", "applied_overrides", "deltas")})
     return out
-

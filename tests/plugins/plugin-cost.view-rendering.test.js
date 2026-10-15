@@ -1,8 +1,6 @@
-import { expect } from '@open-wc/testing';
 import { render } from '../../www/js/vendor/lit.js';
-import mainCss from '../../www/css/main.css?raw';
-import componentSource from '../../www/js/plugins/PluginCostComponent.js?raw';
-import { vi } from 'vitest';
+import { expect, vi } from 'vitest';
+import { pluginManager } from '../../www/js/core/PluginManager.js';
 import { renderTaskView } from '../../www/js/plugins/PluginCostTaskView.js';
 import { renderTeamView } from '../../www/js/plugins/PluginCostTeamView.js';
 import { renderTeamMembersView } from '../../www/js/plugins/PluginCostTeamMembersView.js';
@@ -88,6 +86,7 @@ describe('PluginCost view rendering', () => {
     mockFeatureState.childrenByParent = new Map();
     mockFeatureState.effectiveById = new Map();
     mockCmd.setSelectedFeature.mockClear();
+    vi.restoreAllMocks();
   });
 
   it('renderTaskView shows task table for selected project with metrics', () => {
@@ -314,20 +313,29 @@ describe('PluginCost view rendering', () => {
     expect(openFeatureDetails.mock.calls).to.deep.equal([['f1']]);
   });
 
-  it('openFeatureDetails selects the effective feature so the details panel shows it', () => {
+  it('openFeatureDetails closes Cost before selecting the effective feature', async () => {
     const feature = { id: 't1', title: 'Task One' };
     mockFeatureState.effectiveById.set('t1', feature);
     const el = document.createElement('plugin-cost');
+    let finishClosing;
+    const closed = new Promise((resolve) => { finishClosing = resolve; });
+    const deactivate = vi.spyOn(pluginManager, 'deactivate').mockReturnValue(closed);
 
-    el.openFeatureDetails('t1');
+    const opened = el.openFeatureDetails('t1');
+    expect(deactivate.mock.calls).to.deep.equal([['plugin-cost']]);
+    expect(mockCmd.setSelectedFeature.mock.calls).to.deep.equal([]);
+    finishClosing();
+    await opened;
 
     expect(mockCmd.setSelectedFeature.mock.calls).to.deep.equal([[feature]]);
   });
 
-  it('details panel z-index token stacks above the plugin-cost host z-index', () => {
-    const detailsZ = Number(mainCss.match(/--z-details:\s*(\d+)/)[1]);
-    const costHostZ = Number(componentSource.match(/:host\s*\{[^}]*z-index:\s*(\d+)/)[1]);
-    expect(detailsZ).to.be.greaterThan(costHostZ);
+  it('unknown cost tasks cannot close Cost or select an unloaded feature', async () => {
+    const deactivate = vi.spyOn(pluginManager, 'deactivate');
+    const el = document.createElement('plugin-cost');
+    await expect(el.openFeatureDetails('missing')).rejects.toThrow('not loaded');
+    expect(deactivate).not.toHaveBeenCalled();
+    expect(mockCmd.setSelectedFeature).not.toHaveBeenCalled();
   });
 
   it('opening the cost plugin closes an open details panel', () => {

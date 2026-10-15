@@ -161,7 +161,10 @@ def test_brotli_preserves_auth_cookies_and_admin_access(client, minimum_size):
 
     accounts = client.app.state.container.get('account_manager')
     storage = client.app.state.container.get('storage')
-    storage.save('config', 'projects', {'project_map': [], 'container_types': ['project']})
+    storage.save('config', 'projects', {
+        'schema_version': 4, 'project_map': [], 'container_types': ['project'],
+        'allocation_defaults': {'project': []},
+    })
     with TestClient(BrotliCompression(client.app, minimum_size=minimum_size),
                     headers={'Accept-Encoding': 'br', 'Accept': 'application/json'}) as browser:
         enrollment = browser.post('/api/auth/enroll', json={

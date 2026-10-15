@@ -97,14 +97,6 @@ export class AdminProviderREST extends RestProviderBase {
     return this._saveContent('/admin/v1/groups-config', content);
   }
 
-  async getTeams() {
-    return this._getContent('/admin/v1/teams', null);
-  }
-
-  async saveTeams(content) {
-    return this._saveContent('/admin/v1/teams', content);
-  }
-
   async getWorkforce() {
     return this._requestJson('/admin/v1/workforce', { method: 'GET' });
   }
@@ -129,30 +121,6 @@ export class AdminProviderREST extends RestProviderBase {
     return this._requestWithBody(
       `/admin/v1/workforce/definitions/${encodeURIComponent(kind)}`, payload,
     );
-  }
-
-  async getPeople() {
-    return this._getContent('/admin/v1/people', null);
-  }
-
-  async savePeople(content) {
-    return this._saveContent('/admin/v1/people', content);
-  }
-
-  async getPeopleInspect() {
-    return this._requestJson('/admin/v1/people/inspect', { method: 'GET' });
-  }
-
-  async getCostInspect() {
-    return this._requestJson('/admin/v1/cost/inspect', { method: 'GET' });
-  }
-
-  async getCost() {
-    return this._getContent('/admin/v1/cost', null);
-  }
-
-  async saveCost(content) {
-    return this._saveContent('/admin/v1/cost', content);
   }
 
   async getUsers() {

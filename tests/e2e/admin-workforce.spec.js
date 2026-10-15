@@ -35,6 +35,7 @@ test('Admin entrypoint mounts canonical Workforce without legacy requests', asyn
   await expect(engineering).toBeVisible();
   await expect(page.getByRole('button', { name: 'People', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Cost', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Teams', exact: true })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Suppliers & Profiles', exact: true })).toBeVisible();
   await expect(engineering).toContainText('ENG');
   expect(legacyRequests).toEqual([]);

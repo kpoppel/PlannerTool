@@ -1,4 +1,5 @@
 from planner_lib.main import Config, create_app
+from planner_lib.migrations.revisions import initialize
 
 
 def _make_app_with_brotli_flag(enabled: bool):
@@ -6,18 +7,13 @@ def _make_app_with_brotli_flag(enabled: bool):
     import planner_lib.storage.memory_backend as mem_mod
 
     shared = MemoryStorage()
+    initialize(shared)
     shared.save('config', 'server_config', {
         'schema_version': 2,
         'feature_flags': {
             'enable_brotli_middleware': enabled,
         }
     })
-    shared.save('config', 'people', {
-        'schema_version': 1,
-        'database_file': '',
-        'database': {'people': []},
-    })
-
     original = mem_mod.MemoryStorage
     mem_mod.MemoryStorage = lambda: shared
     try:

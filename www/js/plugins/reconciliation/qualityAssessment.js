@@ -17,10 +17,12 @@ export function assessQuality({ featuresById, scopeIds, today, projects, hierarc
     return project ? project.state_categories[feature.state] : undefined;
   };
   const todayDay = calendarDay(today);
-  const add = (feature, type, title, description, severity = 'warning', relatedId = null) => {
+  const add = (feature, type, title, description, severity = 'warning', relatedId = null,
+    relatedIds = []) => {
     issues.push({ id: `${type}:${feature.id}`, type, category: 'quality',
       featureId: String(feature.id), relatedId, title, description, severity,
-      path: [String(feature.id)] });
+      path: relatedId === null ? [String(feature.id), ...relatedIds]
+        : [String(feature.id), relatedId, ...relatedIds] });
   };
 
   for (const feature of featuresById.values()) {
@@ -86,7 +88,8 @@ export function assessQuality({ featuresById, scopeIds, today, projects, hierarc
       const ancestorId = String(current.parentId);
       if (visited.has(ancestorId)) {
         add(feature, 'hierarchy-cycle', 'Circular parent links',
-          `The parent chain of "${feature.title}" loops back on itself.`, 'error');
+          `The parent chain of "${feature.title}" loops back on itself.`, 'error', null,
+          [...visited].filter((id) => id !== String(feature.id)));
         break;
       }
       visited.add(ancestorId);
@@ -113,7 +116,8 @@ export function assessQuality({ featuresById, scopeIds, today, projects, hierarc
     const missingOnParent = [...childTeams].filter((team) => !parentTeams.has(team));
     if (missingOnChildren.length > 0 || missingOnParent.length > 0) {
       add(parent, 'team-allocation', 'Parent and child team allocations differ',
-        `Review the team allocations of "${parent.title}" and its children.`, 'warning');
+        `Review the team allocations of "${parent.title}" and its children.`, 'warning', null,
+        children.map((child) => String(child.id)));
     }
   }
   return issues;

@@ -76,26 +76,23 @@ _MOCK_PROJECT_MAP = [
 def _populate_mock_config(storage):
     """Populate the storage backend with mock config data.
 
-    This replaces what would normally come from projects.yml, teams.yml, people.yml.
+    Use current project availability and canonical allocation identities.
     """
     storage.save("config", "projects", {
-        "schema_version": 3,
+        "schema_version": 4,
         "container_types": ["project", "team"],
+        "allocation_defaults": {"project": ['team-architecture', 'team-platform'],
+                    "team": ['team-architecture', 'team-platform']},
         "project_map": _MOCK_PROJECT_MAP,
     })
     storage.save("config", "teams", {
+        'schema_version': 3,
         "teams": [
-            {"name": "Architecture", "short_name": "ARC"},
-            {"name": "Platform", "short_name": "PLT"},
-        ]
-    })
-    storage.save("config", "people", {
-        "database": {
-            "people": [
-                {"name": "Alice Smith", "email": "alice.smith@example.com"},
-                {"name": "Bob Jones", "email": "bob.jones@example.com"},
-            ]
-        }
+            {'id': 'team-architecture', 'name': 'Architecture', 'short_name': 'Architecture',
+             'allocation_token': 'ARC', 'archived': False, 'group_id': None},
+            {'id': 'team-platform', 'name': 'Platform', 'short_name': 'Platform',
+             'allocation_token': 'PLT', 'archived': False, 'group_id': None},
+        ], 'groups': [],
     })
 
 
@@ -120,13 +117,51 @@ def test_generated_projects_retain_valid_container_configuration(tmp_path, confi
         saved_config = storage.load("config", "projects")
         if configured:
             assert saved_config == expected_config
-        assert saved_config["schema_version"] == 3
+        assert saved_config["schema_version"] == 4
         assert saved_config["container_types"] == ["project", "team"]
         projects = ConfigBackend(storage).fetch_projects()
         assert projects
         assert {project["name"] for project in projects} == {
             project["name"] for project in saved_config["project_map"]
         }
+    finally:
+        storage.close()
+
+
+def test_generator_preserves_canonical_workforce_and_never_reads_people(tmp_path, monkeypatch):
+    """Synthetic source data cannot recreate retired storage or replace canonical identities."""
+    from planner_lib.azure.AzureMockGeneratorClient import _load_teams_config
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
+
+    storage = DiskCacheStorage(tmp_path / 'generator')
+    try:
+        teams = {'schema_version': 3, 'teams': [
+            {'id': 'kept-team', 'name': 'Architecture', 'short_name': 'Display label',
+             'allocation_token': 'ARC', 'archived': False, 'group_id': None},
+        ], 'groups': []}
+        workforce = {'schema_version': 2, 'suppliers': [], 'staffing': []}
+        projects = {'schema_version': 4, 'container_types': ['project', 'team'],
+                    'allocation_defaults': {'project': ['kept-team'], 'team': ['kept-team']},
+                    'project_map': _MOCK_PROJECT_MAP}
+        for key, content in [('teams', teams), ('workforce', workforce), ('projects', projects)]:
+            storage.save('config', key, content)
+        load = storage.load
+
+        def load_without_people(namespace, key):
+            assert (namespace, key) != ('config', 'people')
+            return load(namespace, key)
+
+        monkeypatch.setattr(storage, 'load', load_without_people)
+        dataset = AzureDataset(storage=storage, data_dir=str(tmp_path),
+                               config_dict=_MULTI_CONFIG_DICT)
+        dataset.build()
+        dataset.populate_storage()
+        assert storage.load('config', 'teams') == teams
+        assert storage.load('config', 'workforce') == workforce
+        assert storage.load('config', 'projects') == projects
+        assert not storage.exists('config', 'people')
+        assert not storage.exists('config', 'cost_config')
+        assert _load_teams_config(storage) == {'Architecture': 'ARC'}
     finally:
         storage.close()
 
@@ -138,8 +173,9 @@ def test_generated_plans_use_lowest_configured_container_when_no_plans_exist(tmp
     storage = DiskCacheStorage(str(tmp_path / 'cache'))
     try:
         storage.save('config', 'projects', {
-            'schema_version': 3,
+            'schema_version': 4,
             'container_types': ['portfolio', 'program', 'squad'],
+            'allocation_defaults': {'portfolio': [], 'program': [], 'squad': []},
             'project_map': [],
         })
         dataset = AzureDataset(storage=storage, data_dir=str(tmp_path),
@@ -156,7 +192,7 @@ def test_generated_plans_use_lowest_configured_container_when_no_plans_exist(tmp
 class TestGeneratorConfig:
     def test_person_pool_counts_staffing_areas_without_literal_plan_types(self):
         areas = [{'name': f'Squad {index}', 'type': 'squad'} for index in range(4)]
-        people = _build_person_pool(None, areas, GeneratorConfig({'people_per_team': 2}),
+        people = _build_person_pool(areas, GeneratorConfig({'people_per_team': 2}),
                                     'https://example.invalid')
         assert len(people) == 8
 

@@ -9,15 +9,11 @@ import { SIDEBAR_STYLES } from './sidebar/Sidebar.styles.lit.js';
 import { renderSidebarTeams } from './sidebar/SidebarTeams.lit.js';
 import { renderSidebarHierarchy } from './sidebar/SidebarHierarchy.lit.js';
 import { renderSidebarTaskFilters } from './sidebar/SidebarTaskFilters.lit.js';
-import { renderSidebarFooter } from './sidebar/SidebarFooter.lit.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
     open: { type: Boolean },
     teams: { type: Array },
-    resolvedTasksCount: { type: Number },
-    serverName: { type: String },
-    serverStatus: { type: String },
     foldActive: { type: Boolean },
     foldedCount: { type: Number },
     foldableCount: { type: Number },
@@ -31,9 +27,6 @@ export class SidebarLit extends LitElement {
     super();
     this.open = true;
     this.teams = [];
-    this.resolvedTasksCount = 0;
-    this.serverName = '';
-    this.serverStatus = 'Loading...';
     this.foldActive = false;
     this.foldedCount = 0;
     this.foldableCount = 0;
@@ -101,10 +94,6 @@ export class SidebarLit extends LitElement {
     cmd.filter.clearSidebarDisabledElements();
   }
 
-  refreshServerStatus() {
-    return this._controller.refreshServerStatus();
-  }
-
   render() {
     const model = this._controller.getPresentationModel(this._getTeamDrilldownTeams());
     return html`
@@ -139,7 +128,6 @@ export class SidebarLit extends LitElement {
             </div>
           </section>
         </div>
-        ${renderSidebarFooter({ model: model.footer })}
       </aside>
     `;
   }

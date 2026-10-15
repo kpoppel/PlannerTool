@@ -9,9 +9,14 @@ import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 import '../../www/admin/js/components/admin/Workforce.lit.js';
 import '../../www/admin/js/components/AdminApp.lit.js';
 
-it('routes the live Workforce section to the canonical editor without an independent Cost tab', () => {
+it('routes workforce administration exclusively to the canonical editor', () => {
   const app = document.createElement('admin-app');
   expect(app.sections).not.toContain('Cost');
+  expect(app.sections).not.toContain('People');
+  expect(app.sections).not.toContain('Teams');
+  expect(customElements.get('admin-teams')).toBeUndefined();
+  expect(customElements.get('admin-people')).toBeUndefined();
+  expect(customElements.get('admin-cost')).toBeUndefined();
   app.activeSection = 'Workforce';
   expect(app.renderContent().strings.join('')).toContain('<admin-workforce>');
 });

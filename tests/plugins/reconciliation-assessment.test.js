@@ -14,6 +14,36 @@ const assess = (features, scopeIds, sourceFeatures = features) => assessReconcil
 });
 
 describe('Reconciliation assessment', () => {
+  it('reports unloaded dependency targets without treating an incomplete assessment as healthy', () => {
+    const features = [task('child', { type: 'Epic', relations: [
+      { id: 'unloaded', type: 'Predecessor' },
+      { id: 'unloaded', type: 'Predecessor' },
+    ] }), task('outside', { relations: [{ id: 'other', type: 'Successor' }] })];
+    const issues = assess(features, ['child']);
+    expect(issues.filter((issue) => issue.type === 'unavailable-dependency')).toHaveLength(1);
+    expect(issues.find((issue) => issue.type === 'unavailable-dependency')).toMatchObject({
+      category: 'schedule', featureId: 'child', relatedId: 'unloaded', severity: 'info',
+      path: ['child', 'unloaded'], change: 'existing',
+    });
+    expect(issues.some((issue) => issue.featureId === 'outside')).toBe(false);
+  });
+
+  it('reports an unloaded ancestor beyond a loaded intermediate task', () => {
+    const features = [task('child', { parentId: 'middle' }),
+      task('middle', { type: 'Epic', parentId: 'unloaded' })];
+    expect(assess(features, ['child']).find((issue) => issue.type === 'unavailable-ancestor'))
+      .toMatchObject({ category: 'schedule', featureId: 'child', relatedId: 'unloaded',
+        path: ['child', 'middle', 'unloaded'], severity: 'info' });
+  });
+
+  it('reports dependency dates that cannot be assessed instead of implying alignment', () => {
+    const features = [task('child', { relations: [{ id: 'before', type: 'Predecessor' }] }),
+      task('before', { start: null })];
+    expect(assess(features, ['child']).find((issue) => issue.type === 'unavailable-dependency-dates'))
+      .toMatchObject({ category: 'schedule', featureId: 'child', relatedId: 'before',
+        severity: 'info', change: 'existing' });
+  });
+
   it('detects a hidden ancestor and deduplicates a relationship when both ends are scoped', () => {
     const features = [task('parent', { type: 'Epic' }),
       task('child', { parentId: 'parent', end: '2026-10-22' })];
@@ -25,11 +55,27 @@ describe('Reconciliation assessment', () => {
       .toHaveLength(1);
   });
 
+  it('reports incomplete ancestor dates separately from measurable containment drift', () => {
+    const features = [task('parent', { type: 'Epic', end: null }),
+      task('child', { parentId: 'parent' })];
+    expect(assess(features, ['child']).find((issue) => issue.type === 'unavailable-containment-dates'))
+      .toMatchObject({ category: 'schedule', featureId: 'child', relatedId: 'parent',
+        path: ['child', 'parent'], severity: 'info' });
+  });
+
+  it('includes related parent and children in contextual quality findings', () => {
+    const features = [task('parent', { type: 'Epic', state: 'Closed', capacity: [{ team: 'one' }] }),
+      task('child', { parentId: 'parent', capacity: [{ team: 'two' }] })];
+    const issues = assess(features, ['child']);
+    expect(issues.find((issue) => issue.type === 'parent-state').path).toEqual(['child', 'parent']);
+    expect(issues.find((issue) => issue.type === 'team-allocation').path).toEqual(['parent', 'child']);
+  });
+
   it('finds descendants beyond an unplanned intermediate task', () => {
     const features = [task('root', { type: 'Epic' }),
       task('middle', { parentId: 'root', start: null, end: null }),
       task('leaf', { type: 'Task', parentId: 'middle', start: '2026-09-29' })];
-    const issue = assess(features, ['root']).find((entry) => entry.category === 'schedule');
+    const issue = assess(features, ['root']).find((entry) => entry.type === 'containment');
     expect(issue).toMatchObject({ featureId: 'leaf', relatedId: 'root', earlyDays: 2,
       path: ['leaf', 'middle', 'root'] });
   });
@@ -68,7 +114,7 @@ describe('Reconciliation assessment', () => {
       task('second', { parentId: 'first', start: '2026-03-30' }),
       task('unrelated', { start: '2026-12-20', end: '2026-01-01' })];
     const issues = assess(features, ['first']);
-    expect(issues.some((issue) => issue.type === 'hierarchy-cycle')).toBe(true);
+    expect(issues.find((issue) => issue.type === 'hierarchy-cycle').path).toEqual(['first', 'second']);
     expect(issues.find((issue) => issue.category === 'schedule').earlyDays).toBe(2);
     expect(issues.some((issue) => issue.featureId === 'unrelated')).toBe(false);
   });

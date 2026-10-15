@@ -58,7 +58,7 @@ planner_lib/
 | Component | Responsibility |
 |---|---|
 | `TaskRepository`, `HistoryRepository`, `PlanRepository`, `IterationRepository` | Translate application requests into remote protocol calls and return domain data. |
-| `ProjectRepository`, `TeamRepository`, `PeopleRepository` | Read durable project, team, and people configuration. |
+| `ProjectRepository`, `TeamRepository` | Read durable projects and canonical team/group identities. |
 | `ScenarioRepository`, `ViewRepository` | Persist user-owned scenario and view data without a cache layer. |
 | `TaskBackend`, `HistoryBackend`, `TeamsBackend`, `PlansBackend`, `IterationsBackend` | Focused remote-data ports. `BackendPort` composes these remote contracts. |
 | `ConfigBackend` | Reads and writes configuration keys in authoritative diskcache storage. |
@@ -78,7 +78,7 @@ The focused protocol inventory is:
 | `TeamsBackend` | Remote provider | `fetch_teams` |
 | `PlansBackend` | Remote provider | `fetch_plans`, `fetch_markers` |
 | `IterationsBackend` | Remote provider | `fetch_iterations` |
-| `PeopleBackend`, `ProjectConfigBackend`, `TeamConfigBackend` | `ConfigBackend` | Local people, project, and team configuration reads |
+| `ProjectConfigBackend`, `TeamConfigBackend` | `ConfigBackend` | Local project and canonical team/group configuration reads |
 | `IterationConfigBackend`, `PlanConfigBackend`, `AdoConfigBackend` | `ConfigBackend` | Iteration, area-plan, and ADO configuration reads/writes |
 | `EventConfigBackend` | `ConfigBackend` | Event configuration reads/writes |
 | `ScenarioBackend`, `ViewBackend`, `EventBackend` | `UserDataBackend` | Scenario, view, and event persistence |
@@ -316,7 +316,7 @@ under `data/remote_cache`.
 
 | Store | Contents | Operational meaning |
 |---|---|---|
-| `storage` | Accounts, sessions, server config, projects, teams, people, cost and iteration config, ADO config, scenarios, views, events, groups | Durable system of record. Never delete as a cache cleanup operation. |
+| `storage` | Accounts, sessions, server config, projects, teams, workforce and iteration config, ADO config, scenarios, views, events, groups | Durable system of record. Never delete as a cache cleanup operation. |
 | `remote_cache_storage` | Cached remote `fetch_*` results and freshness sidecars | Disposable. Clearing it forces provider reads but does not delete user work or configuration. |
 
 Default cache freshness windows are configured by `cache.ttls` in
@@ -498,7 +498,7 @@ single source of truth when fields change.
 
 For `use_static_backend: true`, the YAML/JSON file maps `area_path` to a list of
 canonical `DomainTask` values. Optional top-level keys provide `_teams`,
-`_plans`, `_markers`, `_iterations`, `_history`, and `_people`. Static files are
+`_plans`, `_markers`, `_iterations`, and `_history`. Static files are
 served as-is, so malformed or provider-shaped records are a data/configuration
 error rather than an adapter input.
 

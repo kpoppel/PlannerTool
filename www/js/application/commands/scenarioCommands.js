@@ -318,14 +318,16 @@ export function createScenarioCommands(store, bus, deps = {}) {
           ...state,
           scenarios: {
             ...state.scenarios,
-            changedIds: removeScenarioChangedId(state.scenarios.changedIds, scenario.id),
+            changedIds: state.scenarios.items.find((item) => item.id === scenario.id) === scenario
+              ? removeScenarioChangedId(state.scenarios.changedIds, scenario.id)
+              : state.scenarios.changedIds,
           },
         }),
         false,
         'scenario.saveScenario.clearDirty'
       );
 
-      bus.emit(ScenarioEvents.SAVED, { scenarioId: scenario.id });
+      bus.emit(ScenarioEvents.SAVED, { scenarioId: scenario.id, scenario });
       bus.emit(ScenarioEvents.UPDATED);
 
       return result;

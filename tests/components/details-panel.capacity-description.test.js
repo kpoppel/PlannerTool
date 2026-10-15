@@ -235,12 +235,6 @@ describe('DetailsPanel behavior', () => {
     expect(cleaned).to.contain('More');
   });
 
-  it('_stripIterationPrefix returns tail', async () => {
-    const el = await fixture(html`<details-panel></details-panel>`);
-    expect(el._stripIterationPrefix('Project\\Iteration\\Sprint 1')).to.equal('Sprint 1');
-    expect(el._stripIterationPrefix(null)).to.equal(null);
-  });
-
   it('_saveCapacityEdit calls cmd.feature.updateFeatureField and clears editing', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = {

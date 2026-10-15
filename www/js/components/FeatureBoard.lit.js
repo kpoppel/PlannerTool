@@ -67,8 +67,12 @@ class FeatureBoard extends LitElement {
     this._groupBands = [];
     // Set of group IDs the user has collapsed.
     this._collapsedGroups = new Set();
+    this._revealedGroups = new Set();
     this._foldedFeatures = new Set();
     this._foldModel = null;
+    this._reconciliationContext = null;
+    this._navigationFeatureId = null;
+    this._navigationTimer = null;
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
     this._overlayOffset = 0;
     this._renderGeneration = 0;
@@ -277,7 +281,7 @@ class FeatureBoard extends LitElement {
               .start=${item.start}
               .end=${item.end}
               .featureCount=${item.featureCount}
-              .collapsed=${this._collapsedGroups.has(String(item.id))}
+              .collapsed=${this._collapsedGroups.has(String(item.id)) && !this._revealedGroups.has(String(item.id))}
               .depth=${item.depth ?? 0}
               style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px;"
               @group-toggle=${this._onGroupToggle}
@@ -558,6 +562,7 @@ class FeatureBoard extends LitElement {
   }
 
   disconnectedCallback() {
+    this._clearNavigation();
     super.disconnectedCallback();
     this._renderGeneration += 1;
     window.removeEventListener('resize', this._handleViewportResize);
@@ -646,6 +651,20 @@ class FeatureBoard extends LitElement {
 
   // ---- Render features ----
 
+  _clearNavigation() {
+    clearTimeout(this._navigationTimer);
+    this._navigationFeatureId = null;
+    this.shadowRoot.querySelectorAll('.search-highlight')
+      .forEach((node) => node.classList.remove('search-highlight'));
+  }
+
+  async setReconciliationContext(context) {
+    this._clearNavigation();
+    this._reconciliationContext = context;
+    await this.renderFeatures();
+    await this.updateComplete;
+  }
+
   /**
    * Greedy interval-packing: place each bar in the first sub-row where it does
    * not overlap any already-placed bar.  Returns an array of rows, each row
@@ -667,7 +686,12 @@ class FeatureBoard extends LitElement {
       seenIds.add(key);
       return true;
     });
-    const visibleFeatures = sel.scope.getVisibleFeatures();
+    const ordinaryFeatures = sel.scope.getVisibleFeatures();
+    const reviewContext = this._reconciliationContext;
+    const ordinaryIds = new Set(ordinaryFeatures.map((feature) => String(feature.id)));
+    const visibleFeatures = reviewContext === null ? ordinaryFeatures
+      : sourceFeatures.filter((feature) => reviewContext.featureIds.has(String(feature.id))
+        || (!reviewContext.filter && ordinaryIds.has(String(feature.id))));
     const months = getTimelineMonths();
     const isPacked = sel.view.getPackedMode();
     const context = sel.view.getContext();
@@ -695,10 +719,23 @@ class FeatureBoard extends LitElement {
       const members = group.members === undefined ? [] : group.members;
       for (const id of members) groupByMember.set(String(id), String(group.id));
     }
+    const revealedGroups = new Set();
+    if (reviewContext !== null) {
+      for (const featureId of reviewContext.featureIds) {
+        let groupId = groupByMember.get(featureId);
+        while (groupId !== undefined && !revealedGroups.has(groupId)) {
+          revealedGroups.add(groupId);
+          const group = groupsById.get(groupId);
+          groupId = group.parent_id ? String(group.parent_id) : undefined;
+        }
+      }
+    }
+    this._revealedGroups = revealedGroups;
+    const collapsedGroups = new Set([...this._collapsedGroups].filter((id) => !revealedGroups.has(id)));
     const groupIsCollapsed = (groupId) => {
       let current = groupId;
       while (current) {
-        if (this._collapsedGroups.has(current)) return true;
+        if (collapsedGroups.has(current)) return true;
         const group = groupsById.get(current);
         current = group && group.parent_id ? String(group.parent_id) : null;
       }
@@ -717,27 +754,29 @@ class FeatureBoard extends LitElement {
       const groupId = groupByMember.get(String(feature.id));
       sections.set(String(feature.id), `${lane}:${groupId ? groupId : 'ungrouped'}`);
     }
+    const foldedFeatures = reviewContext === null ? this._foldedFeatures
+      : new Set([...this._foldedFeatures].filter((id) => !reviewContext.featureIds.has(id)));
     this._foldModel = isPacked ? null : buildFoldModel(
       this._orderFeaturesHierarchically(foldableFeatures, sel.view.getFeatureSortMode()),
       sections,
-      this._foldedFeatures
+      foldedFeatures
     );
     bus.emit(BoardEvents.FOLD_STATE, {
       active: this._foldModel !== null && this._foldModel.counts.size > 0,
       foldableCount: this._foldModel === null ? 0 : this._foldModel.counts.size,
       foldedCount: this._foldModel === null ? 0 : [...this._foldModel.counts.keys()].filter(
-        (id) => this._foldedFeatures.has(id)
+        (id) => foldedFeatures.has(id)
       ).length,
       canCollapse: this._foldModel !== null && this._foldModel.visible.some(
         (feature) => this._foldModel.counts.has(String(feature.id))
-          && !this._foldedFeatures.has(String(feature.id))
+          && !foldedFeatures.has(String(feature.id))
       ),
     });
     const displayedFeatures = this._foldModel === null ? visibleFeatures : this._foldModel.visible;
     const foldProps = (feature) => ({
       foldCount: this._foldModel === null || !this._foldModel.counts.has(String(feature.id))
         ? 0 : this._foldModel.counts.get(String(feature.id)),
-      folded: this._foldedFeatures.has(String(feature.id)),
+      folded: foldedFeatures.has(String(feature.id)),
     });
 
     let renderList;
@@ -870,7 +909,7 @@ class FeatureBoard extends LitElement {
           );
           const { items: groupItems, totalHeight: gHeight, bands: groupBandItems } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
-            sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
+            sel.view.getCondensedCards(), isPacked, collapsedGroups,
             {
               preserveFeatureOrder: true,
               dateFeatures: visibleFeatures.filter((feature) => assignFeatureToSwimlane(
@@ -982,7 +1021,7 @@ class FeatureBoard extends LitElement {
       );
       const { items: groupItems, totalHeight: gHeight, bands: groupBandItems } = buildGroupBandItems(
         visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,
-        sel.view.getCondensedCards(), isPacked, this._collapsedGroups,
+        sel.view.getCondensedCards(), isPacked, collapsedGroups,
         { preserveFeatureOrder: true, dateFeatures: visibleFeatures }
       );
       renderList = groupItems;
@@ -1105,7 +1144,15 @@ class FeatureBoard extends LitElement {
       overscanX: FeatureBoard.VIRTUALIZE_OVERSCAN_X,
       overscanY: FeatureBoard.VIRTUALIZE_OVERSCAN_Y,
     };
-    const next = this._computeVisibleRenderItems(this._fullRenderList, viewport);
+    let next = this._computeVisibleRenderItems(this._fullRenderList, viewport);
+    if (this._navigationFeatureId !== null) {
+      const target = this._fullRenderList.find((item) => !item.isGroup
+        && String(item.feature.id) === this._navigationFeatureId);
+      if (target !== undefined && !next.includes(target)) {
+        const visibleItems = new Set(next);
+        next = this._fullRenderList.filter((item) => visibleItems.has(item) || item === target);
+      }
+    }
     if (this._sameRenderSlice(this.features, next)) return;
     this.features = next;
     this._cardMap.clear();
@@ -1273,29 +1320,31 @@ class FeatureBoard extends LitElement {
     );
   }
 
-  centerFeatureById(featureId) {
-    const card = this._getCardNodeById(featureId);
+  async centerFeatureById(featureId) {
+    let card = this._getCardNodeById(featureId);
     // Scroll is now owned by the parent #scroll-container (in TimelineBoard)
     const scrollContainer = findInBoard('#scroll-container');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (!scrollContainer) return;
 
+    this._clearNavigation();
+    const key = String(featureId);
+    this._navigationFeatureId = key;
     if (!card) {
       const target = this._fullRenderList.find(
-        (item) => !item.isGroup && String(item.feature?.id) === String(featureId)
+        (item) => !item.isGroup && String(item.feature.id) === key
       );
-      if (!target) return;
-      const targetHeight = laneHeight();
-      scrollContainer.scrollTo({
-        left: Math.max(0, Math.round(target.left + target.width / 2 - scrollContainer.clientWidth / 2)),
-        top: Math.max(0, Math.round(target.top + targetHeight / 2 - scrollContainer.clientHeight / 2)),
-        behavior: 'smooth',
-      });
-      this._scheduleViewportRender();
-      return;
+      if (!target) { this._navigationFeatureId = null; return; }
+      const renderedItems = new Set(this.features);
+      this.features = this._fullRenderList.filter((item) => renderedItems.has(item) || item === target);
+      await this.updateComplete;
+      if (this._navigationFeatureId !== key) return;
+      card = this._getCardNodeById(featureId);
+      if (card === null) throw new Error(`Navigation target ${key} did not render`);
     }
 
-    const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
-    const cardCenterY = (card.offsetTop || 0) + (card.clientHeight || 0) / 2;
+    const cardCenterX = card.offsetLeft + card.clientWidth / 2;
+    const cardCenterY = card.offsetTop + card.clientHeight / 2;
     scrollContainer.scrollTo({
       left: Math.max(0, Math.round(cardCenterX - scrollContainer.clientWidth / 2)),
       top: Math.max(0, Math.round(cardCenterY - scrollContainer.clientHeight / 2)),
@@ -1303,8 +1352,10 @@ class FeatureBoard extends LitElement {
     });
 
     card.classList.add('search-highlight');
-    setTimeout(() => {
+    this._navigationTimer = setTimeout(() => {
       card.classList.remove('search-highlight');
+      this._navigationFeatureId = null;
+      this._scheduleViewportRender();
     }, 950);
   }
 

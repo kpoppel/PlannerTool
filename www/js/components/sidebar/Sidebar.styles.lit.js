@@ -68,9 +68,7 @@ export const SIDEBAR_STYLES = css`
       font-size: 14px;
       overflow: hidden;
       box-sizing: border-box;
-      /* reserve space for footer using a variable so layout adapts */
-      --sidebar-footer-height: 44px;
-      height: calc(100vh - 40px);
+      height: calc(100vh - 40px - var(--app-footer-height, 64px));
       word-wrap: break-word;
       word-break: break-word;
     }
@@ -79,7 +77,7 @@ export const SIDEBAR_STYLES = css`
     .sidebar-content {
       flex: 1;
       overflow: hidden auto;
-      padding-bottom: 40px;
+      padding-bottom: 0;
       min-height: 0;
       width: 100%;
     }
@@ -704,47 +702,6 @@ export const SIDEBAR_STYLES = css`
       outline-offset: 2px;
     }
 
-    /* Sidebar footer/config */
-    /* Footer stays at bottom */
-    .sidebar-config {
-      flex-shrink: 0;
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: var(--sidebar-width);
-      padding: 0 6px;
-      background: var(--color-sidebar-bg);
-      box-sizing: border-box;
-      z-index: 1000;
-      overflow: hidden;
-    }
-    .sidebar-config .sidebar-footer-box {
-      background: linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 0.03) 0%,
-        rgba(255, 255, 255, 0.01) 100%
-      );
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 6px;
-      padding: 6px 8px; /* give a bit more breathing room */
-      display: block;
-      line-height: 1.2; /* slightly increased line spacing */
-      gap: 0;
-      min-height: 0;
-    }
-    .sidebar-config .footer-line {
-      font-size: 12px;
-      color: var(--color-sidebar-text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      line-height: 1.2;
-      margin: 0;
-    }
-    .sidebar-config .footer-line.author {
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.85);
-    }
     #openConfigBtn {
       background: #f7f7f7;
       border: 1px solid rgba(255, 255, 255, 0.08);

@@ -3,7 +3,7 @@ from planner_lib.admin.workforce_service import WorkforceAdminService
 from planner_lib.backend.config import WorkforceConfigBackend
 from planner_lib.cost.service import WorkforceCostService
 from planner_lib.repository.task_repository import WorkforceTaskRepository
-from planner_lib.repository.team_repository import WorkforceTeamRepository
+from planner_lib.repository.team_repository import TeamRepository
 from planner_lib.services.container import ServiceContainer
 
 
@@ -14,7 +14,7 @@ def register_workforce_runtime(container: ServiceContainer) -> None:
     if any(key in container._singletons for key in owners):
         raise RuntimeError('Canonical workforce registration must precede service resolution')
     container.register_factory('config_backend', lambda: WorkforceConfigBackend(container.get('storage')))
-    container.register_factory('team_repository', lambda: WorkforceTeamRepository(
+    container.register_factory('team_repository', lambda: TeamRepository(
         local_backend=container.get('config_backend'),
     ))
     container.register_factory('task_repository', lambda: WorkforceTaskRepository(

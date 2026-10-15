@@ -107,8 +107,11 @@ export class TopMenuBarLit extends LitElement {
     }
     .menu-item:focus-visible { outline: 2px solid #8ec8ff; outline-offset: -2px; }
     .menu-attention {
-      display: inline-grid;
-      place-items: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      white-space: nowrap;
       min-width: 20px;
       height: 20px;
       padding: 0 3px;
@@ -477,6 +480,16 @@ export class TopMenuBarLit extends LitElement {
 
   _toggleMenu(menuName, e) {
     e.stopPropagation();
+    if (menuName.startsWith('plugin:')) {
+      const metadata = this.menuPlugins.find((plugin) => `plugin:${plugin.id}` === menuName);
+      if (!metadata) throw new Error(`Plugin menu ${menuName} is not registered`);
+      if (metadata.menuBehavior === 'toggle') {
+        this._closeMenu(false);
+        e.currentTarget.focus();
+        pluginManager.toggleMenu(metadata.id);
+        return;
+      }
+    }
     this._menuButton = e.currentTarget;
     this.openMenu = this.openMenu === menuName ? null : menuName;
     this._menuElement = null;
@@ -569,14 +582,22 @@ export class TopMenuBarLit extends LitElement {
   _renderPluginTriggers(position) {
     return this.menuPlugins.filter((plugin) => plugin.menuPosition === position).map((plugin) => html`
       <button
-        class="menu-item ${this.openMenu === `plugin:${plugin.id}` ? 'active' : ''}"
+        class="menu-item ${plugin.menuActive || this.openMenu === `plugin:${plugin.id}` ? 'active' : ''}"
         data-plugin-id=${plugin.id}
         role="menuitem"
-        aria-haspopup="true"
-        aria-expanded=${this.openMenu === `plugin:${plugin.id}` ? 'true' : 'false'}
-        title=${plugin.description}
+        aria-haspopup=${plugin.menuBehavior === 'dropdown' ? 'true' : 'false'}
+        aria-pressed=${plugin.menuBehavior === 'toggle' ? String(plugin.menuActive) : null}
+        aria-expanded=${plugin.menuBehavior === 'toggle' ? String(plugin.menuActive)
+          : this.openMenu === `plugin:${plugin.id}` ? 'true' : 'false'}
+        title=${plugin.attentionStatus === '' ? plugin.description : plugin.attentionStatus}
         @click=${(event) => this._toggleMenu(`plugin:${plugin.id}`, event)}
-      >${plugin.name}${plugin.attentionCount > 0 ? html`
+      >${plugin.name}${plugin.attentionCounts.length > 0 ? plugin.attentionCounts
+        .filter((category) => category.count > 0).map((category) => html`
+          <span class="menu-attention" data-category=${category.id}
+            title="${category.label}: ${category.count} affected tasks in the current scope"
+            aria-label="${category.label}: ${category.count} affected tasks in the current scope">
+            <span aria-hidden="true">${category.icon}</span> ${category.count}</span>
+        `) : plugin.attentionCount > 0 ? html`
         <span class="menu-attention" aria-label="${plugin.attentionCount} items need review">${plugin.attentionCount}</span>
       ` : ''}</button>
     `);

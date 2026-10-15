@@ -3,7 +3,6 @@ import { isStoreReady } from '../../application/store.js';
 import { StoreController } from '../../core/StoreController.js';
 import { bus } from '../../core/EventBus.js';
 import { BoardEvents, FeatureEvents } from '../../core/EventRegistry.js';
-import { dataService } from '../../services/dataService.js';
 import { SIDEBAR_FILTER_DIMENSIONS } from './SidebarTaskFilters.lit.js';
 
 function selectDependencies(state) {
@@ -25,7 +24,6 @@ export class SidebarController {
     this._connected = false;
     this._subscriptions = [];
     this._frame = null;
-    this._healthRequest = 0;
     this._snapshot = null;
     this._store = new StoreController(host, selectDependencies, { equalityFn: equalDependencies });
     host.addController(this);
@@ -44,7 +42,6 @@ export class SidebarController {
       }),
       bus.on(FeatureEvents.UPDATED, () => this.scheduleRefresh()),
     ];
-    this.refreshServerStatus();
     this.host.requestUpdate();
   }
 
@@ -62,7 +59,6 @@ export class SidebarController {
   hostDisconnected() {
     this._connected = false;
     this.connection += 1;
-    this._healthRequest += 1;
     for (const unsubscribe of this._subscriptions) unsubscribe();
     this._subscriptions = [];
     if (this._frame !== null) cancelAnimationFrame(this._frame);
@@ -75,34 +71,8 @@ export class SidebarController {
     this._frame = requestAnimationFrame(() => {
       if (!this._connected || connection !== this.connection) return;
       this._frame = null;
-      if (isStoreReady()) this.host.resolvedTasksCount = sel.scope.getResolvedFeatures().length;
       this.host.requestUpdate();
     });
-  }
-
-  async refreshServerStatus() {
-    const request = ++this._healthRequest;
-    const connection = this.connection;
-    const isCurrent = () => this._connected && request === this._healthRequest &&
-      connection === this.connection;
-    try {
-      const result = await dataService.checkHealth();
-      if (!isCurrent()) return;
-      if (!result.ok) {
-        console.error('[Sidebar] Health check failed', result.error);
-        this.host.serverStatus = 'Server: error';
-      } else {
-        const health = result.data;
-        const totalMinutes = Math.floor(health.uptime_seconds / 60);
-        this.host.serverName = health.server_name;
-        this.host.serverStatus = `${health.version} | Server: ${health.status} - Uptime: ${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
-      }
-    } catch (error) {
-      if (!isCurrent()) return;
-      console.error('[Sidebar] Failed to refresh server status', error);
-      this.host.serverStatus = 'Server: error';
-    }
-    this.host.requestUpdate();
   }
 
   getPresentationModel(teams) {
@@ -150,8 +120,6 @@ export class SidebarController {
         types: taskTypes.filter((name) => scopedTypes.has(name.toLowerCase())).map((name) => ({ name, active: sel.view.isTypeVisible(name),
           disabled: sel.filter.isSidebarControlDisabled('taskType', name) })),
       },
-      footer: { serverName: this.host.serverName, serverStatus: this.host.serverStatus,
-        resolvedTasksCount: this.host.resolvedTasksCount },
     };
   }
 }

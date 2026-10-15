@@ -147,7 +147,7 @@ setup. Both projects participate in `npm test` and coverage.
 
 Run the assessment, lifecycle, and component contracts:
 
-    npm test -- tests/plugins/reconciliation-assessment.test.js tests/plugins/reconciliation-controller.test.js tests/plugins/plugin-reconciliation.test.js tests/components/topmenu.funnel.test.js
+    npm test -- tests/plugins/reconciliation-assessment.test.js tests/plugins/reconciliation-controller.test.js tests/plugins/plugin-reconciliation.test.js tests/components/topmenu.funnel.test.js tests/components/featureboard.navigation-viewport.test.js
 
 Run the isolated desktop browser flow:
 
@@ -157,9 +157,26 @@ This suite starts a fresh Vite server on port 5175 and exercises the real fronte
 modules with in-memory fixtures. It needs no backend, account enrollment, cookie
 jar, or active deployment data. It covers native-module startup, a hidden-parent
 date conflict, baseline/scenario parity, dirty-state composition, menu sizing,
-review search, and keyboard focus restoration at desktop widths 1366 and 1024.
+ordered category task counts and zero-count hiding, direct top-bar toggling and
+active indication, an independent always-visible footer, issue-class accordions,
+inline selected-task details/actions, a top marker toggle, and review
+search, non-modal Sidebar and DetailsPanel coexistence, board interaction,
+in-bounds date editing, hide/restore state retention, hidden keyboard exclusion,
+focus restoration, and plugin cleanup at desktop widths 1366 and 1024. Footer
+health requests are fulfilled by the fixture rather than an active backend.
 It is separate from the backend-authenticated E2E configuration. Review screenshots
 are saved in the corresponding Playwright test output directories.
+The real-board case verifies post-render automatic location/highlighting and
+re-highlighting on repeated selection, hidden
+ancestor reveal, Relevant context / All tasks, stable counts, retained keyboard
+focus, unchanged view state, and ordinary scope restoration on close. Board unit
+tests additionally cover folded/collapsed branch restoration, virtualized target
+highlighting, and navigation cleanup. Real-board fixtures mount `timeline-lit`
+inside `timeline-board` and initialize timeline months before laying out tasks.
+Review unit tests use an explicit async board mock rather than relying on another
+suite to register the board component. They cover labelled/framed controls and
+class-specific finding counts/details, including multiple ancestor constraints
+alongside a separate dependency-order finding.
 
 With coverage:
     npm run test:coverage

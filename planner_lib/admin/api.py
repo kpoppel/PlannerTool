@@ -19,7 +19,6 @@ from planner_lib.admin.setup_routes import (
 )
 from planner_lib.admin.config_routes import (
     router as _config_router,
-    _backup_existing,
     admin_get_projects,
     admin_save_projects,
     admin_get_global_settings,
@@ -34,17 +33,9 @@ from planner_lib.admin.config_routes import (
     admin_refresh_area_mapping,
     admin_refresh_all_area_mappings,
     admin_toggle_plan_enabled,
-    admin_get_teams,
-    admin_save_teams,
-    admin_get_people,
-    admin_save_people,
-    admin_inspect_people,
     admin_get_schema,
     admin_get_backup,
     admin_restore_backup,
-    admin_get_cost,
-    admin_inspect_cost,
-    admin_save_cost,
     admin_get_system,
     admin_save_system,
     admin_get_ado,
@@ -76,8 +67,6 @@ router.include_router(_workforce_router)
 
 __all__ = [
     'router',
-    # private helpers (backward compat)
-    '_backup_existing',
     # setup
     'admin_setup_status', 'admin_setup', 'admin_static', 'admin_root',
     'admin_check', 'api_admin_reload_config',
@@ -89,12 +78,9 @@ __all__ = [
     'admin_get_area_mappings', 'admin_save_area_mappings',
     'admin_refresh_area_mapping', 'admin_refresh_all_area_mappings',
     'admin_toggle_plan_enabled',
-    'admin_get_teams', 'admin_save_teams',
     'admin_get_workforce', 'admin_save_workforce', 'admin_create_workforce_definition',
-    'admin_get_people', 'admin_save_people', 'admin_inspect_people',
     'admin_get_schema',
     'admin_get_backup', 'admin_restore_backup',
-    'admin_get_cost', 'admin_inspect_cost', 'admin_save_cost',
     'admin_get_system', 'admin_save_system',
     'admin_get_ado', 'admin_save_ado',
     'admin_get_plugins_config', 'admin_save_plugins_config',

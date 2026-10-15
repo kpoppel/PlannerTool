@@ -195,17 +195,31 @@ renderer to match the application's directive implementation.
 
 ### 5.2 Sidebar section contracts
 
-`Sidebar.lit.js` composes Team Drill-down, Hierarchy Controls, Task Filters, and Footer
+`Sidebar.lit.js` composes Team Drill-down, Hierarchy Controls, and Task Filters
 renderers under `components/sidebar/`. Renderers receive explicit `{ model, actions }`
 values and do not read selectors, subscribe, or call host methods. The
 `app-sidebar` shell owns the shadow root and adapts actions to commands.
 `Sidebar.styles.lit.js` supplies the shared stylesheet and cascade.
 
 `SidebarController` projects presentation from stable store dependencies, manages board
-fold-state notifications, and owns health requests and queued animation frames.
-Disconnect cancels queued frames, removes subscriptions, and invalidates asynchronous
-responses; reconnect establishes one fresh set of subscriptions. Mounting or becoming
+fold-state notifications, and owns queued animation frames.
+Disconnect cancels queued frames and removes subscriptions;
+reconnect establishes one fresh set of subscriptions. Mounting or becoming
 ready does not initialize, reset, or otherwise mutate restored application state.
+
+`SidebarFooter.lit.js` now defines the independently mounted `app-footer` rather
+than a Sidebar section. It owns health requests, ignores obsolete responses after
+disconnect, and subscribes to scope dependencies for the informational task count.
+Sidebar and the Reconciliation toolbox reserve its fixed bottom space, keeping
+application status visible while the toolbox overlays or reveals Sidebar controls.
+
+Reconciliation uses `FeatureBoard.setReconciliationContext({ filter, featureIds })`
+for transient presentation (`featureIds` is a Set of loaded task IDs). The board
+composes it with ordinary visible features and temporarily reveals required folded
+branches and groups, without changing scope selectors or store/view state. Passing
+`null` restores ordinary presentation. Review selection awaits that layout before
+`centerFeatureById`, which also mounts and briefly retains virtualized navigation
+targets for highlighting. Closing or disabling review releases this context.
 
 Task-type commands atomically update selected names and hidden types. Selectors expose
 effective selected names without requiring a mounted Sidebar; Cost and saved-view
@@ -547,7 +561,7 @@ The admin surface is responsible for:
 - user and permissions management
 - schema-driven admin forms (see `docs/SCHEMA_UI_SYSTEM.md` for the schema/data contract in detail)
 
-Teams, Projects, System, and Azure settings use `BaseConfigComponent`, which loads schema and content in parallel and renders schema-driven forms. Other sections, including People, Cost, Users, Plugins, Iterations, and backup utilities, are dedicated Lit components with specialized workflows; not every admin domain is a thin generic-form subclass. See [Schema UI System](SCHEMA_UI_SYSTEM.md) for the schema/data contract.
+Projects and System use `BaseConfigComponent`, which loads schema and content in parallel and renders schema-driven forms. Workforce is the dedicated canonical team/group, supplier/profile and anonymous staffing editor; the separate People, Cost and Teams screens and endpoints are removed. Users, Plugins, Iterations and backup utilities also have specialized workflows. See [Schema UI System](SCHEMA_UI_SYSTEM.md) for the schema/data contract.
 
 Admin bootstrap attempts shared `dataService` initialization before `/admin/check`. A 401 redirects to `/admin/login`; network errors or other unexpected responses can still reach the client mount path. Authorization is enforced by backend handlers, not solely by this browser check. Admin shares data-access infrastructure with the main app but has no shared canonical UI store.
 
@@ -591,11 +605,11 @@ flowchart TD
 |---|---|
 | Accounts, AuthManager, SessionManager | Account records, enrollment, device/session validity and revocation |
 | Task and History repositories | Canonical task reads/writes and revision history |
-| Project, Team, People repositories | Domain-facing configuration and roster reads |
+| Project and Team repositories | Domain-facing project and canonical team/group reads |
 | Plan and Iteration repositories | Plan markers, iteration sets, and schedule presets |
 | Scenario and View repositories | Account-owned durable planning data |
 | Event and Group repositories | Plan-scoped events and shared baseline groups |
-| CapacityService and CostService | Team capacity metadata and financial calculations |
+| CapacityService and WorkforceCostService | Canonical allocation capacity and anonymous workforce pricing |
 | AdminService and ReloadOrchestrator | Privileged configuration, accounts, snapshots, reload side effects |
 | CacheCoordinator and metadata service | Registered invalidation and project metadata caching |
 

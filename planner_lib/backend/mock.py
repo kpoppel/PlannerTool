@@ -467,7 +467,7 @@ class MockGeneratorBackend(_MockBackendBase):
                     'people_per_team': {
                         'type': 'integer',
                         'title': 'People per Team (fallback)',
-                        'description': 'Used when no people.yml is available',
+                        'description': 'Synthetic source person pool size',
                         'default': 7,
                         'minimum': 1,
                     },

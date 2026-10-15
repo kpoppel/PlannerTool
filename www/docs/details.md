@@ -77,7 +77,7 @@ Step-by-step example: change dates and team allocations
 	- Click `Save` in the Scenario Menu to persist the edits to the active scenario (stored on the server or autosave depending on settings).
 
 6. Push selected changes to Azure DevOps (optional)
-	- Click `Save to Azure` button on a scenario to open the Review modal.
+	- Click `Publish scenario` button on a scenario to open the Review modal.
 	- In the Review modal inspect the listed changes, uncheck any you do not want to push, then click `Confirm` (or `Push`) to write selected updates to Azure DevOps.
 	- The modal reports success or displays inline errors for failed updates.
 

@@ -21,7 +21,7 @@ def _ttl_config(**overrides) -> CacheTTLConfig:
     td = timedelta(minutes=minutes)
     fields = {f: td for f in
               ['default', 'fetch_tasks', 'fetch_history', 'fetch_teams',
-               'fetch_plans', 'fetch_markers', 'fetch_iterations', 'fetch_people']}
+               'fetch_plans', 'fetch_markers', 'fetch_iterations']}
     fields.update(overrides)
     return CacheTTLConfig(**fields)
 

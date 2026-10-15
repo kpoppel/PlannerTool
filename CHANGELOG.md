@@ -15,6 +15,10 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Integrate reconciliation and scenario-publication work, update obsolete tests, support transactional memory fixtures, initialize Workforce metadata and enable Cost task navigation.
+- Preserve dormant scenario overrides for unavailable backend tasks without blocking workforce group changes; retain conflict checks on present tasks.
+- Fix workforce group reassignment rejecting matching task revisions with complementary retained context enrichment.
+- Remove legacy People, Cost and Teams admin screens, APIs, services, storage readers and transitional tests; preserve canonical Workforce configuration during mock generation.
 - Wire the canonical Workforce admin and runtime with revision-35 anonymous staffing migration, validated plan availability, strict publication and separate group/member accounting.
 - Activate and verify revision-35 Workforce cutover with preserved identities, saved records and pricing bases, including idempotent live restart.
 - Preserve unresolved ADO allocation entries during reads and known-team edits, with token-only canonical repository ports and clarified local-ID migration rules.
@@ -31,6 +35,7 @@ Template - do not change :
 - Specified the stage 3b merged Teams/People/Cost administration, archive and warned team deletion, immutable allocation identity, workforce and application-wide allocation contract design.
 - Added the first Workforce admin UI with anonymous staffing summaries, archive/restore, warned deletion and archive-inclusive ADO token and cost identity resolution.
 - Consolidated Workforce team totals and expandable anonymous composition into one view, with a separate legacy site inventory and visible unconfigured staffing.
+- Reconciliation Slice 5 frontend review adds backend-neutral scenario publication, selected-write cross-plan impact, scenario-only exception summaries, toolbox save/publish entry and stale-source rejection; the server live-register gate remains open.
 - DetailsPanel exposes a plugin-independent `focusSchedulingEditor()` API for opening the existing date editor from reconciliation.
 - Reconciliation Slice 4 stages reasoned scenario exceptions with pending/saved check-shield markers, an accepted-decisions view, task-evidence revocation and save-race protection; live publication remains Slice 5.
 - Reconciliation Slice 3 adds configured-state corrections, impact-reviewed date and recorded-dependency actions, read-only guards, and retained quality/scheduling warnings and selection through scenario edits and revert.
