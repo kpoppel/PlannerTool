@@ -189,7 +189,7 @@ export class AdminWorkforce extends LitElement {
         }
       }
     }
-    this.dialog = { kind, id, supplierId, fields };
+    this.dialog = { kind, id, supplierId, fields, confirmingDelete: false };
     this.statusMsg = '';
     await this.updateComplete;
     this.shadowRoot.querySelector('.dialog input, .dialog select').focus();
@@ -318,6 +318,15 @@ export class AdminWorkforce extends LitElement {
       Object.assign(records.find((entry) => entry.id === id), fields);
       await this._commit(candidate);
     }
+  }
+
+  async _onDeleteStaffing() {
+    if (this.saving) return;
+    const candidate = structuredClone(this.snapshot);
+    candidate.workforce.staffing = candidate.workforce.staffing.filter(
+      (row) => row.id !== this.dialog.id,
+    );
+    await this._commit(candidate);
   }
 
   _onDialogKey(event) {
@@ -527,9 +536,23 @@ export class AdminWorkforce extends LitElement {
         </fieldset>
         ${this._renderImpact()}
         <p class="consequence">Changes affect historical calculations using current definitions. Archiving preserves existing staffing references.</p>
+        ${kind === 'staffing' && id !== null && this.dialog.confirmingDelete ? html`
+          <p class="status error" role="alert">Deleting this staffing row changes historical calculations
+            using the current definitions. This action cannot be undone.</p>` : nothing}
         ${this.statusMsg ? html`<div class="status ${this.statusType}"
           role=${this.statusType === 'error' ? 'alert' : 'status'}>${this.statusMsg}</div>` : nothing}
         <div class="actions"><button type="button" ?disabled=${this.saving} @click=${this._close}>Cancel</button>
+          ${kind === 'staffing' && id !== null ? this.dialog.confirmingDelete ? html`
+            <button class="danger" type="button" data-action="cancel-delete-staffing"
+              ?disabled=${this.saving} @click=${() => {
+                this.dialog = { ...this.dialog, confirmingDelete: false };
+              }}>Keep Staffing</button>
+            <button class="danger primary" type="button" data-action="confirm-delete-staffing"
+              ?disabled=${this.saving} @click=${this._onDeleteStaffing}>Confirm Delete</button>` : html`
+            <button class="danger" type="button" data-action="delete-staffing"
+              ?disabled=${this.saving} @click=${() => {
+                this.dialog = { ...this.dialog, confirmingDelete: true };
+              }}>Delete Staffing</button>` : nothing}
           <button class="primary" type="submit" data-action="save-dialog" ?disabled=${this.saving}>
             ${this.saving ? 'Saving' : 'Save'}</button></div>
       </form></section></div>`;

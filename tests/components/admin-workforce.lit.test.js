@@ -245,6 +245,38 @@ describe('Canonical Workforce editor', () => {
     });
   });
 
+  it('deletes a staffing row after confirmation and preserves the other rows', async () => {
+    const snapshot = fixture();
+    snapshot.workforce.staffing.push({ id: 'row-two', team_id: 'team-one',
+      supplier_id: 'supplier-one', profile_id: 'standard', fte: 0.25 });
+    element.snapshot = snapshot;
+    element.expandedTeams = new Set(['team-one']);
+    await settle(element);
+    element.shadowRoot.querySelector('[data-edit-staffing="row-one"]').click();
+    await settle(element);
+    element.shadowRoot.querySelector('[data-action="delete-staffing"]').click();
+    await settle(element);
+    expect(adminProvider.saveWorkforce).not.toHaveBeenCalled();
+    expect(element.shadowRoot.querySelector('[data-action="confirm-delete-staffing"]')).not.toBeNull();
+    element.shadowRoot.querySelector('[data-action="cancel-delete-staffing"]').click();
+    await settle(element);
+    expect(adminProvider.saveWorkforce).not.toHaveBeenCalled();
+    element.shadowRoot.querySelector('[data-action="delete-staffing"]').click();
+    await settle(element);
+    element.shadowRoot.querySelector('[data-action="confirm-delete-staffing"]').click();
+    await settle(element);
+    expect(adminProvider.saveWorkforce).toHaveBeenCalledTimes(1);
+    expect(adminProvider.saveWorkforce.mock.calls[0][0].workforce.staffing).toEqual([
+      { id: 'row-two', team_id: 'team-one', supplier_id: 'supplier-one',
+        profile_id: 'standard', fte: 0.25 },
+    ]);
+    expect(element.snapshot.workforce.staffing).toEqual([
+      { id: 'row-two', team_id: 'team-one', supplier_id: 'supplier-one',
+        profile_id: 'standard', fte: 0.25 },
+    ]);
+    expect(element.dialog).toBeNull();
+  });
+
   it('requests a server-issued team identity using editable fields only', async () => {
     const committed = fixture();
     committed.revision = 'created';
