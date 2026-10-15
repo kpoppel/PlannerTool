@@ -1,7 +1,7 @@
 """Tests for AdoConfigBackend: fetch_ado_config and save_ado_config on ConfigBackend."""
 from contextlib import AbstractContextManager, nullcontext
 import pytest
-from planner_lib.backend.config import ConfigBackend
+from planner_lib.backend.config import ConfigBackend, WorkforceConfigBackend
 from planner_lib.storage.base import StorageBackend
 
 
@@ -108,6 +108,53 @@ def test_fetch_projects_reads_from_storage():
     assert projects[0]['name'] == 'Alpha'
     assert projects[0]['state_display_sequence'] == ['New', 'Active', 'Closed']
     assert projects[0]['iteration_uuid'] == 'set-alpha'
+
+
+def test_archived_projects_are_excluded_from_runtime_projects_and_project_map():
+    storage = _MemStore()
+    storage.save('config', 'projects', {
+        'container_types': ['project'],
+        'project_map': [
+            {'id': '11111111-1111-4111-8111-111111111111',
+             'name': 'Active', 'type': 'project', 'area_path': 'Org\\Active'},
+            {'id': '22222222-2222-4222-8222-222222222222',
+             'name': 'Archived', 'type': 'project', 'area_path': 'Org\\Archived',
+             'archived': True},
+        ],
+    })
+
+    backend = ConfigBackend(storage=storage)
+
+    assert [project['name'] for project in backend.fetch_projects()] == ['Active']
+    assert [project['name'] for project in backend.fetch_project_map()] == ['Active']
+
+
+def test_workforce_backend_excludes_archived_projects_without_breaking_enrichment(
+    canonical_team_config: dict,
+):
+    storage = _MemStore()
+    storage.save('config', 'teams', canonical_team_config)
+    storage.save('config', 'projects', {
+        'schema_version': 4,
+        'container_types': ['project'],
+        'allocation_defaults': {'project': ['team-alpha']},
+        'project_map': [
+            {
+                'id': '11111111-1111-4111-8111-111111111111',
+                'name': 'Active', 'type': 'project',
+            },
+            {
+                'id': '22222222-2222-4222-8222-222222222222',
+                'name': 'Archived', 'type': 'project', 'archived': True,
+                'allocatable_ids': ['team-alpha'],
+            },
+        ],
+    })
+
+    projects = WorkforceConfigBackend(storage=storage).fetch_projects()
+
+    assert [project['name'] for project in projects] == ['Active']
+    assert projects[0]['allocation_defaults'] == {'project': ['team-alpha']}
 
 
 def test_fetch_projects_preserves_custom_container_hierarchy_without_leaf_plans():

@@ -95,18 +95,22 @@ class ConfigBackend(
         self,
         credential: Optional[BackendCredential] = None,
     ) -> List[dict]:
-        """Return raw project entries (includes area_path etc.)."""
-        return [dict(project) for project in self._configured_project_map()]
+        """Return active raw project entries, including area_path and other backend fields."""
+        return [
+            dict(project) for project in self._configured_project_map()
+            if project.get("archived") is not True
+        ]
 
     def fetch_projects(
         self,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainProject]:
-        """Return all configured projects in frontend-ready shape."""
+        """Return active configured projects in frontend-ready shape."""
         cfg = self._storage.load("config", "projects") or {}
         project_map = self._configured_project_map()
         if not project_map:
             return []
+        active_projects = [project for project in project_map if project.get("archived") is not True]
         container_order = {
             type_name: index for index, type_name in enumerate(cfg['container_types'])
         }
@@ -135,7 +139,7 @@ class ConfigBackend(
                 state_display_sequence=global_state_sequence,
                 iteration_uuid=(str(p.get("iteration_uuid")).strip() if p.get("iteration_uuid") else None),
             )
-            for p in project_map
+            for p in active_projects
         ]
 
     # ------------------------------------------------------------------
@@ -273,7 +277,11 @@ class WorkforceConfigBackend(ConfigBackend):
             validate_project_availability(config, catalogue.definitions())
             defaults = config['allocation_defaults']
             projects = super().fetch_projects(credential)
-            for project, definition in zip(projects, config['project_map'], strict=True):
+            active_definitions = [
+                definition for definition in config['project_map']
+                if definition.get('archived') is not True
+            ]
+            for project, definition in zip(projects, active_definitions, strict=True):
                 project['allocation_defaults'] = {level: list(ids) for level, ids in defaults.items()}
                 if 'allocatable_ids' in definition:
                     project['allocatable_ids'] = list(definition['allocatable_ids'])

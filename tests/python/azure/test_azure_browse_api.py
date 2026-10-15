@@ -201,6 +201,69 @@ def test_area_path_metadata_missing_project_returns_422(authenticated_client):
     assert resp.status_code == 422
 
 
+def test_cache_refresh_uses_active_projects_and_rejects_archived_areas(authenticated_client):
+    from tests.helpers import register_services_on_client
+    from planner_lib.azure.api import router as cache_router
+
+    authenticated_client.app.include_router(cache_router, prefix='/api/cache')
+
+    active_project = {
+        'id': '11111111-1111-4111-8111-111111111111',
+        'name': 'Active', 'type': 'project', 'area_path': 'ProjectA\\Active',
+        'task_types': ['Feature'], 'include_states': ['Active'],
+    }
+    archived_project = {
+        'id': '22222222-2222-4222-8222-222222222222',
+        'name': 'Archived', 'type': 'project', 'area_path': 'ProjectA\\Archived',
+        'task_types': ['Feature'], 'include_states': ['Active'], 'archived': True,
+    }
+
+    class FakeProjectRepository:
+        def get_project_map(self):
+            return [active_project]
+
+    class FakeAdminService:
+        def get_config(self, key, default=None):
+            return {
+                'project_map': [active_project, archived_project],
+            } if key == 'projects' else default
+
+    class FakeRefreshBackend:
+        def __init__(self):
+            self.fetch_calls = []
+
+        def invalidate_cache(self):
+            return {'ok': True}
+
+        def fetch_tasks(self, area_path, **kwargs):
+            self.fetch_calls.append(area_path)
+            return []
+
+    backend = FakeRefreshBackend()
+    register_services_on_client(authenticated_client, {
+        'backend': backend,
+        'project_repository': FakeProjectRepository(),
+        'admin_service': FakeAdminService(),
+    })
+    _register_azure_services(authenticated_client)
+
+    response = authenticated_client.get('/api/cache/refresh')
+    assert response.status_code == 200, response.text
+    assert backend.fetch_calls == ['ProjectA\\Active']
+    assert response.json()['refreshed'] == ['ProjectA\\Active']
+
+    response = authenticated_client.get('/api/cache/refresh', params={
+        'areas': 'ProjectA\\Archived',
+    })
+    assert response.status_code == 200
+    assert backend.fetch_calls == ['ProjectA\\Active']
+    assert response.json()['refreshed'] == []
+    assert response.json()['errors'] == [{
+        'area': 'ProjectA\\Archived',
+        'error': 'Archived project areas cannot be refreshed',
+    }]
+
+
 def test_area_path_metadata_missing_area_path_returns_422(authenticated_client):
     _register_azure_services(authenticated_client)
     resp = authenticated_client.get('/api/azure/area-path-metadata?project=ProjectA')

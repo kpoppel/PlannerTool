@@ -48,6 +48,8 @@ export class AdminProjects extends BaseConfigComponent {
     newContainerType: { type: String, state: true },
     allocationDefinitions: { type: Array, state: true },
     allocationError: { type: String, state: true },
+    _showArchived: { type: Boolean, state: true },
+    saving: { type: Boolean, state: true },
   };
 
   static styles = [
@@ -88,6 +90,9 @@ export class AdminProjects extends BaseConfigComponent {
     this.newContainerType = '';
     this.allocationDefinitions = [];
     this.allocationError = '';
+    this._showArchived = false;
+    this.saving = false;
+    this._saveQueue = Promise.resolve();
   }
 
   get configType() { return 'projects'; }
@@ -152,7 +157,9 @@ export class AdminProjects extends BaseConfigComponent {
   updated(changedProperties) {
     super.updated(changedProperties);
     if (changedProperties.has('content') && this.content) {
-      this.localProjects = JSON.parse(JSON.stringify(this.content.project_map || []));
+      if (this.editingIndex === -1 || this.useRawMode) {
+        this.localProjects = JSON.parse(JSON.stringify(this.content.project_map || []));
+      }
       // Prefetch metadata for all configured projects so state colors are ready
       this._prefetchMetadata();
     }
@@ -345,7 +352,6 @@ export class AdminProjects extends BaseConfigComponent {
     };
 
     this.localProjects = [...this.localProjects, newProject];
-    this.content = { ...this.content, project_map: [...this.localProjects] };
     this.editingIndex = this.localProjects.length - 1;
     this._editMetadata = metadata || null;
     this._editMetadataError = '';
@@ -398,25 +404,55 @@ export class AdminProjects extends BaseConfigComponent {
     this.editingIndex = -1;
     this.content = { ...this.content, project_map: [...this.localProjects] };
     this.requestUpdate();
+    return this._queueConfigSave();
   }
 
   async saveConfig() {
     if (!this.useRawMode && this.editingIndex !== -1) {
-      this.saveEdit(this.editingIndex);
+      return this.saveEdit(this.editingIndex);
     }
-    const projectMap = this.content.project_map.map((project) => {
-      if (project.id) return project;
-      return { ...project, id: crypto.randomUUID() };
-    });
-    const ids = projectMap.map((project) => project.id);
-    if (new Set(ids).size !== ids.length) {
-      this.statusMsg = 'Project IDs must be unique';
+    return this._queueConfigSave();
+  }
+
+  _queueConfigSave() {
+    this._saveQueue = this._saveQueue.then(() => this._persistConfig());
+    return this._saveQueue;
+  }
+
+  async _persistConfig() {
+    this.saving = true;
+    this.statusMsg = 'Saving projects…';
+    this.statusType = '';
+    try {
+      const projectMap = this.content.project_map.map((project) => {
+        if (project.id) return project;
+        return { ...project, id: crypto.randomUUID() };
+      });
+      const ids = projectMap.map((project) => project.id);
+      if (new Set(ids).size !== ids.length) {
+        this.statusMsg = 'Project IDs must be unique';
+        this.statusType = 'error';
+        return false;
+      }
+      this.content = { ...this.content, project_map: projectMap };
+      this.localProjects = projectMap;
+      const result = await adminProvider.saveProjects(this.content);
+      if (!result.ok) {
+        const message = result.error && result.error.message
+          ? result.error.message : 'Could not save project configuration';
+        throw new Error(message);
+      }
+      this.statusMsg = 'Projects saved';
+      this.statusType = 'success';
+      return true;
+    } catch (error) {
+      console.error('Saving project configuration failed', error);
+      this.statusMsg = error.message;
       this.statusType = 'error';
-      return;
+      return false;
+    } finally {
+      this.saving = false;
     }
-    this.content = { ...this.content, project_map: projectMap };
-    this.localProjects = projectMap;
-    await super.saveConfig();
   }
 
   get containerTypes() {
@@ -428,6 +464,7 @@ export class AdminProjects extends BaseConfigComponent {
     const ids = selected ? [...new Set([...current, id])] : current.filter((item) => item !== id);
     this.content = { ...this.content,
       allocation_defaults: { ...this.content.allocation_defaults, [type]: ids } };
+    return this._queueConfigSave();
   }
 
   setProjectAllocationMode(index, inherit) {
@@ -435,7 +472,6 @@ export class AdminProjects extends BaseConfigComponent {
     if (inherit) delete project.allocatable_ids;
     else project.allocatable_ids = [];
     this.localProjects = this.localProjects.map((item, position) => position === index ? project : item);
-    this.content = { ...this.content, project_map: [...this.localProjects] };
   }
 
   setProjectAllocationChoice(index, id, selected) {
@@ -443,7 +479,6 @@ export class AdminProjects extends BaseConfigComponent {
     const ids = selected ? [...new Set([...current, id])] : current.filter((item) => item !== id);
     this.localProjects = this.localProjects.map((item, position) => position === index
       ? { ...item, allocatable_ids: ids } : item);
-    this.content = { ...this.content, project_map: [...this.localProjects] };
   }
 
   addContainerType() {
@@ -456,6 +491,7 @@ export class AdminProjects extends BaseConfigComponent {
     this.content = { ...this.content, container_types: [...this.containerTypes, type],
       allocation_defaults: { ...this.content.allocation_defaults, [type]: [] } };
     this.newContainerType = '';
+    return this._queueConfigSave();
   }
 
   removeContainerType(type) {
@@ -472,6 +508,7 @@ export class AdminProjects extends BaseConfigComponent {
       container_types: this.containerTypes.filter((item) => item !== type),
       allocation_defaults: defaults,
     };
+    return this._queueConfigSave();
   }
 
   moveContainerType(from, to) {
@@ -480,14 +517,23 @@ export class AdminProjects extends BaseConfigComponent {
     const [type] = types.splice(from, 1);
     types.splice(to, 0, type);
     this.content = { ...this.content, container_types: types };
+    return this._queueConfigSave();
   }
 
-  deleteProject(index) {
+  async deleteProject(index) {
     if (confirm('Delete this project configuration?')) {
       this.localProjects = this.localProjects.filter((_, i) => i !== index);
       this.content = { ...this.content, project_map: [...this.localProjects] };
       this.editingIndex = -1;
+      await this._queueConfigSave();
     }
+  }
+
+  setProjectArchived(index, archived) {
+    this.localProjects = this.localProjects.map((project, position) => position === index
+      ? { ...project, archived } : project);
+    this.content = { ...this.content, project_map: [...this.localProjects] };
+    return this._queueConfigSave();
   }
 
   updateProjectField(index, field, value) {
@@ -500,7 +546,6 @@ export class AdminProjects extends BaseConfigComponent {
       ...this.localProjects[index],
       iteration_uuid: value || null,
     };
-    this.content = { ...this.content, project_map: [...this.localProjects] };
     this.requestUpdate();
   }
 
@@ -654,6 +699,7 @@ export class AdminProjects extends BaseConfigComponent {
     arr.splice(insertIndex, 0, item);
     this.localProjects = arr;
     this.content = { ...this.content, project_map: [...this.localProjects] };
+    this._queueConfigSave();
     this.requestUpdate();
   }
 

@@ -76,7 +76,7 @@ class WorkforceConfigManager:
         workforce = self._storage.load('config', 'workforce')
         if not isinstance(workforce, Mapping) or workforce.get('schema_version') != 2:
             raise WorkforceUnavailableError('Workforce editing requires migrated workforce schema v2')
-        catalogue = TeamCatalogue(teams)
+        catalogue = self.validate_configuration(teams, workforce)
         workforce = WorkforceCatalogue(workforce, catalogue).definitions()
         encoded = json.dumps(
             {'teams': teams, 'workforce': workforce}, sort_keys=True, allow_nan=False,
@@ -89,6 +89,23 @@ class WorkforceConfigManager:
             ),
             workforce=workforce,
         )
+
+    @staticmethod
+    def validate_configuration(
+        teams: Mapping[str, Any], workforce: Mapping[str, Any],
+    ) -> TeamCatalogue:
+        """Validate a paired snapshot and enforce globally unique object identities."""
+        catalogue = TeamCatalogue(teams)
+        WorkforceCatalogue(workforce, catalogue)
+        identities = [record['id'] for record in teams['teams']]
+        identities.extend(record['id'] for record in teams['groups'])
+        for supplier in workforce['suppliers']:
+            identities.append(supplier['id'])
+            identities.extend(profile['id'] for profile in supplier['profiles'])
+        identities.extend(row['id'] for row in workforce['staffing'])
+        if len(identities) != len(set(identities)):
+            raise ValueError('Workforce object IDs must be globally unique')
+        return catalogue
 
     def read_snapshot(self) -> WorkforceSnapshot:
         """Read both configurations under one transaction without mutable storage aliases."""

@@ -130,6 +130,12 @@ _SCHEMAS: dict[str, Any] = {
                             'title': 'Project Name',
                             'minLength': 1,
                         },
+                        'archived': {
+                            'type': 'boolean',
+                            'title': 'Archived',
+                            'description': 'Keep this project configured but unavailable to users.',
+                            'default': False,
+                        },
                         'area_path': {
                             'type': 'string',
                             'title': 'Area Path',

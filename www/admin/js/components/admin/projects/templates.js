@@ -138,7 +138,7 @@ export const renderRowTemplate = (ctx, project, index) => {
   const isEditing = ctx.editingIndex === index;
   if (!isEditing) {
     return html`
-      <tr draggable="true" data-index="${index}"
+      <tr class="${project.archived ? 'archived-row' : ''}" draggable="true" data-index="${index}"
         @dragstart=${(e) => ctx._onRowDragStart(e)}
         @dragenter=${(e) => ctx._onRowDragEnter(e)}
         @dragleave=${(e) => ctx._onRowDragLeave(e)}
@@ -148,6 +148,7 @@ export const renderRowTemplate = (ctx, project, index) => {
         <td class="drag-handle" style="width:36px;cursor:grab">☰</td>
         <td>
           <div style="font-weight:600">${project.name || 'Unnamed'}</div>
+          ${project.archived ? html`<span class="small">Archived</span>` : ''}
           <div class="small">${project.type}</div>
         </td>
         <td class="nowrap" title="${project.area_path}">${project.area_path || '—'}</td>
@@ -165,6 +166,10 @@ export const renderRowTemplate = (ctx, project, index) => {
         <td>
           <div class="actions">
             <button class="action-btn" @click=${() => ctx.editProject(index)}>Edit</button>
+            <button class="action-btn" @click=${() =>
+              ctx.setProjectArchived(index, project.archived !== true)}>
+              ${project.archived ? 'Restore' : 'Archive'}
+            </button>
             <button class="action-btn" @click=${() => ctx.deleteProject(index)}>🗑</button>
           </div>
         </td>
@@ -189,6 +194,10 @@ export const renderRowTemplate = (ctx, project, index) => {
         <fieldset><legend>Allocatable workforce</legend>
           ${ctx.renderProjectAllocationChoices(project, index)}
         </fieldset>
+        <label><input type="checkbox" .checked=${project.archived === true}
+          @change=${(event) =>
+            ctx.updateProjectField(index, 'archived', event.target.checked)} />
+          Keep archived (hidden from users)</label>
       </td>
       <td style="min-width:220px">
         <div style="display:flex;gap:4px;align-items:center">
@@ -266,8 +275,11 @@ export const renderMainTemplate = (ctx) => {
     return html`<div class="loading">Loading ${ctx.title.toLowerCase()}...</div>`;
   }
 
+  const projects = ctx.localProjects;
+  const archivedCount = projects.filter((project) => project.archived === true).length;
+  const visibleProjects = projects.filter((project) => ctx._showArchived || project.archived !== true);
   const searchLower = (ctx._searchFilter || '').toLowerCase();
-  const filteredProjects = (ctx.localProjects || []).filter((p) => {
+  const filteredProjects = visibleProjects.filter((p) => {
     if (!searchLower) return true;
     return (
       (p.name || '').toLowerCase().includes(searchLower) ||
@@ -283,14 +295,21 @@ export const renderMainTemplate = (ctx) => {
           <div class="compact-table-view">
             <div class="toolbar">
               <button class="btn primary" @click="${ctx.addNewProject}">+ Add Project</button>
-              <button class="btn" @click="${ctx.saveConfig}">💾 Save All</button>
+              ${ctx.useRawMode
+                ? html`<button class="btn" @click="${ctx.saveConfig}">💾 Save JSON</button>`
+                : html`<span class="small">Changes are saved automatically</span>`}
               <button class="btn" @click="${ctx.loadConfig}">🔄 Reload</button>
               <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+                ${archivedCount > 0 ? html`
+                  <button class="btn" @click=${() => { ctx._showArchived = !ctx._showArchived; }}>
+                    ${ctx._showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
+                  </button>
+                ` : ''}
                 ${ctx._prefetchLoading
                   ? html`<span class="small">Loading metadata…</span>` : ''}
                 <span style="color:#6b7280;font-size:0.88rem">
-                  ${filteredProjects.length}${filteredProjects.length !== (ctx.localProjects || []).length
-                    ? `/${(ctx.localProjects || []).length}` : ''}
+                  ${filteredProjects.length}${filteredProjects.length !== visibleProjects.length
+                    ? `/${visibleProjects.length}` : ''}
                   project${(ctx.localProjects || []).length !== 1 ? 's' : ''}
                 </span>
                 <button class="btn toggle-mode" @click="${ctx.toggleMode}">
@@ -384,7 +403,9 @@ export const renderMainTemplate = (ctx) => {
                           style="text-align:center;padding:40px;color:#6b7280">
                           ${ctx._searchFilter
                             ? `No projects match "${ctx._searchFilter}"`
-                            : 'No projects configured. Click "+ Add Project" to create one.'}
+                            : archivedCount > 0 && !ctx._showArchived
+                              ? 'No active projects. Show archived projects to view or restore them.'
+                              : 'No projects configured. Click "+ Add Project" to create one.'}
                         </td>
                       </tr>
                     ` : filteredProjects.map((project) => {

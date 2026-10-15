@@ -360,6 +360,7 @@ export class ProviderREST extends RestProviderBase {
     const result = await this._requestJson('/api/projects');
     if (!result.ok) return result;
     let retval = Array.isArray(result.data) ? result.data : [];
+    retval = retval.filter((project) => project.archived !== true);
     retval = retval.map((project) => ({ ...project, selected: true }));
     console.log('providerREST:getProjects - Fetched projects:', retval);
     return ok(retval);

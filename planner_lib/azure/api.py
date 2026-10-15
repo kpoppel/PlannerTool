@@ -73,6 +73,25 @@ def _get_area_project_config_map(request: Request) -> dict:
         return {}
 
 
+def _get_archived_project_areas(request: Request) -> set[str]:
+    """Return archived project area paths for explicit refresh protection."""
+    admin_svc = resolve_service(request, 'admin_service')
+    projects_config = admin_svc.get_config('projects', default={}) or {}
+    if not isinstance(projects_config, dict):
+        raise ValueError('Projects configuration must be an object')
+    project_map = projects_config.get('project_map', [])
+    if not isinstance(project_map, list):
+        raise ValueError('Projects configuration project_map must be a list')
+    return {
+        project['area_path'].strip('/\\').replace('/', '\\').casefold()
+        for project in project_map
+        if isinstance(project, dict)
+        and project.get('archived') is True
+        and isinstance(project.get('area_path'), str)
+        and project['area_path'].strip('/\\')
+    }
+
+
 @router.get("/load")
 @require_session
 async def cache_load(
@@ -151,14 +170,16 @@ async def cache_refresh(
     """
     backend = resolve_service(request, 'backend')
 
-    pat = get_session_credentials_from_request(request)['pat']
+    credentials = get_session_credentials_from_request(request)
+    pat = credentials['pat']
     if not pat:
         raise HTTPException(
             status_code=401,
             detail={'error': 'missing_pat', 'message': 'Personal Access Token required'}
         )
 
-    area_list = areas.split(',') if areas else _get_all_configured_areas(request)
+    explicit_areas = bool(areas)
+    area_list = areas.split(',') if explicit_areas else _get_all_configured_areas(request)
     if not area_list:
         raise HTTPException(
             status_code=400,
@@ -166,16 +187,24 @@ async def cache_refresh(
         )
 
     area_project_config = _get_area_project_config_map(request)
+    archived_areas = _get_archived_project_areas(request) if explicit_areas else set()
 
     # Invalidate all cached task entries so the next fetch bypasses diskcache.
     backend.invalidate_cache()
 
     from planner_lib.backend.port import BackendCredential
-    cred = BackendCredential(token=pat, user_id=sid)
+    cred = BackendCredential(token=pat, user_id=credentials['account_id'])
 
     refreshed: list = []
     errors: list = []
     for area_path in area_list:
+        normalized_area = area_path.strip('/\\').replace('/', '\\').casefold()
+        if normalized_area in archived_areas:
+            errors.append({
+                'area': area_path,
+                'error': 'Archived project areas cannot be refreshed',
+            })
+            continue
         proj_cfg = area_project_config.get(area_path, {})
         try:
             items = backend.fetch_tasks(

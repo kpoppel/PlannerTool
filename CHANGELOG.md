@@ -26,6 +26,8 @@ Template - do not change :
 - Activate and verify revision-35 Workforce cutover with preserved identities, saved records and pricing bases, including idempotent live restart.
 - Preserve unresolved ADO allocation entries during reads and known-team edits, with token-only canonical repository ports and clarified local-ID migration rules.
 ### Added
+- Make full logical backups and restores round-trip paired canonical workforce data with globally unique object IDs.
+- Added reversible, auto-saved project archiving in administration, excluding archived projects from user project choices, task loading, and explicit area refreshes while preserving active-project API enrichment.
 - Added confirmed deletion of individual staffing rows from the canonical Workforce editor.
 - Added anonymous workforce candidate conversion with archived incomplete review items, explicit admin review completion and measured per-team/accounting parity.
 - Added shared canonical allocation availability, group-aware precedence/capacity, retained-scenario membership validation and anonymous pricing with explicit missing-basis completeness; live cutover remains gated by migration preflight.

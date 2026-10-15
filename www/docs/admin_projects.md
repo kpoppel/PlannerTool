@@ -21,7 +21,10 @@ The Projects screen maps Azure DevOps area paths to the plans that PlannerTool u
 
 ## Editing and removing
 
-- Click Edit on a project card to change any field, then Save.
+- Click Edit on a project row to change its fields, then Save; the row is saved immediately.
+- Click Archive to keep a project configured but remove it from the project choices and data loading. Archived projects are hidden by default; use Show archived to restore one.
+- New projects can be archived before saving if they are being prepared for later use.
+- Project archive/restore, deletion, reordering, allocation defaults, and container hierarchy changes are saved automatically. Raw JSON changes are saved with Save JSON.
 - Click Delete to remove a project; confirm when prompted. Removing a project only removes it from PlannerTool's configuration — it does not change anything in Azure DevOps.
 
 ## Notes

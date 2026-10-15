@@ -133,6 +133,20 @@ describe('ProviderREST feature/team/project endpoints', () => {
     expect(p.selected).to.equal(true);
   });
 
+  it('getProjects() excludes archived projects returned by the API', async () => {
+    const pr = new ProviderREST();
+    vi.spyOn(pr, '_fetchImpl').mockResolvedValue(new Response(JSON.stringify([
+      { id: 'active', name: 'Active Project' },
+      { id: 'archived', name: 'Archived Project', archived: true },
+    ])));
+
+    const projects = await pr.getProjects();
+
+    expect(projects.ok).to.equal(true);
+    expect(projects.data.map((project) => project.id)).to.deep.equal(['active']);
+    expect(projects.data[0].selected).to.equal(true);
+  });
+
   it('publishBaseline updates tasks and returns updated ids', async () => {
     const pr = new ProviderREST();
     const res = await pr.publishBaseline([

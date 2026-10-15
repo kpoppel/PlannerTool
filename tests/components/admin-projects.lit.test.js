@@ -80,6 +80,60 @@ describe('admin-projects', () => {
     expect(comp.iterationSetLabel('')).to.equal('');
   });
 
+  it('archives projects from the active admin view and allows restoring them', async () => {
+    await vi.waitFor(() => expect(comp.loading).to.equal(false));
+    const save = vi.spyOn(adminProvider, 'saveProjects').mockResolvedValue({ ok: true });
+    comp.content = {
+      container_types: ['project'],
+      allocation_defaults: { project: [] },
+      project_map: [{
+        id: 'project-one', name: 'Plan One', type: 'project', area_path: 'Area\\One',
+      }],
+    };
+    await comp.updateComplete;
+    await vi.waitFor(() => expect(comp.localProjects[0].name).to.equal('Plan One'));
+
+    const archiveButton = [...comp.shadowRoot.querySelectorAll('.action-btn')]
+      .find((button) => button.textContent.trim() === 'Archive');
+    expect(archiveButton).to.exist;
+    archiveButton.click();
+    await comp.updateComplete;
+
+    expect(comp.localProjects[0].archived).to.equal(true);
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0].project_map[0].archived).to.equal(true);
+    expect(comp.shadowRoot.querySelector('tbody').textContent).not.to.include('Plan One');
+
+    const showArchivedButton = [...comp.shadowRoot.querySelectorAll('.btn')]
+      .find((button) => button.textContent.includes('Show archived'));
+    expect(showArchivedButton).to.exist;
+    showArchivedButton.click();
+    await comp.updateComplete;
+    expect(comp.shadowRoot.querySelector('tbody').textContent).to.include('Archived');
+
+    const restoreButton = [...comp.shadowRoot.querySelectorAll('.action-btn')]
+      .find((button) => button.textContent.trim() === 'Restore');
+    expect(restoreButton).to.exist;
+    restoreButton.click();
+    await comp.updateComplete;
+    expect(comp.localProjects[0].archived).to.equal(false);
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(save.mock.calls[1][0].project_map[0].archived).to.equal(false);
+    expect(comp.shadowRoot.querySelector('tbody').textContent).to.include('Plan One');
+
+    comp.editProject(0);
+    await comp.updateComplete;
+    const archivedLabel = [...comp.shadowRoot.querySelectorAll('tr.editing-row label')]
+      .find((label) => label.textContent.includes('Keep archived'));
+    expect(archivedLabel).to.exist;
+    const archivedCheckbox = archivedLabel.querySelector('input');
+    archivedCheckbox.checked = true;
+    archivedCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+    await comp.updateComplete;
+    expect(comp.localProjects[0].archived).to.equal(true);
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
   it('edits ordered container types and keeps types assigned to plans', async () => {
     await vi.waitFor(() => expect(comp.loading).to.equal(false));
     comp.content = {
@@ -117,9 +171,13 @@ describe('admin-projects', () => {
     };
     await comp.updateComplete;
 
+    const save = vi.spyOn(adminProvider, 'saveProjects').mockResolvedValue({ ok: true });
+    const projectId = '11111111-1111-4111-8111-111111111111';
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(projectId);
     comp.newContainerType = 'portfolio';
-    comp.addContainerType();
+    await comp.addContainerType();
     await comp.updateComplete;
+    expect(save).toHaveBeenCalledTimes(1);
     comp.editProject(0);
     await comp.updateComplete;
 
@@ -129,12 +187,10 @@ describe('admin-projects', () => {
     select.dispatchEvent(new Event('change', { bubbles: true }));
     await comp.updateComplete;
 
-    const save = vi.spyOn(adminProvider, 'saveProjects').mockResolvedValue({ ok: true });
-    const projectId = '11111111-1111-4111-8111-111111111111';
-    vi.spyOn(crypto, 'randomUUID').mockReturnValue(projectId);
     try {
       await comp.saveConfig();
-      expect(save).toHaveBeenCalledWith({
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(save).toHaveBeenLastCalledWith({
         container_types: ['project', 'team', 'portfolio'],
         allocation_defaults: { project: [], team: [], portfolio: [] },
         project_map: [{ id: projectId, name: 'Plan A', type: 'portfolio', area_path: '' }],

@@ -801,12 +801,64 @@ def test_canonical_workforce_snapshot_cannot_bypass_lifecycle_owner(
 def test_canonical_logical_restore_cannot_bypass_workforce_owner(
     manager: WorkforceConfigManager, key: str,
 ) -> None:
-    """Logical config restore cannot silently replace lifecycle-owned definitions."""
+    """A logical backup cannot restore only half of the paired canonical workforce."""
     service = WorkforceAdminService(manager._storage, None, Mock(), None,
                                     task_storage=manager._storage)
     before = manager.read_snapshot()
-    with pytest.raises(WorkforceConflictError, match='canonical Workforce'):
+    with pytest.raises(ValueError, match='both teams and workforce'):
         service.restore_backup({'config': {key: {'unvalidated': True}}})
+    assert manager.read_snapshot() == before
+
+
+def test_logical_backup_restore_round_trips_canonical_workforce_and_ids(
+    manager: WorkforceConfigManager,
+) -> None:
+    """A full logical restore reinstates paired workforce definitions with their original IDs."""
+    from planner_lib.migrations.contracts import TARGET_REVISION
+
+    manager._storage.save('system', 'schema_state', {'schema_revision': TARGET_REVISION})
+    backup = ConfigManager(manager._storage).get_backup()
+    original = manager.read_snapshot()
+    changed = deepcopy(original)
+    changed['teams']['teams'][0]['name'] = 'Changed after backup'
+    manager.save_configuration(changed['teams'], changed['workforce'], original['revision'])
+
+    accounts = Mock()
+    accounts.get_all_with_permission.return_value = []
+    service = WorkforceAdminService(
+        manager._storage, None, accounts, None, task_storage=manager._storage,
+    )
+    result = service.restore_backup(backup)
+
+    restored = manager.read_snapshot()
+    assert result['ok'] is True
+    assert restored['teams'] == original['teams']
+    assert restored['workforce'] == original['workforce']
+    assert [team['id'] for team in restored['teams']['teams']] == [
+        team['id'] for team in original['teams']['teams']
+    ]
+    assert [supplier['id'] for supplier in restored['workforce']['suppliers']] == [
+        supplier['id'] for supplier in original['workforce']['suppliers']
+    ]
+
+
+def test_logical_restore_rejects_duplicate_workforce_ids_without_writing(
+    manager: WorkforceConfigManager,
+) -> None:
+    """A paired restore cannot reintroduce cross-category identity collisions."""
+    before = manager.read_snapshot()
+    teams = deepcopy(before['teams'])
+    workforce = deepcopy(before['workforce'])
+    workforce['suppliers'][0]['id'] = teams['teams'][0]['id']
+    workforce['staffing'][0]['supplier_id'] = teams['teams'][0]['id']
+    accounts = Mock()
+    service = WorkforceAdminService(
+        manager._storage, None, accounts, None, task_storage=manager._storage,
+    )
+
+    with pytest.raises(ValueError, match='globally unique'):
+        service.restore_backup({'config': {'teams': teams, 'workforce': workforce}})
+
     assert manager.read_snapshot() == before
 
 

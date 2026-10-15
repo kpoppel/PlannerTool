@@ -2,7 +2,6 @@
 from typing import Any
 
 from planner_lib.admin.service import AdminService
-from planner_lib.admin.workforce_config import WorkforceConflictError
 from planner_lib.domain.allocation_availability import validate_project_availability
 from planner_lib.domain.teams import TeamCatalogue
 
@@ -48,13 +47,17 @@ class WorkforceAdminService(AdminService):
         with self._config_manager._storage.transaction():
             self._config_manager._validate_compatibility(data)
             config = data.get('config', {})
-            for key in ('teams', 'workforce'):
-                if key in config and config[key] != self.get_config(key):
-                    raise WorkforceConflictError(
-                        'Use the canonical Workforce editing endpoint; '
-                        'complete database recovery requires the offline restore command',
-                    )
-            if 'projects' in config:
+            canonical_keys = {'teams', 'workforce'} & config.keys()
+            if canonical_keys and canonical_keys != {'teams', 'workforce'}:
+                raise ValueError('Logical workforce restore requires both teams and workforce')
+            if canonical_keys:
+                teams = config['teams']
+                workforce = config['workforce']
+                if teams is None or workforce is None:
+                    raise ValueError('Logical workforce restore requires complete canonical configurations')
+                catalogue = self._workforce_config.validate_configuration(teams, workforce)
+            else:
                 catalogue = TeamCatalogue(self.get_config('teams'))
+            if config.get('projects') is not None:
                 validate_project_availability(config['projects'], catalogue.definitions())
             return super().restore_backup(data, current_user_email)

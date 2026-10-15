@@ -103,6 +103,11 @@ export const adminProjectsStyles = css`
         background: #fbfdff;
       }
 
+      tbody tr.archived-row {
+        background: #f9fafb;
+        color: #6b7280;
+      }
+
       td {
         padding: 8px 10px;
         vertical-align: top;
