@@ -2,6 +2,7 @@
 
 import json
 from importlib.resources import files
+import re
 from uuid import UUID, uuid4
 
 from .contracts import (
@@ -200,13 +201,287 @@ def upgrade_35(storage):
     upgrade_workforce_candidate(storage)
 
 
+def _project_area_path_matches(project_area, mapped_area):
+    project_area = project_area.strip('/\\').replace('/', '\\').casefold()
+    mapped_area = mapped_area.strip('/\\').replace('/', '\\').casefold()
+    return (
+        mapped_area == project_area
+        or mapped_area.startswith(project_area + '\\')
+        or project_area.startswith(mapped_area + '\\')
+    )
+
+
+def _remap_selected_project_ids(value, aliases):
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            if key == 'selectedProjects' and isinstance(item, dict):
+                selections = {}
+                for project_id, selected in item.items():
+                    for new_id in aliases.get(project_id, [project_id]):
+                        if new_id in selections and selections[new_id] != selected:
+                            raise SchemaError('Conflicting saved project selections during ID migration')
+                        selections[new_id] = selected
+                result[key] = selections
+            elif key in {'projects', 'projectIds'} and isinstance(item, list):
+                remapped = []
+                for project_id in item:
+                    remapped.extend(aliases.get(project_id, [project_id]))
+                result[key] = list(dict.fromkeys(remapped))
+            else:
+                result[key] = _remap_selected_project_ids(item, aliases)
+        return result
+    if isinstance(value, list):
+        return [_remap_selected_project_ids(item, aliases) for item in value]
+    return value
+
+
+def upgrade_36(storage):
+    from collections import defaultdict
+    from uuid import UUID
+
+    with storage.transaction():
+        config = storage.load('config', 'projects')
+        project_map = config.get('project_map')
+        if not isinstance(project_map, list):
+            raise SchemaError('Invalid project map during project-ID migration')
+
+        aliases = defaultdict(list)
+        used_ids = set()
+        migrated_projects = []
+        for project in project_map:
+            if not isinstance(project, dict) or not isinstance(project.get('name'), str):
+                raise SchemaError('Invalid project entry during project-ID migration')
+            legacy_id = _legacy_project_id(project['name'])
+            project_id = project.get('id')
+            if project_id is None:
+                project_id = str(uuid4())
+                while project_id in used_ids:
+                    project_id = str(uuid4())
+            try:
+                if str(UUID(project_id)) != project_id or project_id in used_ids:
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise SchemaError('Project IDs must be unique canonical UUIDs') from None
+            used_ids.add(project_id)
+            aliases[legacy_id].append(project_id)
+            migrated_projects.append({**project, 'id': project_id})
+
+        area_plan_map = (
+            storage.load('config', 'area_plan_map')
+            if storage.exists('config', 'area_plan_map')
+            else {}
+        )
+        if not isinstance(area_plan_map, dict):
+            raise SchemaError('Invalid area-plan map during project-ID migration')
+        migrated_area_plan_map = {}
+        for old_id, entry in area_plan_map.items():
+            project_ids = aliases.get(old_id)
+            if not project_ids:
+                migrated_area_plan_map[old_id] = entry
+                continue
+            projects = [
+                project for project in migrated_projects
+                if _legacy_project_id(project['name']) == old_id
+            ]
+            if not isinstance(entry, dict):
+                raise SchemaError('Invalid project area mapping during project-ID migration')
+            areas = entry.get('areas')
+            if not isinstance(areas, dict):
+                if len(projects) != 1:
+                    raise SchemaError('Ambiguous project area mapping during project-ID migration')
+                migrated_area_plan_map[project_ids[0]] = entry
+                continue
+            areas_by_project = {project['id']: {} for project in projects}
+            for area_path, area_data in areas.items():
+                matches = [
+                    project for project in projects
+                    if project.get('area_path')
+                    and _project_area_path_matches(project['area_path'], area_path)
+                ]
+                if not matches:
+                    if len(projects) == 1:
+                        matches = projects
+                    else:
+                        raise SchemaError('Ambiguous project area mapping during project-ID migration')
+                longest = max(len(project['area_path'].strip('/\\')) for project in matches)
+                owners = [
+                    project for project in matches
+                    if len(project['area_path'].strip('/\\')) == longest
+                ]
+                if len(owners) != 1:
+                    raise SchemaError('Ambiguous project area mapping during project-ID migration')
+                areas_by_project[owners[0]['id']][area_path] = area_data
+            for project in projects:
+                migrated_area_plan_map[project['id']] = {
+                    **{key: value for key, value in entry.items() if key != 'areas'},
+                    'areas': areas_by_project[project['id']],
+                }
+
+        storage.save('config', 'projects', {**config, 'project_map': migrated_projects})
+        if storage.exists('config', 'area_plan_map'):
+            storage.save('config', 'area_plan_map', migrated_area_plan_map)
+        for namespace in ('views', 'scenarios'):
+            for key, payload in _payloads(storage, namespace):
+                storage.save(namespace, key, _remap_selected_project_ids(payload, aliases))
+        for key in list(storage.list_keys('backend_domain')):
+            storage.delete('backend_domain', key)
+
+
+def _legacy_project_id(name):
+    """Recognize pre-revision-36 project handles only while migrating their references."""
+    slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+    return f'project-{slug}'
+
+
+def _remap_team_id_references(value, aliases):
+    if isinstance(value, dict):
+        return {
+            aliases.get(key, key) if isinstance(key, str) else key:
+                _remap_team_id_references(item, aliases)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_remap_team_id_references(item, aliases) for item in value]
+    if isinstance(value, str):
+        return aliases.get(value, value)
+    return value
+
+
+def upgrade_37(storage):
+    from planner_lib.domain.teams import TeamCatalogue
+
+    with storage.transaction():
+        config = storage.load('config', 'teams')
+        TeamCatalogue(config)
+        projects = storage.load('config', 'projects')
+        project_ids = {item['id'] for item in projects['project_map']}
+        group_ids = {item['id'] for item in config['groups']}
+        workforce = storage.load('config', 'workforce')
+        workforce_ids = {supplier['id'] for supplier in workforce['suppliers']}
+        workforce_ids.update(
+            profile['id']
+            for supplier in workforce['suppliers']
+            for profile in supplier['profiles']
+        )
+        workforce_ids.update(row['id'] for row in workforce['staffing'])
+        used_ids = project_ids | group_ids | workforce_ids
+        aliases = {}
+        teams = []
+        for team in config['teams']:
+            team_id = str(uuid4())
+            while team_id in used_ids:
+                team_id = str(uuid4())
+            aliases[team['id']] = team_id
+            used_ids.add(team_id)
+            teams.append({**team, 'id': team_id})
+        migrated_staffing = [
+            {**row, 'team_id': aliases[row['team_id']]}
+            for row in workforce['staffing']
+        ]
+        migrated_projects = dict(projects)
+        migrated_projects['allocation_defaults'] = _remap_team_id_references(
+            projects['allocation_defaults'], aliases,
+        )
+        migrated_projects['project_map'] = [
+            {
+                **project,
+                **({'allocatable_ids': _remap_team_id_references(
+                    project['allocatable_ids'], aliases,
+                )} if 'allocatable_ids' in project else {}),
+            }
+            for project in projects['project_map']
+        ]
+        storage.save('config', 'teams', {**config, 'teams': teams})
+        storage.save('config', 'workforce', {**workforce, 'staffing': migrated_staffing})
+        storage.save('config', 'projects', migrated_projects)
+        if (storage.exists('config', 'event_config')
+                and storage.load('config', 'event_config').get('event_backend') == 'ado_wiki'):
+            storage.delete('config', 'event_config')
+        for namespace in ('views', 'scenarios'):
+            for key, payload in _payloads(storage, namespace):
+                storage.save(namespace, key, _remap_team_id_references(payload, aliases))
+        for namespace in ('backend_domain', 'cost_cache'):
+            for key in list(storage.list_keys(namespace)):
+                storage.delete(namespace, key)
+
+
+def upgrade_38(storage):
+    from planner_lib.admin.workforce_config import _timestamp_identity
+    from planner_lib.domain.teams import TeamCatalogue
+
+    with storage.transaction():
+        config = storage.load('config', 'teams')
+        TeamCatalogue(config)
+        projects = storage.load('config', 'projects')
+        workforce = storage.load('config', 'workforce')
+        used_ids = {
+            identity.lower()
+            for identity in (
+                [project['id'] for project in projects['project_map']]
+                + [group['id'] for group in config['groups']]
+                + [supplier['id'] for supplier in workforce['suppliers']]
+                + [profile['id'] for supplier in workforce['suppliers']
+                   for profile in supplier['profiles']]
+                + [row['id'] for row in workforce['staffing']]
+                + [team['id'] for team in config['teams']]
+            )
+        }
+        used_ids.update(
+            definition['allocation_token'].strip().lower()
+            for definition in [*config['teams'], *config['groups']]
+        )
+        aliases = {}
+        teams = []
+        for team in config['teams']:
+            team_id = _timestamp_identity()
+            while team_id.lower() in used_ids:
+                team_id = _timestamp_identity()
+            aliases[team['id']] = team_id
+            used_ids.add(team_id.lower())
+            teams.append({**team, 'id': team_id})
+
+        project_map = []
+        for project in projects['project_map']:
+            migrated_project = dict(project)
+            if 'allocatable_ids' in project:
+                migrated_project['allocatable_ids'] = _remap_team_id_references(
+                    project['allocatable_ids'], aliases,
+                )
+            project_map.append(migrated_project)
+
+        storage.save('config', 'teams', {**config, 'teams': teams})
+        storage.save('config', 'workforce', {
+            **workforce,
+            'staffing': [
+                {**row, 'team_id': aliases[row['team_id']]}
+                for row in workforce['staffing']
+            ],
+        })
+        migrated_projects = {
+            **projects,
+            'allocation_defaults': _remap_team_id_references(
+                projects['allocation_defaults'], aliases,
+            ),
+            'project_map': project_map,
+        }
+        storage.save('config', 'projects', migrated_projects)
+        for namespace in ('views', 'scenarios'):
+            for key, payload in _payloads(storage, namespace):
+                storage.save(namespace, key, _remap_team_id_references(payload, aliases))
+        for namespace in ('backend_domain', 'cost_cache'):
+            for key in list(storage.list_keys(namespace)):
+                storage.delete(namespace, key)
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
         (26, 24, upgrade_26), (27, 26, upgrade_27), (28, 27, upgrade_28),
         (29, 28, upgrade_29), (30, 29, upgrade_30), (31, 30, upgrade_31),
         (32, 31, upgrade_32), (33, 32, upgrade_33), (34, 33, upgrade_34),
-        (35, 34, upgrade_35),
+        (35, 34, upgrade_35), (36, 35, upgrade_36), (37, 36, upgrade_37),
+        (38, 37, upgrade_38),
     )
 )
 
@@ -286,6 +561,22 @@ def validate_records(storage, revision, *, server_config=None):
                     or any(project.get('type', 'project') not in containers
                            for project in projects.get('project_map', []))):
                 raise SchemaError('Invalid project container hierarchy')
+        if revision >= 36:
+            project_ids = set()
+            for project in projects['project_map']:
+                project_id = project.get('id')
+                try:
+                    if str(UUID(project_id)) != project_id or project_id in project_ids:
+                        raise ValueError
+                except (TypeError, ValueError):
+                    raise SchemaError('Invalid or duplicate project ID') from None
+                project_ids.add(project_id)
+        if revision >= 38:
+            for team in storage.load('config', 'teams')['teams']:
+                if not isinstance(team.get('id'), str) or not re.fullmatch(
+                    r'[a-z2-7]{26}', team['id'],
+                ):
+                    raise SchemaError('Invalid team ID format')
         account_ids = set()
         for email in storage.list_keys('accounts'):
             account = storage.load('accounts', email)

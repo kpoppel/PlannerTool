@@ -15,6 +15,9 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Assign persistent UUIDs to projects and migrate saved selections, plan mappings, and derived cache entries.
+- Replace name-derived project and team handles with unique IDs, keep ADO team allocation tokens separate, and reset wiki-backed events to the global local store.
+- Harmonise migrated team IDs with the opaque workforce ID format and remap saved team references and project allocation overrides.
 - Integrate reconciliation and scenario-publication work, update obsolete tests, support transactional memory fixtures, initialize Workforce metadata and enable Cost task navigation.
 - Preserve dormant scenario overrides for unavailable backend tasks without blocking workforce group changes; retain conflict checks on present tasks.
 - Fix workforce group reassignment rejecting matching task revisions with complementary retained context enrichment.

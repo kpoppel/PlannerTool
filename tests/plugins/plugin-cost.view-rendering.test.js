@@ -126,7 +126,7 @@ describe('PluginCost view rendering', () => {
           },
         },
       },
-      costTeams: { teams: [{ id: 'team-1', name: 'Alpha' }] },
+      costTeams: { catalogue: [{ id: 'team-1', name: 'Alpha', kind: 'team' }] },
       _expandedSections: new Set(['project-p1']),
     };
 
@@ -136,6 +136,7 @@ describe('PluginCost view rendering', () => {
     const html = container.innerHTML;
     expect(html).to.include('Task');
     expect(html).to.include('Task One');
+    expect(html).to.include('Alpha');
     expect(html).to.include('150');
     expect(html).to.include('10');
     expect(html).not.to.include('BT for F1R1');
@@ -146,7 +147,7 @@ describe('PluginCost view rendering', () => {
     mockFeatureState.childrenByParent = new Map([['root', ['leaf', 'empty', 'noise']]]);
     const team = (cost) => ({ cost: { internal: { '2026-01': cost }, external: {} },
       hours: { internal: { '2026-01': cost / 50 }, external: {} } });
-    const component = { months: [new Date('2026-01-01')], costTeams: { teams: [] },
+    const component = { months: [new Date('2026-01-01')], costTeams: { catalogue: [] },
       startDate: '2026-01-01', endDate: '2026-01-31',
       data: { projects: { p1: { features: [
         { id: 'root', title: 'Epic', project: 'p1', displayMode: 'normal',
@@ -262,7 +263,7 @@ describe('PluginCost view rendering', () => {
           },
         },
       },
-      costTeams: { teams: [] },
+      costTeams: { catalogue: [] },
       _expandedSections: new Set(['project-p1']),
     };
 

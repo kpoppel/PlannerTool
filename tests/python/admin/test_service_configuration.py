@@ -137,6 +137,17 @@ class TestRefreshSingle:
         admin_svc.get_config.return_value = {}
         return admin_svc
 
+    def test_area_resolution_distinguishes_same_name_projects(self):
+        from planner_lib.admin.area_mapping_service import _find_project_id
+
+        projects = [
+            {'id': 'first', 'name': 'Shared', 'area_path': 'Org\\First'},
+            {'id': 'second', 'name': 'Shared', 'area_path': 'Org\\Second'},
+        ]
+
+        assert _find_project_id('Org\\First\\Team', projects) == 'first'
+        assert _find_project_id('Org\\Second\\Team', projects) == 'second'
+
     def test_returns_ok_with_plans(self):
         from planner_lib.admin import area_mapping_service
         azure_svc = self._make_azure_mock()

@@ -69,7 +69,7 @@ class TestAzureAdapterFieldsPassThrough:
 
     def _null_team_repo(self):
         class _Null:
-            def name_to_id(self, name):
+            def allocation_token_to_id(self, token):
                 return None
         return _Null()
 
@@ -87,7 +87,7 @@ class TestAzureAdapterFieldsPassThrough:
         }
         task = adapter.to_domain(
             raw_wi=raw,
-            project_slug='project-x',
+            project_id='project-x',
             team_repository=self._null_team_repo(),
             type_canonical={},
             iteration_map={},
@@ -102,7 +102,7 @@ class TestAzureAdapterFieldsPassThrough:
         raw = {'id': '2', 'type': 'Epic', 'title': 'E', 'state': 'New'}
         task = adapter.to_domain(
             raw_wi=raw,
-            project_slug='project-x',
+            project_id='project-x',
             team_repository=self._null_team_repo(),
             type_canonical={},
             iteration_map={},
@@ -114,7 +114,7 @@ class TestAzureAdapterFieldsPassThrough:
         raw = {'id': '3', 'type': 'Bug', 'title': 'B', 'state': 'Active', 'fields': {}}
         task = adapter.to_domain(
             raw_wi=raw,
-            project_slug='project-x',
+            project_id='project-x',
             team_repository=self._null_team_repo(),
             type_canonical={},
             iteration_map={},
@@ -158,4 +158,3 @@ def test_task_repository_works_without_extra_fields_config():
 
     assert len(results) == 1
     assert results[0].get('fields') == {'Microsoft.VSTS.Common.Priority': 1}
-

@@ -129,18 +129,12 @@ function renderTasksInProjectTable(component, features) {
   const rows = buildCostTaskRows(features, childrenMap, monthKeys,
     { start: component.startDate, end: component.endDate });
 
-  // Resolve team id/slug to friendly name using component.costTeams (built once)
-  const costTeamsList =
-    component && component.costTeams ?
-      Array.isArray(component.costTeams.teams) ? component.costTeams.teams
-      : Array.isArray(component.costTeams) ? component.costTeams
-      : []
-    : [];
+  // Resolve canonical team IDs through the workforce catalogue.
   const teamNameByKey = {};
-  for (const tt of costTeamsList) {
-    if (tt.id != null) teamNameByKey[String(tt.id)] = tt.name || tt.id;
-    if (tt.slug) teamNameByKey[String(tt.slug)] = tt.name || tt.slug;
-    if (tt.name) teamNameByKey[String(tt.name)] = tt.name;
+  if (component.costTeams) {
+    for (const team of component.costTeams.catalogue) {
+      teamNameByKey[String(team.id)] = team.name;
+    }
   }
 
   const formatValue = (n) => {

@@ -17,7 +17,7 @@ class CapacityService:
     """
 
     def __init__(self, team_repository):
-        # Accepts TeamRepository (or any object with name_to_id / id_to_short_name).
+        # Accepts TeamRepository (or any object with allocation-token mapping methods).
         self._team_repository = team_repository
 
     @staticmethod
@@ -71,10 +71,10 @@ class CapacityService:
         for item in capacity_list:
             team_id = item["team"]
             capacity = item["capacity"]
-            short_name = self._team_repository.id_to_short_name(team_id)
-            if short_name is None:
+            allocation_token = self._team_repository.id_to_allocation_token(team_id)
+            if allocation_token is None:
                 raise ValueError(f'Unknown allocation identity: {team_id}')
-            lines.append(f"{short_name}: {capacity}")
+            lines.append(f"{allocation_token}: {capacity}")
         lines.append("[/PlannerTool Team Capacity]")
 
         return "\n".join(lines)
@@ -85,12 +85,14 @@ class CapacityService:
         unresolved = Counter()
         for line in self._capacity_lines(description):
             match = re.match(r'^([^:]+)\s*:\s*(\d+)%?\s*$', line.strip())
-            if match is not None and self._team_repository.name_to_id(match.group(1).strip()) is None:
+            if match is not None and self._team_repository.allocation_token_to_id(
+                match.group(1).strip()
+            ) is None:
                 retained.append(line)
                 unresolved[(match.group(1).strip(), min(int(match.group(2)), 100))] += 1
         known = []
         for allocation in capacity_list:
-            if self._team_repository.id_to_short_name(allocation['team']) is not None:
+            if self._team_repository.id_to_allocation_token(allocation['team']) is not None:
                 known.append(allocation)
             elif unresolved[(allocation['team'], allocation['capacity'])] > 0:
                 unresolved[(allocation['team'], allocation['capacity'])] -= 1
@@ -118,4 +120,3 @@ class CapacityService:
             description += capacity_block
 
         return description
-

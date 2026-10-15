@@ -84,6 +84,7 @@ import json, threading, urllib.request
 from pathlib import Path
 import uvicorn
 from planner_lib.migrations.coordinator import Database
+from planner_lib.migrations.contracts import TARGET_REVISION
 ready = threading.Event()
 class Server(uvicorn.Server):
     async def startup(self, sockets=None):
@@ -99,7 +100,7 @@ try:
     response = urllib.request.urlopen('http://127.0.0.1:' + str(port) + '/', timeout=5)
     assert response.status == 200
     assert b'<base href="/static/">' in response.read()
-    assert Database('/app/data').status()['active_revision'] == 34
+    assert Database('/app/data').status()['active_revision'] == TARGET_REVISION
     assert not Path('/app/scripts/migrate.py').exists()
     assert not Path('/app/cache').exists()
     assert Path('/app/data/config/database.yaml').read_text() == 'external-input'
@@ -125,10 +126,12 @@ print('Runtime HTTP startup and shutdown passed')
 @pytest.mark.skipif('PLANNER_MIGRATION_IMAGE' not in os.environ, reason='requires a built runtime image')
 def test_runtime_image_rejects_unsupported_schema_before_http(tmp_path):
     from planner_lib.storage.diskcache_backend import DiskCacheStorage
+    from planner_lib.migrations.contracts import TARGET_REVISION
 
     storage = DiskCacheStorage(tmp_path / 'cache')
     storage.save('system', 'schema_state', {
-        'schema_revision': 35, 'last_applied_migration': None, 'initialized_at_revision': 35,
+        'schema_revision': TARGET_REVISION + 1, 'last_applied_migration': None,
+        'initialized_at_revision': TARGET_REVISION + 1,
     })
     storage.close()
     process = subprocess.run([
@@ -148,6 +151,7 @@ def test_runtime_image_direct_launch_and_reload_release_ownership(tmp_path, relo
 import os, signal, socket, subprocess, sys, threading, time, urllib.request
 from pathlib import Path
 from planner_lib.migrations.coordinator import Database
+from planner_lib.migrations.contracts import TARGET_REVISION
 reload = sys.argv[1] == 'True'
 watch = Path('/tmp/reload-watch')
 watch.mkdir()
@@ -194,7 +198,7 @@ with log.open('w') as output:
         process.wait(timeout=15)
 assert process.returncode in (0, -signal.SIGTERM), log.read_text()
 Database('/app/data', lock_timeout=0).prune()
-assert Database('/app/data').status()['active_revision'] == 34
+assert Database('/app/data').status()['active_revision'] == TARGET_REVISION
 '''
     process = subprocess.run([
         'docker', 'run', '--rm', '-e', 'PLANNER_SECRET_KEY=isolated-image-test-only',

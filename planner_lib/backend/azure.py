@@ -38,6 +38,7 @@ from planner_lib.backend.errors import (
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.storage.base import StorageBackend
+from planner_lib.util import project_id_for_area_path
 
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class AzureDevOpsBackend(BackendPort):
         Disk-cache StorageBackend used by the underlying client for
         plan/team caching (lightweight in-memory caches on the client).
     team_service:
-        TeamServiceProtocol — required for team-name → team-ID mapping
+        TeamServiceProtocol — required for allocation-token → team-ID mapping
         in AzureAdapter.to_domain().
     capacity_service:
         CapacityServiceProtocol — parses capacity allocation from item
@@ -241,6 +242,7 @@ class AzureDevOpsBackend(BackendPort):
             area_path=plan['area_path'],
             task_types=plan.get('task_types'),
             include_states=plan.get('include_states'),
+            project_id=plan['id'],
             credential=credential,
         )
         return [{**task, 'project': plan['id'], 'sourcePlanIds': [plan['id']]} for task in tasks]
@@ -334,7 +336,7 @@ class AzureDevOpsBackend(BackendPort):
                     else:
                         task = self._adapter.to_domain(
                             raw_wi=raw,
-                            project_slug=owner,
+                            project_id=owner,
                             team_repository=self._team_repository,
                             type_canonical=type_canonical,
                             iteration_map=iteration_map_for(area, raw['adoProject']),
@@ -500,6 +502,7 @@ class AzureDevOpsBackend(BackendPort):
         task_types: Optional[List[str]] = None,
         include_states: Optional[List[str]] = None,
         credential: Optional[BackendCredential] = None,
+        project_id: Optional[str] = None,
         **kwargs,
     ) -> List[DomainTask]:
         """Fetch and enrich work items for one *area_path*.
@@ -511,13 +514,18 @@ class AzureDevOpsBackend(BackendPort):
         """
         pat = self._require_credential(credential, 'fetch_tasks')
         type_canonical = self._build_type_canonical()
-        # Derive the project slug from the area_path (first path segment, slugified)
-        from planner_lib.util import slugify
-        project_slug = slugify(
-            area_path.split('\\')[0] if '\\' in area_path else
-            area_path.split('/')[0] if '/' in area_path else area_path,
-            prefix='project-',
-        )
+        if project_id is None:
+            if self._config is None:
+                raise BackendConfigError(
+                    f'No configured project owns area {area_path}',
+                    failed_path=area_path,
+                )
+            project_id = project_id_for_area_path(area_path, self._config.fetch_project_map())
+            if project_id is None:
+                raise BackendConfigError(
+                    f'No unique configured project owns area {area_path}',
+                    failed_path=area_path,
+                )
 
         azure_project = (
             area_path.split('\\')[0] if '\\' in area_path
@@ -568,7 +576,7 @@ class AzureDevOpsBackend(BackendPort):
             try:
                 task = self._adapter.to_domain(
                     raw_wi=raw_wi,
-                    project_slug=project_slug,
+                    project_id=project_id,
                     team_repository=self._team_repository,
                     type_canonical=type_canonical,
                     iteration_map=iteration_map,

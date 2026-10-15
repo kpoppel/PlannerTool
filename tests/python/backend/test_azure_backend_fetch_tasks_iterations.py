@@ -247,7 +247,7 @@ def test_adapter_matches_work_item_path_and_preserves_explicit_dates(explicit_st
     task = AzureAdapter().to_domain(
         raw_wi={'id': '1', 'iterationPath': '\\Project/Platform/Sprint 1',
                 'startDate': explicit_start, 'finishDate': None},
-        project_slug='plan', team_repository=MagicMock(), type_canonical={},
+        project_id='plan', team_repository=MagicMock(), type_canonical={},
         iteration_map={'Project\\Platform\\Sprint 1': {
             'startDate': '2026-01-01', 'finishDate': '2026-01-14',
         }},
@@ -295,7 +295,14 @@ def test_fetch_tasks_attaches_failed_area_path_to_configuration_error():
 
 
 def test_fetch_tasks_preserves_source_identity_revision_and_link_diagnostics():
-    config = _FakeConfig(project_map=[], iterations_config={'iteration_sets': []})
+    config = _FakeConfig(
+        project_map=[{
+            'id': '11111111-1111-4111-8111-111111111111',
+            'name': 'Team A',
+            'area_path': 'MyADO\\TeamA',
+        }],
+        iterations_config={'iteration_sets': []},
+    )
     backend = _make_backend(config)
     client = MagicMock()
     client.get_work_items.return_value = [{
@@ -313,6 +320,7 @@ def test_fetch_tasks_preserves_source_identity_revision_and_link_diagnostics():
     task, = backend.fetch_tasks('MyADO\\TeamA', credential={'token': 'test', 'user_id': 'test'})
 
     assert task['backendData'] == {'adoProject': 'OtherADO', 'rev': 7, 'type': 'Requirement'}
+    assert task['project'] == '11111111-1111-4111-8111-111111111111'
     assert task['revision'] == 7
     assert task['areaPath'] == 'OtherADO\\WrongArea'
     assert task['url'].endswith('/edit/42')
@@ -347,7 +355,7 @@ def test_fetch_task_context_preserves_source_owner_and_unions_seed_provenance():
     ], {'iteration_sets': []})
     backend = _make_backend(config)
     backend._capacity_service.parse.return_value = [{'team': 'Team One', 'capacity': 0.25}]
-    backend._team_repository.name_to_id.return_value = 'team-one'
+    backend._team_repository.allocation_token_to_id.return_value = 'team-one'
     seeds = [
         {'id': '1', 'project': 'plan-a', 'type': 'Epic', 'title': 'Root A',
          'state': 'Active', 'revision': 2, 'areaPath': 'ADOA\\Seeds',

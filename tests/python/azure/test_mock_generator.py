@@ -55,6 +55,7 @@ def _dummy_storage(tmp_path):
 # Used to populate the storage backend for tests.
 _MOCK_PROJECT_MAP = [
     {
+        "id": "11111111-1111-4111-8111-111111111111",
         "name": "Architecture",
         "area_path": "MyProject\\TeamA\\Teams\\Architecture",
         "type": "team",
@@ -63,6 +64,7 @@ _MOCK_PROJECT_MAP = [
         "display_states": ["New", "Defined", "Active", "Resolved", "Closed"],
     },
     {
+        "id": "22222222-2222-4222-8222-222222222222",
         "name": "Platform",
         "area_path": "MyProject\\TeamA\\Teams\\Platform",
         "type": "team",

@@ -34,16 +34,16 @@ class TeamRepository:
         """Return active choices, with archives available for existing calculations."""
         return self._backend.fetch_config_teams(include_archived=include_archived)
 
-    def name_to_id(self, name: str) -> Optional[str]:
-        """Resolve only immutable persisted tokens, including archived identities."""
-        normalized = name.strip().lower()
+    def allocation_token_to_id(self, token: str) -> Optional[str]:
+        """Resolve only immutable persisted allocation tokens, including archived identities."""
+        normalized = token.strip().lower()
         for record in self._backend.fetch_config_teams(include_archived=True):
             target = cast(AllocationTarget, record)
             if normalized == target['allocation_token'].strip().lower():
                 return target['id']
         return None
 
-    def id_to_short_name(self, team_id: str) -> Optional[str]:
+    def id_to_allocation_token(self, team_id: str) -> Optional[str]:
         """Return the original immutable token through the capacity writer's existing port."""
         for record in self._backend.fetch_config_teams(include_archived=True):
             target = cast(AllocationTarget, record)

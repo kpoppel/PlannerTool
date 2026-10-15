@@ -9,7 +9,6 @@ from typing import List, Optional
 
 from planner_lib.backend.port import PlansBackend, PlanConfigBackend, BackendCredential
 from planner_lib.domain.plans import DomainMarker
-from planner_lib.util import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,6 @@ class PlanRepository:
             if project_id and pid != project_id:
                 continue
 
-            name = project.get('name', '')
             area = project.get('area_path', '')
             proj_obj = area_plan_map.get(pid, {})
             areas = proj_obj.get('areas', {})
@@ -80,14 +78,13 @@ class PlanRepository:
                 try:
                     raw_markers = self._backend.fetch_markers(area, plan_id=plan_id, credential=credential)
                     plan_name = plan_info.get('name')
-                    project_slug = slugify(name, prefix='project-')
                     for m in raw_markers:
                         out.append(DomainMarker(
                             plan_id=plan_id,
                             plan_name=plan_name,
                             team_id=None,
                             team_name=None,
-                            project=project_slug,
+                            project=pid,
                             marker=m,
                         ))
                 except Exception as exc:

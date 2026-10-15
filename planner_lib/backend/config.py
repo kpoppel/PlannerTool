@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
+from uuid import UUID
 
 from planner_lib.backend.port import (
     AdoConfigBackend,
@@ -38,7 +39,6 @@ from planner_lib.domain.allocation_availability import validate_project_availabi
 from planner_lib.domain.projects import DomainProject
 from planner_lib.domain.teams import DomainTeam, TeamCatalogue
 from planner_lib.storage.base import StorageBackend
-from planner_lib.util import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -73,14 +73,30 @@ class ConfigBackend(
     # ProjectConfigBackend
     # ------------------------------------------------------------------
 
+    def _configured_project_map(self) -> List[dict]:
+        cfg = self._storage.load("config", "projects") or {}
+        project_map = cfg.get("project_map") or []
+        if not isinstance(project_map, list):
+            raise ValueError('Configured project map must be a list')
+        ids = set()
+        for project in project_map:
+            if not isinstance(project, dict):
+                raise ValueError('Configured projects must be objects')
+            project_id = project.get('id')
+            try:
+                if str(UUID(project_id)) != project_id or project_id in ids:
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise ValueError('Configured project IDs must be unique canonical UUIDs') from None
+            ids.add(project_id)
+        return project_map
+
     def fetch_project_map(
         self,
         credential: Optional[BackendCredential] = None,
     ) -> List[dict]:
         """Return raw project entries (includes area_path etc.)."""
-        cfg = self._storage.load("config", "projects") or {}
-        project_map = cfg.get("project_map") or []
-        return [dict(p, id=slugify(p.get("name"), prefix="project-")) for p in project_map]
+        return [dict(project) for project in self._configured_project_map()]
 
     def fetch_projects(
         self,
@@ -88,7 +104,7 @@ class ConfigBackend(
     ) -> List[DomainProject]:
         """Return all configured projects in frontend-ready shape."""
         cfg = self._storage.load("config", "projects") or {}
-        project_map = cfg.get("project_map") or []
+        project_map = self._configured_project_map()
         if not project_map:
             return []
         container_order = {
@@ -106,7 +122,7 @@ class ConfigBackend(
 
         return [
             DomainProject(
-                id=slugify(p.get("name"), prefix="project-"),
+                id=p['id'],
                 name=p.get("name") or "",
                 type=p['type'],
                 container_order=container_order[p['type']],
@@ -262,4 +278,3 @@ class WorkforceConfigBackend(ConfigBackend):
                 if 'allocatable_ids' in definition:
                     project['allocatable_ids'] = list(definition['allocatable_ids'])
             return projects
-

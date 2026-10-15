@@ -21,6 +21,7 @@ from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
+from planner_lib.util import project_id_for_area_path
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class _MockBackendBase(BackendPort):
             area_path=plan['area_path'],
             task_types=plan.get('task_types'),
             include_states=plan.get('include_states'),
+            project_id=plan['id'],
             credential=credential,
         )
         return [{**task, 'project': plan['id']} for task in tasks]
@@ -79,20 +81,21 @@ class _MockBackendBase(BackendPort):
         raw_items: List[dict],
         area_path: str,
         iteration_map: Dict[str, Any],
+        project_id: Optional[str] = None,
     ) -> List[DomainTask]:
         type_canonical = self._build_type_canonical()
-        from planner_lib.util import slugify
-        project_slug = slugify(
-            area_path.split('\\')[0] if '\\' in area_path else
-            area_path.split('/')[0] if '/' in area_path else area_path,
-            prefix='project-',
-        )
+        if project_id is None:
+            if self._config is None:
+                raise ValueError(f'No configured project owns area {area_path}')
+            project_id = project_id_for_area_path(area_path, self._config.fetch_project_map())
+            if project_id is None:
+                raise ValueError(f'No unique configured project owns area {area_path}')
         results: List[DomainTask] = []
         for raw_wi in raw_items or []:
             try:
                 task = self._adapter.to_domain(
                     raw_wi=raw_wi,
-                    project_slug=project_slug,
+                    project_id=project_id,
                     team_repository=self._team_repository or _NullTeamRepository(),
                     type_canonical=type_canonical,
                     iteration_map=iteration_map,
@@ -144,7 +147,7 @@ class _MockBackendBase(BackendPort):
 
 class _NullTeamRepository:
     """Fallback when no team_repository is provided — all team names map to None."""
-    def name_to_id(self, name: str) -> Optional[str]:
+    def allocation_token_to_id(self, token: str) -> Optional[str]:
         return None
 
 
@@ -164,7 +167,7 @@ class MockFixtureBackend(_MockBackendBase):
     fixture_dir:
         Path to directory containing ``sdk_*.json`` fixture files.
     team_service, capacity_service:
-        Optional; needed for team-name mapping and capacity parsing.
+        Optional; needed for allocation-token mapping and capacity parsing.
     memory_cache:
         Optional MemoryCacheManager.
     persist_enabled:
@@ -251,6 +254,7 @@ class MockFixtureBackend(_MockBackendBase):
         task_types: Optional[List[str]] = None,
         include_states: Optional[List[str]] = None,
         credential: Optional[BackendCredential] = None,
+        project_id: Optional[str] = None,
         **kwargs,
     ) -> List[DomainTask]:
         with self._client.connect('mock-pat') as client:
@@ -273,7 +277,7 @@ class MockFixtureBackend(_MockBackendBase):
                             iteration_map[norm] = {'startDate': it.get('startDate'), 'finishDate': it.get('finishDate'), 'name': it.get('name')}
             except Exception:
                 pass
-        return self._enrich(raw_items, area_path, iteration_map)
+        return self._enrich(raw_items, area_path, iteration_map, project_id)
 
     def write_task(
         self,
@@ -527,6 +531,7 @@ class MockGeneratorBackend(_MockBackendBase):
         task_types: Optional[List[str]] = None,
         include_states: Optional[List[str]] = None,
         credential: Optional[BackendCredential] = None,
+        project_id: Optional[str] = None,
         **kwargs,
     ) -> List[DomainTask]:
         with self._client.connect('mock-pat') as client:
@@ -544,7 +549,7 @@ class MockGeneratorBackend(_MockBackendBase):
                     iteration_map = MockFixtureBackend._flatten_iter_tree(tree)
             except Exception:
                 pass
-        return self._enrich(raw_items, area_path, iteration_map)
+        return self._enrich(raw_items, area_path, iteration_map, project_id)
 
     def write_task(
         self,

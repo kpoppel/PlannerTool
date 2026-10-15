@@ -10,7 +10,7 @@ StateCategory = Literal["Proposed", "InProgress", "Completed", "Resolved", "Remo
 
 class DomainProject(TypedDict):
     """A project entry as defined in projects.yml."""
-    id: str                                     # slug e.g. 'project-my-team'
+    id: str                                     # canonical UUID
     name: str                                   # display name
     type: str                                   # configured container type
     container_order: int                        # position in plan container hierarchy

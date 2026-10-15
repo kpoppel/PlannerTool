@@ -92,7 +92,9 @@ def test_fetch_projects_reads_from_storage():
     storage.save('config', 'projects', {
         'container_types': ['project', 'team'],
         'project_map': [
-            {'name': 'Alpha', 'type': 'project', 'area_path': 'Org\\Alpha', 'task_types': ['Feature'], 'iteration_uuid': 'set-alpha'}
+            {'id': '11111111-1111-4111-8111-111111111111',
+             'name': 'Alpha', 'type': 'project', 'area_path': 'Org\\Alpha',
+             'task_types': ['Feature'], 'iteration_uuid': 'set-alpha'}
         ]
     })
     storage.save('config', 'global_settings', {
@@ -102,6 +104,7 @@ def test_fetch_projects_reads_from_storage():
     cb = ConfigBackend(storage=storage)
     projects = cb.fetch_projects()
     assert len(projects) == 1
+    assert projects[0]['id'] == '11111111-1111-4111-8111-111111111111'
     assert projects[0]['name'] == 'Alpha'
     assert projects[0]['state_display_sequence'] == ['New', 'Active', 'Closed']
     assert projects[0]['iteration_uuid'] == 'set-alpha'
@@ -111,7 +114,10 @@ def test_fetch_projects_preserves_custom_container_hierarchy_without_leaf_plans(
     storage = _MemStore()
     storage.save('config', 'projects', {
         'container_types': ['portfolio', 'program', 'squad'],
-        'project_map': [{'name': 'Program', 'type': 'program'}],
+        'project_map': [{
+            'id': '11111111-1111-4111-8111-111111111111',
+            'name': 'Program', 'type': 'program',
+        }],
     })
     projects = ConfigBackend(storage=storage).fetch_projects()
     assert projects[0]['type'] == 'program'
@@ -142,8 +148,8 @@ def test_archived_team_resolves_for_existing_allocations(cached: bool, canonical
         backend = CachingBackend(backend, storage=_MemStore())
     repository = TeamRepository(backend)
     assert [team['id'] for team in repository.list_teams()] == ['team-alpha', 'group-engineering']
-    assert repository.name_to_id(' bet ') == 'team-beta'
-    assert repository.id_to_short_name('team-beta') == 'BET'
+    assert repository.allocation_token_to_id(' bet ') == 'team-beta'
+    assert repository.id_to_allocation_token('team-beta') == 'BET'
     service = CapacityService(repository)
     block = service.serialize([{'team': 'team-beta', 'capacity': 25}], cfg={})
     assert service.parse(block) == [{'team': 'BET', 'capacity': 25}]
@@ -298,18 +304,18 @@ def test_canonical_repository_uses_tokens_and_persisted_ids(canonical_team_confi
     repository = TeamRepository(WorkforceConfigBackend(storage))
     assert [team['id'] for team in repository.list_teams()] == ['team-alpha', 'group-engineering']
     assert len(repository.list_teams(include_archived=True)) == 4
-    assert repository.name_to_id(' bet ') == 'team-beta'
-    assert repository.name_to_id('Beta') is None
-    assert repository.name_to_id('Beta display') is None
-    assert repository.name_to_id(' eng ') == 'group-engineering'
-    assert repository.id_to_short_name('group-empty') == 'EMPTY'
-    assert repository.id_to_short_name('deleted') is None
+    assert repository.allocation_token_to_id(' bet ') == 'team-beta'
+    assert repository.allocation_token_to_id('Beta') is None
+    assert repository.allocation_token_to_id('Beta display') is None
+    assert repository.allocation_token_to_id(' eng ') == 'group-engineering'
+    assert repository.id_to_allocation_token('group-empty') == 'EMPTY'
+    assert repository.id_to_allocation_token('deleted') is None
     canonical_team_config['teams'][0]['name'] = 'Renamed'
     canonical_team_config['teams'][0]['short_name'] = 'NEW'
     storage.save('config', 'teams', canonical_team_config)
-    assert repository.name_to_id('ALP') == 'team-alpha'
-    assert repository.name_to_id('NEW') is None
-    assert repository.id_to_short_name('team-alpha') == 'ALP'
+    assert repository.allocation_token_to_id('ALP') == 'team-alpha'
+    assert repository.allocation_token_to_id('NEW') is None
+    assert repository.id_to_allocation_token('team-alpha') == 'ALP'
 
 
 def test_canonical_repository_round_trip_preserves_unknown_source_rows(canonical_team_config: dict) -> None:
@@ -349,8 +355,11 @@ def test_canonical_projects_expose_defaults_and_explicit_empty_override(canonica
     config = {
         'schema_version': 4, 'container_types': ['Program', 'Plan'],
         'allocation_defaults': {'Program': ['group-engineering'], 'Plan': ['team-alpha']},
-        'project_map': [{'name': 'Inherited', 'type': 'Plan'},
-                        {'name': 'Empty', 'type': 'Plan', 'allocatable_ids': []}],
+        'project_map': [
+            {'id': '11111111-1111-4111-8111-111111111111', 'name': 'Inherited', 'type': 'Plan'},
+            {'id': '22222222-2222-4222-8222-222222222222',
+             'name': 'Empty', 'type': 'Plan', 'allocatable_ids': []},
+        ],
     }
     storage.save('config', 'projects', config)
     backend = WorkforceConfigBackend(storage)

@@ -18,6 +18,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from planner_lib.util import project_id_for_area_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,9 +65,8 @@ def refresh_single(area_path: str, pat: str, azure_client, admin_svc) -> dict:
     logger.info("Found %d plans associated with area %s", len(plan_dict), area_path)
 
     # Determine which configured project this area belongs to
-    from planner_lib.util import slugify
     project_map = admin_svc.get_project_map()
-    project_id = _find_project_id(area_path, project_name, project_map, slugify)
+    project_id = _find_project_id(area_path, project_map)
 
     if not project_id:
         raise ValueError(f'Could not determine project for area_path: {area_path}')
@@ -163,29 +164,9 @@ def refresh_all(pat: str, azure_client, admin_svc) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _find_project_id(area_path: str, project_name: str, project_map: list, slugify) -> str | None:
+def _find_project_id(area_path: str, project_map: list) -> str | None:
     """Return the configured project id that owns *area_path*, or ``None``."""
-    for p in project_map:
-        try:
-            cfg_area = p.get('area_path')
-            if not cfg_area:
-                continue
-            if (
-                area_path == cfg_area
-                or area_path.startswith(cfg_area + '\\')
-                or cfg_area.startswith(area_path + '\\')
-            ):
-                return p.get('id')
-        except Exception:
-            continue
-    # Fallback: slugified root match
-    for p in project_map:
-        try:
-            if slugify(p.get('name', ''), prefix='project-') == slugify(project_name, prefix='project-'):
-                return p.get('id')
-        except Exception:
-            continue
-    return None
+    return project_id_for_area_path(area_path, project_map)
 
 
 def _merge_plans(new_plan_dict: dict, old_plans: Any) -> dict:

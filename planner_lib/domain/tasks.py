@@ -22,7 +22,7 @@ class DomainRelation(TypedDict):
 
 
 class DomainCapacity(TypedDict):
-    team: str     # team ID (slug)
+    team: str     # canonical team ID
     capacity: float
 
 
@@ -45,7 +45,7 @@ class DomainTask(TypedDict):
     type: str                       # canonical casing from task_type_hierarchy
     state: str
     stateCategory: NotRequired[str]  # Backend-neutral lifecycle category when known.
-    project: str                    # project slug e.g. 'project-my-team'
+    project: str                    # canonical project UUID
     revision: NotRequired[int]       # backend-neutral monotonic task version
     sourcePlanIds: NotRequired[List[str]]
     sourcePlanName: NotRequired[str]  # Backend-neutral display label for the source owner.

@@ -57,7 +57,7 @@ class FakeBackend:
 
 def _make_project(name='TeamA', area_path='MyADO\\TeamA', states=None):
     return {
-        'id': f'project-{name.lower()}',
+        'id': '11111111-1111-4111-8111-111111111111',
         'name': name,
         'type': 'project',
         'area_path': area_path,
@@ -85,14 +85,36 @@ def test_configured_container_order_is_exposed_on_projects():
     cache.save('config', 'projects', {
         'container_types': ['B', 'A', 'C'],
         'project_map': [
-            {'name': 'Alpha', 'type': 'A'},
-            {'name': 'Bravo', 'type': 'B'},
-            {'name': 'Charlie', 'type': 'C'},
+            {'id': '11111111-1111-4111-8111-111111111111', 'name': 'Alpha', 'type': 'A'},
+            {'id': '22222222-2222-4222-8222-222222222222', 'name': 'Bravo', 'type': 'B'},
+            {'id': '33333333-3333-4333-8333-333333333333', 'name': 'Charlie', 'type': 'C'},
         ],
     })
     backend = ConfigBackend(cache)
     projects = backend.fetch_projects()
     assert [project['container_order'] for project in projects] == [1, 0, 2]
+
+
+def test_configured_projects_keep_unique_ids_when_names_are_equal():
+    cache = FakeDiskCache()
+    cache.save('config', 'projects', {
+        'container_types': ['project'],
+        'project_map': [
+            {'id': '11111111-1111-4111-8111-111111111111', 'name': 'Shared', 'type': 'project'},
+            {'id': '22222222-2222-4222-8222-222222222222', 'name': 'Shared', 'type': 'project'},
+        ],
+    })
+
+    backend = ConfigBackend(cache)
+
+    assert [project['id'] for project in backend.fetch_projects()] == [
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+    ]
+    assert [project['id'] for project in backend.fetch_project_map()] == [
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -218,4 +240,3 @@ def test_azure_backend_fetch_projects_skips_project_without_display_states():
     )
     projects = backend.fetch_projects()
     assert projects[0]['state_categories'] == {}
-

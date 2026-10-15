@@ -113,6 +113,13 @@ _SCHEMAS: dict[str, Any] = {
                 'items': {
                     'type': 'object',
                     'properties': {
+                        'id': {
+                            'type': 'string',
+                            'title': 'Project ID',
+                            'description': 'Persistent unique identity. Do not change after creation.',
+                            'format': 'uuid',
+                            'readOnly': True,
+                        },
                         'allocatable_ids': {
                             'type': 'array', 'title': 'Allocation Override',
                             'items': {'type': 'string', 'minLength': 1},

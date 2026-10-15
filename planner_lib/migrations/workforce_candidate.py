@@ -2,6 +2,7 @@
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from math import isfinite
+import re
 from typing import Any
 
 from planner_lib.admin.workforce_config import _timestamp_identity
@@ -9,7 +10,6 @@ from planner_lib.domain.allocation_availability import validate_project_availabi
 from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.domain.workforce import WorkforceCatalogue
 from planner_lib.storage.base import StorageBackend
-from planner_lib.util import slugify
 
 
 def _quantity(value: Any, context: str) -> float:
@@ -19,10 +19,36 @@ def _quantity(value: Any, context: str) -> float:
     return quantity
 
 
-def _staffing_team_id(person: Mapping[str, Any]) -> str:
-    raw_team = person.get('team_name') or person.get('team') or ''
-    base = slugify(raw_team)
+def _legacy_team_handle(name: str) -> str:
+    """Reconstruct the revision-35 team handle only to remap saved references."""
+    return f"team-{re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')}"
+
+
+def _legacy_staffing_team_handle(name: str) -> str:
+    """Reconstruct unmatched revision-35 staffing handles for saved-reference migration."""
+    base = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
     return base if base.startswith('team-') else f'team-{base}'
+
+
+def _remap_legacy_team_references(value: Any, aliases: Mapping[str, list[str]]) -> Any:
+    if isinstance(value, dict):
+        return {
+            _remap_legacy_team_reference(key, aliases):
+                _remap_legacy_team_references(item, aliases)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_remap_legacy_team_references(item, aliases) for item in value]
+    return _remap_legacy_team_reference(value, aliases)
+
+
+def _remap_legacy_team_reference(value: Any, aliases: Mapping[str, list[str]]) -> Any:
+    if not isinstance(value, str) or value not in aliases:
+        return value
+    matches = aliases[value]
+    if len(matches) != 1:
+        raise ValueError(f'Ambiguous legacy team reference: {value}')
+    return matches[0]
 
 
 def build_workforce_candidate(
@@ -33,23 +59,11 @@ def build_workforce_candidate(
     """Preserve observed anonymous bases, retaining unmatched staffing as archived review items."""
     if teams_config['schema_version'] != 2 or projects_config['schema_version'] != 3:
         raise ValueError('Workforce conversion requires teams v2 and projects v3')
-    definitions = []
-    for team in teams_config['teams']:
-        definitions.append({
-            'id': slugify(team['name'], prefix='team-'),
-            'allocation_token': team['short_name'], 'name': team['name'],
-            'short_name': team['short_name'], 'archived': bool(team.get('exclude', False)),
-            'group_id': None,
-        })
-    team_configuration = {'schema_version': 3, 'teams': definitions, 'groups': []}
-    initial = TeamCatalogue(team_configuration)
-    available = [team['id'] for team in initial.allocation_choices()]
-    by_id = {team['id']: team for team in definitions}
-    used = {value for team in definitions for value in (team['id'], team['allocation_token'].strip().lower())}
     records = people_config['database']['people']
-    for person in records:
-        identity = _staffing_team_id(person)
-        used.update((identity, identity.lower()))
+    used = {
+        team['short_name'].strip().lower()
+        for team in teams_config['teams']
+    }
 
     def issue() -> str:
         while True:
@@ -61,23 +75,50 @@ def build_workforce_candidate(
                 used.add(identity.lower())
                 return identity
 
+    definitions = []
+    teams_by_name: dict[str, list[dict[str, Any]]] = {}
+    for team in teams_config['teams']:
+        definition = {
+            'id': issue(), 'allocation_token': team['short_name'], 'name': team['name'],
+            'short_name': team['short_name'], 'archived': bool(team.get('exclude', False)),
+            'group_id': None,
+        }
+        definitions.append(definition)
+        for label in {team['name'].strip().casefold(), team['short_name'].strip().casefold()}:
+            teams_by_name.setdefault(label, []).append(definition)
+
+    TeamCatalogue({'schema_version': 3, 'teams': definitions, 'groups': []})
+    unknown_teams: dict[str, dict[str, Any]] = {}
+    for person in records:
+        raw_team = person.get('team_name') or person.get('team') or ''
+        normalized_team = raw_team.strip().casefold()
+        matches = teams_by_name.get(normalized_team, [])
+        if len(matches) > 1:
+            raise ValueError(f'Ambiguous legacy staffing team: {raw_team}')
+        if matches or normalized_team in unknown_teams:
+            continue
+        label = raw_team.strip() if raw_team.strip() else 'Unassigned staffing'
+        identity = issue()
+        unknown_teams[normalized_team] = {
+            'id': identity, 'allocation_token': identity, 'name': label,
+            'short_name': label, 'archived': True, 'group_id': None,
+            'migration_incomplete': True,
+        }
+    definitions.extend(unknown_teams.values())
+    team_configuration = {'schema_version': 3, 'teams': definitions, 'groups': []}
+    initial = TeamCatalogue(team_configuration)
+    available = [team['id'] for team in initial.allocation_choices()]
+    by_name = {
+        label: matches[0]['id'] for label, matches in teams_by_name.items()
+    }
+    by_name.update({label: team['id'] for label, team in unknown_teams.items()})
+
     suppliers: dict[tuple[str, bool], dict[str, Any]] = {}
     profiles: dict[tuple[str, float, float], dict[str, Any]] = {}
     staffing: dict[tuple[str, str, str], dict[str, Any]] = {}
     for person in records:
         raw_team = person.get('team_name') or person.get('team') or ''
-        identity = _staffing_team_id(person)
-        if identity not in by_id:
-            label = raw_team.strip() if raw_team.strip() else 'Unassigned staffing'
-            record = {
-                'id': identity, 'allocation_token': identity, 'name': label,
-                'short_name': label, 'archived': True, 'group_id': None,
-                'migration_incomplete': True,
-            }
-            by_id[identity] = record
-            definitions.append(record)
-            used.add(identity)
-            used.add(identity.lower())
+        identity = by_name[raw_team.strip().casefold()]
         site = person.get('site') or ''
         external = bool(person.get('external'))
         supplier_key = (site, external)
@@ -146,9 +187,44 @@ def upgrade_workforce_candidate(storage: StorageBackend) -> dict[str, Any]:
             storage.load('config', 'teams'), storage.load('config', 'people'),
             legacy_cost, storage.load('config', 'projects'),
         )
+        legacy_teams = storage.load('config', 'teams')['teams']
+        migrated_teams = candidate['teams']['teams'][:len(legacy_teams)]
+        legacy_team_ids: dict[str, list[str]] = {}
+        for legacy_team, migrated_team in zip(legacy_teams, migrated_teams):
+            legacy_id = _legacy_team_handle(legacy_team['name'])
+            legacy_team_ids.setdefault(legacy_id, []).append(migrated_team['id'])
+        incomplete_teams = {
+            team['name'].strip().casefold(): team['id']
+            for team in candidate['teams']['teams']
+            if team.get('migration_incomplete', False)
+        }
+        for person in storage.load('config', 'people')['database']['people']:
+            raw_team = person.get('team_name') or person.get('team') or ''
+            normalized_team = raw_team.strip().casefold()
+            if any(
+                normalized_team in {team['name'].strip().casefold(),
+                                    team['short_name'].strip().casefold()}
+                for team in legacy_teams
+            ):
+                continue
+            label = raw_team.strip() if raw_team.strip() else 'Unassigned staffing'
+            legacy_id = _legacy_staffing_team_handle(raw_team)
+            legacy_team_ids.setdefault(legacy_id, []).append(
+                incomplete_teams[label.casefold()],
+            )
         catalogue = TeamCatalogue(candidate['teams'])
         WorkforceCatalogue(candidate['workforce'], catalogue)
         validate_project_availability(candidate['projects'], catalogue.definitions())
+        for namespace, register_key in (
+            ('views', 'view_register'), ('scenarios', 'scenario_register'),
+        ):
+            for key in storage.list_keys(namespace):
+                if key == register_key:
+                    continue
+                storage.save(
+                    namespace, key,
+                    _remap_legacy_team_references(storage.load(namespace, key), legacy_team_ids),
+                )
         for key in ('teams', 'workforce', 'projects'):
             storage.save('config', key, candidate[key])
         for key in ('people', 'cost_config'):

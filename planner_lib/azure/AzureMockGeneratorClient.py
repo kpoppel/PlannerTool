@@ -1060,6 +1060,7 @@ class AzureDataset:
                 if key not in seen:
                     seen.add(key)
                     project_map.append({
+                        "id": _det_uuid(f"project-config:{ap}"),
                         "name": ap.split("\\")[-1] if "\\" in ap else ap,
                         "area_path": ap,
                         "type": projects_config['container_types'][-1],

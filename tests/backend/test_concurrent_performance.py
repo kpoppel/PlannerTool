@@ -40,9 +40,10 @@ CONCURRENCY_THRESHOLD = DELAY * 1.5  # 150 ms — must complete faster than this
 
 # Area path that will be registered in both config and the slow backend.
 _AREA = 'PerfTest\\\\TeamA'
+_PROJECT_ID = '11111111-1111-4111-8111-111111111111'
 _TASK = {
     'id': '1', 'title': 'Perf Task', 'type': 'Feature', 'state': 'Active',
-    'project': 'project-perftest', 'relations': [], 'capacity': [],
+    'project': _PROJECT_ID, 'relations': [], 'capacity': [],
     'start': '2026-01-01', 'end': '2026-06-30',
 }
 
@@ -59,14 +60,17 @@ def perf_app(client):
     app = client.app
     storage = app.state.container.get('storage')
     storage.save('config', 'projects', {
-        'schema_version': 3,
+        'schema_version': 4,
         'container_types': ['project', 'team'],
-        'project_map': [{'name': 'PerfTest', 'area_path': _AREA}],
+        'allocation_defaults': {'project': [], 'team': []},
+        'project_map': [{'id': _PROJECT_ID, 'name': 'PerfTest',
+                         'type': 'project', 'area_path': _AREA}],
     })
 
     slow = SlowFakeBackend(delay=DELAY)
     slow.set_tasks(_AREA, [dict(_TASK)])
-    slow.set_project_map([{'name': 'PerfTest', 'area_path': _AREA}])
+    slow.set_project_map([{'id': _PROJECT_ID, 'name': 'PerfTest',
+                           'type': 'project', 'area_path': _AREA}])
     app.state.container.register_singleton('backend', slow)
 
     response = client.post('/api/auth/enroll', json={

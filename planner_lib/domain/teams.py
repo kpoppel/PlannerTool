@@ -9,7 +9,7 @@ from typing_extensions import NotRequired, TypedDict
 
 class DomainTeam(TypedDict):
     """A team as defined in the local teams.yml configuration."""
-    id: str             # slug e.g. 'team-architecture'
+    id: str             # opaque application identity, independent of the ADO allocation token
     name: str           # full display name
     short_name: Optional[str]
 

@@ -39,8 +39,10 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
         result = await asyncio.to_thread(cost_svc.estimate_costs, ctx) or {'projects': {}, 'project_types': {}}
         raw = result.get('projects', {})
         project_types = result.get('project_types', {})
+        project_names = result.get('project_names', {})
         return build_cost_schema(raw, mode='full', session_features=ctx.get('features'),
                      project_types=project_types,
+                     project_names=project_names,
                      project_container_order=result.get('project_container_order'),
                      unknown_teams=result.get('unknown_teams', []))
     except Exception as e:
@@ -72,8 +74,10 @@ async def api_cost_get(request: Request):
         result = await asyncio.to_thread(cost_svc.estimate_costs, ctx) or {'projects': {}, 'project_types': {}}
         raw = result.get('projects', {})
         project_types = result.get('project_types', {})
+        project_names = result.get('project_names', {})
         return build_cost_schema(raw, mode='full', session_features=features,
                      project_types=project_types,
+                     project_names=project_names,
                      project_container_order=result.get('project_container_order'),
                      unknown_teams=result.get('unknown_teams', []))
 

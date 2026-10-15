@@ -335,6 +335,7 @@ export class AdminProjects extends BaseConfigComponent {
     }
 
     const newProject = {
+      id: crypto.randomUUID(),
       name: areaPath.split(sep).slice(-1)[0] || areaPath,
       type: this.containerTypes[0],
       area_path: areaPath,
@@ -354,6 +355,7 @@ export class AdminProjects extends BaseConfigComponent {
 
   addNewProject() {
     const newProject = {
+      id: crypto.randomUUID(),
       name: 'New Project',
       type: this.containerTypes[0],
       area_path: '',
@@ -402,6 +404,18 @@ export class AdminProjects extends BaseConfigComponent {
     if (!this.useRawMode && this.editingIndex !== -1) {
       this.saveEdit(this.editingIndex);
     }
+    const projectMap = this.content.project_map.map((project) => {
+      if (project.id) return project;
+      return { ...project, id: crypto.randomUUID() };
+    });
+    const ids = projectMap.map((project) => project.id);
+    if (new Set(ids).size !== ids.length) {
+      this.statusMsg = 'Project IDs must be unique';
+      this.statusType = 'error';
+      return;
+    }
+    this.content = { ...this.content, project_map: projectMap };
+    this.localProjects = projectMap;
     await super.saveConfig();
   }
 

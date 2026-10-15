@@ -10,5 +10,5 @@ class DomainMarker(TypedDict):
     plan_name: NotRequired[str]
     team_id: NotRequired[str]
     team_name: NotRequired[str]
-    project: str            # project slug e.g. 'project-my-team'
+    project: str            # canonical project UUID
     marker: dict            # raw marker payload from the backend

@@ -210,7 +210,7 @@ class FakeBackend(BackendPort):
         from planner_lib.domain.projects import DomainProject
         return [
             DomainProject(
-                id=p.get('id', f"project-{p['name']}"),
+                id=p['id'],
                 name=p.get('name', ''),
                 area_path=p.get('area_path', ''),
                 teams=[],

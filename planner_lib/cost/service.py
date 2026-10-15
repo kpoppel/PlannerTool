@@ -106,12 +106,13 @@ class WorkforceCostService:
         return {
             'projects': projects,
             'project_types': {plan['id']: plan['type'] for plan in plans},
+            'project_names': {plan['id']: plan['name'] for plan in plans},
             'project_container_order': {plan['id']: plan['container_order'] for plan in plans},
             'unknown_teams': unknown, 'complete': not unknown,
         }
 
 
-def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None, project_types: Optional[Dict[str, str]] = None, project_container_order: Optional[Dict[str, int]] = None, unknown_teams: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None, project_types: Optional[Dict[str, str]] = None, project_names: Optional[Dict[str, str]] = None, project_container_order: Optional[Dict[str, int]] = None, unknown_teams: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Convert the raw cost mapping returned by `estimate_costs` into the
     normalized strongly-structured schema used by the UI. Optionally enrich
     features with metadata from `session_features` and compute dataset bounds.
@@ -121,6 +122,7 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
         mode: 'full' or 'schema'
         session_features: Optional list of feature metadata
         project_types: Optional mapping of project_id to configured container type
+        project_names: Configured display names keyed by project_id
         project_container_order: Optional mapping of project_id to configured hierarchy order
     """
     meta = {
@@ -181,13 +183,9 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
         if not isinstance(val, dict):
             continue
         proj_id = key
-        # Format name based on whether it's a project or team
-        if proj_id.startswith("project-"):
-            name = proj_id.replace("project-", "", 1).capitalize()
-        elif proj_id.startswith("team-"):
-            name = proj_id.replace("team-", "", 1).capitalize()
-        else:
-            name = proj_id
+        if project_names is None or proj_id not in project_names:
+            raise ValueError(f'No configured display name for cost project {proj_id}')
+        name = project_names[proj_id]
         totals = dict(val['totals'])
         features = []
         for fid, fval in val.items():

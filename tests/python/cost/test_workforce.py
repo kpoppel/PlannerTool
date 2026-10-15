@@ -191,7 +191,7 @@ def test_canonical_cost_service_resolves_groups_and_reports_incomplete_totals(
         storage.save('config', 'teams', configuration)
         storage.save('config', 'workforce', workforce_config)
         plans = SimpleNamespace(list_projects=lambda: [
-            {'id': 'plan', 'type': 'Plan', 'container_order': 0},
+            {'id': 'plan', 'name': 'Configured Plan', 'type': 'Plan', 'container_order': 0},
         ])
         service = WorkforceCostService(storage, plans)
         metadata = service.team_bases()
@@ -204,6 +204,7 @@ def test_canonical_cost_service_resolves_groups_and_reports_incomplete_totals(
                 'start': '2025-01-06', 'end': '2025-01-10',
                 'capacity': [{'team': 'team-one', 'capacity': 100}, {'team': 'deleted', 'capacity': 20}]}
         result = service.estimate_costs({'features': [root, leaf]})
+        assert result['project_names'] == {'plan': 'Configured Plan'}
         project = result['projects']['plan']
         assert project['root']['effective_capacity'] == []
         assert project['root']['internal_cost'] == 0

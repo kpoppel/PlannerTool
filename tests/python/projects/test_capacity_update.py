@@ -5,31 +5,30 @@ from types import SimpleNamespace
 from planner_lib.backend.adapter import AzureAdapter
 from planner_lib.repository.team_repository import TeamRepository
 from planner_lib.projects.capacity_service import CapacityService
-from planner_lib.util import slugify
 
 
 # Lightweight fake TeamRepository for unit tests — avoids real storage.
 class FakeTeamRepository:
-    """TeamRepository stub: id_to_short_name looks up from an in-memory teams list."""
+    """TeamRepository stub mapping opaque IDs to persisted ADO allocation tokens."""
 
     def __init__(self, teams: list = None):
         self._teams = teams or []
 
-    def id_to_short_name(self, team_id: str) -> str | None:
+    def id_to_allocation_token(self, team_id: str) -> str | None:
         if not self._teams:
             return team_id
         for tm in self._teams:
-            if slugify(tm.get("name"), prefix="team-") == team_id:
+            if tm.get("id") == team_id:
                 return tm.get("short_name") or tm.get("name")
         return None
 
-    def name_to_id(self, token: str) -> str | None:
+    def allocation_token_to_id(self, token: str) -> str | None:
         """Resolve fixture tokens without inventing an identity for unknown source rows."""
         if not self._teams:
             return token
         for team in self._teams:
             if token.strip().lower() == team['short_name'].strip().lower():
-                return slugify(team['name'], prefix='team-')
+                return team['id']
         return None
 
 
@@ -39,14 +38,16 @@ cap_service = CapacityService(team_repository)
 
 def test_unknown_source_allocations_are_retained_without_guessing_identity() -> None:
     """An unknown literal token stays unresolved, including repeated None rows."""
-    repository = SimpleNamespace(name_to_id=lambda token: {'ALPHA': 'team-alpha'}.get(token))
+    repository = SimpleNamespace(
+        allocation_token_to_id=lambda token: {'ALPHA': 'opaque-alpha'}.get(token),
+    )
     description = '[PlannerTool Team Capacity]\nALPHA: 40\nNone: 20\nNone: 20\n[/PlannerTool Team Capacity]'
     task = AzureAdapter().to_domain(
         {'id': '796147', 'description': description}, 'plan', repository, {}, {},
         CapacityService(repository),
     )
     assert task['capacity'] == [
-        {'team': 'team-alpha', 'capacity': 40},
+        {'team': 'opaque-alpha', 'capacity': 40},
         {'team': 'None', 'capacity': 20}, {'team': 'None', 'capacity': 20},
     ]
     assert task['description'] == description
@@ -54,9 +55,11 @@ def test_unknown_source_allocations_are_retained_without_guessing_identity() -> 
 
 def test_known_capacity_edit_preserves_original_unresolved_rows() -> None:
     """Editing known teams cannot erase or reassign an unknown source allocation."""
-    service = CapacityService(FakeTeamRepository([{'name': 'Alpha', 'short_name': 'ALPHA'}]))
+    service = CapacityService(FakeTeamRepository([
+        {'id': 'opaque-alpha', 'name': 'Alpha', 'short_name': 'ALPHA'},
+    ]))
     description = 'Before\n[PlannerTool Team Capacity]\nALPHA: 40\nNone: 20\nNone: 20\n[/PlannerTool Team Capacity]\nAfter'
-    edited = service.update_description(description, [{'team': 'team-alpha', 'capacity': 60}], {})
+    edited = service.update_description(description, [{'team': 'opaque-alpha', 'capacity': 60}], {})
     assert edited.count('None: 20') == 2
     assert 'ALPHA: 60' in edited
     assert 'Before' in edited and 'After' in edited
@@ -67,7 +70,9 @@ def test_known_capacity_edit_preserves_original_unresolved_rows() -> None:
 
 def test_unknown_authored_identity_cannot_serialize_as_none() -> None:
     """Only retained source rows may contain unknown tokens, not invented publication IDs."""
-    service = CapacityService(FakeTeamRepository([{'name': 'Alpha', 'short_name': 'ALPHA'}]))
+    service = CapacityService(FakeTeamRepository([
+        {'id': 'opaque-alpha', 'name': 'Alpha', 'short_name': 'ALPHA'},
+    ]))
     with pytest.raises(ValueError, match='Unknown allocation'):
         service.serialize([{'team': 'missing', 'capacity': 20}], {})
 
@@ -75,12 +80,12 @@ def test_unknown_authored_identity_cannot_serialize_as_none() -> None:
 def test_serialize_team_capacity():
     """Test serializing team capacity to text block."""
     capacity_list = [
-        {"team": "team-frontend", "capacity": 80},
-        {"team": "team-backend", "capacity": 60},
+        {"team": "opaque-frontend", "capacity": 80},
+        {"team": "opaque-backend", "capacity": 60},
     ]
     teams = [
-        {"name": "Frontend", "short_name": "team-frontend"},
-        {"name": "Backend", "short_name": "team-backend"},
+        {"id": "opaque-frontend", "name": "Frontend", "short_name": "team-frontend"},
+        {"id": "opaque-backend", "name": "Backend", "short_name": "team-backend"},
     ]
     svc = CapacityService(FakeTeamRepository(teams))
     result = svc.serialize(capacity_list, cfg={})
@@ -216,50 +221,50 @@ def test_round_trip():
         assert item in parsed
 
 
-def test_map_team_id_to_short_name():
-    """Test mapping team ID to short_name via TeamRepository."""
+def test_map_team_id_to_allocation_token():
+    """Test mapping an opaque team ID to its persisted ADO allocation token."""
     teams = [
-        {"name": "Architecture", "short_name": "Arch"},
-        {"name": "System Framework", "short_name": "SF"},
-        {"name": "Integration Team", "short_name": "INT"},
+        {"id": "opaque-architecture", "name": "Architecture", "short_name": "Arch"},
+        {"id": "opaque-framework", "name": "System Framework", "short_name": "SF"},
+        {"id": "opaque-integration", "name": "Integration Team", "short_name": "INT"},
     ]
     repo = FakeTeamRepository(teams)
-    assert repo.id_to_short_name("team-architecture") == "Arch"
-    assert repo.id_to_short_name("team-system-framework") == "SF"
-    assert repo.id_to_short_name("team-integration-team") == "INT"
-    assert repo.id_to_short_name("team-unknown") is None
+    assert repo.id_to_allocation_token("opaque-architecture") == "Arch"
+    assert repo.id_to_allocation_token("opaque-framework") == "SF"
+    assert repo.id_to_allocation_token("opaque-integration") == "INT"
+    assert repo.id_to_allocation_token("team-unknown") is None
 
 
 def test_serialize_with_mapping():
     """Test serializing with team ID to short_name mapping."""
     teams = [
-        {"name": "Architecture", "short_name": "Arch"},
-        {"name": "Frontend", "short_name": "FE"},
+        {"id": "opaque-architecture", "name": "Architecture", "short_name": "Arch"},
+        {"id": "opaque-frontend", "name": "Frontend", "short_name": "FE"},
     ]
     svc = CapacityService(FakeTeamRepository(teams))
     capacity_list = [
-        {"team": "team-architecture", "capacity": 90},
-        {"team": "team-frontend", "capacity": 80},
+        {"team": "opaque-architecture", "capacity": 90},
+        {"team": "opaque-frontend", "capacity": 80},
     ]
     result = svc.serialize(capacity_list, cfg={})
     assert "[PlannerTool Team Capacity]" in result
     assert "Arch: 90" in result
     assert "FE: 80" in result
-    assert "team-architecture" not in result
-    assert "team-frontend" not in result
+    assert "opaque-architecture" not in result
+    assert "opaque-frontend" not in result
 
 
 def test_update_description_with_mapping():
     """Test updating description with team ID to short_name mapping."""
     teams = [
-        {"name": "Architecture", "short_name": "Arch"},
-        {"name": "Backend", "short_name": "BE"},
+        {"id": "opaque-architecture", "name": "Architecture", "short_name": "Arch"},
+        {"id": "opaque-backend", "name": "Backend", "short_name": "BE"},
     ]
     svc = CapacityService(FakeTeamRepository(teams))
     description = "Work item description."
     capacity_list = [
-        {"team": "team-architecture", "capacity": 100},
-        {"team": "team-backend", "capacity": 50},
+        {"team": "opaque-architecture", "capacity": 100},
+        {"team": "opaque-backend", "capacity": 50},
     ]
     result = svc.update_description(description, capacity_list, {})
     assert "Arch: 100" in result
@@ -280,4 +285,3 @@ def test_update_description_without_config():
     
     # Without config, team IDs should be written as-is
     assert "team-architecture: 100" in result
-

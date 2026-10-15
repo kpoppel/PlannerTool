@@ -36,7 +36,7 @@ config. The v4.2.1 server config can still be the owned writable
 used as a runtime fallback. Its `people` record may lack a schema-version field.
 
 The explicit post-baseline chain is `24 -> 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
--> 33 -> 34 -> 35`; there was no migration 25. Revisions preserve their historical IDs.
+-> 33 -> 34 -> 35 -> 36 -> 37`; there was no migration 25. Revisions preserve their historical IDs.
 Revision 26 drops disposable remote records, 27 fills scenario metadata, 28 adds
 account IDs, 29 converts view Context flags, 30 adds plan container types, 31
 prepares device enrollment, 32 changes ownership to account IDs, and 33 harmonizes
@@ -44,7 +44,7 @@ plugin settings using a fixed packaged menu resource. Revision 34 persists packe
 Unplanned preferences in saved views. The server registry has no
 pre-v4.2.1 migrations or reverse functions; older IDs are admission evidence only.
 
-Fresh installations initialize revision 35 directly and invoke no upgrades.
+Fresh installations initialize revision 37 directly and invoke no upgrades.
 External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
@@ -68,14 +68,15 @@ runtime read paths do not repair old records.
 ### Revision 35 workforce contract
 
 `0035.canonical-workforce-and-allocation-availability` converts the supplied private
-candidate to teams v3, anonymous workforce v2 and projects v4. Existing internal team
-IDs and exact ADO allocation tokens are preserved. Unmatched staffing becomes archived,
-incomplete review items; no team is guessed. Anonymous profiles materialize the observed
-legacy monthly hours and effective rates. Active people/cost configuration, their old
-snapshots and derived rate caches are retired only inside the candidate transaction.
-Scenarios, views, account/authentication records and authoritative task references remain
-unchanged. Literal unresolved allocation tokens, including duplicate `None` rows, are not
-an activation blocker and must not be rewritten.
+candidate to teams v3, anonymous workforce v2 and projects v4. Revision 35 issues opaque
+internal team IDs, remaps unambiguous saved references, and preserves exact ADO allocation
+tokens. Unmatched staffing becomes archived, incomplete review items; no team is guessed.
+Ambiguous legacy references abort the candidate transaction. Anonymous profiles materialize
+the observed legacy monthly hours and effective rates. Active people/cost configuration,
+their old snapshots and derived rate caches are retired only inside the candidate transaction.
+Account/authentication records and authoritative task references remain unchanged. Literal
+unresolved allocation tokens, including duplicate `None` rows, are not an activation blocker
+and must not be rewritten.
 
 Startup validates the canonical records and selects canonical team, publication, cost and
 admin owners together. A persisted one-time marker clears only normalized `backend_domain`
@@ -94,6 +95,36 @@ People, Cost and Teams administration is now exclusively served through
 backups contain `teams` and `workforce`, not retired `people` or `cost_config`
 keys. Only revision-35 conversion and validation retain the legacy data contract;
 runtime backends and mock generation do not read or recreate it.
+
+### Revision 36 project identity contract
+
+`0036.assign-unique-project-ids` assigns every configured project a persistent
+canonical UUID, remaps area-plan mappings and saved project selections, and clears
+derived backend records whose task ownership contains the legacy name-derived ID.
+For colliding legacy project IDs, mappings are split by their most-specific
+configured area path; mappings that cannot be assigned uniquely fail the upgrade
+without partial writes. Project display names no longer determine identity, so
+projects with the same name remain distinct.
+
+### Revision 37 application identity contract
+
+`0037.assign-unique-team-ids` assigns opaque UUID handles to configured teams,
+remaps workforce, allocation defaults, saved views and scenarios, and clears derived
+task/cost caches. Team allocation tokens remain unchanged and are the only team
+identifiers written into Azure DevOps capacity blocks; the ADO backend resolves those
+tokens to application IDs on reads. Existing Azure Wiki event-backend selection is
+reset to the default local event store. Wiki events are not imported or deleted; users
+can recreate them as global events and assign categories. Existing local events and
+categories are retained. Event plan references are Azure delivery-plan IDs, not
+application project IDs, so they are unaffected by the project/team ID migrations.
+
+### Revision 38 team ID format
+
+`0038.harmonise-team-id-format` replaces revision-37 UUID team IDs with the
+same timestamp/entropy Base32 format used when creating workforce identities.
+Workforce staffing, project allocation defaults and overrides, saved views and
+scenarios are remapped atomically. Derived task and cost caches are cleared;
+allocation tokens remain unchanged.
 
 ## Development iterations
 

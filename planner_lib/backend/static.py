@@ -22,7 +22,7 @@ Example::
         title: "Implement feature X"
         type: "Feature"
         state: "Active"
-        project: "project-team-a"
+        project: "1d2331dc-5316-4679-a18a-63d0815a7110"
         start: "2026-05-01"
         end: "2026-06-30"
         capacity: []

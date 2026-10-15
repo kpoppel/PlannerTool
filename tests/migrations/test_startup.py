@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from planner_lib.main import Config, create_app
-from planner_lib.migrations.contracts import SchemaError
+from planner_lib.migrations.contracts import SchemaError, TARGET_REVISION
 from planner_lib.migrations.coordinator import Database
 
 
@@ -55,10 +55,10 @@ def test_closed_database_handle_cannot_reopen_storage_for_unleased_writes(tmp_pa
 
 
 def test_isolated_app_fixture_keeps_current_schema(app):
-    assert app.state.container.get('storage').load('system', 'schema_state')['schema_revision'] == 35
+    assert app.state.container.get('storage').load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
 
 
-def test_fresh_factory_selects_canonical_workforce_and_schema_35(tmp_path):
+def test_fresh_factory_selects_canonical_workforce_and_current_schema(tmp_path):
     from planner_lib.admin.workforce_service import WorkforceAdminService
     from planner_lib.backend.config import WorkforceConfigBackend
     from planner_lib.cost.service import WorkforceCostService
@@ -71,7 +71,7 @@ def test_fresh_factory_selects_canonical_workforce_and_schema_35(tmp_path):
     with TestClient(app):
         container = app.state.container
         storage = container.get('storage')
-        assert storage.load('system', 'schema_state')['schema_revision'] == 35
+        assert storage.load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
         assert storage.load('config', 'teams') == {'schema_version': 3, 'teams': [], 'groups': []}
         assert storage.load('config', 'workforce') == {'schema_version': 2, 'suppliers': [], 'staffing': []}
         assert isinstance(container.get('config_backend'), WorkforceConfigBackend)

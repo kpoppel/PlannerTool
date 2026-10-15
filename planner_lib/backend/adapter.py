@@ -4,7 +4,7 @@ Two directions:
   to_domain()   — raw ADO work-item dict → enriched DomainTask
   to_backend()  — update payload dict    → ADO write kwargs (used by AzureDevOpsBackend.write_task)
 
-The adapter is the single place where ADO field names, team-name/ID
+The adapter is the single place where ADO field names, allocation-token/ID
 mapping, type capitalisation normalisation, and iteration-date inference
 all live.  Extracting this logic from TaskService and TaskUpdateService
 into a dedicated class makes each step independently testable.
@@ -45,7 +45,7 @@ class AzureAdapter:
     def to_domain(
         self,
         raw_wi: Dict[str, Any],
-        project_slug: str,
+        project_id: str,
         team_repository,
         type_canonical: Dict[str, str],
         iteration_map: Dict[str, Any],
@@ -58,8 +58,8 @@ class AzureAdapter:
         raw_wi:
             Dict as returned by WorkItemOperations.get_work_items() — uses
             planner-normalised field names (``startDate``, ``finishDate``, etc.).
-        project_slug:
-            The project identifier string (e.g. ``'project-my-team'``).
+        project_id:
+            The persistent identity of the configured project.
         team_repository:
             TeamRepository — used to map team display names to IDs.
         type_canonical:
@@ -78,7 +78,7 @@ class AzureAdapter:
             try:
                 parsed = capacity_service.parse(raw_wi.get('description'))
                 for entry in parsed:
-                    mapped = team_repository.name_to_id(entry['team'])
+                    mapped = team_repository.allocation_token_to_id(entry['team'])
                     if mapped is None:
                         mapped = entry['team']
                     filtered_capacity.append(
@@ -110,7 +110,7 @@ class AzureAdapter:
             'title': raw_wi.get('title') or '',
             'type': canonical_type,
             'state': raw_wi.get('state') or '',
-            'project': project_slug,
+            'project': project_id,
             'start': start_date,
             'end': end_date,
             'iterationPath': iteration_path,

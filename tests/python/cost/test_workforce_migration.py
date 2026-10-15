@@ -58,16 +58,19 @@ def test_candidate_archives_incomplete_items_and_preserves_anonymous_basis() -> 
     teams = TeamCatalogue(candidate['teams'])
     workforce = WorkforceCatalogue(candidate['workforce'], teams)
     definitions = {record['id']: record for record in teams.definitions()}
-    assert definitions['team-alpha']['allocation_token'] == 'ALPHA'
-    assert definitions['team-beta']['archived'] is True
-    for identity in ['team-unconfigured', 'team-']:
-        assert definitions[identity]['migration_incomplete'] is True
-        assert definitions[identity]['archived'] is True
+    by_name = {record['name']: record for record in definitions.values()}
+    assert by_name['Alpha']['allocation_token'] == 'ALPHA'
+    assert by_name['Beta']['archived'] is True
+    for label in ['Unconfigured', 'Unassigned staffing']:
+        assert by_name[label]['migration_incomplete'] is True
+        assert by_name[label]['archived'] is True
     expected = {
-        'team-alpha': {'internal': (2, 232, 14848), 'external': (0, 0, 0)},
-        'team-beta': {'internal': (1, 116, 7424), 'external': (0, 0, 0)},
-        'team-unconfigured': {'internal': (0, 0, 0), 'external': (1, 160, 12000)},
-        'team-': {'internal': (0, 0, 0), 'external': (1, 160, 8000)},
+        by_name['Alpha']['id']: {'internal': (2, 232, 14848), 'external': (0, 0, 0)},
+        by_name['Beta']['id']: {'internal': (1, 116, 7424), 'external': (0, 0, 0)},
+        by_name['Unconfigured']['id']: {'internal': (0, 0, 0), 'external': (1, 160, 12000)},
+        by_name['Unassigned staffing']['id']: {
+            'internal': (0, 0, 0), 'external': (1, 160, 8000),
+        },
     }
     bases = workforce.team_bases()
     assert set(bases) == set(expected)
@@ -79,10 +82,12 @@ def test_candidate_archives_incomplete_items_and_preserves_anonymous_basis() -> 
             }
     assert candidate['projects']['schema_version'] == 4
     assert candidate['projects']['allocation_defaults'] == {
-        'Program': ['team-alpha'], 'Plan': ['team-alpha'],
+        'Program': [by_name['Alpha']['id']], 'Plan': [by_name['Alpha']['id']],
     }
     assert candidate['report']['staffing_fte'] == 5
-    assert candidate['report']['incomplete_team_ids'] == ['team-', 'team-unconfigured']
+    assert candidate['report']['incomplete_team_ids'] == sorted(
+        [by_name['Unconfigured']['id'], by_name['Unassigned staffing']['id']],
+    )
     assert 'Person' not in str(candidate)
     assert source == original
     assert all('last_updated' not in record for record in teams.definitions())
@@ -94,6 +99,23 @@ def test_candidate_rejects_collision_instead_of_renaming_ado_tokens() -> None:
     source['teams']['teams'][1]['short_name'] = ' alpha '
     with pytest.raises(ValueError, match='token'):
         build_workforce_candidate(source['teams'], source['people'], source['cost'], source['projects'])
+
+
+def test_candidate_assigns_distinct_ids_to_same_name_teams() -> None:
+    source = legacy_fixture()
+    source['teams']['teams'][1]['name'] = 'Alpha'
+    source['people']['database']['people'] = []
+    identities = count()
+
+    candidate = build_workforce_candidate(
+        source['teams'], source['people'], source['cost'], source['projects'],
+        id_issuer=lambda: f'opaque-{next(identities)}',
+    )
+
+    teams = candidate['teams']['teams']
+    assert [team['name'] for team in teams] == ['Alpha', 'Alpha']
+    assert [team['id'] for team in teams] == ['opaque-0', 'opaque-1']
+    assert [team['allocation_token'] for team in teams] == ['ALPHA', 'BETA']
 
 
 def test_candidate_reserves_every_legacy_staffing_team_before_issuing_identities() -> None:
@@ -113,10 +135,10 @@ def test_candidate_reserves_every_legacy_staffing_team_before_issuing_identities
     assert len(issued) == len(set(issued))
 
 
-def test_candidate_store_upgrade_is_atomic_and_preserves_retained_records(
+def test_candidate_store_upgrade_is_atomic_and_remaps_legacy_team_handles(
     candidate_storage: StorageBackend,
 ) -> None:
-    """The isolated upgrade retires active person data without rewriting local task references."""
+    """The isolated upgrade preserves saved allocations under their new opaque identities."""
     from planner_lib.migrations.workforce_candidate import upgrade_workforce_candidate
 
     cache_storage = candidate_storage
@@ -126,7 +148,7 @@ def test_candidate_store_upgrade_is_atomic_and_preserves_retained_records(
     cache_storage.save('config', 'cost_config', source['cost'])
     retained = {'overrides': {'task': {'capacity': [
         {'team': 'team-alpha', 'capacity': 50}, {'team': 'None', 'capacity': 20},
-        {'team': 'None', 'capacity': 20},
+        {'team': 'None', 'capacity': 20}, {'team': 'team-unconfigured', 'capacity': 15},
     ]}}}
     cache_storage.save('scenarios', 'fixture', retained)
     cache_storage.save('config', 'people_backup_fixture', source['people'])
@@ -142,7 +164,20 @@ def test_candidate_store_upgrade_is_atomic_and_preserves_retained_records(
     assert not cache_storage.exists('config', 'people_backup_fixture')
     assert not cache_storage.exists('config', 'cost_config_backup_fixture')
     assert list(cache_storage.list_keys('cost_cache')) == []
-    assert cache_storage.load('scenarios', 'fixture') == retained
+    alpha_id = next(
+        team['id'] for team in cache_storage.load('config', 'teams')['teams']
+        if team['allocation_token'] == 'ALPHA'
+    )
+    unconfigured_id = next(
+        team['id'] for team in cache_storage.load('config', 'teams')['teams']
+        if team.get('migration_incomplete', False) and team['name'] == 'Unconfigured'
+    )
+    assert cache_storage.load('scenarios', 'fixture') == {
+        'overrides': {'task': {'capacity': [
+            {'team': alpha_id, 'capacity': 50}, {'team': 'None', 'capacity': 20},
+            {'team': 'None', 'capacity': 20}, {'team': unconfigured_id, 'capacity': 15},
+        ]}},
+    }
 
 
 def test_candidate_store_upgrade_rolls_back_a_failed_persist(
@@ -204,9 +239,11 @@ def test_canonical_runtime_registration_uses_only_migrated_workforce_owners(
     assert isinstance(container.get('cost_service'), WorkforceCostService)
     assert isinstance(container.get('admin_service'), WorkforceAdminService)
     teams = container.get('team_repository')
-    assert teams.name_to_id('ALPHA') == 'team-alpha'
-    assert teams.id_to_short_name('team-alpha') == 'ALPHA'
-    assert container.get('cost_service').team_bases()['teams']['team-alpha']['internal']['fte'] == 2
+    alpha_id = teams.allocation_token_to_id('ALPHA')
+    assert alpha_id is not None
+    assert alpha_id != 'team-alpha'
+    assert teams.id_to_allocation_token(alpha_id) == 'ALPHA'
+    assert container.get('cost_service').team_bases()['teams'][alpha_id]['internal']['fte'] == 2
 
 
 def test_workforce_cutover_refreshes_only_normalized_backend_cache_once(

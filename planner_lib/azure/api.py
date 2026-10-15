@@ -63,6 +63,7 @@ def _get_area_project_config_map(request: Request) -> dict:
             area_path = project.get('area_path')
             if area_path:
                 config_map[area_path] = {
+                    'project_id': project.get('id'),
                     'task_types': project.get('task_types'),
                     'include_states': project.get('include_states'),
                 }
@@ -179,6 +180,7 @@ async def cache_refresh(
         try:
             items = backend.fetch_tasks(
                 area_path,
+                project_id=proj_cfg.get('project_id'),
                 task_types=proj_cfg.get('task_types'),
                 include_states=proj_cfg.get('include_states'),
                 credential=cred,

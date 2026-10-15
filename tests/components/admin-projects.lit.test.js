@@ -130,12 +130,14 @@ describe('admin-projects', () => {
     await comp.updateComplete;
 
     const save = vi.spyOn(adminProvider, 'saveProjects').mockResolvedValue({ ok: true });
+    const projectId = '11111111-1111-4111-8111-111111111111';
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(projectId);
     try {
       await comp.saveConfig();
       expect(save).toHaveBeenCalledWith({
         container_types: ['project', 'team', 'portfolio'],
         allocation_defaults: { project: [], team: [], portfolio: [] },
-        project_map: [{ name: 'Plan A', type: 'portfolio', area_path: '' }],
+        project_map: [{ id: projectId, name: 'Plan A', type: 'portfolio', area_path: '' }],
       });
     } finally {
       save.mockRestore();
@@ -160,12 +162,14 @@ describe('admin-projects', () => {
     };
 
     const save = vi.spyOn(adminProvider, 'saveProjects').mockResolvedValue({ ok: true });
+    const projectId = '11111111-1111-4111-8111-111111111111';
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(projectId);
     try {
       await comp.saveConfig();
       expect(save).toHaveBeenCalledWith({
         container_types: ['project', 'team', 'portfolio'],
         allocation_defaults: { project: [], team: [], portfolio: [] },
-        project_map: [{ name: 'Raw Plan', type: 'portfolio', area_path: '' }],
+        project_map: [{ id: projectId, name: 'Raw Plan', type: 'portfolio', area_path: '' }],
       });
     } finally {
       save.mockRestore();
