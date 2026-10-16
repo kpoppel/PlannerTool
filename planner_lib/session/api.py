@@ -7,6 +7,7 @@ from planner_lib.middleware.session import (
 from planner_lib.services.resolver import resolve_service
 from planner_lib.session.auth import DEVICE_AGE
 from planner_lib.middleware.admin import require_admin_session
+from planner_lib.accounts.constants import AccountPermissions
 
 router = APIRouter()
 
@@ -101,6 +102,8 @@ async def current_account(request: Request):
     storage = resolve_service(request, 'storage')
     record = storage.load('account_auth', accounts.get_account_id(email))
     return {'email': email, 'name': record['name'],
+            'permissions': [permission for permission in AccountPermissions.ALL
+                            if accounts.has_permission(email, permission)],
             'currentDeviceId': get_session_context_from_request(request)['device_id'],
             'devices': resolve_service(request, 'auth_manager').devices(email)}
 

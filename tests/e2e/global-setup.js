@@ -71,12 +71,33 @@ async function bootstrapTestData(page, testDataDir) {
       },
     });
 
+    let workforce = (await get('/admin/v1/workforce')).content;
+    const createDefinition = async (kind, fields, extra = {}) => {
+      workforce = (await post(`/admin/v1/workforce/definitions/${kind}`, {
+        revision: workforce.revision, fields, ...extra,
+      })).content;
+    };
+    await createDefinition('team', { name: 'TeamA', short_name: 'TA', group_id: null });
+    const team = workforce.teams.teams.find((entry) => entry.name === 'TeamA');
+    await createDefinition('supplier', { name: 'Internal provider', external: false });
+    const supplier = workforce.workforce.suppliers.find((entry) => entry.name === 'Internal provider');
+    await createDefinition('profile', {
+      name: 'Standard', monthly_project_hours: 160, hourly_rate: 50,
+    }, { supplier_id: supplier.id });
+    const profile = workforce.workforce.suppliers.find((entry) => entry.id === supplier.id)
+      .profiles.find((entry) => entry.name === 'Standard');
+    await createDefinition('staffing', {
+      team_id: team.id, supplier_id: supplier.id, profile_id: profile.id, fte: 2,
+    });
+
     await post('/admin/v1/projects', {
       content: {
-        schema_version: 3,
+        schema_version: 4,
         container_types: ['project', 'team'],
+        allocation_defaults: { project: [team.id], team: [team.id] },
         project_map: [
           {
+            id: crypto.randomUUID(),
             name: 'Synthetic Team A',
             area_path: 'SyntheticProject\\TeamA',
             type: 'team',
@@ -103,26 +124,6 @@ async function bootstrapTestData(page, testDataDir) {
           { types: ['Resolved'] },
           { types: ['Closed'] },
         ],
-      },
-    });
-
-    await post('/admin/v1/teams', {
-      content: {
-        schema_version: 2,
-        teams: [{ name: 'TeamA', short_name: 'TA' }],
-      },
-    });
-
-    await post('/admin/v1/people', {
-      content: {
-        schema_version: 1,
-        database_file: 'config/database.yaml',
-        database: {
-          people: [
-            { name: 'Alex TeamA', team: 'TeamA' },
-            { name: 'Jamie TeamA', team: 'TeamA' },
-          ],
-        },
       },
     });
 

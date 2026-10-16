@@ -11,6 +11,7 @@ import '../../www/admin/js/components/AdminApp.lit.js';
 
 it('routes workforce administration exclusively to the canonical editor', () => {
   const app = document.createElement('admin-app');
+  app.setPermissions(['admin']);
   expect(app.sections).not.toContain('Cost');
   expect(app.sections).not.toContain('People');
   expect(app.sections).not.toContain('Teams');
@@ -18,7 +19,54 @@ it('routes workforce administration exclusively to the canonical editor', () => 
   expect(customElements.get('admin-people')).toBeUndefined();
   expect(customElements.get('admin-cost')).toBeUndefined();
   app.activeSection = 'Workforce';
-  expect(app.renderContent().strings.join('')).toContain('<admin-workforce>');
+  expect(app.renderContent().strings.join('')).toContain('<admin-workforce');
+});
+
+it('opens only authorized administration deep links', () => {
+  const previousUrl = window.location.href;
+  try {
+    window.history.replaceState(null, '', '#iterations');
+    const app = document.createElement('admin-app');
+    app.setPermissions(['manage_projects', 'manage_iterations']);
+    expect(app.activeSection).toBe('Iterations');
+    window.history.replaceState(null, '', '#users');
+    app.setPermissions(['manage_projects']);
+    expect(app.activeSection).toBe('Projects');
+  } finally {
+    window.history.replaceState(null, '', previousUrl);
+  }
+});
+
+it('keeps sidebar navigation on the canonical URL despite the static asset base', () => {
+  const previousUrl = window.location.href;
+  const base = document.createElement('base');
+  try {
+    window.history.replaceState(null, '', '/admin/');
+    base.href = '/static/admin/';
+    document.head.prepend(base);
+    const app = document.createElement('admin-app');
+    app.setPermissions(['admin']);
+    app._onSelect('Users');
+    expect(window.location.pathname).toBe('/admin/');
+    expect(window.location.hash).toBe('#users');
+  } finally {
+    base.remove();
+    window.history.replaceState(null, '', previousUrl);
+  }
+});
+
+it('limits delegated navigation and rejects direct selection of restricted sections', () => {
+  const app = document.createElement('admin-app');
+  expect(app.sections).toEqual([]);
+  app.setPermissions(['manage_projects', 'manage_iterations']);
+  expect(app.sections).toEqual(['Projects', 'Iterations']);
+  expect(app.activeSection).toBe('Projects');
+  app._onSelect('Users');
+  expect(app.activeSection).toBe('Projects');
+  app.setPermissions(['manage_workforce_costs']);
+  expect(app.sections).toEqual(['Workforce']);
+  app.setPermissions([]);
+  expect(app.sections).toEqual([]);
 });
 
 function fixture() {
@@ -67,6 +115,7 @@ describe('Canonical Workforce editor', () => {
       ok: true, data: { ok: true, content: { ...candidate, revision: 'saved' } },
     }));
     element = document.createElement('admin-workforce');
+    element.permissions = ['admin'];
     document.body.append(element);
     await settle(element);
   });
@@ -97,6 +146,28 @@ describe('Canonical Workforce editor', () => {
     expect(saved.id).toBe('team-one');
     expect(saved.allocation_token).toBe('ONE');
     expect(saved.name).toBe('Reviewed team');
+  });
+
+  it('prevents team delegates from editing pricing while retaining staffing controls', async () => {
+    element.permissions = ['manage_workforce_teams'];
+    element.expandedTeams = new Set(['team-one']);
+    await settle(element);
+    expect(element.shadowRoot.querySelector('[data-edit-team="team-one"]').disabled).toBe(false);
+    expect(element.shadowRoot.querySelector('[data-open-profile="row-one"]').disabled).toBe(true);
+    element.activeTab = 'suppliers';
+    await settle(element);
+    expect(element.shadowRoot.querySelector('[data-edit-supplier="supplier-one"]').disabled).toBe(true);
+  });
+
+  it('prevents cost delegates from editing teams or staffing', async () => {
+    element.permissions = ['manage_workforce_costs'];
+    element.expandedTeams = new Set(['team-one']);
+    await settle(element);
+    expect(element.shadowRoot.querySelector('[data-edit-team="team-one"]').disabled).toBe(true);
+    expect(element.shadowRoot.querySelector('[data-edit-staffing="row-one"]').disabled).toBe(true);
+    element.activeTab = 'suppliers';
+    await settle(element);
+    expect(element.shadowRoot.querySelector('[data-edit-supplier="supplier-one"]').disabled).toBe(false);
   });
 
   it('reviews deletion impact and cancelling or archiving never calls the destructive endpoint', async () => {

@@ -174,6 +174,7 @@ export class AdminUsers extends LitElement {
 
     .user-item {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
       padding: 12px;
@@ -189,8 +190,19 @@ export class AdminUsers extends LitElement {
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
 
+    .permissions {
+      display: grid;
+      gap: 6px;
+      flex-basis: 100%;
+      order: 1;
+      border: 0;
+      margin: 8px 0 0;
+      padding: 0;
+      font-size: 0.85rem;
+    }
+
     .user-email {
-      flex: 1;
+      flex: 1 1 100%;
       font-size: 0.9rem;
       color: #374151;
       word-break: break-word;
@@ -268,6 +280,7 @@ export class AdminUsers extends LitElement {
     statusMsg: { type: String },
     statusType: { type: String },
     resetting: { type: Boolean },
+    permissionSaving: { type: Boolean },
   };
 
   constructor() {
@@ -282,6 +295,7 @@ export class AdminUsers extends LitElement {
     this.statusMsg = '';
     this.statusType = '';
     this.resetting = false;
+    this.permissionSaving = false;
   }
 
   connectedCallback() {
@@ -374,7 +388,8 @@ export class AdminUsers extends LitElement {
     if (!this.admins.some((account) => account.email === v)) {
       const account = this.users.find((candidate) => candidate.email === v);
       if (account) {
-        await this._runMutation(() => adminProvider.setUserPermissions(account.id, ['admin']));
+        await this._runMutation(() => adminProvider.setUserPermissions(account.id,
+          [...account.permissions, 'admin']));
       } else {
         await this._runMutation(() => adminProvider.createUser(v, ['admin']));
       }
@@ -412,10 +427,42 @@ export class AdminUsers extends LitElement {
 
   async moveTo(targetList, account) {
     if (targetList === 'users') {
-      await this._runMutation(() => adminProvider.setUserPermissions(account.id, []));
+      await this._runMutation(() => adminProvider.setUserPermissions(account.id,
+        account.permissions.filter((permission) => permission !== 'admin')));
     } else {
-      await this._runMutation(() => adminProvider.setUserPermissions(account.id, ['admin']));
+      await this._runMutation(() => adminProvider.setUserPermissions(account.id,
+        [...account.permissions, 'admin']));
     }
+  }
+
+  async _onPermissionChange(account, permission, selected) {
+    if (this.permissionSaving) return;
+    this.permissionSaving = true;
+    const permissions = selected ? [...account.permissions, permission]
+      : account.permissions.filter((entry) => entry !== permission);
+    try {
+      await this._runMutation(() => adminProvider.setUserPermissions(account.id, permissions));
+    } finally {
+      this.permissionSaving = false;
+    }
+  }
+
+  _renderPermissions(account) {
+    const isAdmin = account.permissions.includes('admin');
+    return html`<fieldset class="permissions">
+      <legend>Delegated Administration</legend>
+      ${[
+        ['manage_projects', 'Projects'],
+        ['manage_workforce_teams', 'Workforce teams & staffing'],
+        ['manage_workforce_costs', 'Workforce costs & suppliers'],
+        ['manage_iterations', 'Iteration mappings'],
+      ].map(([permission, label]) => html`<label>
+        <input type="checkbox" data-permission=${permission}
+          .checked=${isAdmin || account.permissions.includes(permission)}
+          ?disabled=${isAdmin || this.permissionSaving}
+          @change=${(event) => this._onPermissionChange(account, permission, event.target.checked)}>
+        ${label}</label>`)}
+    </fieldset>`;
   }
 
   _handleKeyDown(e, callback) {
@@ -482,6 +529,7 @@ export class AdminUsers extends LitElement {
                               html`<span class="user-badge">You</span>`
                             : ''}
                           </span>
+                          ${this._renderPermissions(u)}
                           <div class="user-actions">
                             <button class="btn btn-small" @click=${() => this.resetAccess(u)}
                               ?disabled=${this.resetting}

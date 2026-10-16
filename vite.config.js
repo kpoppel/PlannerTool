@@ -165,6 +165,10 @@ export default defineConfig({
         target: 'http://localhost:8001',
         changeOrigin: false,
       },
+      '/admin/check': {
+        target: 'http://localhost:8001',
+        changeOrigin: false,
+      },
     },
   },
 });

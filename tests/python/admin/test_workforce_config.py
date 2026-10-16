@@ -1087,6 +1087,59 @@ def workforce_client(manager: WorkforceConfigManager) -> Iterator[TestClient]:
         yield client
 
 
+@pytest.mark.parametrize('permission,section', [
+    ('manage_workforce_teams', 'teams'),
+    ('manage_workforce_costs', 'costs'),
+    ('manage_workforce_costs', 'staffing'),
+])
+def test_workforce_delegated_save_cannot_change_other_sections(
+    manager: WorkforceConfigManager, workforce_client: TestClient, permission: str, section: str,
+) -> None:
+    accounts = workforce_client.app.state.container.get('account_manager')
+    accounts.has_permission.side_effect = lambda email, requested: requested == permission
+    before = manager.read_snapshot()
+    candidate = deepcopy(before)
+    if section == 'teams':
+        candidate['workforce']['suppliers'][0]['profiles'][0]['hourly_rate'] = 999
+    elif section == 'staffing':
+        candidate['workforce']['staffing'][0]['fte'] = 0.75
+    else:
+        candidate['teams']['teams'][0]['name'] = 'Forbidden team change'
+    assert workforce_client.post('/admin/v1/workforce', json=candidate).status_code == 403
+    assert manager.read_snapshot() == before
+
+    candidate = deepcopy(before)
+    if section == 'teams':
+        candidate['teams']['teams'][0]['name'] = 'Delegated team change'
+    else:
+        candidate['workforce']['suppliers'][0]['profiles'][0]['hourly_rate'] = 99
+    assert workforce_client.post('/admin/v1/workforce', json=candidate).status_code == 200
+
+
+@pytest.mark.parametrize('permission,allowed,denied', [
+    ('manage_workforce_teams', 'team', 'supplier'),
+    ('manage_workforce_costs', 'supplier', 'team'),
+])
+def test_workforce_definition_creation_is_permission_scoped(
+    manager: WorkforceConfigManager, workforce_client: TestClient,
+    permission: str, allowed: str, denied: str,
+) -> None:
+    accounts = workforce_client.app.state.container.get('account_manager')
+    accounts.has_permission.side_effect = lambda email, requested: requested == permission
+    before = manager.read_snapshot()
+    payload = {'revision': before['revision'], 'fields': {'name': 'New definition'}}
+    assert workforce_client.post(
+        f'/admin/v1/workforce/definitions/{denied}', json=payload,
+    ).status_code == 403
+    if allowed == 'team':
+        payload['fields'].update(short_name='New', group_id=None)
+    else:
+        payload['fields']['external'] = False
+    assert workforce_client.post(
+        f'/admin/v1/workforce/definitions/{allowed}', json=payload,
+    ).status_code == 200
+
+
 def test_workforce_http_read_returns_coherent_snapshot(
     manager: WorkforceConfigManager, workforce_client: TestClient,
 ) -> None:

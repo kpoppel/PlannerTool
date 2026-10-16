@@ -37,6 +37,59 @@ describe('TopMenu Data Funnel', () => {
     return plugin;
   }
 
+  it('offers configuration and administration from the gear for authorized users', async () => {
+    menu.permissions = ['manage_projects'];
+    await menu.updateComplete;
+    menu.shadowRoot.querySelector('#openConfigBtn').click();
+    await menu.updateComplete;
+    const settings = menu.shadowRoot.querySelector('[role="menu"][aria-label="Settings"]');
+    expect(settings).to.exist;
+    expect(settings.querySelector('#configurationMenuItem')).to.exist;
+    expect(menu.shadowRoot.querySelector('.settings-chevron')).to.exist;
+    expect(menu.shadowRoot.querySelector('.application-link[aria-label="Open administration"]')).to.equal(null);
+    expect([...settings.querySelectorAll('a')].map((link) => link.textContent.trim()))
+      .to.deep.equal(['Projects']);
+    expect(settings.querySelector('a').getAttribute('href')).to.equal('/admin/#projects');
+    menu.permissions = ['manage_workforce_costs', 'manage_iterations'];
+    await menu.updateComplete;
+    expect([...settings.querySelectorAll('a')].map((link) => link.textContent.trim()))
+      .to.deep.equal(['Workforce', 'Iterations']);
+    menu.permissions = [];
+    await menu.updateComplete;
+    expect(settings.querySelector('a')).to.equal(null);
+  });
+
+  it('loads current permissions through the installation-scoped account endpoint', async () => {
+    const request = vi.spyOn(window, 'fetch').mockResolvedValue({ ok: true,
+      json: async () => ({ permissions: ['admin'] }) });
+    menu.baseUrl = '/planner';
+    await menu.loadPermissions();
+    await menu.updateComplete;
+    expect(request.mock.calls[0][0]).to.equal('/planner/api/auth/me');
+    menu.shadowRoot.querySelector('#openConfigBtn').click();
+    await menu.updateComplete;
+    expect(menu.shadowRoot.querySelector('[role="menuitem"][data-section="projects"]').getAttribute('href'))
+      .to.equal('/planner/admin/#projects');
+  });
+
+  it('reuses the header in admin mode without board controls and preserves proxy paths', async () => {
+    const adminMenu = document.createElement('top-menu-bar');
+    adminMenu.application = 'admin';
+    adminMenu.baseUrl = '/planner';
+    adminMenu.permissions = ['admin'];
+    document.body.append(adminMenu);
+    try {
+      await adminMenu.updateComplete;
+      expect(adminMenu.shadowRoot.querySelector('[aria-label="Open planner"]').getAttribute('href'))
+        .to.equal('/planner/');
+      expect(adminMenu.shadowRoot.querySelector('#planMenuBtn')).to.equal(null);
+      expect(adminMenu.shadowRoot.querySelector('#boardInfoBtn')).to.equal(null);
+      expect(adminMenu.shadowRoot.querySelector('.app-title').textContent).to.include('Planner');
+    } finally {
+      adminMenu.remove();
+    }
+  });
+
   it('collects repeated warnings quietly and marks the log read when opened', async () => {
     expect(menu.shadowRoot.querySelector('#notificationsBtn')).to.equal(null);
     const notice = { source: 'Backend', code: 'schedule_missing', severity: 'warning',

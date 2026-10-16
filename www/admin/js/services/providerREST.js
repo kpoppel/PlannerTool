@@ -77,6 +77,10 @@ export class AdminProviderREST extends RestProviderBase {
     return this._getContent('/admin/v1/ado', null);
   }
 
+  async getBrowseConfig() {
+    return this._getContent('/admin/v1/browse-config');
+  }
+
   async saveAdo(content) {
     return this._saveContent('/admin/v1/ado', content);
   }

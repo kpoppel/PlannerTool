@@ -12,7 +12,10 @@ def make_auth_app():
     data_dir = os.environ['PLANNER_AUTH_TEST_DATA_DIR']
     app = create_app(Config(data_dir=data_dir, enable_brotli=True))
     storage = app.state.container.get('storage')
-    storage.save('config', 'projects', {'schema_version': 3, 'container_types': ['project', 'team'], 'project_map': []})
-    storage.save('config', 'teams', {'schema_version': 2, 'teams': []})
-    storage.save('config', 'people', {'schema_version': 1, 'database_file': '', 'database': {'people': []}})
+    storage.save('config', 'projects', {
+        'schema_version': 4, 'container_types': ['project', 'team'], 'project_map': [],
+        'allocation_defaults': {'project': [], 'team': []},
+    })
+    storage.save('config', 'teams', {'schema_version': 3, 'teams': [], 'groups': []})
+    storage.save('config', 'workforce', {'schema_version': 2, 'suppliers': [], 'staffing': []})
     return app

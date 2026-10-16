@@ -12,7 +12,7 @@ describe('admin-iterations', () => {
 
   beforeEach(() => {
     originals.getIterations = adminProvider.getIterations;
-    originals.getAdo = adminProvider.getAdo;
+    originals.getBrowseConfig = adminProvider.getBrowseConfig;
     originals.browseAzureProjects = adminProvider.browseAzureProjects;
     originals.browseAreaPaths = adminProvider.browseAreaPaths;
     originals.browseIterations = adminProvider.browseIterations;
@@ -21,7 +21,8 @@ describe('admin-iterations', () => {
     originals.unassociateAllIterations = adminProvider.unassociateAllIterations;
 
     adminProvider.getIterations = vi.fn().mockResolvedValue({ iteration_sets: [] });
-    adminProvider.getAdo = vi.fn().mockResolvedValue({ organization_url: 'MyOrg' });
+    adminProvider.getBrowseConfig = vi.fn().mockResolvedValue({ ok: true,
+      data: { organization_url: 'MyOrg' } });
     adminProvider.browseAzureProjects = vi.fn().mockResolvedValue({ projects: ['ProjA'] });
     adminProvider.browseAreaPaths = vi.fn().mockResolvedValue({ area_paths: ['ProjA\\Iteration\\Root'] });
     adminProvider.browseIterations = vi.fn().mockResolvedValue({ iterations: [] });
@@ -36,7 +37,7 @@ describe('admin-iterations', () => {
   afterEach(() => {
     if (comp) comp.remove();
     adminProvider.getIterations = originals.getIterations;
-    adminProvider.getAdo = originals.getAdo;
+    adminProvider.getBrowseConfig = originals.getBrowseConfig;
     adminProvider.browseAzureProjects = originals.browseAzureProjects;
     adminProvider.browseAreaPaths = originals.browseAreaPaths;
     adminProvider.browseIterations = originals.browseIterations;

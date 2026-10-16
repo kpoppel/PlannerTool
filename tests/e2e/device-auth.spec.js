@@ -32,6 +32,7 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
   const enrollmentHeaders = await (await enrollmentResponse).headersArray();
   expect(enrollmentHeaders.filter(header => header.name.toLowerCase() === 'set-cookie')).toHaveLength(2);
   await expect(page.getByRole('heading', { name: 'Save your account key' })).toBeVisible();
+  expect(await page.locator('auth-dialog').evaluate(dialog => dialog.apiBase)).toBe('/api');
   const firstKey = await page.locator('auth-dialog code').textContent();
   const clientKeyAppearance = await accountKeyAppearance(page);
   await page.screenshot({ path: 'test-results/auth-desktop-client-key.png' });
@@ -44,6 +45,7 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
   await page.getByLabel('I have saved this key. It will not be shown again.').check();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.waitForURL('**/admin/');
+  await expect(page).toHaveURL('http://127.0.0.1:8017/admin/');
   await expect(page.getByRole('button', { name: 'Users', exact: true })).toBeVisible();
   const cookies = await page.context().cookies();
   expect(cookies.find(cookie => cookie.name === 'plannerDevice').httpOnly).toBe(true);
@@ -119,6 +121,7 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
   expect((await page.request.get('/admin/v1/users')).status()).toBe(200);
   await page.locator('onboarding-modal').getByRole('button', { name: "Don't show again", exact: true }).click();
   await page.locator('#openConfigBtn').click();
+  await page.getByRole('menuitem', { name: 'Configuration', exact: true }).click();
   await expect(page.locator('config-modal output#configEmail')).toHaveText('auth-e2e@example.com');
   await expect(page.locator('config-modal input#configEmail')).toHaveCount(0);
   await expect(page.locator('config-modal #configPat')).toBeFocused();
@@ -139,6 +142,7 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
     const keyAfterRetained = (await retainedEnrollment.json()).accountKey;
     await page.goto('/');
     await page.locator('#openConfigBtn').click();
+    await page.getByRole('menuitem', { name: 'Configuration', exact: true }).click();
     await page.evaluate(() => {
       for (const storage of [localStorage, sessionStorage]) {
         storage.setItem('az_planner:search:lastQuery', 'private search');
@@ -217,7 +221,7 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
     await page.goto('/admin/');
     const snapshot = await (await page.request.get('/admin/v1/backup')).json();
     await page.getByRole('button', { name: 'Utilities', exact: true }).click();
-    await page.locator('admin-utilities input[type="file"]').setInputFiles({
+    await page.getByLabel('Restore system backup', { exact: true }).setInputFiles({
       name: 'account-backup.json', mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify(snapshot)),
     });

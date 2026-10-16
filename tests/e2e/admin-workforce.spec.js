@@ -136,7 +136,9 @@ test('Admin entrypoint mounts canonical Workforce without legacy requests', asyn
   await page.route('**/api/**', (route) => route.fulfill({ json: {
     email: 'workforce-fixture@example.test',
   } }));
-  await page.route('**/admin/check', (route) => route.fulfill({ json: { ok: true } }));
+  await page.route('**/admin/check', (route) => route.fulfill({ json: {
+    ok: true, permissions: ['admin'],
+  } }));
   await page.route('**/admin/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/workforce')) {
@@ -160,6 +162,198 @@ test('Admin entrypoint mounts canonical Workforce without legacy requests', asyn
   await expect(engineering).toContainText('ENG');
   expect(legacyRequests).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('workforce-live-entrypoint-desktop.png') });
+});
+
+test('Denied administration startup redirects without mounting configuration controls', async ({ page }) => {
+  const configRequests = [];
+  await page.route('**/api/**', route => route.fulfill({ json: { email: 'member@example.com' } }));
+  await page.route('**/admin/check', route => route.fulfill({ status: 403, json: { detail: 'Forbidden' } }));
+  await page.route('**/admin/v1/**', route => {
+    configRequests.push(route.request().url());
+    return route.fulfill({ status: 403, json: { detail: 'Forbidden' } });
+  });
+  await page.route('**/admin/login', route => route.fulfill({
+    contentType: 'text/html', body: '<h1>Administration sign-in</h1>',
+  }));
+  await page.goto('/admin/');
+  await expect(page).toHaveURL(/\/admin\/login$/);
+  await expect(page.locator('admin-app')).toHaveCount(0);
+  expect(configRequests).toEqual([]);
+});
+
+for (const [permission, section] of [
+  ['manage_projects', 'Projects'],
+  ['manage_iterations', 'Iterations'],
+  ['manage_workforce_teams', 'Workforce'],
+  ['manage_workforce_costs', 'Workforce'],
+]) {
+  test(`Delegated ${permission} opens only its permitted administration section`, async ({ page }, testInfo) => {
+    const requests = [];
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    const snapshot = {
+      revision: 'delegated',
+      teams: { schema_version: 3, teams: [{ id: 'team-one', allocation_token: 'ONE',
+        name: 'Engineering', short_name: 'ENG', archived: false, group_id: null }], groups: [] },
+      workforce: { schema_version: 2, staffing: [], suppliers: [{ id: 'supplier-one',
+        name: 'Internal provider', external: false, archived: false, profiles: [{
+          id: 'standard', name: 'Standard', monthly_project_hours: 160, hourly_rate: 50,
+          archived: false,
+        }] }] },
+    };
+    await page.route('**/api/**', route => route.fulfill({ json: { projects: [] } }));
+    await page.route('**/admin/check', route => route.fulfill({ json: {
+      ok: true, permissions: [permission],
+    } }));
+    await page.route('**/admin/v1/**', route => {
+      const path = new URL(route.request().url()).pathname;
+      requests.push(path);
+      const content = {
+        '/admin/v1/projects': { content: { schema_version: 4, container_types: ['project'],
+          project_map: [], allocation_defaults: { project: [] } } },
+        '/admin/v1/iterations': { content: { iteration_sets: [] } },
+        '/admin/v1/browse-config': { content: { organization_url: 'ExampleOrg' } },
+        '/admin/v1/schema/projects': { type: 'object', properties: {} },
+        '/admin/v1/workforce': { content: snapshot },
+      };
+      if (!Object.hasOwn(content, path)) {
+        return route.fulfill({ status: 403, json: { detail: 'Forbidden' } });
+      }
+      return route.fulfill({ json: content[path] });
+    });
+    await page.goto('/admin/');
+    await expect(page.locator('admin-app .admin-sidebar .chip')).toHaveText([section]);
+    await expect(page.locator('admin-app main h2')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open planner', exact: true })).toHaveAttribute('href', '/');
+    await expect(page.locator('admin-app .admin-sidebar')).toHaveJSProperty('offsetTop', 40);
+    if (permission === 'manage_workforce_teams') {
+      await expect(page.locator('[data-edit-team="team-one"]')).toBeEnabled();
+      await page.getByRole('tab', { name: 'Suppliers & Profiles' }).click();
+      await expect(page.locator('[data-edit-supplier="supplier-one"]')).toBeDisabled();
+    } else if (permission === 'manage_workforce_costs') {
+      await expect(page.locator('[data-edit-supplier="supplier-one"]')).toBeEnabled();
+      await page.getByRole('tab', { name: 'Teams & Composition' }).click();
+      await expect(page.locator('[data-edit-team="team-one"]')).toBeDisabled();
+    }
+    expect(requests).not.toContain('/admin/v1/system');
+    expect(requests).not.toContain('/admin/v1/ado');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(pageErrors).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath(`${permission}-desktop.png`) });
+  });
+}
+
+test('Shared header switches applications and opens Configuration under a proxy prefix', async ({ page }, testInfo) => {
+  let permissions = ['admin'];
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  await page.route('**/tenant/api/**', route => route.fulfill({ json: {
+    email: 'header@example.test', permissions,
+  } }));
+  await page.route('**/tenant/admin/check', route => route.fulfill({ json: { ok: true, permissions } }));
+  await page.route('**/tenant/admin/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/schema/projects')) {
+      return route.fulfill({ json: { type: 'object', properties: {} } });
+    }
+    const content = {
+      '/tenant/admin/v1/projects': { schema_version: 4, container_types: ['project'],
+        project_map: [], allocation_defaults: { project: [] } },
+      '/tenant/admin/v1/iterations': { iteration_sets: [] },
+      '/tenant/admin/v1/browse-config': { organization_url: 'ExampleOrg' },
+      '/tenant/admin/v1/workforce': { revision: 'header',
+        teams: { schema_version: 3, teams: [], groups: [] },
+        workforce: { schema_version: 2, suppliers: [], staffing: [] } },
+      '/tenant/admin/v1/system': { feature_flags: {} },
+    };
+    return route.fulfill({ json: { content: content[path] } });
+  });
+  await page.route('**/tenant/', route => route.fulfill({ contentType: 'text/html', body: `
+    <!doctype html><html><head><style>
+      body { margin: 0; font: 14px 'Segoe UI', sans-serif; --color-sidebar-bg: #23344d; }
+    </style></head><body><top-menu-bar></top-menu-bar>
+      <script>window.APP_BASE_URL = '/tenant';</script><script type="module">
+        import '/js/components/TopMenu.lit.js';
+        const menu = document.querySelector('top-menu-bar');
+        menu.baseUrl = '/tenant';
+        await menu.loadPermissions();
+      </script></body></html>`,
+  }));
+  await page.route('**/tenant/admin/', route => route.fulfill({ contentType: 'text/html', body: `
+    <!doctype html><html><head><style>body { margin: 0; }</style></head><body>
+      <div id="admin-root"></div><script>window.APP_BASE_URL = '/tenant';</script>
+      <script type="module" src="/admin/js/admin.js"></script></body></html>`,
+  }));
+  await page.goto('/tenant/');
+  await expect(page.getByRole('link', { name: 'Open administration', exact: true })).toHaveCount(0);
+  await expect(page.locator('top-menu-bar .settings-chevron')).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Configuration', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: 'Server', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Configuration', exact: true }).click();
+  await expect(page.locator('config-modal #configPat')).toBeVisible();
+  await expect(page.locator('config-modal #configPat')).toBeFocused();
+  await page.locator('config-modal #closeConfigBtn').click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath('gear-administration-menu-desktop.png') });
+  await page.getByRole('menuitem', { name: 'Projects', exact: true }).click();
+  await expect(page).toHaveURL(/\/tenant\/admin\/#projects$/);
+  await expect(page.getByRole('navigation', { name: 'Top menu' })).toBeVisible();
+  await expect(page.locator('admin-app .admin-content')).toHaveJSProperty('offsetTop', 40);
+  await expect(page.locator('admin-app .chip.active')).toHaveText('Projects');
+  await expect(page.locator('admin-projects')).toBeAttached();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Iterations', exact: true }).click();
+  await expect(page).toHaveURL(/\/tenant\/admin\/#iterations$/);
+  await expect(page.locator('admin-app .chip.active')).toHaveText('Iterations');
+  await expect(page.getByRole('menu', { name: 'Settings', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('shared-admin-header-desktop.png') });
+  await page.getByRole('link', { name: 'Open planner', exact: true }).click();
+  await expect(page).toHaveURL(/\/tenant\/$/);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Projects', exact: true })).toBeVisible();
+  permissions = [];
+  await page.evaluate(() => document.querySelector('top-menu-bar').loadPermissions());
+  await expect(page.getByRole('group', { name: 'Administration', exact: true })).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+});
+
+test('Administrator grants independent permissions from User Management', async ({ page }, testInfo) => {
+  const accounts = [{ id: 'admin-id', email: 'admin@example.com', permissions: ['admin'] },
+    { id: 'delegate-id', email: 'delegate@example.com', permissions: ['manage_projects'] }];
+  const writes = [];
+  await page.route('**/api/**', route => route.fulfill({ json: { email: 'admin@example.com' } }));
+  await page.route('**/admin/check', route => route.fulfill({ json: {
+    ok: true, permissions: ['admin'],
+  } }));
+  await page.route('**/admin/v1/**', route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/users/delegate-id/permissions')) {
+      const payload = request.postDataJSON();
+      writes.push(payload);
+      accounts[1].permissions = payload.permissions;
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (path.endsWith('/users')) {
+      return route.fulfill({ json: { accounts, currentId: 'admin-id' } });
+    }
+    return route.fulfill({ json: { content: { feature_flags: {} } } });
+  });
+  await page.goto('/admin/');
+  await page.getByRole('button', { name: 'Users', exact: true }).click();
+  const delegate = page.locator('.user-item').filter({ hasText: 'delegate@example.com' });
+  await expect(delegate.getByRole('checkbox', { name: 'Projects', exact: true })).toBeChecked();
+  await delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true }).check();
+  await expect(delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true })).toBeEnabled();
+  await expect(delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true })).toBeChecked();
+  expect(writes).toEqual([{ permissions: ['manage_projects', 'manage_iterations'] }]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('user-delegation-desktop.png') });
 });
 
 test('Canonical Workforce edits grouped composition using committed server revisions', async ({ page }, testInfo) => {
@@ -188,7 +382,10 @@ test('Canonical Workforce edits grouped composition using committed server revis
       <style>body { margin: 36px; font: 14px 'Segoe UI', sans-serif; background: #fff; }
       main { max-width: 1160px; margin: 0 auto; }</style></head><body>
       <main><admin-workforce></admin-workforce></main>
-      <script type="module" src="/admin/js/components/admin/Workforce.lit.js"></script>
+      <script type="module">
+        import '/admin/js/components/admin/Workforce.lit.js';
+        document.querySelector('admin-workforce').permissions = ['admin'];
+      </script>
       </body></html>`,
   }));
   await page.route('**/admin/v1/workforce**', async (route) => {

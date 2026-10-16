@@ -1,4 +1,6 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import '../../../js/components/TopMenu.lit.js';
+import { getAdminSections } from '../../../js/services/adminNavigation.js';
 import './admin/GlobalSettings.lit.js';
 // AzureDevOps module removed — backend config and TTLs are now in Data Sources
 import './admin/DataSources.lit.js';
@@ -9,6 +11,7 @@ export class AdminApp extends LitElement {
   static properties = {
     activeSection: { type: String },
     sections: { type: Array },
+    permissions: { type: Array },
     manageBackupSnapshots: { type: Boolean },
   };
 
@@ -16,10 +19,15 @@ export class AdminApp extends LitElement {
     :host {
       display: block;
       height: 100vh;
+      padding-top: 40px;
+      box-sizing: border-box;
+      font-family: Arial, Helvetica, sans-serif;
+      --color-sidebar-bg: #23344d;
+      --sidebar-width: 260px;
     }
     .admin-root {
       display: flex;
-      height: 100vh;
+      height: 100%;
       font-family: Arial, Helvetica, sans-serif;
     }
     .admin-sidebar {
@@ -87,30 +95,47 @@ export class AdminApp extends LitElement {
 
   constructor() {
     super();
-    this.activeSection = 'Server';
-    this.sections = [
-      'Server',
-      'Data Sources',
-      'Users',
-      'Global Project Settings',
-      'Plugins',
-      'Projects',
-      'Workforce',
-      'Area Mappings',
-      'Iterations',
-      'Utilities',
-    ];
+    this.activeSection = '';
+    this.sections = [];
+    this.permissions = [];
     this.manageBackupSnapshots = false;
+    this._onHashChange = () => this._selectHashSection();
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener('hashchange', this._onHashChange);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener('hashchange', this._onHashChange);
+  }
+
+  setPermissions(permissions) {
+    this.permissions = permissions;
+    this.sections = getAdminSections(permissions, this.manageBackupSnapshots)
+      .map((section) => section.label);
+    this.activeSection = this.sections.length === 0 ? '' : this.sections[0];
+    this._selectHashSection();
+  }
+
+  _selectHashSection() {
+    const section = getAdminSections(this.permissions, this.manageBackupSnapshots)
+      .find((entry) => `#${entry.id}` === window.location.hash);
+    if (section !== undefined && this.sections.includes(section.label)) {
+      this.activeSection = section.label;
+    }
   }
 
   async firstUpdated() {
+    if (!this.permissions.includes('admin')) return;
     // Check feature flag for backup snapshots visibility
     try {
       const res = await fetch((window.APP_BASE_URL || '') + '/admin/v1/system');
       if (res.ok) {
         const data = await res.json();
-        const flags = data?.content?.feature_flags || {};
-        this.manageBackupSnapshots = !!flags.manage_backup_snapshots;
+        this.manageBackupSnapshots = data.content.feature_flags.manage_backup_snapshots === true;
         if (this.manageBackupSnapshots && !this.sections.includes('Backup Snapshots')) {
           // Insert after Utilities, before any future sections
           const idx = this.sections.indexOf('Utilities');
@@ -119,6 +144,7 @@ export class AdminApp extends LitElement {
           } else {
             this.sections.push('Backup Snapshots');
           }
+          this._selectHashSection();
         }
       }
     } catch (e) {
@@ -127,7 +153,13 @@ export class AdminApp extends LitElement {
   }
 
   _onSelect(section) {
+    if (!this.sections.includes(section)) return;
     this.activeSection = section;
+    const target = getAdminSections(this.permissions, this.manageBackupSnapshots)
+      .find((entry) => entry.label === section);
+    const url = new URL(window.location.href);
+    url.hash = target.id;
+    window.history.replaceState(null, '', url.href);
     this.requestUpdate();
   }
 
@@ -157,6 +189,7 @@ export class AdminApp extends LitElement {
   }
 
   renderContent() {
+    if (!this.sections.includes(this.activeSection)) return html``;
     switch (this.activeSection) {
       case 'Server':
         return html`<admin-system></admin-system>`;
@@ -169,7 +202,7 @@ export class AdminApp extends LitElement {
       case 'Projects':
         return html`<admin-projects></admin-projects>`;
       case 'Workforce':
-        return html`<admin-workforce></admin-workforce>`;
+        return html`<admin-workforce .permissions=${this.permissions}></admin-workforce>`;
       case 'Area Mappings':
         return html`<area-mappings-new></area-mappings-new>`;
       case 'Iterations':
@@ -186,7 +219,10 @@ export class AdminApp extends LitElement {
   }
 
   render() {
-    return html`<div class="admin-root">
+    return html`<top-menu-bar application="admin" .permissions=${this.permissions}
+      .manageBackupSnapshots=${this.manageBackupSnapshots}
+      .baseUrl=${window.APP_BASE_URL}></top-menu-bar>
+    <div class="admin-root">
       ${this.renderSidebar()}
       <main class="admin-content">${this.renderContent()}</main>
     </div>`;

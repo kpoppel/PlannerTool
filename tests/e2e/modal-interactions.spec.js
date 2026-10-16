@@ -12,6 +12,7 @@ test.describe('Modal interactions', () => {
 
   test('Open config modal and close via close button', async ({ page }) => {
     await page.click('#openConfigBtn');
+    await page.getByRole('menuitem', { name: 'Configuration', exact: true }).click();
     await page.waitForSelector('#configForm', { timeout: 5000 });
     await page.click('#closeConfigBtn');
     // The modal overlay should be hidden when closed
@@ -25,6 +26,7 @@ test.describe('Modal interactions', () => {
 
   test('Open config modal and close by clicking outside modal', async ({ page }) => {
     await page.click('#openConfigBtn');
+    await page.getByRole('menuitem', { name: 'Configuration', exact: true }).click();
     await page.waitForSelector('#configForm', { timeout: 5000 });
     // Click on the overlay background (near the top-left corner) to ensure we hit the overlay, not the inner modal
     // For the lit-based modal the overlay is a child of the inner `modal-lit` element.

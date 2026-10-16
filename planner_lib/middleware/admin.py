@@ -12,15 +12,23 @@ logger = logging.getLogger(__name__)
 
 
 def require_admin_session(func: Callable) -> Callable:
-    """Decorator that ensures the caller has a valid session and that the
-    associated account is present under `data/config/admin/`.
+    """Require full administrator access; delegated permissions do not qualify."""
+    return _require_permissions(func, ())
 
-    This raises HTTP 401 for missing/invalid session (delegated to
-    `get_session_id_from_request`) and HTTP 401 when the session is valid
-    but the account is not listed as an admin so the application's
-    401 handler produces the same `access_denied_response` as for regular
-    user sessions.
-    """
+
+def require_permission(*permissions: str) -> Callable:
+    """Accept any listed permission or full administrator access."""
+    return lambda func: _require_permissions(func, permissions)
+
+
+def has_admin_access(request: Request, *permissions: str) -> bool:
+    context = get_session_context_from_request(request)
+    accounts = resolve_service(request, 'account_manager')
+    return any(accounts.has_permission(context['email'], permission)
+               for permission in (AccountPermissions.ADMIN, *permissions))
+
+
+def _require_permissions(func: Callable, permissions: tuple[str, ...]) -> Callable:
 
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
@@ -64,8 +72,7 @@ def require_admin_session(func: Callable) -> Callable:
             raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': '200 - Admin access required.'})
 
         # Delegate admin membership check to the AccountManager
-        account_manager = resolve_service(request, 'account_manager')
-        is_admin = account_manager.has_permission(email, AccountPermissions.ADMIN)
+        is_admin = has_admin_access(request, *permissions)
 
         if not is_admin:
             try:
@@ -73,7 +80,8 @@ def require_admin_session(func: Callable) -> Callable:
                 logger.warning('Admin access denied (not admin) path=%s email=%s', path, email)
             except Exception:
                 logger.warning('Admin access denied (not admin)')
-            raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': '300 - Admin access required.'})
+            status = 403 if has_admin_access(request, *AccountPermissions.DELEGATED) else 401
+            raise HTTPException(status_code=status, detail={'error': 'access_denied', 'message': '300 - Admin access required.'})
 
         return await func(*args, **kwargs)
 

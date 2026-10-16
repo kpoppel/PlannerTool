@@ -118,18 +118,22 @@ def _explicit_request(account_manager, payload=None):
     return make_request(container, payload or {}, session_email='current@example.com')
 
 
-def test_create_user_uses_explicit_account_creation():
+@pytest.mark.parametrize('permissions', [
+    ['admin'],
+    ['manage_projects', 'manage_workforce_teams', 'manage_workforce_costs', 'manage_iterations'],
+])
+def test_create_user_uses_explicit_account_creation(permissions):
     from planner_lib.admin.users_routes import admin_create_user
     account_manager = ExplicitAccountManager()
     request = _explicit_request(account_manager, {
         'email': 'new-admin@example.com',
-        'permissions': ['admin'],
+        'permissions': permissions,
     })
 
     result = asyncio.run(admin_create_user.__wrapped__(request))
 
     assert result == {'ok': True}
-    assert account_manager.accounts['new-admin@example.com']['permissions'] == ['admin']
+    assert account_manager.accounts['new-admin@example.com']['permissions'] == permissions
 
 
 def test_create_user_rejects_invalid_email():

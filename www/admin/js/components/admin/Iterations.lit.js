@@ -371,11 +371,11 @@ export class AdminIterations extends LitElement {
 
   async loadBrowseProjects() {
     try {
-      const adoResult = await adminProvider.getAdo();
-      if (!adoResult?.ok) {
-        throw new Error(resultErrorMessage(adoResult, 'Failed to load ADO configuration'));
+      const browseConfig = await adminProvider.getBrowseConfig();
+      if (!browseConfig.ok) {
+        throw new Error(resultErrorMessage(browseConfig, 'Failed to load browse configuration'));
       }
-      const org = (adoResult.data && adoResult.data.organization_url) || '';
+      const org = browseConfig.data.organization_url;
       const result = await adminProvider.browseAzureProjects(org);
       if (!result?.ok) {
         throw new Error(resultErrorMessage(result, 'Failed to browse Azure projects'));

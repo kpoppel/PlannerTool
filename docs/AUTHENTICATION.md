@@ -36,6 +36,43 @@ the normal enrollment dialog, receives their own device and account key, and
 retains the permissions assigned by the administrator. Creating an account
 does not sign the administrator into it or issue another user's credentials.
 
+## Delegated administration
+
+Administrators grant independent permissions in **Admin > Users > Delegated
+Administration**. Create a regular account first, then select the required grants;
+existing accounts need no re-enrollment. Users open `/admin/` with their normal
+browser session and see only permitted sections. The top-bar settings gear has
+a dropdown chevron. Its **Administration** group lists the screens the account
+can access and opens the selected screen directly. Administration keeps the shared
+top bar with a **Planner** link back to the user application. Personal settings
+remain available through **Settings > Configuration** in either application.
+
+| Permission | Editable configuration |
+| --- | --- |
+| `manage_projects` | Projects, container levels, allocation availability and project iteration-set associations |
+| `manage_workforce_teams` | Teams, groups, staffing composition and confirmed team deletion |
+| `manage_workforce_costs` | Suppliers, profiles, monthly project hours and hourly rates |
+| `manage_iterations` | Iteration sets, backend iteration browsing and removal of project associations |
+
+Grants apply installation-wide, not only to a user's own projects or teams. Project
+management includes editing and archiving existing projects, not just adding them.
+Combine grants when a user maintains several areas. Workforce delegates can read
+the shared team/staffing/supplier catalogue, but writes to the other area are
+rejected by the server. Project managers can read the catalogue and iteration sets
+needed for project configuration. Backend browsing uses the current user's PAT.
+
+Full `admin` access includes every grant. Only full administrators can manage
+users or permissions, credentials and data sources, server/global settings,
+plugins, area mappings, caches, reload utilities, backups and bulk workforce
+import/export. Existing administrator protections remain in effect. Permission
+changes are checked on each request; open pages may need reloading to update
+navigation, but revocation immediately prevents subsequent unauthorized requests.
+No data migration or additional account enrollment is required.
+
+`GET /admin/check` returns `{ "ok": true, "permissions": [...] }` for an
+administrator or delegate. Unauthenticated requests are rejected; an authenticated
+delegate attempting another administration area receives HTTP 403.
+
 ## Remembered browsers and sessions
 
 Generated credentials contain 256 bits of randomness. The server persists only

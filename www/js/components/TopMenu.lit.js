@@ -14,6 +14,7 @@ import {
 } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { dataService } from '../services/dataService.js';
+import { getAdminSections } from '../services/adminNavigation.js';
 import './PlanMenu.lit.js';
 import './ScenarioMenu.lit.js';
 import './ViewMenu.lit.js';
@@ -35,6 +36,10 @@ export class TopMenuBarLit extends LitElement {
     boardBreakdown: { type: Object },
     scopeContext: { type: Object },
     menuPlugins: { type: Array },
+    application: { type: String },
+    permissions: { type: Array },
+    baseUrl: { type: String },
+    manageBackupSnapshots: { type: Boolean },
   };
 
   static styles = css`
@@ -91,6 +96,46 @@ export class TopMenuBarLit extends LitElement {
       white-space: nowrap;
       z-index: 1100;
       padding: 0 8px;
+    }
+
+    .application-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: inherit;
+      text-decoration: none;
+      padding: 5px 8px;
+      border-radius: 4px;
+    }
+    .application-link:hover, .settings-action:hover { background: rgba(255, 255, 255, 0.12); }
+    .settings-trigger { display: inline-flex; align-items: center; gap: 10px; }
+    .settings-chevron {
+      width: 6px;
+      height: 6px;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: translateY(-2px) rotate(45deg);
+    }
+    .settings-trigger[aria-expanded='true'] .settings-chevron {
+      transform: translateY(2px) rotate(225deg);
+    }
+    .settings-menu { width: 280px; padding: 6px; }
+    .settings-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.2); }
+    .settings-group-label { padding: 8px 10px 6px; font-size: 11px; color: #b9c9dc; }
+    .settings-action:focus-visible { outline: 2px solid #8ec8ff; outline-offset: -2px; }
+    .settings-action {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      text-align: left;
+      border: 0;
+      padding: 10px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      border-radius: 4px;
     }
 
     .plugin-menu-popover {
@@ -266,6 +311,10 @@ export class TopMenuBarLit extends LitElement {
 
   constructor() {
     super();
+    this.application = 'planner';
+    this.permissions = [];
+    this.baseUrl = '';
+    this.manageBackupSnapshots = false;
     this.openMenu = null;
     this.projects = [];
     this.teams = [];
@@ -367,6 +416,8 @@ export class TopMenuBarLit extends LitElement {
     this._onPluginMenusChanged();
     this._onMenuResize = () => this._closeMenu(false);
     window.addEventListener('resize', this._onMenuResize);
+
+    if (this.application === 'admin') return;
 
     // Listen to state changes to update menu data
     this._onProjectsChanged = () => {
@@ -478,6 +529,23 @@ export class TopMenuBarLit extends LitElement {
     }
   }
 
+  get canOpenAdmin() {
+    return this.adminSections.length > 0;
+  }
+
+  get adminSections() {
+    return getAdminSections(this.permissions, this.manageBackupSnapshots);
+  }
+
+  async loadPermissions() {
+    const response = await fetch(`${this.baseUrl}/api/auth/me`, {
+      credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`Loading account permissions failed: ${response.status}`);
+    const account = await response.json();
+    this.permissions = account.permissions;
+  }
+
   _toggleMenu(menuName, e) {
     e.stopPropagation();
     if (menuName.startsWith('plugin:')) {
@@ -495,6 +563,7 @@ export class TopMenuBarLit extends LitElement {
     this._menuElement = null;
 
     if (this.openMenu) {
+      if (menuName === 'settings') this._focusSettingsMenu = true;
       if (menuName === 'notifications') cmd.ui.markNotificationsRead();
       if (menuName.startsWith('plugin:')) {
         const metadata = this.menuPlugins.find((plugin) => `plugin:${plugin.id}` === menuName);
@@ -529,6 +598,10 @@ export class TopMenuBarLit extends LitElement {
   }
 
   async updated() {
+    if (this._focusSettingsMenu) {
+      this._focusSettingsMenu = false;
+      this.shadowRoot.querySelector('#configurationMenuItem').focus();
+    }
     if (this.openMenu === 'notifications' && this._notifications.value.some((entry) => entry.unread)) {
       cmd.ui.markNotificationsRead();
     }
@@ -549,6 +622,21 @@ export class TopMenuBarLit extends LitElement {
       return;
     }
     const path = event.composedPath();
+    if (this.openMenu === 'settings' && path.some((element) =>
+      element instanceof HTMLElement && element.getAttribute('role') === 'menu')) {
+      const controls = [...this.shadowRoot.querySelectorAll('[role="menuitem"].settings-action')];
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        controls[(controls.indexOf(path[0]) + step + controls.length) % controls.length].focus();
+      } else if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        controls[event.key === 'Home' ? 0 : controls.length - 1].focus();
+      } else if (event.key === 'Tab') {
+        this._closeMenu();
+      }
+      return;
+    }
     const inPluginMenu = this._menuElement && path.includes(this._menuElement);
     if (inPluginMenu) {
       if (event.key === 'Tab') {
@@ -635,6 +723,7 @@ export class TopMenuBarLit extends LitElement {
           <div class="app-title title-only">Planner Tool</div>
         </div>
 
+        ${this.application === 'admin' ? html`<div class="menu-items">Administration</div>` : html`
         <div class="menu-items" role="menubar" aria-label="Main menus" @scroll=${() => this._closeMenu(false)}>
           <div
             class="menu-item ${this.openMenu === 'view' ? 'active' : ''}"
@@ -698,9 +787,10 @@ export class TopMenuBarLit extends LitElement {
             Tools
           </div>
           ${this._renderPluginTriggers('after-tools')}
-        </div>
+        </div>`}
 
         <div class="menu-right">
+          ${this.application === 'planner' ? html`
           <button
             class="board-info-trigger ${this.openMenu === 'information' ? 'active' : ''}"
             id="boardInfoBtn"
@@ -731,9 +821,16 @@ export class TopMenuBarLit extends LitElement {
                 <span class="menu-attention" aria-label="Unread notifications">
                   ${this._notifications.value.filter((entry) => entry.unread).length}
                 </span>` : ''}
-            </button>` : ''}
-          <button class="small-btn" id="openConfigBtn" @click=${this._onConfig}>
+            </button>` : ''}` : ''}
+          ${this.application === 'admin' ? html`
+            <a class="application-link" href=${`${this.baseUrl}/`} title="Open planner"
+              aria-label="Open planner"><span aria-hidden="true">&#8592;</span> Planner</a>`
+            : ''}
+          <button class="small-btn settings-trigger" id="openConfigBtn" title="Settings" aria-label="Settings"
+            aria-haspopup="menu" aria-controls="settingsMenu" aria-expanded=${this.openMenu === 'settings'}
+            @click=${(event) => this._toggleMenu('settings', event)}>
             ⚙️
+            <span class="settings-chevron" aria-hidden="true"></span>
           </button>
           <button class="small-btn" id="openHelpBtn" @click=${this._onHelp}>❓</button>
         </div>
@@ -767,6 +864,20 @@ export class TopMenuBarLit extends LitElement {
     `;
 
     switch (this.openMenu) {
+      case 'settings':
+        return html`<div class="plugin-menu-popover settings-menu" id="settingsMenu" role="menu" aria-label="Settings"
+          style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;right:8px;z-index:2000"
+          @keydown=${this._onMenuKeyDown}>
+          <button class="settings-action" role="menuitem" id="configurationMenuItem"
+            @click=${this._onConfig}>Configuration</button>
+          ${this.canOpenAdmin ? html`<div class="settings-group" role="group" aria-label="Administration">
+            <div class="settings-group-label" aria-hidden="true">Administration</div>
+            ${this.adminSections.map((section) => html`
+              <a class="settings-action" role="menuitem" data-section=${section.id}
+                href=${`${this.baseUrl}/admin/#${section.id}`}
+                @click=${() => this._closeMenu(false)}>${section.label}</a>`)}
+          </div>` : ''}
+        </div>`;
       case 'notifications':
         return html`<div class="board-information notification-log" id="notificationLog"
           style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;right:8px;z-index:2000"
@@ -868,6 +979,7 @@ export class TopMenuBarLit extends LitElement {
   }
 
   async _onConfig() {
+    this._closeMenu();
     const { openConfigModal } = await import('./modalHelpers.js');
     await openConfigModal();
   }

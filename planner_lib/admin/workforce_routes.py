@@ -13,6 +13,8 @@ from planner_lib.admin.workforce_config import (
 from planner_lib.admin.workforce_deletion import TeamDeletionReview
 from planner_lib.admin.workforce_transfer import MAX_TRANSFER_BYTES
 from planner_lib.middleware import require_admin_session
+from planner_lib.middleware.admin import has_admin_access, require_permission
+from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.services.resolver import resolve_service
 
 
@@ -82,7 +84,8 @@ def _execute(
 
 
 @router.get('/admin/v1/workforce')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_WORKFORCE_TEAMS, AccountPermissions.MANAGE_WORKFORCE_COSTS,
+                    AccountPermissions.MANAGE_PROJECTS)
 async def admin_get_workforce(request: Request) -> dict[str, Any]:
     """Return the canonical editing snapshot for an authorized administrator."""
     service = resolve_service(request, 'admin_service')
@@ -90,11 +93,20 @@ async def admin_get_workforce(request: Request) -> dict[str, Any]:
 
 
 @router.post('/admin/v1/workforce')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_WORKFORCE_TEAMS, AccountPermissions.MANAGE_WORKFORCE_COSTS)
 async def admin_save_workforce(request: Request) -> dict[str, Any]:
     """Save paired team/workforce edits with server-enforced lifecycle validation."""
     payload = await _payload(request, {'revision', 'teams', 'workforce'}, set())
     service = resolve_service(request, 'admin_service')
+    current = _execute(request, 'read', service.get_workforce_snapshot, mutation=False)['content']
+    if not has_admin_access(request, AccountPermissions.MANAGE_WORKFORCE_TEAMS):
+        if payload['teams'] != current['teams'] or (
+            payload['workforce'].get('staffing') != current['workforce']['staffing']
+        ):
+            raise HTTPException(403, detail='Workforce team permission required')
+    if not has_admin_access(request, AccountPermissions.MANAGE_WORKFORCE_COSTS):
+        if payload['workforce'].get('suppliers') != current['workforce']['suppliers']:
+            raise HTTPException(403, detail='Workforce cost permission required')
     return _execute(request, 'save', lambda: service.save_workforce_configuration(
         payload['teams'], payload['workforce'], payload['revision'],
     ), mutation=True)
@@ -152,13 +164,17 @@ async def admin_import_workforce(request: Request) -> dict[str, Any]:
 
 
 @router.post('/admin/v1/workforce/definitions/{kind}')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_WORKFORCE_TEAMS, AccountPermissions.MANAGE_WORKFORCE_COSTS)
 async def admin_create_workforce_definition(request: Request, kind: str) -> dict[str, Any]:
     """Create one server-issued identity without accepting client-owned identity fields."""
     if kind not in WorkforceConfigManager.CREATE_FIELDS:
         raise HTTPException(400, detail={
             'error': 'invalid_payload', 'message': 'Unknown workforce definition kind',
         })
+    permission = (AccountPermissions.MANAGE_WORKFORCE_COSTS if kind in ('supplier', 'profile')
+                  else AccountPermissions.MANAGE_WORKFORCE_TEAMS)
+    if not has_admin_access(request, permission):
+        raise HTTPException(403, detail='Workforce definition permission required')
     optional = {'supplier_id'} if kind == 'profile' else set()
     payload = await _payload(request, {'revision', 'fields'}, optional)
     supplier_id = payload.get('supplier_id')
@@ -175,7 +191,7 @@ async def admin_create_workforce_definition(request: Request, kind: str) -> dict
 
 
 @router.get('/admin/v1/workforce/teams/{team_id:path}/deletion')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_WORKFORCE_TEAMS)
 async def admin_review_workforce_team_deletion(request: Request, team_id: str) -> dict[str, Any]:
     """Show known impact and a fresh confirmation receipt without contacting ADO."""
     service = resolve_service(request, 'admin_service')
@@ -186,7 +202,7 @@ async def admin_review_workforce_team_deletion(request: Request, team_id: str) -
 
 
 @router.post('/admin/v1/workforce/teams/{team_id:path}/deletion')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_WORKFORCE_TEAMS)
 async def admin_delete_workforce_team(request: Request, team_id: str) -> dict[str, Any]:
     """Delete only after explicit acknowledgement of the freshly reviewed impact."""
     payload = await _payload(request, {'revision', 'confirmation'}, set())

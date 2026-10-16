@@ -13,6 +13,7 @@ export class AdminWorkforce extends LitElement {
     expandedTeams: { type: Object }, collapsedGroups: { type: Object },
     dialog: { type: Object }, statusMsg: { type: String }, statusType: { type: String },
     deletion: { type: Object },
+    permissions: { type: Array },
   };
 
   static styles = css`
@@ -86,6 +87,7 @@ export class AdminWorkforce extends LitElement {
   constructor() {
     super();
     this.snapshot = null;
+    this.permissions = [];
     this.loading = false;
     this.saving = false;
     this.activeTab = 'teams';
@@ -104,7 +106,16 @@ export class AdminWorkforce extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    if (!this.canManageTeams && this.canManageCosts) this.activeTab = 'suppliers';
     this.loadConfig();
+  }
+
+  get canManageTeams() {
+    return this.permissions.includes('admin') || this.permissions.includes('manage_workforce_teams');
+  }
+
+  get canManageCosts() {
+    return this.permissions.includes('admin') || this.permissions.includes('manage_workforce_costs');
   }
 
   _errorMessage(result) {
@@ -380,17 +391,17 @@ export class AdminWorkforce extends LitElement {
           <th>Last Updated</th><th>Actions</th></tr></thead><tbody>${rows.map((row) => {
             const { supplier, profile, hours, cost } = this._rowBasis(row);
             return html`<tr><td>${supplier.name}</td><td><button class="link" data-open-profile=${row.id}
-              ?disabled=${this.saving} @click=${() => this._open('profile', profile.id, null, supplier.id)}>
+              ?disabled=${this.saving || !this.canManageCosts} @click=${() => this._open('profile', profile.id, null, supplier.id)}>
               ${profile.name}</button></td>
               <td>${supplier.external ? 'External' : 'Internal'}</td>
               <td class="number">${NUMBER.format(row.fte)}</td>
               <td class="number">${NUMBER.format(hours)}</td>
               <td class="number">${NUMBER.format(cost)}</td>
               <td class="date">${this._renderDate(row, 'last_updated')}</td><td>
-                <button data-edit-staffing=${row.id} ?disabled=${this.saving}
+                <button data-edit-staffing=${row.id} ?disabled=${this.saving || !this.canManageTeams}
                   @click=${() => this._open('staffing', row.id)}>Edit</button></td></tr>`;
           })}</tbody></table>`}
-      <div class="actions"><button ?disabled=${this.saving || team.archived}
+      <div class="actions"><button ?disabled=${this.saving || team.archived || !this.canManageTeams}
         @click=${() => this._open('staffing', null, team.id)}>Add Staffing</button></div>
     </td></tr>`;
   }
@@ -406,9 +417,9 @@ export class AdminWorkforce extends LitElement {
       <td class="number">${NUMBER.format(fte.external)}</td>
       <td class="date">${this._renderDate(team, 'last_updated')}</td><td>
       <div class="actions">
-        <button data-edit-team=${team.id} ?disabled=${this.saving}
+        <button data-edit-team=${team.id} ?disabled=${this.saving || !this.canManageTeams}
           @click=${() => this._open('team', team.id)}>Edit</button>
-        <button class="danger" data-delete-team=${team.id} ?disabled=${this.saving}
+        <button class="danger" data-delete-team=${team.id} ?disabled=${this.saving || !this.canManageTeams}
           @click=${() => this._openDeletion(team.id)}>Delete</button></div></td></tr>
       ${this.expandedTeams.has(team.id) ? this._renderComposition(team) : nothing}`;
   }
@@ -425,7 +436,7 @@ export class AdminWorkforce extends LitElement {
         ${group === null ? 'Ungrouped' : group.name}</button>
       <span class="muted">${teams.length} teams${group !== null && group.archived ? ' / Archived' : ''}</span>
       </td><td class="date">${group === null ? nothing : this._renderDate(group, 'last_updated')}</td>
-      <td>${group === null ? nothing : html`<button ?disabled=${this.saving}
+      <td>${group === null ? nothing : html`<button ?disabled=${this.saving || !this.canManageTeams}
         @click=${() => this._open('group', group.id)}>Edit Group</button>`}</td></tr>
       ${this.collapsedGroups.has(key) ? nothing : teams.map((team) => this._renderTeam(team))}
     </tbody>`;
@@ -441,9 +452,9 @@ export class AdminWorkforce extends LitElement {
           <td>${supplier.external ? 'External' : 'Internal'}</td><td colspan="3"></td>
           <td>${supplier.archived ? 'Archived' : 'Active'}</td>
           <td class="date">${this._renderDate(supplier, 'last_updated')}</td><td><div class="actions">
-            <button data-edit-supplier=${supplier.id} ?disabled=${this.saving}
+            <button data-edit-supplier=${supplier.id} ?disabled=${this.saving || !this.canManageCosts}
               @click=${() => this._open('supplier', supplier.id)}>Edit</button>
-            <button data-new-profile=${supplier.id} ?disabled=${this.saving || supplier.archived}
+            <button data-new-profile=${supplier.id} ?disabled=${this.saving || supplier.archived || !this.canManageCosts}
               @click=${() => this._open('profile', null, null, supplier.id)}>New Profile</button>
           </div></td></tr>
         ${supplier.profiles.filter((profile) => this.showArchived || !profile.archived)
@@ -452,7 +463,7 @@ export class AdminWorkforce extends LitElement {
             <td class="number">${NUMBER.format(profile.hourly_rate)}</td>
             <td>${profile.archived ? 'Archived' : 'Active'}</td>
             <td class="date">${this._renderDate(profile, 'last_updated')}</td><td>
-              <button data-edit-profile=${profile.id} ?disabled=${this.saving}
+              <button data-edit-profile=${profile.id} ?disabled=${this.saving || !this.canManageCosts}
                 @click=${() => this._open('profile', profile.id, null, supplier.id)}>Edit</button>
             </td></tr>`)}
       `)}</tbody></table>`;
@@ -510,7 +521,7 @@ export class AdminWorkforce extends LitElement {
               html`<option value=${profile.id} .selected=${profile.id === fields.profile_id}>${profile.name}</option>`)}</select></label>
           <label>FTE<input name="fte" type="number" min="0" step="any" required
             .value=${fields.fte} @input=${this._onField}></label>
-          <button type="button" data-action="edit-selected-profile" ?disabled=${fields.profile_id === ''}
+          <button type="button" data-action="edit-selected-profile" ?disabled=${fields.profile_id === '' || !this.canManageCosts}
             @click=${() => this._open('profile', fields.profile_id, null, fields.supplier_id)}>Edit Selected Profile</button>` : html`
           <label>Name<input name="name" required .value=${fields.name} @input=${this._onField}></label>
           ${kind === 'profile' ? html`
@@ -618,11 +629,11 @@ export class AdminWorkforce extends LitElement {
         <div class="toolbar"><label><input type="checkbox" .checked=${this.showArchived}
           @change=${(event) => { this.showArchived = event.target.checked; }}>Show archived</label>
           ${this.activeTab === 'teams' ? html`<div class="actions">
-            <button data-action="new-group" ?disabled=${this.saving || this.dialog !== null}
+            <button data-action="new-group" ?disabled=${this.saving || this.dialog !== null || !this.canManageTeams}
               @click=${() => this._open('group')}>New Group</button>
-            <button class="primary" data-action="new-team" ?disabled=${this.saving || this.dialog !== null}
+            <button class="primary" data-action="new-team" ?disabled=${this.saving || this.dialog !== null || !this.canManageTeams}
               @click=${() => this._open('team')}>New Team</button></div>` : html`
-              <button class="primary" data-action="new-supplier" ?disabled=${this.saving || this.dialog !== null}
+              <button class="primary" data-action="new-supplier" ?disabled=${this.saving || this.dialog !== null || !this.canManageCosts}
                 @click=${() => this._open('supplier')}>New Supplier</button>`}</div>
         <div class="table-wrap">${this.activeTab === 'suppliers' ? this._renderSuppliers() : html`
           <table><thead><tr><th>Team / Group</th><th>ADO Token</th><th>State</th>

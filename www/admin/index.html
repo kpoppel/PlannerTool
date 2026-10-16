@@ -5,13 +5,13 @@
     <script>
       // Dynamically compute base URL for API requests to support reverse proxy sub-paths
       window.APP_BASE_URL = window.location.pathname
-        .replace(/\/admin\/?$/, '')
-        .replace(/\/$/, '');
+        .replace(/\/(?:static\/)?admin(?:\/index\.html|\/)?$/, '');
     </script>
 
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>PlannerTool — Admin</title>
+    <style>body { margin: 0; }</style>
   </head>
   <body>
     <div id="admin-root"></div>

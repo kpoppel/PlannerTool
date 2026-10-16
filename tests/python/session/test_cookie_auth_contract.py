@@ -5,6 +5,45 @@ from planner_lib.middleware.session import get_session_context_from_request
 pytestmark = pytest.mark.real_auth
 
 
+@pytest.mark.parametrize('permission,allowed', [
+    ('manage_projects', '/admin/v1/projects'),
+    ('manage_workforce_teams', '/admin/v1/workforce'),
+    ('manage_workforce_costs', '/admin/v1/workforce'),
+    ('manage_iterations', '/admin/v1/iterations'),
+])
+def test_delegated_admin_access_is_scoped(client, permission, allowed):
+    assert client.post('/api/auth/enroll', json={
+        'email': 'delegate@example.com', 'name': 'Delegate',
+    }).status_code == 200
+    accounts = client.app.state.container.get('account_manager')
+    accounts.set_permissions(accounts.get_account_id('delegate@example.com'), [permission])
+
+    assert client.get('/api/auth/me').json()['permissions'] == [permission]
+    assert client.get('/admin/', follow_redirects=False).status_code == 200
+    access = client.get('/admin/check')
+    assert access.status_code == 200
+    assert access.json()['permissions'] == [permission]
+    assert client.get(allowed).status_code in (200, 409)
+    if permission == 'manage_projects':
+        assert client.get('/admin/v1/schema/projects').status_code == 200
+        assert client.get('/admin/v1/schema/system').status_code == 403
+    if permission in ('manage_projects', 'manage_iterations'):
+        storage = client.app.state.container.get('storage')
+        storage.save('config', 'ado_config', {
+            'organization_url': 'ExampleOrg', 'private_setting': 'not-for-delegates',
+        })
+        browse = client.get('/admin/v1/browse-config')
+        assert browse.status_code == 200
+        assert browse.json() == {'content': {'organization_url': 'ExampleOrg'}}
+    for path in ('/admin/v1/projects', '/admin/v1/iterations', '/admin/v1/workforce'):
+        if path != allowed:
+            assert client.post(path, json={}).status_code in (401, 403)
+    for path in ('/admin/v1/users', '/admin/v1/system', '/admin/v1/ado'):
+        assert client.get(path).status_code in (401, 403)
+    accounts.set_permissions(accounts.get_account_id('delegate@example.com'), [])
+    assert client.get('/admin/check').status_code in (401, 403)
+
+
 @pytest.mark.parametrize('path', ['/api/auth/me', '/api/view', '/api/scenario',
                                  '/api/groups', '/admin/v1/users', '/admin/'])
 def test_identity_request_skips_credentials_and_refreshes_expiry_once(client, monkeypatch, path):

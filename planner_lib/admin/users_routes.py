@@ -40,7 +40,7 @@ def _get_current_email(request: Request) -> str:
 
 
 def _validate_permissions(value) -> list[str]:
-    if not isinstance(value, list) or any(item != AccountPermissions.ADMIN for item in value):
+    if not isinstance(value, list) or any(item not in AccountPermissions.ALL for item in value):
         raise HTTPException(
             status_code=400,
             detail={'error': 'invalid_payload', 'message': 'Unsupported permissions'},

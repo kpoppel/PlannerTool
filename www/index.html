@@ -5,8 +5,7 @@
       // Dynamically compute base URL for API requests to support reverse proxy sub-paths
       window.IS_VITE_DEV = window.location.port === '5173';
       window.APP_BASE_URL = window.location.pathname
-        .replace(/\/admin\/?$/, '')
-        .replace(/\/$/, '');
+        .replace(/\/(?:static\/)?(?:index\.html)?$/, '');
 
       // Import map is needed for production sub-path deployments but conflicts with Vite dev.
       if (!window.IS_VITE_DEV) {

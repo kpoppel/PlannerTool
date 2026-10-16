@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 import logging
 
 from planner_lib.middleware import require_admin_session
+from planner_lib.middleware.admin import has_admin_access, require_permission
+from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.services.resolver import resolve_service
 from planner_lib.middleware.session import (
     get_session_context_from_request, get_session_credentials_from_request,
@@ -28,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 @router.get('/admin/v1/projects')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_PROJECTS, AccountPermissions.MANAGE_ITERATIONS)
 async def admin_get_projects(request: Request):
     """Return projects configuration as JSON."""
     try:
@@ -40,7 +42,7 @@ async def admin_get_projects(request: Request):
 
 
 @router.post('/admin/v1/projects')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_PROJECTS)
 async def admin_save_projects(request: Request):
     """Save edited projects configuration; creates a timestamped backup first."""
     try:
@@ -176,7 +178,7 @@ def _validate_iteration_set_payload(content: object) -> dict:
     return {'iteration_sets': normalized_sets}
 
 @router.get('/admin/v1/iterations')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_ITERATIONS, AccountPermissions.MANAGE_PROJECTS)
 async def admin_get_iterations(request: Request):
     """Return the iterations configuration as JSON."""
     try:
@@ -189,7 +191,7 @@ async def admin_get_iterations(request: Request):
 
 
 @router.post('/admin/v1/iterations')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_ITERATIONS)
 async def admin_save_iterations(request: Request):
     """Save edited iterations configuration; creates a timestamped backup first."""
     try:
@@ -210,7 +212,7 @@ async def admin_save_iterations(request: Request):
 
 
 @router.delete('/admin/v1/iterations/{set_id}')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_ITERATIONS)
 async def admin_delete_iteration_set(request: Request, set_id: str):
     """Delete one iteration set by id, blocked when still referenced by projects."""
     try:
@@ -260,7 +262,7 @@ async def admin_delete_iteration_set(request: Request, set_id: str):
 
 
 @router.post('/admin/v1/iterations/{set_id}/unassociate-all')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_ITERATIONS)
 async def admin_unassociate_all_iterations(request: Request, set_id: str):
     """Clear all project associations to ``set_id`` by nulling ``iteration_uuid``."""
     try:
@@ -291,7 +293,7 @@ async def admin_unassociate_all_iterations(request: Request, set_id: str):
 
 
 @router.post('/admin/v1/iterations/browse')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_ITERATIONS)
 async def admin_browse_iterations(request: Request):
     """Browse iterations for a given Azure project.
 
@@ -461,9 +463,11 @@ async def admin_toggle_plan_enabled(request: Request):
 # ---------------------------------------------------------------------------
 
 @router.get('/admin/v1/schema/{config_type}')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_PROJECTS)
 async def admin_get_schema(request: Request, config_type: str):
     """Return JSON Schema for a configuration type.  Delegates to admin_schema module."""
+    if config_type != 'projects' and not has_admin_access(request):
+        raise HTTPException(403, detail='Administrator permission required')
     schema = admin_schema.get_schema(config_type)
     if schema is None:
         raise HTTPException(status_code=404, detail={'error': 'unknown_schema', 'message': f'No schema defined for {config_type}'})
@@ -660,6 +664,14 @@ async def admin_save_system(request: Request):
 # ---------------------------------------------------------------------------
 # Azure DevOps configuration (ado_config in diskcache)
 # ---------------------------------------------------------------------------
+
+@router.get('/admin/v1/browse-config')
+@require_permission(AccountPermissions.MANAGE_PROJECTS, AccountPermissions.MANAGE_ITERATIONS)
+async def admin_get_browse_config(request: Request):
+    service = resolve_service(request, 'admin_service')
+    config = service.get_config('ado_config', default={})
+    return {'content': {'organization_url': config.get('organization_url', '')}}
+
 
 @router.get('/admin/v1/ado')
 @require_admin_session

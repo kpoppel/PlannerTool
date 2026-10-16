@@ -11,6 +11,7 @@ from pathlib import Path
 import logging
 
 from planner_lib.middleware import require_admin_session
+from planner_lib.middleware.admin import has_admin_access, require_permission
 from planner_lib.services.resolver import resolve_service
 from planner_lib.middleware.session import SESSION_COOKIE
 from planner_lib.middleware.session import get_session_context_from_request
@@ -95,7 +96,7 @@ async def admin_root(request: Request):
         ctx = get_session_context_from_request(request)
         account_manager = resolve_service(request, 'account_manager')
         email = ctx.get('email')
-        if email and account_manager.has_permission(email, AccountPermissions.ADMIN):
+        if email and has_admin_access(request, *AccountPermissions.DELEGATED):
             return serve_file(index_path)
 
         # Valid session but not an admin — redirect to login with an error flag.
@@ -126,10 +127,14 @@ async def admin_login(request: Request):
 
 
 @router.get('/admin/check')
-@require_admin_session
+@require_permission(*AccountPermissions.DELEGATED)
 async def admin_check(request: Request):
     """Return 200 when the current session has admin access.
 
     Intended for client-side bootstrapping after session acquisition.
     """
-    return {'ok': True}
+    context = get_session_context_from_request(request)
+    accounts = resolve_service(request, 'account_manager')
+    permissions = [permission for permission in AccountPermissions.ALL
+                   if accounts.has_permission(context['email'], permission)]
+    return {'ok': True, 'permissions': permissions}

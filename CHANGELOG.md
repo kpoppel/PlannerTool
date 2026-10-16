@@ -15,6 +15,11 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Restore development admin access by proxying permission checks and resolving API/login roots independently of static asset URLs.
+- Replace the standalone Administration link with a chevron gear menu listing authorized admin screens and opening them directly.
+- Update authentication and browser bootstrap fixtures to canonical project/workforce contracts and target the system backup upload explicitly.
+- Share the planner top bar with administration, add permission-aware application switching, and expose configuration and administration through the settings gear.
+- Add independently delegated project, workforce team/staffing, workforce cost/supplier and iteration administration with permission-aware navigation and server-enforced write boundaries.
 - Serve complete shared task snapshots immediately while refreshing in the background, with cache freshness in the notification log and non-destructive menu refresh.
 - Assign persistent UUIDs to projects and migrate saved selections, plan mappings, and derived cache entries.
 - Replace name-derived project and team handles with unique IDs, keep ADO team allocation tokens separate, and reset wiki-backed events to the global local store.

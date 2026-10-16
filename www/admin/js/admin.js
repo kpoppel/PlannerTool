@@ -24,31 +24,31 @@ async function mountAdminApp() {
   // access-denied page (consistent UX). If the check succeeds, mount
   // the admin app.
   try {
-    const res = await fetch((window.APP_BASE_URL || '') + '/admin/check', {
+    const res = await fetch(`${window.APP_BASE_URL}/admin/check`, {
       method: 'GET',
       credentials: 'same-origin',
     });
     if (res.ok) {
-      mount();
+      const access = await res.json();
+      mount(access.permissions);
       return;
     }
     if (res.status === 401) {
       // Redirect to the login page; the server has already cleared the cookie.
-      window.location.href = (window.APP_BASE_URL || '') + '/admin/login?error=not_admin';
+      window.location.href = `${window.APP_BASE_URL}/admin/login?error=not_admin`;
       return;
     }
   } catch (err) {
-    // Network errors or unexpected responses: fall through and mount
-    // the app so it can attempt bootstrap client-side.
     console.warn('admin: check failed', err);
   }
 
-  mount();
+  window.location.href = `${window.APP_BASE_URL}/admin/login`;
 
-  function mount() {
+  function mount(permissions) {
     const root = document.getElementById('admin-root') || document.body;
     if (!document.querySelector('admin-app')) {
       const app = document.createElement('admin-app');
+      app.setPermissions(permissions);
       root.appendChild(app);
     }
   }

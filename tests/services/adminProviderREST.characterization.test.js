@@ -74,6 +74,7 @@ const SUCCESS_JSON_METHODS = [
   'getSystem',
   'saveSystem',
   'getAdo',
+  'getBrowseConfig',
   'saveAdo',
   'getEventsConfig',
   'saveEventsConfig',

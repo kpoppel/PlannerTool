@@ -34,4 +34,4 @@ def test_admin_access_requires_enrollment_and_admin_permission(client, tmp_path,
     authorized = client.get('/admin/')
     assert authorized.status_code == 200
     assert 'Admin Workspace' in authorized.text
-    assert client.get('/admin/check').json() == {'ok': True}
+    assert client.get('/admin/check').json() == {'ok': True, 'permissions': ['admin']}
