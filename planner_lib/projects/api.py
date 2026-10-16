@@ -44,10 +44,13 @@ async def api_tasks(request: Request, response: Response):
     task_repo = resolve_service(request, 'task_repository')
     credential, account_id = _get_credential(request)
     project_id = request.query_params.get('project')
+
+    def read_tasks():
+        tasks = task_repo.read(project_id=project_id or None, credential=credential)
+        return tasks, task_repo.snapshot_diagnostics()
+
     try:
-        tasks = await asyncio.to_thread(
-            task_repo.read, project_id=project_id or None, credential=credential
-        )
+        tasks, diagnostics = await asyncio.to_thread(read_tasks)
     except BackendAuthError:
         raise HTTPException(
             status_code=401,
@@ -69,16 +72,42 @@ async def api_tasks(request: Request, response: Response):
     try:
         backend = resolve_service(request, 'backend')
         if isinstance(backend, DiagnosticBackend):
-            diagnostics = backend.consume_diagnostics(user_id=account_id)
-            if diagnostics:
-                response.headers['X-Backend-Diagnostics'] = json.dumps([
-                    {key: entry[key] for key in ('code', 'severity', 'message')}
-                    for entry in diagnostics
-                ])
+            diagnostics.extend(backend.consume_diagnostics(user_id=account_id))
+        if diagnostics:
+            response.headers['X-Backend-Diagnostics'] = json.dumps([
+                {key: entry[key] for key in ('code', 'severity', 'message')}
+                for entry in diagnostics
+            ])
     except Exception as exc:
         # Warning propagation must never break task reads.
         logger.warning('Failed to deliver task diagnostics: %s', exc)
     return tasks
+
+
+@router.post('/tasks/refresh', status_code=202)
+@require_session
+async def api_tasks_refresh(request: Request, response: Response):
+    credential, _account_id = _get_credential(request)
+    repository = resolve_service(request, 'task_repository')
+    try:
+        result = await asyncio.to_thread(repository.request_refresh, credential)
+    except BackendAuthError:
+        raise HTTPException(status_code=401, detail={
+            'error': 'invalid_pat', 'message': 'A valid Personal Access Token is required to refresh tasks',
+        })
+    except BackendUnavailableError:
+        raise HTTPException(status_code=503, detail={
+            'error': 'backend_unavailable', 'message': 'Task refresh is currently unavailable',
+        })
+    messages = {
+        'queued': 'Task cache refresh queued in background. Reload later to load updated data.',
+        'already_running': 'Task cache refresh already running. Reload later to load updated data.',
+        'completed': 'Task cache refresh completed. Reload to load updated data.',
+    }
+    response.headers['X-Backend-Diagnostics'] = json.dumps([{
+        'code': 'task_refresh_requested', 'severity': 'info', 'message': messages[result['status']],
+    }])
+    return result
 
 
 @router.get('/markers')

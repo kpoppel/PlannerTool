@@ -366,6 +366,11 @@ def _build_app(
             yield
         finally:
             try:
+                from planner_lib.backend.port import TaskSnapshotBackend
+                import asyncio
+                backend = container._singletons.get('backend')
+                if isinstance(backend, TaskSnapshotBackend):
+                    await asyncio.to_thread(backend.close)
                 if 'remote_cache_storage' in container._singletons:
                     container._singletons['remote_cache_storage'].close()
             finally:

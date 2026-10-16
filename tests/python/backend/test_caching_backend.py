@@ -61,6 +61,157 @@ def test_second_fetch_served_from_cache(caching, inner):
     assert len(inner.fetch_tasks_calls) == 1
 
 
+def test_repository_serves_complete_snapshot_when_seed_payload_changes(inner, tmp_path):
+    from unittest.mock import MagicMock
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.repository.task_repository import TaskRepository
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
+
+    inner.is_remote = True
+    projects = MagicMock()
+    projects.get_project_map.return_value = [{'id': 'p', 'area_path': AREA}]
+    store = DiskCacheStorage(tmp_path / 'cache')
+    try:
+        backend = CachingBackend(inner, store)
+        repository = TaskRepository(backend, projects, MagicMock())
+        original = repository.read(credential=CRED)
+        inner.set_tasks(AREA, [dict(_TASK, title='Changed in ADO')])
+        plan_key = backend._make_key('fetch_plan_tasks', (), {
+            'plan': projects.get_project_map.return_value[0], 'credential': CRED,
+        })
+        store.save('backend_domain', plan_key, [dict(_TASK, title='Changed in ADO')])
+
+        assert repository.read(credential={'token': 'other', 'user_id': 'other'}) == original
+        assert len(inner.fetch_tasks_calls) == 1
+        restarted_backend = CachingBackend(inner, store)
+        restarted_repository = TaskRepository(restarted_backend, projects, MagicMock())
+        assert restarted_repository.read() == original
+        assert len(inner.fetch_tasks_calls) == 1
+        restarted_backend.close()
+    finally:
+        store.close()
+
+
+@pytest.fixture
+def snapshot_repository(inner, storage):
+    from unittest.mock import MagicMock
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.repository.task_repository import TaskRepository
+
+    inner.is_remote = True
+    projects = MagicMock()
+    projects.get_project_map.return_value = [{'id': 'p', 'area_path': AREA}]
+    backend = CachingBackend(inner, storage)
+    repository = TaskRepository(backend, projects, MagicMock())
+    yield repository, backend, projects
+    backend.close()
+
+
+def test_stale_snapshot_returns_without_waiting_and_refreshes_once(snapshot_repository, inner, storage):
+    from threading import Event
+    from unittest.mock import Mock
+    from planner_lib.backend.task_snapshot import META_KEY, NAMESPACE
+
+    repository, backend, projects = snapshot_repository
+    original = repository.read(credential=CRED)
+    metadata = storage.load(NAMESPACE, META_KEY)
+    storage.save(NAMESPACE, META_KEY, dict(metadata, fresh_until=0))
+    inner.set_tasks(AREA, [dict(_TASK, title='Latest')])
+    entered, release = Event(), Event()
+    original_context = inner.fetch_task_context
+
+    def blocked_context(seeds, credential):
+        entered.set()
+        assert release.wait(5)
+        return original_context(seeds, credential)
+
+    inner.fetch_task_context = Mock(side_effect=blocked_context)
+    try:
+        assert repository.read(credential=CRED) == original
+        assert entered.wait(5)
+        thread = backend._task_snapshot._thread
+        assert repository.read(credential=CRED) == original
+        assert repository.request_refresh(CRED) == {'status': 'already_running'}
+        assert 'updating in background' in repository.snapshot_diagnostics()[0]['message']
+        assert len(inner.fetch_tasks_calls) == 2
+    finally:
+        release.set()
+        backend.close()
+    assert not thread.is_alive()
+    assert repository.read()[0]['title'] == 'Latest'
+    assert storage.load(NAMESPACE, META_KEY)['completed_at'] >= metadata['completed_at']
+
+
+@pytest.mark.parametrize('change', ['write', 'invalidate', 'configuration'])
+def test_snapshot_refresh_cannot_commit_over_newer_changes(snapshot_repository, inner, storage, change):
+    from threading import Event
+    from planner_lib.backend.task_snapshot import NAMESPACE, SNAPSHOT_KEY
+
+    repository, backend, projects = snapshot_repository
+    original = repository.read(credential=CRED)
+    entered, release = Event(), Event()
+    original_context = inner.fetch_task_context
+
+    def blocked_context(seeds, credential):
+        result = original_context(seeds, credential)
+        entered.set()
+        assert release.wait(5)
+        return result
+
+    inner.fetch_task_context = blocked_context
+    try:
+        assert repository.request_refresh(CRED) == {'status': 'queued'}
+        assert entered.wait(5)
+        if change == 'write':
+            backend.write_task('1', {'start': '2026-10-17'}, CRED)
+        elif change == 'invalidate':
+            backend.invalidate_cache()
+        else:
+            projects.get_project_map.return_value = [{'id': 'different', 'area_path': AREA}]
+    finally:
+        release.set()
+        backend.close()
+    if change == 'write':
+        assert repository.read()[0]['start'] == '2026-10-17'
+    elif change == 'invalidate':
+        assert not storage.exists(NAMESPACE, SNAPSHOT_KEY)
+    else:
+        assert storage.load(NAMESPACE, SNAPSHOT_KEY) == original
+        assert repository.snapshot_diagnostics() == []
+
+
+def test_snapshot_refresh_failure_preserves_data_and_throttles_retries(snapshot_repository, inner, storage):
+    from unittest.mock import Mock
+    from planner_lib.backend.errors import BackendAuthError
+    from planner_lib.backend.task_snapshot import META_KEY, NAMESPACE
+
+    repository, backend, projects = snapshot_repository
+    original = repository.read(credential=CRED)
+    metadata = storage.load(NAMESPACE, META_KEY)
+    storage.save(NAMESPACE, META_KEY, dict(metadata, fresh_until=0))
+    inner.fetch_task_context = Mock(side_effect=BackendAuthError('private credential failure'))
+    repository.read(credential=CRED)
+    backend.close()
+
+    assert repository.read(credential=CRED) == original
+    inner.fetch_task_context.assert_called_once()
+    current = storage.load(NAMESPACE, META_KEY)
+    assert current['completed_at'] == metadata['completed_at']
+    assert current['error'] == 'BackendAuthError'
+    assert 'private credential failure' not in str(current)
+    assert 'user_id' not in current and 'token' not in current
+    assert repository.snapshot_diagnostics()[0]['severity'] == 'warning'
+
+
+def test_changed_configuration_can_commit_an_empty_complete_snapshot(snapshot_repository):
+    repository, backend, projects = snapshot_repository
+    assert repository.read(credential=CRED)
+    projects.get_project_map.return_value = []
+
+    assert repository.read(credential=CRED) == []
+    assert repository.read() == []
+
+
 @pytest.mark.parametrize('method', ['fetch_tasks', 'fetch_plan_tasks', 'fetch_task_context'])
 @pytest.mark.parametrize('field,value', [('start', '2026-03-05'), ('end', '2026-03-20')])
 def test_published_date_becomes_explicit_in_every_task_cache(caching, storage, method, field, value):

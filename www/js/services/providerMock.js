@@ -408,6 +408,11 @@ export class ProviderMock {
     this.config = { ...config, savedAt: new Date().toISOString() };
     return { ok: true, email: config.email };
   }
+  async refreshTasks() {
+    this.logCall('refreshTasks', arguments);
+    return { ok: true, data: { status: 'completed' } };
+  }
+
   async invalidateCache() {
     this.logCall('invalidateCache', arguments);
     // Simulate cache invalidation

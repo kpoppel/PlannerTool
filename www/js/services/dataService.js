@@ -134,6 +134,10 @@ class DataService {
   async deleteEventCategory(categoryId) {
     return this.providers['rest'].deleteEventCategory(categoryId);
   }
+  async refreshTasks() {
+    return this.providers['rest'].refreshTasks();
+  }
+
   async invalidateCache() {
     return this.providers['rest'].invalidateCache();
   }

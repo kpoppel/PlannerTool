@@ -151,6 +151,8 @@ class CachingBackend:
         self._warnings: List[Dict[str, Any]] = []
         self._refresh_lock = threading.Lock()
         self._refresh_inflight: set[str] = set()
+        from planner_lib.backend.task_snapshot import TaskSnapshot
+        self._task_snapshot = TaskSnapshot(storage, inner, lambda: self._ttl_config.ttl_for('fetch_tasks'))
         logger.info(
             "CachingBackend: initialised wrapping %s",
             type(inner).__name__,
@@ -159,6 +161,25 @@ class CachingBackend:
     # ------------------------------------------------------------------
     # Cache key helper
     # ------------------------------------------------------------------
+
+    def read_task_snapshot(self, build, identity, guard, credential):
+        if not self._inner_is_remote:
+            return build(self, credential)
+        return self._task_snapshot.read(build, identity, guard, credential)
+
+    def refresh_task_snapshot(self, build, identity, guard, credential):
+        if not self._inner_is_remote:
+            build(self._inner, credential)
+            return {'status': 'completed'}
+        return self._task_snapshot.refresh(build, identity, guard, credential)
+
+    def task_snapshot_diagnostics(self, identity, guard):
+        if not self._inner_is_remote:
+            return []
+        return self._task_snapshot.diagnostics(identity, guard)
+
+    def close(self):
+        self._task_snapshot.close()
 
     def _digest(self, method: str, args: tuple, kwargs: dict) -> str:
         filtered = {k: v for k, v in kwargs.items() if k != 'credential'}
@@ -463,7 +484,9 @@ class CachingBackend:
         """
         result = self._inner.write_task(task_id, updates, credential)
         if result.get('ok') or result.get('updated', 0) > 0:
-            self._patch_task_in_cache(task_id, updates)
+            with self._storage.transaction():
+                self._task_snapshot.changed()
+                self._patch_task_in_cache(task_id, updates)
         return result
 
     def _patch_task_in_cache(self, task_id: int | str, updates: Dict[str, Any]) -> None:
@@ -531,6 +554,11 @@ class CachingBackend:
 
     def invalidate_cache(self) -> Dict[str, Any]:
         """Delete every cache entry in the backend_domain namespace."""
+        with self._storage.transaction():
+            self._task_snapshot.changed()
+            return self._invalidate_cache_entries()
+
+    def _invalidate_cache_entries(self) -> Dict[str, Any]:
         invalidated: List[str] = []
         errors: List[str] = []
         try:
@@ -551,6 +579,7 @@ class CachingBackend:
 
     def reload(self) -> None:
         """Reload the wrapped backend in place and refresh wrapper state."""
+        self._task_snapshot.changed()
         if hasattr(self._inner, 'reload'):
             self._inner.reload()
         self._inner_is_remote = bool(getattr(self._inner, 'is_remote', False))

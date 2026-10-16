@@ -29,6 +29,7 @@ const {
   mockSaveScenario,
   mockBaselineFeatures,
   mockInvalidateAndRefreshBaseline,
+  mockRequestBaselineRefresh,
 } = vi.hoisted(() => ({
   mockPendingGroupChanges: vi.fn(() => []),
   mockPromoteGroupToBaseline: vi.fn(),
@@ -40,6 +41,7 @@ const {
   mockSaveScenario: vi.fn().mockResolvedValue({ ok: true }),
   mockBaselineFeatures: vi.fn(() => []),
   mockInvalidateAndRefreshBaseline: vi.fn(async () => {}),
+  mockRequestBaselineRefresh: vi.fn(async () => ({ ok: true, data: { status: 'queued' } })),
 }));
 
 vi.mock('../../www/js/services/dataService.js', () => ({
@@ -84,6 +86,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
       saveScenario: mockSaveScenario,
       refreshBaseline: mockRefreshBaseline,
       invalidateAndRefreshBaseline: mockInvalidateAndRefreshBaseline,
+      requestBaselineRefresh: mockRequestBaselineRefresh,
     },
     group: {
       promoteGroupToBaseline: mockPromoteGroupToBaseline,
@@ -164,6 +167,16 @@ describe('ScenarioMenu._onPublishScenario', () => {
     mockRefreshBaseline.mockResolvedValue(undefined);
     mockBaselineFeatures.mockReturnValue([]);
     mockInvalidateAndRefreshBaseline.mockImplementation(async () => {});
+  });
+
+  it('menu refresh queues background work without publication invalidation or hydration', async () => {
+    const menu = makeMenu();
+    const event = makeEvent();
+    await menu._onRefreshBaseline(event, { id: 'baseline' });
+    expect(event.stopPropagation).toHaveBeenCalled();
+    expect(mockRequestBaselineRefresh).toHaveBeenCalledOnce();
+    expect(mockInvalidateAndRefreshBaseline).not.toHaveBeenCalled();
+    expect(mockRefreshBaseline).not.toHaveBeenCalled();
   });
 
   it('opens the summary for acceptance-only scenarios without publishing them implicitly', async () => {

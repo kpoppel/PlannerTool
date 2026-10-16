@@ -32,6 +32,13 @@ def _make_task_repository():
                 return [{'id': 't-p-' + str(project_id)}]
             return [{'id': 't-all-1'}, {'id': 't-all-2'}]
 
+        def snapshot_diagnostics(self):
+            return []
+
+        def request_refresh(self, credential):
+            self.last_refresh_credential = credential
+            return {'status': 'queued'}
+
         def write(self, updates, user_id=None):
             self.last_write_args = dict(updates=updates, user_id=user_id)
             if not updates:
@@ -213,6 +220,43 @@ def test_tasks_returns_warning_headers_when_stale_fallback_used(authenticated_cl
     assert diagnostic['code'] == 'tasks_stale_invalid_pat'
     assert 'PAT is invalid or expired' in diagnostic['message']
     assert 'user_id' not in diagnostic
+
+
+def test_tasks_reports_shared_snapshot_freshness(authenticated_client):
+    import json
+    repository = _make_task_repository()
+    repository.snapshot_diagnostics = lambda: [{
+        'code': 'task_cache_freshness', 'severity': 'info',
+        'message': 'Task cache updated 60s ago: updating in background.',
+    }]
+    register_service_on_client(authenticated_client, 'task_repository', repository)
+    register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
+    register_service_on_client(authenticated_client, 'backend', _make_backend_with_warning())
+
+    response = authenticated_client.get('/api/tasks')
+
+    assert response.status_code == 200
+    diagnostics = json.loads(response.headers['X-Backend-Diagnostics'])
+    assert {item['code'] for item in diagnostics} == {'task_cache_freshness', 'tasks_stale_invalid_pat'}
+    assert all(set(item) == {'code', 'severity', 'message'} for item in diagnostics)
+
+
+def test_task_refresh_queues_work_without_reading_or_invalidating(authenticated_client):
+    import json
+    repository = _make_task_repository()
+    register_service_on_client(authenticated_client, 'task_repository', repository)
+    register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
+
+    response = authenticated_client.post('/api/tasks/refresh')
+
+    assert response.status_code == 202
+    assert response.json() == {'status': 'queued'}
+    assert repository.last_read_args is None
+    assert repository.last_refresh_credential == {'token': 'token', 'user_id': 'test-account-id'}
+    diagnostic, = json.loads(response.headers['X-Backend-Diagnostics'])
+    assert diagnostic['code'] == 'task_refresh_requested'
+    assert 'reload' in diagnostic['message'].lower()
+    assert 'token' not in str(response.headers)
 
 
 def test_tasks_returns_every_diagnostic_without_private_metadata(authenticated_client):

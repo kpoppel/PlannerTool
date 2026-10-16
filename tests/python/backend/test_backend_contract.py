@@ -80,38 +80,15 @@ def _make_static_backend_json(tasks, tmp_path):
 
 
 def _make_caching_backend(tasks, tmp_path):
-    """CachingBackend wrapping a FakeBackend (disk storage is an in-memory stub)."""
+    """CachingBackend wrapping a FakeBackend with transactional memory storage."""
     from tests.fakes.fake_backend import FakeBackend
     from planner_lib.backend.caching import CachingBackend
+    from planner_lib.storage.memory_backend import MemoryStorage
 
     inner = FakeBackend()
     inner.set_tasks(AREA, tasks)
 
-    class _MemStorage:
-        """Minimal in-memory storage stub for CachingBackend's disk cache."""
-        def __init__(self):
-            self._store = {}
-            self._index = {}
-
-        def load(self, ns, key):
-            try:
-                return self._store[ns][key]
-            except KeyError:
-                raise KeyError(key)
-
-        def save(self, ns, key, val, ttl_seconds=None):
-            self._store.setdefault(ns, {})[key] = val
-
-        def exists(self, ns, key):
-            return ns in self._store and key in self._store[ns]
-
-        def delete(self, ns, key):
-            self._store.get(ns, {}).pop(key, None)
-
-        def list_keys(self, ns):
-            return list(self._store.get(ns, {}).keys())
-
-    return CachingBackend(inner=inner, storage=_MemStorage())
+    return CachingBackend(inner=inner, storage=MemoryStorage())
 
 
 # ---------------------------------------------------------------------------

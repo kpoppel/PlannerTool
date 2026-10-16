@@ -53,6 +53,15 @@ credentials. Each server worker reuses only the Fernet cryptographic setup for
 the configured encryption secret, replacing it if that secret changes. This does
 not re-encrypt existing PATs when rotating the secret.
 
+With remote task caching enabled, all registered users are assumed authorized
+for every configured project and share one complete task snapshot. A stale task
+read or explicit task refresh may start a background job using that request's
+credential. The credential exists only for the job lifetime; neither the PAT
+nor the initiating account is persisted with the snapshot or refresh status.
+There is no unattended scheduler or retained last-active-user credential.
+Later requests resolve current credentials again. Application shutdown drains
+active task refresh work before closing storage.
+
 Before renewing cookies, middleware checks persisted session and device validity
 again without decrypting the PAT or refreshing idle expiry. Revocation during a
 handler therefore prevents cookie renewal.

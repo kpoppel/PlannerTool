@@ -15,6 +15,7 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Serve complete shared task snapshots immediately while refreshing in the background, with cache freshness in the notification log and non-destructive menu refresh.
 - Assign persistent UUIDs to projects and migrate saved selections, plan mappings, and derived cache entries.
 - Replace name-derived project and team handles with unique IDs, keep ADO team allocation tokens separate, and reset wiki-backed events to the global local store.
 - Harmonise migrated team IDs with the opaque workforce ID format and remap saved team references and project allocation overrides.

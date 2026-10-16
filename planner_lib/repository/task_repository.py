@@ -23,10 +23,13 @@ in PlanRepository and IterationRepository respectively.
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
+from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.errors import BackendAuthError
-from planner_lib.backend.port import TaskBackend, BackendCredential
+from planner_lib.backend.port import TaskBackend, TaskSnapshotBackend, BackendCredential
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.domain.allocation_availability import project_allocation_availability, validate_allocation_change
@@ -96,11 +99,13 @@ class TaskRepository:
     def _fetch_seeds(
         self,
         credential: Optional[BackendCredential],
+        backend=None,
     ) -> List[BackendTask]:
         """Require every configured source and ignore opaque metadata when merging seeds."""
         items: dict[str, BackendTask] = {}
+        source = self._backend if backend is None else backend
         for project in self._project_service.get_project_map():
-            for task in self._backend.fetch_plan_tasks(plan=project, credential=credential):
+            for task in source.fetch_plan_tasks(plan=project, credential=credential):
                 identity = str(task['id'])
                 previous = items.get(identity)
                 sources = set(task.get('sourcePlanIds', [])) | {project['id']}
@@ -123,8 +128,38 @@ class TaskRepository:
         credential: Optional[BackendCredential] = None,
     ) -> List[BackendTask]:
         """Normalize one combined forest before projecting it to consumers."""
-        seeds = self._fetch_seeds(credential)
-        return self._backend.fetch_task_context(seeds, credential=credential)
+        if isinstance(self._backend, TaskSnapshotBackend):
+            return self._backend.read_task_snapshot(
+                self._build_context, self._snapshot_identity, self._snapshot_guard, credential,
+            )
+        return self._build_context(self._backend, credential)
+
+    def _build_context(self, backend, credential):
+        seeds = self._fetch_seeds(credential, backend=backend)
+        return backend.fetch_task_context(seeds, credential=credential)
+
+    def _snapshot_identity(self):
+        return hashlib.sha256(json.dumps(
+            self._project_service.get_project_map(), sort_keys=True,
+        ).encode()).hexdigest()
+
+    def _snapshot_guard(self):
+        return nullcontext()
+
+    def request_refresh(self, credential):
+        if credential is None:
+            raise BackendAuthError('A valid credential is required to refresh tasks')
+        if isinstance(self._backend, TaskSnapshotBackend):
+            return self._backend.refresh_task_snapshot(
+                self._build_context, self._snapshot_identity, self._snapshot_guard, credential,
+            )
+        self._build_context(self._backend, credential)
+        return {'status': 'completed'}
+
+    def snapshot_diagnostics(self):
+        if isinstance(self._backend, TaskSnapshotBackend):
+            return self._backend.task_snapshot_diagnostics(self._snapshot_identity, self._snapshot_guard)
+        return []
 
     @staticmethod
     def _project_tasks(tasks: List[BackendTask]) -> List[DomainTask]:
@@ -210,6 +245,17 @@ class WorkforceTaskRepository(TaskRepository):
         super().__init__(backend, project_repository, credential_provider)
         self._storage = storage
         self._task_storage = task_storage
+
+    def _snapshot_identity(self):
+        keys = {'projects', 'teams', 'global_settings', 'ado_config', 'iterations', 'area_plan_map'}
+        configuration = {
+            key: self._storage.load('config', key)
+            for key in self._storage.list_keys('config') if key in keys
+        }
+        return hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()
+
+    def _snapshot_guard(self):
+        return self._storage.transaction()
 
     def write(self, updates: List[dict], user_id: str) -> Dict[str, Any]:
         """Validate the entire authored batch before issuing the first external mutation."""

@@ -69,6 +69,69 @@ test.beforeEach(async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('task cache freshness is logged and background refresh preserves the working board', async ({ page }, testInfo) => {
+  let refreshed = false;
+  let taskReads = 0;
+  const refreshes = [];
+  await page.route('**/api/tasks', (route) => {
+    taskReads += 1;
+    return route.fulfill({ json: [{ id: 'delivery', title: refreshed ? 'Updated delivery' : 'Cached delivery',
+      type: 'Feature', state: 'Active', project: 'delivery', relations: [], capacity: [] }],
+    headers: { 'X-Backend-Diagnostics': JSON.stringify([{
+      code: 'task_cache_freshness', severity: 'info',
+      message: refreshed ? 'Task cache updated just now: fresh.' : 'Task cache updated 12 minutes ago: fresh.',
+    }]) } });
+  });
+  await page.route('**/api/tasks/refresh', (route) => {
+    refreshes.push(route.request().method());
+    refreshed = true;
+    return route.fulfill({ status: 202, json: { status: 'queued' }, headers: {
+      'X-Backend-Diagnostics': JSON.stringify([{
+        code: 'task_refresh_requested', severity: 'info',
+        message: 'Task cache refresh queued in background. Reload later to load updated data.',
+      }]),
+    } });
+  });
+  await editDates(page, 'cache-refresh-draft');
+  await page.evaluate(async () => {
+    const { dataService } = await import('/js/services/dataService.js');
+    const { store } = await import('/js/application/store.js');
+    const result = await dataService.getFeatures();
+    if (!result.ok) throw new Error(result.error.message);
+    window.cacheRefreshBefore = JSON.stringify({ baseline: store.getState().baseline,
+      scenarios: store.getState().scenarios, selection: store.getState().selection });
+    await import('/js/components/ScenarioMenu.lit.js');
+    const menu = document.createElement('scenario-menu');
+    menu.style.cssText = 'position:fixed;top:100px;left:360px;z-index:3000';
+    document.body.appendChild(menu);
+    await menu.updateComplete;
+  });
+  await page.locator('scenario-menu [title="Refresh baseline data"]').click();
+  expect(refreshes).toEqual(['POST']);
+  expect(taskReads).toBe(1);
+  expect(await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    return JSON.stringify({ baseline: store.getState().baseline,
+      scenarios: store.getState().scenarios, selection: store.getState().selection }) === window.cacheRefreshBefore;
+  })).toBe(true);
+  await page.locator('scenario-menu').evaluate((menu) => menu.remove());
+  await page.locator('#notificationsBtn').click();
+  const log = page.getByRole('dialog', { name: 'Notification log' });
+  await expect(log).toContainText('Task cache updated 12 minutes ago');
+  await expect(log).toContainText('refresh queued in background');
+  await testInfo.attach('cache-freshness-notifications', {
+    body: await page.screenshot({ path: testInfo.outputPath('cache-freshness.png') }), contentType: 'image/png',
+  });
+  await page.reload();
+  const result = await page.evaluate(async () => {
+    const { dataService } = await import('/js/services/dataService.js');
+    return dataService.getFeatures();
+  });
+  expect(result.ok).toBe(true);
+  expect(result.data[0].title).toBe('Updated delivery');
+  expect(taskReads).toBe(2);
+});
+
 async function editDates(page, scenarioId = 'baseline') {
   await page.evaluate(async (id) => {
     const { store } = await import('/js/application/store.js');

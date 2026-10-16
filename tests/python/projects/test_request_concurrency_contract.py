@@ -29,7 +29,7 @@ def test_task_reads_overlap_and_all_return_the_requested_data(enrolled_client):
         return [task]
 
     enrolled_client.app.state.container.register_singleton(
-        'task_repository', SimpleNamespace(read=read_tasks),
+        'task_repository', SimpleNamespace(read=read_tasks, snapshot_diagnostics=lambda: []),
     )
 
     async def run_requests():

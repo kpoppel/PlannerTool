@@ -525,6 +525,10 @@ export class ProviderREST extends RestProviderBase {
     return ok(result.data || { tasks: [] });
   }
 
+  async refreshTasks() {
+    return this._requestJson('/api/tasks/refresh', { method: 'POST' });
+  }
+
   async invalidateCache() {
     const result = await this._requestJson('/api/cache/invalidate', {
       method: 'POST',

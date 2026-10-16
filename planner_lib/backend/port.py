@@ -128,6 +128,19 @@ class DiagnosticBackend(Protocol):
 # ---------------------------------------------------------------------------
 
 @runtime_checkable
+class TaskSnapshotBackend(Protocol):
+    """Optional complete-forest caching boundary for a task backend."""
+
+    def read_task_snapshot(self, build, identity, guard, credential): ...
+
+    def refresh_task_snapshot(self, build, identity, guard, credential): ...
+
+    def task_snapshot_diagnostics(self, identity, guard): ...
+
+    def close(self): ...
+
+
+@runtime_checkable
 class TaskBackend(Protocol):
     """Backend that can read and write work items (tasks)."""
 

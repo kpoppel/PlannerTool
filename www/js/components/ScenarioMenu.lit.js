@@ -267,10 +267,9 @@ export class ScenarioMenuLit extends LitElement {
   async _onRefreshBaseline(e, scenario) {
     e.stopPropagation();
     try {
-      // User explicitly requested a refresh — invalidate the server cache first
-      // so stale data is not served, then reload.
-      await cmd.scenario.invalidateAndRefreshBaseline();
-      console.log('[ScenarioMenu] Refreshed baseline');
+      const result = await cmd.scenario.requestBaselineRefresh();
+      if (!result.ok) throw new Error(result.error.message);
+      console.log('[ScenarioMenu] Requested background baseline refresh');
     } catch (err) {
       console.error('[ScenarioMenu] Failed to refresh baseline:', err);
     }

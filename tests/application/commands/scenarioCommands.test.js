@@ -294,6 +294,22 @@ describe('application/commands/scenarioCommands', () => {
     expect(result).toEqual({ ok: true, data: { revision: 2 } });
   });
 
+  it('requestBaselineRefresh queues work without hydrating or changing drafts', async () => {
+    const hydrateBaseline = vi.fn();
+    const invalidateCache = vi.fn();
+    const refreshTasks = vi.fn().mockResolvedValue({ ok: true, data: { status: 'queued' } });
+    const commands = createScenarioCommands(store, { emit: vi.fn() }, {
+      hydrateBaseline, invalidateCache, refreshTasks,
+    });
+    const original = store.getState();
+
+    expect(await commands.requestBaselineRefresh()).toEqual({ ok: true, data: { status: 'queued' } });
+    expect(refreshTasks).toHaveBeenCalledTimes(1);
+    expect(hydrateBaseline).not.toHaveBeenCalled();
+    expect(invalidateCache).not.toHaveBeenCalled();
+    expect(store.getState()).toBe(original);
+  });
+
   it('renameScenario enforces unique names and does not mark the scenario as changed', () => {
     const bus = { emit: vi.fn() };
     const commands = createScenarioCommands(store, bus, {

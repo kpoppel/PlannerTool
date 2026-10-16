@@ -282,6 +282,43 @@ flag wins. `AzureDevOpsBackend` is the default when no mock/static flag is set.
 
 ### Cache Read Path
 
+For task repository reads with live remote caching enabled, `TaskSnapshotBackend`
+provides one stable complete forest rather than independently cached seeds and
+context. `TaskSnapshot` persists the list at
+`backend_domain::fetch_task_context__complete` with companion metadata containing
+a configuration fingerprint, generation, completion/freshness timestamps, and
+the last refresh outcome. All registered users share the configured project
+scope; no credential or initiating identity is stored in snapshot metadata.
+
+Compatible snapshots are returned immediately, including when stale. A stale
+authenticated read starts at most one background job in the application worker.
+That job fetches live seeds for all plans, merges them using repository rules,
+expands their context once, then atomically commits the complete list and
+metadata. It bypasses independent seed/context cache reads. Freshness uses the
+existing task TTL, measured from successful completion. Failed or empty refreshes
+retain a populated snapshot; automatic retries have a 60-second cooldown.
+Missing or incompatible snapshots require a synchronous first complete fetch
+and preserve existing authentication/configuration/availability errors.
+
+Configuration fingerprints include project, team, ADO, global normalization,
+iteration and area-plan settings. A configuration guard and task-cache mutation
+epoch prevent refreshes from publishing over changed configuration, hard
+invalidation, or successful writes. Configuration storage is locked before task
+storage, matching workforce publication. Old fragmented task entries are retired
+when the complete snapshot commits; retained workforce evidence and write-through
+patching continue to use list-shaped task caches. The current deployment uses
+one application worker; refresh single-flight is not cross-host coordination.
+
+`POST /api/tasks/refresh` requests background work without invalidating the
+serving snapshot. The existing menu refresh uses it and leaves board data,
+scenario drafts and selection untouched. A later browser reload reads the new
+snapshot. `X-Backend-Diagnostics` reports snapshot age, updating state, failures,
+and refresh acceptance through the existing notification log. There is no polling,
+push notification or automatic baseline replacement. Publication's reviewed-source
+checks retain their explicit hard-invalidation and hydration path.
+
+Other remote operations retain the generic per-method cache path:
+
 ```text
 CachingBackend.fetch_*
         |
@@ -342,8 +379,9 @@ outage-safe refresh.
   cached task lists.
 - Admin changes can trigger `ReloadOrchestrator` to rebuild the Azure service,
   update the active provider, and invalidate remote cache data.
-- Explicit cache refresh/invalidation removes remote-cache entries; it must not
-  touch authoritative storage.
+- Explicit hard cache invalidation removes remote-cache entries; it must not
+  touch authoritative storage. Task-menu background refresh does not delete
+  the serving complete snapshot.
 
 ## 4. Architectural Decisions & Trade-offs
 

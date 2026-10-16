@@ -142,6 +142,7 @@ stateStoreCommands.scenario = createScenarioCommands(store, bus, {
   hydrateBaseline: () => stateStoreCommands.data.hydrateBaseline(),
   recomputeCapacity: () => stateStoreCommands.data.recomputeCapacity(),
   invalidateCache: () => dataService.invalidateCache(),
+  refreshTasks: () => dataService.refreshTasks(),
 });
 bus.on(SessionEvents.CHANGED, () => stateStoreCommands.data.clearAllocationStaffing());
 const stateStoreSelectors = {

@@ -90,7 +90,7 @@ function withScenarioChangedIds(state, scenarioId, changed) {
 /**
  * @param {StoreApi} store
  * @param {EventBusLike} bus
- * @param {{ hydrateBaseline?: Function, recomputeCapacity?: Function, invalidateCache?: Function }} [deps]
+ * @param {{ hydrateBaseline?: Function, recomputeCapacity?: Function, invalidateCache?: Function, refreshTasks?: Function }} [deps]
  * @returns {object}
  */
 export function createScenarioCommands(store, bus, deps = {}) {
@@ -336,6 +336,10 @@ export function createScenarioCommands(store, bus, deps = {}) {
     async refreshBaseline() {
       requireHydrateBaseline();
       return hydrateBaseline();
+    },
+
+    async requestBaselineRefresh() {
+      return /** @type {Function} */ (deps.refreshTasks)();
     },
 
     async invalidateAndRefreshBaseline() {
