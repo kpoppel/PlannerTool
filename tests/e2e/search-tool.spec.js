@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('In-app SearchTool', () => {
-  test('opens with Ctrl+Shift+F, searches and selects a feature', async ({ page }) => {
+  test('opens with f, preserves typing, searches and selects a feature', async ({ page }) => {
     await page.goto('/');
 
     // Wait for app ready
@@ -23,45 +23,19 @@ test.describe('In-app SearchTool', () => {
       }
     });
 
-    // Press Ctrl+Shift+F to open search
+    // Press f to open search from the board.
     await page.locator('body').click({ position: { x: 20, y: 20 } });
-    await page.keyboard.press('Control+Shift+F');
+    await page.keyboard.press('f');
 
     const searchHosts = page.locator('search-tool');
-    let hostCount = await searchHosts.count();
-
-    // Give the shortcut path a chance before sending a synthetic fallback event.
-    if (hostCount === 0) {
-      try {
-        await page.waitForFunction(
-          () => document.querySelectorAll('search-tool').length > 0,
-          { timeout: 1200 }
-        );
-      } catch {
-        // No-op: fallback path below handles this.
-      }
-      hostCount = await searchHosts.count();
-    }
-
-    if (hostCount === 0) {
-      // Fallback: dispatch the same keydown combo to the document handler.
-      await page.evaluate(() => {
-        const evt = new KeyboardEvent('keydown', {
-          key: 'F',
-          ctrlKey: true,
-          shiftKey: true,
-          bubbles: true,
-          cancelable: true,
-        });
-        document.dispatchEvent(evt);
-      });
-    }
-
     await expect(searchHosts.first()).toBeVisible({ timeout: 8000 });
 
     // Search input should appear
     const searchInput = searchHosts.last().locator('.search-input').first();
     await expect(searchInput).toBeVisible();
+    await searchInput.fill('');
+    await searchInput.pressSequentially('fcsgtvh');
+    await expect(searchInput).toHaveValue('fcsgtvh');
 
     // Put the board far from the expected target so activation must re-center.
     const beforeScrollLeft = await page.evaluate(() => {

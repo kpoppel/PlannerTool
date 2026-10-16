@@ -86,10 +86,10 @@ describe('ViewMenu display controls', () => {
 
     const headings = [...menu.shadowRoot.querySelectorAll('.display-title')];
     expect(headings.map((heading) => heading.textContent.trim())).to.deep.equal([
-      'Timeline Scale Ctrl+Shift+1',
-      'Cards Ctrl+Shift+C',
-      'Task Sort Ctrl+Shift+S',
-      'Graph Type Ctrl+Shift+G',
+      'Timeline Scale T',
+      'Cards C',
+      'Task Sort S',
+      'Graph Type G',
       'Saved Views',
     ]);
     for (const heading of headings.slice(0, 4)) {

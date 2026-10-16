@@ -161,8 +161,10 @@ export class ViewMenuLit extends LitElement {
       border-radius: 4px;
       color: var(--color-sidebar-text);
       font: inherit;
-      line-height: 16px;
-      padding: 0 5px;
+      font-size: 0.8em;
+      line-height: 1.1;
+      padding: 0 4px;
+      letter-spacing: 0;
       text-transform: none;
       white-space: nowrap;
     }
@@ -211,13 +213,13 @@ export class ViewMenuLit extends LitElement {
 
     // Listen to view changes for real-time updates
     this._onViewsList = (payload) => {
-      this.views = payload?.views ? [...payload.views] : [];
-      this.activeViewId = payload?.activeId || null;
+      this.views = [...payload.views];
+      this.activeViewId = payload.activeId;
       this.requestUpdate();
     };
 
     this._onViewActivated = (payload) => {
-      this.activeViewId = payload?.id || null;
+      this.activeViewId = payload.id;
       this.requestUpdate();
     };
     this._onDisplayChanged = () => this.requestUpdate();
@@ -313,34 +315,34 @@ export class ViewMenuLit extends LitElement {
   _setGraphType(type) { cmd.view.setCapacityViewMode(type); }
 
   render() {
-    const sorted = [...(this.views || [])].sort((a, b) => {
+    const sorted = [...this.views].sort((a, b) => {
       if (a.readonly && !b.readonly) return -1;
       if (!a.readonly && b.readonly) return 1;
-      return (a.name || '').localeCompare(b.name || '');
+      return a.name.localeCompare(b.name);
     });
 
     return html`
       <div class="menu-popover">
         <div class="display-section">
-          <div class="display-title" role="heading" aria-level="2">Timeline Scale <kbd class="shortcut-pill">Ctrl+Shift+1</kbd></div>
+          <div class="display-title" role="heading" aria-level="2">Timeline Scale <kbd class="shortcut-pill">T</kbd></div>
           <div class="segment-group">
             ${[['threeMonths', '3mo'], ['weeks', 'Weeks'], ['months', 'Months'], ['quarters', 'Quarters'], ['years', 'Years']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getTimelineScale() === value ? 'active' : ''}" @click=${() => this._setTimelineScale(value)}>${label}</button>`)}
           </div>
         </div>
         <div class="display-section">
-          <div class="display-title" role="heading" aria-level="2">Cards <kbd class="shortcut-pill">Ctrl+Shift+C</kbd></div>
+          <div class="display-title" role="heading" aria-level="2">Cards <kbd class="shortcut-pill">C</kbd></div>
           <div class="segment-group">
             ${[['normal', 'Normal'], ['compact', 'Compact'], ['packed', 'Packed']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getDisplayMode() === value ? 'active' : ''}" @click=${() => this._setDisplayMode(value)}>${label}</button>`)}
           </div>
         </div>
         <div class="display-section">
-          <div class="display-title" role="heading" aria-level="2">Task Sort <kbd class="shortcut-pill">Ctrl+Shift+S</kbd></div>
+          <div class="display-title" role="heading" aria-level="2">Task Sort <kbd class="shortcut-pill">S</kbd></div>
           <div class="segment-group">
             ${[['rank', 'Rank'], ['date', 'Date']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getFeatureSortMode() === value && !sel.view.getPackedMode() ? 'active' : ''}" ?disabled=${sel.view.getPackedMode()} @click=${() => this._setFeatureSortMode(value)}>${label}</button>`)}
           </div>
         </div>
         <div class="display-section">
-          <div class="display-title" role="heading" aria-level="2">Graph Type <kbd class="shortcut-pill">Ctrl+Shift+G</kbd></div>
+          <div class="display-title" role="heading" aria-level="2">Graph Type <kbd class="shortcut-pill">G</kbd></div>
           <div class="segment-group">
             ${sel.view.getAvailableGraphTypes().map((type) => html`
               <button class="segment-btn ${sel.view.getEffectiveCapacityViewMode() === type ? 'active' : ''}"

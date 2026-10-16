@@ -76,16 +76,16 @@ This is a short paragraph introducing the page. Leave blank lines between paragr
 ```
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl+Shift+F` | Open search |
-| `Ctrl+Shift+T` | Cycle timeline scale |
+| `f` | Open search |
+| `t` | Cycle timeline scale |
 ```
 
 Renders as:
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl+Shift+F` | Open search |
-| `Ctrl+Shift+T` | Cycle timeline scale |
+| `f` | Open search |
+| `t` | Cycle timeline scale |
 
 The header separator row (the `| --- | --- |` line) is required — it is what tells the renderer the preceding row is a table header. Cell text supports the same inline formatting as elsewhere (links, `inline code`, **bold**, *italic*).
 

@@ -241,9 +241,14 @@ export const SIDEBAR_STYLES = css`
       display: grid;
       grid-column: 1 / -1;
       grid-template-columns: subgrid;
+      align-items: center;
       color: var(--color-sidebar-text);
       opacity: 0.9;
       min-height: 22px;
+    }
+    .team-drilldown-header .list-toggle {
+      grid-column: 1 / span 2;
+      gap: 4px;
     }
     .team-drilldown-header .type-icon,
     .team-drilldown-row .chip-badge {
@@ -303,7 +308,7 @@ export const SIDEBAR_STYLES = css`
     .team-drilldown-row .team-name-col > span:first-child {
       width: 100%;
     }
-    .team-drilldown-grid:has(.team-drilldown-header) .team-name-col > span:first-child {
+    .team-drilldown-grid:has(.team-drilldown-header .type-icon) .team-name-col > span:first-child {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -598,8 +603,31 @@ export const SIDEBAR_STYLES = css`
       margin-top: 12px;
     }
 
+    .shortcut-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .shortcut-hints { display: inline-flex; gap: 4px; flex-shrink: 0; }
+    .shortcut-pill {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      color: var(--color-sidebar-text);
+      font: inherit;
+      font-size: 0.8em;
+      font-weight: 600;
+      line-height: 1.1;
+      padding: 0 4px;
+      letter-spacing: 0;
+      text-transform: none;
+      white-space: nowrap;
+    }
+
     .hierarchy-fold-group { margin-top: 12px; }
-    .hierarchy-fold-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .hierarchy-fold-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.85rem; }
+    .hierarchy-fold-heading .group-label { margin-bottom: 0; }
     .hierarchy-fold-status { font-size: 11px; opacity: 0.7; text-align: right; }
     .hierarchy-fold-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 5px; }
     .hierarchy-fold-actions .segment-btn {
@@ -675,7 +703,7 @@ export const SIDEBAR_STYLES = css`
     .list-toggle {
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
     }
     .list-toggle-btn {
       display: inline-flex;
@@ -690,7 +718,7 @@ export const SIDEBAR_STYLES = css`
       font-size: 0.72rem;
       font-weight: 400;
       cursor: pointer;
-      margin-left: 3px;
+      margin-left: 0;
       transition: background 120ms ease, border-color 120ms ease;
     }
     .list-toggle-btn:hover {

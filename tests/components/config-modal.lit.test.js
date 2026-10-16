@@ -18,6 +18,30 @@ describe('config-modal', () => {
     vi.restoreAllMocks();
   });
 
+  it('defaults letter shortcuts on and persists the checkbox with configuration', async () => {
+    await modal.updateComplete;
+    await modal._populate();
+    const checkbox = modal._qs('#letterShortcuts');
+    expect(checkbox.checked).to.equal(true);
+    const setPref = vi.spyOn(dataService, 'setLocalPref').mockResolvedValue(undefined);
+    vi.spyOn(dataService, 'saveConfig').mockResolvedValue({ ok: true });
+    checkbox.checked = false;
+    modal._qs('#saveConfigBtn').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(setPref.mock.calls.some(([key, value]) => key === 'keyboard.letters' && value === false))
+      .to.equal(true);
+  });
+
+  it('restores disabled letter shortcuts when configuration is reopened', async () => {
+    vi.spyOn(dataService, 'getLocalPref').mockImplementation(async (key) =>
+      key === 'keyboard.letters' ? false : undefined);
+    await modal.updateComplete;
+    await modal._populate();
+
+    expect(modal._qs('#letterShortcuts').checked).to.equal(false);
+  });
+
   it('saves the allocation unit locally and loads staffing without changing scenario data', async () => {
     await modal.updateComplete;
     const scenarios = store.getState().scenarios;

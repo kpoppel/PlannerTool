@@ -8,6 +8,8 @@ Here is a quick overview of the application.
 ## User Configuration
 
 Click the Gear button in the upper right corner to (re-)configure the user on this browser.
+The **Letter shortcuts** checkbox enables or disables board letter keys; choose
+**Save** to remember the choice in this browser.
 
 ## Getting Help
 
@@ -19,7 +21,9 @@ In the middle is the board area. This is where tasks are displayed, and most of 
 
 ## Common tasks
 
-- Find a task: `ctrl+shift+f` to search.
+- Find a task: press `f` on the board to search.
+- Switch Plan overview / Team focus with `v`, or toggle relationship highlighting with `h`.
+- See [Keyboard Shortcuts](keyboard_shortcuts.md) for display keys, zoom and typing behavior.
 - Create, rename or delete views  from the View menu.
 - Create, rename or delete scenarios from the Scenario menu.
 - Select plans and teams by using the top menu.

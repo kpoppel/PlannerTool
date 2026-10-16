@@ -64,6 +64,13 @@ describe('Sidebar task-type filter', () => {
     sinon.restore();
   });
 
+  it('shows the filter-cycle keys in sidebar headings', async () => {
+    await sidebar.updateComplete;
+
+    expect([...sidebar.shadowRoot.querySelectorAll('.filter-dimension-title .shortcut-pill')]
+      .map((hint) => hint.textContent)).to.deep.equal(['P', 'A', 'I', 'R']);
+  });
+
   it('offers only scoped presentable states and types, keeping unchecked options available', () => {
     store.setState((state) => ({ ...state,
       baseline: { ...state.baseline,
@@ -120,7 +127,7 @@ describe('Sidebar task-type filter', () => {
     const actions = { toggleFilter: sinon.spy(), toggleState: sinon.spy(), toggleType: sinon.spy() };
     const root = document.createElement('div');
     render(renderSidebarTaskFilters({ model: {
-      dimensions: [{ key: 'schedule', title: 'Schedule', options: [
+      dimensions: [{ key: 'schedule', title: 'Schedule', shortcut: 'P', options: [
         { key: 'planned', label: 'Planned', active: true, disabled: false },
         { key: 'unplanned', label: 'Unplanned', active: false, disabled: true },
       ] }],
@@ -229,6 +236,11 @@ describe('Sidebar task-type filter', () => {
     const taskView = sidebar.shadowRoot.querySelector('.team-view-mode-group');
     const hierarchy = sidebar.shadowRoot.querySelector('.hierarchy-fold-group');
     expect(hierarchy).to.exist;
+    expect(taskView.querySelector('.shortcut-pill').textContent).to.equal('V');
+    expect([...hierarchy.querySelectorAll('.hierarchy-fold-heading .shortcut-pill')]
+      .map((hint) => hint.textContent)).to.deep.equal(['-', '+']);
+    expect(SIDEBAR_STYLES.cssText).to.include('.shortcut-pill');
+    expect(SIDEBAR_STYLES.cssText).to.include('border: 1px solid rgba(255, 255, 255, 0.2)');
     expect(Boolean(taskView.compareDocumentPosition(hierarchy) & Node.DOCUMENT_POSITION_FOLLOWING)).to.be.true;
     expect(hierarchy.textContent).to.include('1 of 3 branches folded');
     const buttons = hierarchy.querySelectorAll('button');
@@ -427,6 +439,9 @@ describe('Sidebar task-type filter', () => {
 
     const root = sidebar.shadowRoot;
     const toggle = root.querySelector('.team-counts-toggle');
+    const header = root.querySelector('.team-drilldown-header');
+    expect(header.querySelector('.list-toggle-btn')).to.equal(root.querySelector('.list-toggle-btn'));
+    expect(header.querySelector('.team-counts-toggle')).to.equal(toggle);
     const types = () => Array.from(root.querySelectorAll('.team-drilldown-header .type-icon'))
       .map((element) => element.title);
     expect(types()).to.deep.equal(['Epic', 'Feature']);

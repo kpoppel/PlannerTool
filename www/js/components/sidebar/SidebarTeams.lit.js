@@ -6,28 +6,26 @@ export function renderSidebarTeams({ model, actions }) {
     return html`<div class="section-description">This plan has no teams assigned.</div>`;
   }
   return html`
-    <div class="list-toggle">
-      <button type="button" class="list-toggle-btn" @click=${actions.toggleAll}
-        >${model.allSelected ? 'None' : 'All'}</button>
-      ${model.hasMoreCounts ? html`
-        <button type="button" class="team-counts-toggle"
-          aria-expanded=${model.countsOpen} aria-controls="team-drilldown-list"
-          aria-label=${model.countsOpen ? 'Show only the top two task types' : 'Show all task types'}
-          title=${model.countsOpen ? 'Show only the top two task types' : 'Show all task types'}
-          @click=${actions.toggleCounts}>
-          <span class="counts-chevron" aria-hidden="true">&#9656;</span> Counts
-        </button>
-      ` : ''}
-    </div>
     <div id="team-drilldown-list" class="team-drilldown-grid"
-      style="--team-columns:14px minmax(64px, 1fr)${model.taskTypes.length ? ` repeat(${model.taskTypes.length}, 32px)` : ''}">
-      ${model.taskTypes.length > 0 ? html`<div class="team-drilldown-header">
-        <span></span>
-        <span></span>
+      style="--team-columns:14px minmax(128px, 1fr)${model.taskTypes.length ? ` repeat(${model.taskTypes.length}, 32px)` : ''}">
+      <div class="team-drilldown-header">
+        <div class="list-toggle">
+          <button type="button" class="list-toggle-btn" @click=${actions.toggleAll}
+            >${model.allSelected ? 'None' : 'All'}</button>
+          ${model.hasMoreCounts ? html`
+            <button type="button" class="team-counts-toggle"
+              aria-expanded=${model.countsOpen} aria-controls="team-drilldown-list"
+              aria-label=${model.countsOpen ? 'Show only the top two task types' : 'Show all task types'}
+              title=${model.countsOpen ? 'Show only the top two task types' : 'Show all task types'}
+              @click=${actions.toggleCounts}>
+              <span class="counts-chevron" aria-hidden="true">&#9656;</span> Counts
+            </button>
+          ` : ''}
+        </div>
         ${model.taskTypes.map((type) => html`
           <span class="type-icon" title=${type} aria-label=${type}>${getIconTemplate(type)}</span>
         `)}
-      </div>` : ''}
+      </div>
       ${model.teams.map((team) => html`
         <div class="sidebar-list-item" style="grid-column:1 / -1">
           <button type="button"
@@ -51,7 +49,9 @@ export function renderSidebarTeams({ model, actions }) {
       `)}
     </div>
     <div class="team-view-mode-group">
-      <div class="group-label" id="task-view-label">Task view</div>
+      <div class="group-label shortcut-heading" id="task-view-label">Task view
+        <kbd class="shortcut-pill" title="Switch task view (V)">V</kbd>
+      </div>
       <div class="segmented-group context-group team-view-mode" role="group" aria-labelledby="task-view-label">
         <button type="button" class="segment-btn ${model.taskViewMode === 'plan' ? 'active' : ''}"
           aria-pressed=${model.taskViewMode === 'plan'}

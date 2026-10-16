@@ -149,7 +149,7 @@ async function init() {
       document.body.appendChild(em);
     }
 
-    initKeyboardShortcuts();
+    await initKeyboardShortcuts();
   } catch (e) {
     // Initialization failures leave the notification log accessible without the loading overlay.
     hideModal();

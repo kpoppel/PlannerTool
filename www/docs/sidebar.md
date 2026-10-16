@@ -13,18 +13,31 @@ The Sidebar no longer hosts view options, plan/project selection, scenarios or p
 - Task view below the list offers **Plan overview** (default), which keeps unallocated tasks in the selected plans, and **Team focus**, which shows only tasks allocated to selected teams plus their parent tasks for context. With no teams selected, Team focus shows no tasks.
 - If the selected plan(s) have no teams assigned, the section shows a short message instead of an empty list.
 
+## Task Hierarchy
+
+Use **Fold one level** (`-`) and **Expand one level** (`+`) to change visible
+task hierarchy depth one level at a time. **Fold all** and **Expand all** act on
+every branch. Controls stop at the available limits and folding is unavailable
+in Packed mode. The header shows `-` and `+` shortcut pills; Task view shows `V`.
+
 ## Task Filters
 
 Task Filters narrow down which tasks are displayed, independent of which plans and teams are selected:
 
-- Schedule: Planned / Unplanned.
-- Allocation: Allocated / Unallocated.
-- Hierarchy: Has Parent / No Parent.
-- Relations: Has Links / No Links.
+- Schedule (`p`): Planned / Unplanned.
+- Allocation (`a`): Allocated / Unallocated.
+- Hierarchy (`i`): Has Parent / No Parent.
+- Relations (`r`): Has Links / No Links.
 - State: dynamic list populated from the loaded features — click a state to toggle it, the colored dot matches its configured state color.
 - Task Types: dynamic list (Epic, Feature, etc.), ordered per the task type hierarchy configured by your administrator.
 
 A filter option is greyed out and disabled when it is "not relevant in current tool context" (for example while a full-screen tool such as Portfolio Board or XY Board is active).
+
+Each of the four filter keys cycles both options on, first only, second only,
+then both on again. Disabled options keep their values and unreachable states
+are skipped; the cycle never turns both options off. Schedule also respects
+Packed mode's disabled Unplanned option. See [Keyboard Shortcuts](keyboard_shortcuts.md)
+for typing protection and the browser-local opt-out.
 
 ## Related controls
 

@@ -44,6 +44,8 @@ class ConfigModal extends LitElement {
     const storedAutosave = await dataService.getLocalPref('autosave.interval');
     if (storedAutosave !== undefined && autosaveInput)
       autosaveInput.value = storedAutosave;
+    const letterShortcuts = await dataService.getLocalPref('keyboard.letters');
+    this._qs('#letterShortcuts').checked = letterShortcuts !== false;
   }
 
   async _signOut() {
@@ -116,6 +118,15 @@ class ConfigModal extends LitElement {
               outline: 2px solid rgba(52, 152, 219, 0.3);
               border-color: #3498db;
             }
+            .form-row .checkbox-label {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .form-row input[type="checkbox"] {
+              width: auto;
+              margin: 0;
+            }
             .account-email {
               display: block;
               padding: 4px 0;
@@ -167,6 +178,12 @@ class ConfigModal extends LitElement {
                 <option value="percent" .selected=${sel.capacity.getAllocationSettings().unit === 'percent'}>Percent</option>
                 <option value="man-days" .selected=${sel.capacity.getAllocationSettings().unit === 'man-days'}>Man-days</option>
               </select>
+            </div>
+            <div class="form-row">
+              <label class="checkbox-label" for="letterShortcuts">
+                <input type="checkbox" id="letterShortcuts" checked />
+                Letter shortcuts
+              </label>
             </div>
             <div id="configStatus" class="status" aria-live="polite"></div>
             <button id="retryStaffingBtn" type="button"
@@ -241,6 +258,7 @@ class ConfigModal extends LitElement {
         const email = emailInput.value.trim();
         const pat = patInput.value;
         const autosaveInterval = Number(autosaveInput.value);
+        const characterShortcutsEnabled = this._qs('#letterShortcuts').checked;
         // Client-side PAT format guard: disallow whitespace and require
         // printable non-space ASCII characters. Accept empty string to
         // indicate "preserve existing" behaviour.
@@ -251,6 +269,8 @@ class ConfigModal extends LitElement {
         }
         if (email) await dataService.setLocalPref('user.email', email);
         await dataService.setLocalPref('autosave.interval', autosaveInterval);
+        await dataService.setLocalPref('keyboard.letters', characterShortcutsEnabled);
+        bus.emit(ConfigEvents.UPDATED, { email, characterShortcutsEnabled });
         const allocationResult = await cmd.data.setAllocationUnit(this._qs('#allocationUnit').value);
         let patText = '';
         if (pat) patText = 'Access token updated.';
@@ -268,7 +288,6 @@ class ConfigModal extends LitElement {
         if (!allocationResult.ok) {
           status.textContent += ' Could not load staffing. Man-day edits are unavailable.';
         }
-        bus.emit(ConfigEvents.UPDATED, { email });
         bus.emit(ConfigEvents.AUTOSAVE, { autosaveInterval });
       });
 

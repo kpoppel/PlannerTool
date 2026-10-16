@@ -76,6 +76,11 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (applied during server startup).
 
 ### Changed
+- Place Team Drill-down All/None and Counts controls in the task-type icon row, left-aligned with the other Sidebar controls.
+- Scale shortcut pills to their adjacent header with smaller text and compact padding in the View menu and Sidebar.
+- Add one-level +/- hierarchy shortcuts and disabled-aware P/A/I/R filter cycles, with consistent View-menu-style sidebar hints including Task view and Task hierarchy.
+- Replace Ctrl+Shift display/search bindings with mnemonic board letters, add task-view and relationship-highlight shortcuts, and provide a browser-local opt-out with updated user documentation.
+- Prepare plain-character shortcuts with shared typing, menu, dialog, composition and modifier checks while preserving existing bindings.
 - Task warning markers now scroll the reconciliation toolbox to the selected task's expanded details and actions, including repeated selection and hidden review.
 - Align System and Workforce Backup/Restore controls and validate system backup schema compatibility before offering restore options and before writing, with detailed server rejection messages.
 - Reconciliation groups labelled Sidebar-style controls and issue actions into two blue sections, re-highlights tasks on repeated clicks, and shows only class-specific multiple-finding counts.

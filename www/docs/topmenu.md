@@ -2,7 +2,7 @@
 
 Top Menu
 
-- Search: opens the global search modal (`Ctrl+Shift+F`) to find items, docs or UI pages.
+- Search: press `f` on the board to open the task search tool.
 - View: timeline scale, card display mode, task sort, graph type and your saved Views (see "View menu" below).
 - Scenario: switch, clone, rename or delete scenarios (see [Scenarios & Saving](scenarios.md)).
 - Plan: select which plans (projects) are included — delivery plans and team backlogs each have their own checklist.
@@ -12,10 +12,10 @@ Top Menu
 
 View menu
 
-- Timeline Scale: 3 Months / Weeks / Months / Quarters / Years — choose the time scale appropriate for your planning horizon.
-- Cards: Normal / Compact / Packed display mode.
-- Task Sort: Rank or Date ordering (disabled while Packed card mode is active).
-- Graph Type: choose among the container levels represented by tasks in Scope, including Ancestors and Descendant work; controls which plan allocations the [Graph Area](graph.md) shows.
+- Timeline Scale (`t`): 3 Months / Weeks / Months / Quarters / Years — choose the time scale appropriate for your planning horizon.
+- Cards (`c`): Normal / Compact / Packed display mode.
+- Task Sort (`s`): Rank or Date ordering (disabled while Packed card mode is active).
+- Graph Type (`g`): choose among the container levels represented by tasks in Scope, including Ancestors and Descendant work; controls which plan allocations the [Graph Area](graph.md) shows.
 - Saved Views: load one of your saved Views, or save the current Plan/Scope/filter selection as a new named View.
 
 Plan menu
@@ -36,3 +36,5 @@ Using Views
 - Loading a saved View applies its selections immediately and updates the timeline and Sidebar accordingly.
 
 Most View menu options, plus board zoom and search, also have a [keyboard shortcut](keyboard_shortcuts.md).
+Plain letters work outside text fields, menus and dialogs. Disable them with
+**Configuration > Letter shortcuts**, then **Save**, when needed.

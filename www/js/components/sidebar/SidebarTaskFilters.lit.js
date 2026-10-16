@@ -2,16 +2,16 @@ import { html } from '../../vendor/lit.js';
 import { getIconTemplate } from '../../services/IconService.js';
 
 export const SIDEBAR_FILTER_DIMENSIONS = [
-  { key: 'schedule', title: 'Schedule', options: [
+  { key: 'schedule', title: 'Schedule', shortcut: 'P', options: [
     { key: 'planned', label: 'Planned' }, { key: 'unplanned', label: 'Unplanned' },
   ] },
-  { key: 'allocation', title: 'Allocation', options: [
+  { key: 'allocation', title: 'Allocation', shortcut: 'A', options: [
     { key: 'allocated', label: 'Allocated' }, { key: 'unallocated', label: 'Unallocated' },
   ] },
-  { key: 'hierarchy', title: 'Hierarchy', options: [
+  { key: 'hierarchy', title: 'Hierarchy', shortcut: 'I', options: [
     { key: 'hasParent', label: 'Has Parent' }, { key: 'noParent', label: 'No Parent' },
   ] },
-  { key: 'relations', title: 'Relations', options: [
+  { key: 'relations', title: 'Relations', shortcut: 'R', options: [
     { key: 'hasLinks', label: 'Has Links' }, { key: 'noLinks', label: 'No Links' },
   ] },
 ];
@@ -22,7 +22,9 @@ export function renderSidebarTaskFilters({ model, actions }) {
     <div class="filter-dimensions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       ${model.dimensions.map((dimension) => html`
         <div class="filter-dimension">
-          <div class="filter-dimension-title">${dimension.title}</div>
+          <div class="filter-dimension-title shortcut-heading">${dimension.title}
+            <kbd class="shortcut-pill" title=${`Cycle ${dimension.title} (${dimension.shortcut})`}>${dimension.shortcut}</kbd>
+          </div>
           <div class="filter-options" style="display:flex;flex-direction:column;gap:6px;">
             ${dimension.options.map((option) => html`
               <div class="filter-option ${option.active ? 'active' : ''} ${option.disabled ? 'disabled' : ''}"

@@ -1,6 +1,7 @@
 import { FeatureEvents, FilterEvents, StateFilterEvents } from '../../core/EventRegistry.js';
-import { normalizeTaskFilters } from '../shared/taskFilters.js';
+import { DEFAULT_TASK_FILTERS, normalizeTaskFilters } from '../shared/taskFilters.js';
 import { deriveAvailableFeatureStates, deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
+import { createFilterSelectors } from '../selectors/filterSelectors.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -11,6 +12,7 @@ import { deriveAvailableFeatureStates, deriveAvailableTaskTypes } from '../share
  * @returns {object}
  */
 export function createFilterCommands(store, bus) {
+  const selectors = createFilterSelectors(store);
 
   const commands = {
     setSelectedTaskTypes(types, options = {}) {
@@ -236,6 +238,29 @@ export function createFilterCommands(store, bus) {
       if (!options.suppressEvents) {
         bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);
+      }
+    },
+
+    cycleTaskFilter(dimension, options = {}) {
+      const keys = Object.keys(DEFAULT_TASK_FILTERS[dimension]);
+      const current = selectors.getTaskFilters()[dimension];
+      const states = [[true, true], [true, false], [false, true]];
+      const currentIndex = states.findIndex((values) =>
+        keys.every((key, index) => current[key] === values[index]));
+      for (let step = 1; step <= states.length; step += 1) {
+        const values = states[(currentIndex + step) % states.length];
+        if (keys.every((key, index) => current[key] === values[index])) continue;
+        if (keys.some((key, index) => current[key] !== values[index] &&
+          selectors.isSidebarControlDisabled('taskFilter', dimension, key))) continue;
+        const next = Object.fromEntries(keys.map((key, index) => [key, values[index]]));
+        store.setState((state) => ({ ...state, selection: { ...state.selection,
+          taskFilters: { ...state.selection.taskFilters, [dimension]: next },
+        } }), false, 'filter.cycleTaskFilter');
+        if (!options.suppressEvents) {
+          bus.emit(FilterEvents.CHANGED);
+          bus.emit(FeatureEvents.UPDATED);
+        }
+        return;
       }
     },
 
