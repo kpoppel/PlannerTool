@@ -11,6 +11,7 @@ from typing import cast
 from datetime import datetime, timezone
 
 import pytest
+import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -25,6 +26,325 @@ from planner_lib.admin.workforce_config import (
 )
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 from planner_lib.middleware.session import SESSION_COOKIE, SessionManager, SessionMiddleware
+from planner_lib.migrations.contracts import TARGET_REVISION
+
+
+def test_workforce_transfer_round_trip_preserves_identity_and_dates(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    before = manager.read_snapshot()
+    document = transfer.export_document()
+    assert set(document) == {'format', 'version', 'teams', 'workforce'}
+    assert document['teams'] == before['teams']
+    assert document['workforce'] == before['workforce']
+    preview = transfer.preview(document, {})
+    assert preview['ready'] is True
+    assert all(record['status'] == 'identical' for record in preview['records'])
+    after = transfer.commit(document, {}, before['revision'], preview['review_revision'])
+    assert after == before
+
+
+def test_workforce_transfer_conflicts_require_explicit_skip_or_overwrite(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    before = manager.read_snapshot()
+    document = transfer.export_document()
+    document['teams']['teams'][0]['name'] = 'Imported team'
+    preview = transfer.preview(document, {})
+    assert preview['ready'] is False
+    assert next(row for row in preview['records'] if row['id'] == 'team-one')['status'] == 'conflict'
+    with pytest.raises(ValueError, match='decision'):
+        transfer.commit(document, {}, before['revision'], preview['review_revision'])
+    decisions = {'team-one': 'skip'}
+    skipped = transfer.preview(document, decisions)
+    assert transfer.commit(document, decisions, before['revision'], skipped['review_revision']) == before
+    decisions = {'team-one': 'overwrite'}
+    overwritten = transfer.preview(document, decisions)
+    after = transfer.commit(document, decisions, before['revision'], overwritten['review_revision'])
+    assert after['teams']['teams'][0] == document['teams']['teams'][0]
+    assert after['workforce'] == before['workforce']
+
+
+def test_workforce_transfer_adds_without_removing_destination_records(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    before = manager.read_snapshot()
+    document = transfer.export_document()
+    incoming = deepcopy(document['teams']['teams'][0])
+    incoming.update(id='imported-team', allocation_token='IMPORTED', name='Imported team')
+    document['teams']['teams'] = [incoming]
+    document['teams']['groups'] = []
+    document['workforce'] = {'schema_version': 2, 'suppliers': [], 'staffing': []}
+    preview = transfer.preview(document, {})
+    after = transfer.commit(document, {}, before['revision'], preview['review_revision'])
+    assert after['teams']['teams'] == [*before['teams']['teams'], incoming]
+    assert after['workforce'] == before['workforce']
+
+
+def test_workforce_transfer_rejects_stale_confirmation(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    before = manager.read_snapshot()
+    document = transfer.export_document()
+    preview = transfer.preview(document, {})
+    document['teams']['teams'][0]['name'] = 'Changed after review'
+    with pytest.raises(WorkforceConflictError, match='review'):
+        transfer.commit(document, {}, before['revision'], preview['review_revision'])
+    assert manager.read_snapshot() == before
+
+
+def test_workforce_transfer_into_empty_store_preserves_archived_graph_and_dates(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer, parse_document
+
+    transfer = WorkforceTransfer(manager)
+    document = transfer.export_document()
+    document['teams']['teams'][0].update(
+        archived=True, group_id='group-old', last_updated='2025-01-02T03:04:05Z',
+    )
+    document['workforce']['staffing'][0]['profile_id'] = 'retired'
+    document['workforce']['suppliers'][0]['archived'] = True
+    manager._storage.save('config', 'teams', {'schema_version': 3, 'teams': [], 'groups': []})
+    manager._storage.save('config', 'workforce', {'schema_version': 2, 'suppliers': [], 'staffing': []})
+    document = parse_document(yaml.safe_dump(document))
+    before = manager.read_snapshot()
+    preview = transfer.preview(document, {})
+    assert preview['ready'] is True
+    after = transfer.commit(document, {}, before['revision'], preview['review_revision'])
+    assert after['teams'] == document['teams']
+    assert after['workforce'] == document['workforce']
+
+
+def test_workforce_transfer_token_collision_can_only_be_skipped(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    document = transfer.export_document()
+    document['teams']['teams'][0]['id'] = 'other-team'
+    document['teams']['teams'][0]['allocation_token'] = ' one '
+    document['workforce']['staffing'] = []
+    before = manager.read_snapshot()
+    preview = transfer.preview(document, {})
+    row = next(row for row in preview['records'] if row['id'] == 'other-team')
+    assert row['status'] == 'conflict'
+    assert row['structural'] is True
+    with pytest.raises(ValueError, match='Cannot overwrite'):
+        transfer.preview(document, {'other-team': 'overwrite'})
+    decisions = {'other-team': 'skip'}
+    preview = transfer.preview(document, decisions)
+    after = transfer.commit(document, decisions, before['revision'], preview['review_revision'])
+    assert after == before
+
+
+def test_workforce_transfer_merges_nested_profiles_without_removing_local_profiles(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    document = transfer.export_document()
+    profile = document['workforce']['suppliers'][0]['profiles'][0]
+    profile.update(hourly_rate=99, last_updated='2025-01-01T00:00:00Z')
+    document['workforce']['suppliers'][0]['profiles'] = [profile]
+    before = manager.read_snapshot()
+    decisions = {'standard': 'overwrite'}
+    preview = transfer.preview(document, decisions)
+    assert next(row for row in preview['records'] if row['id'] == 'supplier-one')['status'] == 'identical'
+    after = transfer.commit(document, decisions, before['revision'], preview['review_revision'])
+    assert after['workforce']['suppliers'][0]['profiles'] == [
+        profile, before['workforce']['suppliers'][0]['profiles'][1],
+    ]
+
+
+def test_workforce_transfer_can_skip_new_dependents_of_a_conflicting_team(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    document = transfer.export_document()
+    document['teams']['teams'][0]['id'] = 'imported-team'
+    document['workforce']['staffing'][0].update(id='imported-staffing', team_id='imported-team')
+    before = manager.read_snapshot()
+    decisions = {'imported-team': 'skip'}
+    preview = transfer.preview(document, decisions)
+    assert preview['ready'] is False
+    assert any('Unknown team' in error for error in preview['errors'])
+    decisions['imported-staffing'] = 'skip'
+    preview = transfer.preview(document, decisions)
+    assert preview['ready'] is True
+    assert transfer.commit(document, decisions, before['revision'], preview['review_revision']) == before
+
+
+@pytest.mark.parametrize('path', ['/import/preview', '/import'])
+def test_workforce_transfer_rejects_cross_site_writes(
+    manager: WorkforceConfigManager, workforce_client: TestClient, path: str,
+) -> None:
+    before = manager.read_snapshot()
+    response = workforce_client.post('/admin/v1/workforce' + path, json={},
+                                     headers={'Origin': 'https://other.example.test'})
+    assert response.status_code == 403
+    assert manager.read_snapshot() == before
+
+
+@pytest.mark.parametrize('field,value', [('version', 9), ('version', True), ('format', 'other'),
+                                        ('accounts', {})])
+def test_workforce_transfer_rejects_unknown_envelopes(
+    manager: WorkforceConfigManager, field: str, value: object,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    document = transfer.export_document()
+    document[field] = value
+    with pytest.raises(ValueError):
+        transfer.preview(document, {})
+
+
+def test_workforce_transfer_reference_changes_invalidate_review(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    document = transfer.export_document()
+    before = manager.read_snapshot()
+    preview = transfer.preview(document, {})
+    manager._storage.save('views', 'new-view', {'teams': ['team-one']})
+    with pytest.raises(WorkforceConflictError, match='review'):
+        transfer.commit(document, {}, before['revision'], preview['review_revision'])
+    assert manager.read_snapshot() == before
+
+
+def test_workforce_transfer_rejects_membership_conflict_and_preserves_references(
+    manager: WorkforceConfigManager,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    document = transfer.export_document()
+    document['teams']['teams'][0]['group_id'] = 'group-one'
+    task = {'id': 'task', 'capacity': [
+        {'team': 'team-one', 'capacity': 20}, {'team': 'group-one', 'capacity': 30},
+    ]}
+    manager._storage.save('backend_domain', 'fetch_task_context__test', [task])
+    before = manager.read_snapshot()
+    decisions = {'team-one': 'overwrite'}
+    preview = transfer.preview(document, decisions)
+    assert preview['ready'] is False
+    assert any('Allocation conflict' in error for error in preview['errors'])
+    with pytest.raises(ValueError, match='Allocation conflict'):
+        transfer.commit(document, decisions, before['revision'], preview['review_revision'])
+    assert manager.read_snapshot() == before
+    assert manager._storage.load('backend_domain', 'fetch_task_context__test') == [task]
+
+
+def test_workforce_transfer_atomic_rollback_on_second_write_failure(
+    manager: WorkforceConfigManager, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from planner_lib.admin.workforce_transfer import WorkforceTransfer
+
+    transfer = WorkforceTransfer(manager)
+    document = transfer.export_document()
+    document['teams']['teams'][0]['name'] = 'Imported team'
+    document['workforce']['staffing'][0]['fte'] = 0.5
+    before = manager.read_snapshot()
+    decisions = {'team-one': 'overwrite', 'row-one': 'overwrite'}
+    preview = transfer.preview(document, decisions)
+    original = manager._configs.save_config
+
+    def failing_save(key: str, value: dict) -> None:
+        if key == 'workforce':
+            raise RuntimeError('injected write failure')
+        original(key, value)
+
+    monkeypatch.setattr(manager._configs, 'save_config', failing_save)
+    with pytest.raises(RuntimeError, match='injected'):
+        transfer.commit(document, decisions, before['revision'], preview['review_revision'])
+    assert manager.read_snapshot() == before
+
+
+@pytest.mark.parametrize('source', [
+    'version: 1\nversion: 2', 'key: &anchor []\ncopy: *anchor', '[]',
+    '!!python/object:builtins.object {}', 'null', '1: value',
+    'key: ' + '[' * 40 + '0' + ']' * 40,
+])
+def test_workforce_transfer_rejects_unsafe_yaml(source: str) -> None:
+    from planner_lib.admin.workforce_transfer import parse_document
+
+    with pytest.raises(ValueError):
+        parse_document(source)
+
+
+def test_workforce_transfer_rejects_oversize_file() -> None:
+    from planner_lib.admin.workforce_transfer import MAX_TRANSFER_BYTES, parse_document
+
+    with pytest.raises(ValueError, match='2 MiB'):
+        parse_document(' ' * (MAX_TRANSFER_BYTES + 1))
+
+
+def test_workforce_transfer_http_export_preview_and_commit(
+    manager: WorkforceConfigManager, workforce_client: TestClient,
+) -> None:
+    manager._storage.save('config', 'ado_config', {'pat': 'private-fixture-secret'})
+    before = manager.read_snapshot()
+    response = workforce_client.get('/admin/v1/workforce/export')
+    assert response.status_code == 200
+    exported = response.json()['content']
+    assert exported['filename'] == 'planner-workforce.yaml'
+    assert 'private-fixture-secret' not in exported['source']
+    document = yaml.safe_load(exported['source'])
+    document['teams']['teams'][0]['name'] = 'HTTP imported'
+    payload = {'source': yaml.safe_dump(document), 'decisions': {'team-one': 'overwrite'}}
+    response = workforce_client.post('/admin/v1/workforce/import/preview', json=payload)
+    assert response.status_code == 200
+    preview = response.json()['content']
+    assert preview['ready'] is True
+    assert manager.read_snapshot() == before
+    response = workforce_client.post('/admin/v1/workforce/import', json={
+        **payload, 'revision': preview['revision'], 'review_revision': preview['review_revision'],
+    })
+    assert response.status_code == 200
+    assert response.json()['content']['teams']['teams'][0]['name'] == 'HTTP imported'
+    assert response.json()['content']['teams']['teams'][0]['allocation_token'] == 'ONE'
+    assert manager._storage.load('config', 'ado_config') == {'pat': 'private-fixture-secret'}
+
+
+@pytest.mark.parametrize('path', ['/export', '/import/preview', '/import'])
+def test_workforce_transfer_http_requires_admin(workforce_client: TestClient, path: str) -> None:
+    workforce_client.cookies.set(SESSION_COOKIE, workforce_client.app.state.member_session)
+    response = (workforce_client.get('/admin/v1/workforce' + path) if path == '/export'
+                else workforce_client.post('/admin/v1/workforce' + path, json={}))
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize('payload', [
+    {}, {'source': '[]', 'decisions': {}}, {'source': 'version: 9', 'decisions': {}},
+    {'source': 'version: 1\nversion: 2', 'decisions': {}},
+    {'source': 'null', 'decisions': {}}, {'source': 'key: value', 'decisions': []},
+])
+def test_workforce_transfer_http_invalid_file_never_writes(
+    manager: WorkforceConfigManager, workforce_client: TestClient, payload: dict,
+) -> None:
+    before = manager.read_snapshot()
+    response = workforce_client.post('/admin/v1/workforce/import/preview', json=payload)
+    assert response.status_code in (400, 422)
+    assert manager.read_snapshot() == before
 
 
 def test_admin_routes_expose_workforce_without_legacy_configuration_endpoints() -> None:
@@ -35,6 +355,37 @@ def test_admin_routes_expose_workforce_without_legacy_configuration_endpoints() 
         '/admin/v1/people', '/admin/v1/people/inspect',
         '/admin/v1/cost', '/admin/v1/cost/inspect', '/admin/v1/teams',
     })
+
+
+@pytest.mark.parametrize('revision', [None, -1, True, '38'])
+def test_system_restore_requires_compatible_revision_before_writing(
+    manager: WorkforceConfigManager, workforce_client: TestClient, revision: object,
+) -> None:
+    before = manager.read_snapshot()
+    payload = {'config': {'server_config': {'server_name': 'must-not-write'}}}
+    if revision is not None:
+        payload['schema_revision'] = revision
+    for path in ('/admin/v1/restore/validate', '/admin/v1/restore'):
+        response = workforce_client.post(path, json=payload)
+        assert response.status_code == 400
+        assert 'schema' in response.json()['detail']['message']
+        assert manager.read_snapshot() == before
+        assert not manager._storage.exists('config', 'server_config')
+
+
+def test_system_restore_compatibility_preflight_is_read_only(
+    manager: WorkforceConfigManager, workforce_client: TestClient,
+) -> None:
+    from planner_lib.migrations.contracts import TARGET_REVISION
+
+    before = manager.read_snapshot()
+    response = workforce_client.post('/admin/v1/restore/validate', json={
+        'schema_revision': TARGET_REVISION, 'config': {'server_config': {'server_name': 'Preview'}},
+    })
+    assert response.status_code == 200
+    assert response.json() == {'ok': True, 'schema_revision': TARGET_REVISION}
+    assert manager.read_snapshot() == before
+    assert not manager._storage.exists('config', 'server_config')
 
 
 def test_configuration_transaction_rolls_back_all_writes(tmp_path: Path) -> None:
@@ -806,7 +1157,8 @@ def test_canonical_logical_restore_cannot_bypass_workforce_owner(
                                     task_storage=manager._storage)
     before = manager.read_snapshot()
     with pytest.raises(ValueError, match='both teams and workforce'):
-        service.restore_backup({'config': {key: {'unvalidated': True}}})
+        service.restore_backup({'schema_revision': TARGET_REVISION,
+                    'config': {key: {'unvalidated': True}}})
     assert manager.read_snapshot() == before
 
 
@@ -857,7 +1209,8 @@ def test_logical_restore_rejects_duplicate_workforce_ids_without_writing(
     )
 
     with pytest.raises(ValueError, match='globally unique'):
-        service.restore_backup({'config': {'teams': teams, 'workforce': workforce}})
+        service.restore_backup({'schema_revision': TARGET_REVISION,
+                    'config': {'teams': teams, 'workforce': workforce}})
 
     assert manager.read_snapshot() == before
 

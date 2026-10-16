@@ -37,8 +37,16 @@ def test_incompatible_backup_rejected_before_mutation(manager, payload):
     assert manager._storage.load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
 
 
-def test_unversioned_current_selective_backup_is_admitted(manager):
-    manager.restore_backup({'config': {'projects': {
+def test_unversioned_current_selective_backup_is_rejected(manager):
+    with pytest.raises(ValueError, match='schema revision'):
+        manager.restore_backup({'config': {'projects': {
+            'schema_version': 4, 'project_map': [], 'container_types': ['project', 'team'],
+            'allocation_defaults': {'project': [], 'team': []},
+        }}})
+
+
+def test_current_versioned_selective_backup_is_admitted(manager):
+    manager.restore_backup({'schema_revision': TARGET_REVISION, 'config': {'projects': {
         'schema_version': 4, 'project_map': [], 'container_types': ['project', 'team'],
         'allocation_defaults': {'project': [], 'team': []},
     }}})
@@ -47,6 +55,6 @@ def test_unversioned_current_selective_backup_is_admitted(manager):
 
 def test_saved_view_backup_requires_packed_mode_preference(manager):
     with pytest.raises(ValueError, match='packed-mode preference'):
-        manager.restore_backup({'views': {
+        manager.restore_backup({'schema_revision': TARGET_REVISION, 'views': {
             '11111111-1111-4111-8111-111111111111_view': {'viewOptions': {}},
         }})

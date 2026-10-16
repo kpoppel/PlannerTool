@@ -331,10 +331,13 @@ class ConfigManager:
         if '_meta' in data and data['_meta'] != {'pat_format': 'plaintext'}:
             raise ValueError('Unsupported logical backup metadata')
         self._validate_user_data_ownership(data)
-        if 'schema_revision' in data and (
-            type(data['schema_revision']) is not int or data['schema_revision'] != TARGET_REVISION
-        ):
-            raise ValueError('Incompatible backup schema; use a matching server and independent full backup')
+        if 'schema_revision' not in data:
+            raise ValueError(f'Backup schema revision is required; this server requires schema revision {TARGET_REVISION}')
+        if type(data['schema_revision']) is not int or data['schema_revision'] != TARGET_REVISION:
+            raise ValueError(
+                f'Incompatible backup schema; this server requires schema revision {TARGET_REVISION}. '
+                'Use a matching server and independent full backup'
+            )
         config = data.get('config', {})
         if not isinstance(config, dict) or set(config) - set(self.CONFIG_KEYS):
             raise ValueError('Logical backup contains unsupported configuration keys')

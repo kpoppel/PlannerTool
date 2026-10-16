@@ -19,6 +19,7 @@ from planner_lib.admin.workforce_config import (
     DefinitionKind, WorkforceConfigManager, WorkforceConflictError, WorkforceSnapshot,
 )
 from planner_lib.admin.workforce_deletion import TeamDeletionReview
+from planner_lib.admin.workforce_transfer import WorkforceTransfer, parse_document
 from planner_lib.domain.teams import TeamConfiguration
 from planner_lib.domain.workforce import WorkforceConfiguration
 from planner_lib.accounts.constants import AccountPermissions
@@ -80,6 +81,26 @@ class AdminService:
     def get_workforce_snapshot(self) -> WorkforceSnapshot:
         """Return the coherent canonical editing snapshot without legacy conversion."""
         return self._workforce_config.read_snapshot()
+
+    def export_workforce(self) -> dict[str, str]:
+        """Create only the portable workforce document, never a credential-bearing full backup."""
+        import yaml
+
+        document = WorkforceTransfer(self._workforce_config).export_document()
+        return {'filename': 'planner-workforce.yaml',
+                'source': yaml.safe_dump(document, sort_keys=False, allow_unicode=True)}
+
+    def preview_workforce_import(self, source: str, decisions: dict[str, str]) -> dict[str, Any]:
+        """Review the complete additive result without changing storage."""
+        return WorkforceTransfer(self._workforce_config).preview(parse_document(source), decisions)
+
+    def import_workforce(
+        self, source: str, decisions: dict[str, str], revision: str, review_revision: str,
+    ) -> WorkforceSnapshot:
+        """Commit only the exact file and decisions reviewed against current local evidence."""
+        return WorkforceTransfer(self._workforce_config).commit(
+            parse_document(source), decisions, revision, review_revision,
+        )
 
     def save_workforce_configuration(
         self, teams: TeamConfiguration, workforce: WorkforceConfiguration, revision: str,
@@ -144,6 +165,11 @@ class AdminService:
     def restore_snapshot_entry(self, key: str) -> Any:
         """Restore a config value from a backup snapshot (no new backup created)."""
         return self._config_manager.restore_snapshot(key)
+
+    def validate_backup(self, data: dict) -> dict:
+        """Check backup compatibility without writing configuration or ending sessions."""
+        self._config_manager._validate_compatibility(data)
+        return {'ok': True, 'schema_revision': data['schema_revision']}
 
     def restore_backup(self, data, current_user_email=None) -> dict:
         """Restore config and data from a backup.  Delegates to ConfigManager."""

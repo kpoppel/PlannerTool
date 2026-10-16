@@ -127,6 +127,7 @@ class WorkforceConfigManager:
     def _assert_identities(
         previous: Iterable[Mapping[str, Any]], candidate: Iterable[Mapping[str, Any]],
         context: str, issued: set[tuple[str, str]], *, allow_removal: bool = False,
+        imported: bool = False,
     ) -> None:
         old_records = {record['id']: record for record in previous}
         new_records = {record['id']: record for record in candidate}
@@ -143,19 +144,19 @@ class WorkforceConfigManager:
             if record.get('migration_incomplete', False) and 'migration_incomplete' not in new_record:
                 raise ValueError(f'{context} {identity} migration review must be completed explicitly')
             for field in UPDATE_FIELDS:
-                if (field in record) != (field in new_record) or (
+                if not imported and ((field in record) != (field in new_record) or (
                     field in record and record[field] != new_record[field]
-                ):
+                )):
                     raise ValueError(f'{context} {identity} {field} is server-owned')
         for identity in new_records.keys() - old_records.keys():
             if (context, identity) not in issued:
                 raise ValueError(f'New {context} identities require server creation')
-            if UPDATE_FIELDS & new_records[identity].keys():
+            if not imported and UPDATE_FIELDS & new_records[identity].keys():
                 raise ValueError(f'{context} {identity} last_updated is server-owned')
 
     def _validate(
         self, previous: WorkforceSnapshot, candidate: WorkforceSnapshot,
-        issued: set[tuple[str, str]],
+        issued: set[tuple[str, str]], *, imported: bool = False,
     ) -> None:
         teams = TeamCatalogue(candidate['teams'])
         old_teams = TeamCatalogue(previous['teams'])
@@ -164,10 +165,12 @@ class WorkforceConfigManager:
         for context, key in [('team', 'teams'), ('group', 'groups')]:
             self._assert_identities(
                 previous['teams'][key], candidate['teams'][key], context, issued,
+                imported=imported,
             )
         self._assert_identities(
             previous['workforce']['suppliers'], candidate['workforce']['suppliers'],
             'supplier', issued,
+            imported=imported,
         )
         old_suppliers = {
             supplier['id']: supplier for supplier in previous['workforce']['suppliers']
@@ -177,10 +180,12 @@ class WorkforceConfigManager:
             old_profiles = [] if old_supplier is None else old_supplier['profiles']
             self._assert_identities(
                 old_profiles, supplier['profiles'], f'profile:{supplier["id"]}', issued,
+                imported=imported,
             )
         self._assert_identities(
             previous['workforce']['staffing'], candidate['workforce']['staffing'],
             'staffing', issued, allow_removal=True,
+            imported=imported,
         )
         old_by_id = {entry['id']: entry for entry in previous['teams']['teams']}
         new_by_id = {entry['id']: entry for entry in teams.definitions()}
@@ -188,9 +193,19 @@ class WorkforceConfigManager:
             group_id = team['group_id']
             previous_team = old_by_id.get(team['id'])
             retained = previous_team is not None and previous_team['group_id'] == group_id
+            if imported and previous_team is None:
+                retained = True
             if group_id is not None and new_by_id[group_id]['archived'] and not retained:
                 raise ValueError(f'Team {team["id"]} cannot join archived group {group_id}')
-        workforce.validate_staffing_changes(old_workforce)
+        if imported:
+            retained_workforce = workforce.definitions()
+            previous_rows = {row['id'] for row in previous['workforce']['staffing']}
+            retained_workforce['staffing'] = [
+                row for row in retained_workforce['staffing'] if row['id'] in previous_rows
+            ]
+            WorkforceCatalogue(retained_workforce, teams).validate_staffing_changes(old_workforce)
+        else:
+            workforce.validate_staffing_changes(old_workforce)
         workforce.group_bases()
         previous_memberships = {
             team['id']: team['group_id'] for team in previous['teams']['teams']

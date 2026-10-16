@@ -1,5 +1,6 @@
 """Authenticated canonical workforce editing; never activates a migration."""
 from collections.abc import Callable
+import json
 import logging
 from typing import Any, cast
 
@@ -10,6 +11,7 @@ from planner_lib.admin.workforce_config import (
     WorkforceUnavailableError,
 )
 from planner_lib.admin.workforce_deletion import TeamDeletionReview
+from planner_lib.admin.workforce_transfer import MAX_TRANSFER_BYTES
 from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
 
@@ -44,7 +46,8 @@ async def _payload(request: Request, required: set[str], optional: set[str]) -> 
 
 
 def _execute(
-    request: Request, operation: str, action: Callable[[], WorkforceSnapshot | TeamDeletionReview],
+    request: Request, operation: str,
+    action: Callable[[], WorkforceSnapshot | TeamDeletionReview | dict[str, Any]],
     *, mutation: bool,
 ) -> dict[str, Any]:
     try:
@@ -94,6 +97,57 @@ async def admin_save_workforce(request: Request) -> dict[str, Any]:
     service = resolve_service(request, 'admin_service')
     return _execute(request, 'save', lambda: service.save_workforce_configuration(
         payload['teams'], payload['workforce'], payload['revision'],
+    ), mutation=True)
+
+
+async def _transfer_payload(request: Request, *, commit: bool) -> dict[str, Any]:
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > 3 * MAX_TRANSFER_BYTES:
+            raise HTTPException(413, detail={'message': 'Workforce import request is too large'})
+    try:
+        payload = json.loads(body)
+    except (ValueError, UnicodeDecodeError) as error:
+        raise HTTPException(400, detail={'message': 'Expecting a JSON object'}) from error
+    fields = {'source', 'decisions'}
+    if commit:
+        fields.update({'revision', 'review_revision'})
+    if not isinstance(payload, dict) or payload.keys() != fields:
+        raise HTTPException(400, detail={'message': 'Unexpected or missing workforce transfer fields'})
+    if not isinstance(payload['source'], str) or not isinstance(payload['decisions'], dict):
+        raise HTTPException(400, detail={'message': 'A YAML source and decision object are required'})
+    if commit and any(not isinstance(payload[key], str) or not payload[key].strip()
+                      for key in ('revision', 'review_revision')):
+        raise HTTPException(400, detail={'message': 'Configuration and review revisions are required'})
+    return payload
+
+
+@router.get('/admin/v1/workforce/export')
+@require_admin_session
+async def admin_export_workforce(request: Request) -> dict[str, Any]:
+    service = resolve_service(request, 'admin_service')
+    response = _execute(request, 'export', service.export_workforce, mutation=False)
+    return response
+
+
+@router.post('/admin/v1/workforce/import/preview')
+@require_admin_session
+async def admin_preview_workforce_import(request: Request) -> dict[str, Any]:
+    payload = await _transfer_payload(request, commit=False)
+    service = resolve_service(request, 'admin_service')
+    return _execute(request, 'import preview', lambda: service.preview_workforce_import(
+        payload['source'], payload['decisions'],
+    ), mutation=False)
+
+
+@router.post('/admin/v1/workforce/import')
+@require_admin_session
+async def admin_import_workforce(request: Request) -> dict[str, Any]:
+    payload = await _transfer_payload(request, commit=True)
+    service = resolve_service(request, 'admin_service')
+    return _execute(request, 'import', lambda: service.import_workforce(
+        payload['source'], payload['decisions'], payload['revision'], payload['review_revision'],
     ), mutation=True)
 
 

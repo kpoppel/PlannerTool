@@ -6,6 +6,14 @@ import sys
 import pytest
 
 
+def _assert_isolated_data_mount(path):
+    live_data = (Path(__file__).resolve().parents[2] / 'data').resolve()
+    mount_path = Path(path).resolve()
+    assert live_data != mount_path
+    assert live_data not in mount_path.parents
+    assert mount_path not in live_data.parents
+
+
 def test_offline_status_creates_no_database(tmp_path):
     root = tmp_path / 'missing'
     process = subprocess.run([
@@ -112,6 +120,7 @@ Database('/app/data', lock_timeout=0).prune()
 assert len(list(Path('/app/data/generations').iterdir())) == 1
 print('Runtime HTTP startup and shutdown passed')
 '''
+    _assert_isolated_data_mount(root)
     process = subprocess.run([
         'docker', 'run', '--rm', '-e', 'PLANNER_SECRET_KEY=isolated-image-test-only',
         '-v', str(root) + ':/app/data',
@@ -134,6 +143,7 @@ def test_runtime_image_rejects_unsupported_schema_before_http(tmp_path):
         'initialized_at_revision': TARGET_REVISION + 1,
     })
     storage.close()
+    _assert_isolated_data_mount(tmp_path)
     process = subprocess.run([
         'docker', 'run', '--rm', '-e', 'PLANNER_SECRET_KEY=isolated-image-test-only',
         '-v', str(tmp_path) + ':/app/data', os.environ['PLANNER_MIGRATION_IMAGE'],
@@ -200,6 +210,7 @@ assert process.returncode in (0, -signal.SIGTERM), log.read_text()
 Database('/app/data', lock_timeout=0).prune()
 assert Database('/app/data').status()['active_revision'] == TARGET_REVISION
 '''
+    _assert_isolated_data_mount(tmp_path)
     process = subprocess.run([
         'docker', 'run', '--rm', '-e', 'PLANNER_SECRET_KEY=isolated-image-test-only',
         '-v', str(tmp_path) + ':/app/data', os.environ['PLANNER_MIGRATION_IMAGE'],

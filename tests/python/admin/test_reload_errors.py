@@ -1,29 +1,29 @@
 import pytest
 
 
+pytestmark = pytest.mark.real_auth
+
+
 def test_reload_config_raises_500(client, monkeypatch):
-    # Force cost_config.load_cost_config to raise so endpoint returns 500
-    def _load():
+    assert client.post('/api/auth/enroll', json={
+        'email': 'reload-error@example.com', 'name': 'Reload Error Administrator',
+    }).status_code == 200
+    response = client.post('/api/config', json={
+        'email': 'reload-error@example.com', 'pat': 'token',
+    })
+    assert response.status_code in (200, 201)
+    assert client.post('/api/session').status_code == 200
+
+    accounts = client.app.state.container.get('account_manager')
+    account_id = accounts.get_account_id('reload-error@example.com')
+    accounts.set_permissions(account_id, ['admin'])
+
+    admin_service = client.app.state.container.get('admin_service')
+
+    def fail_reload():
         raise RuntimeError('fail')
 
-    try:
-        monkeypatch.setattr('planner_lib.cost.config.load_cost_config', _load)
-    except ImportError:
-        # In some test environments the optional cost config module may not
-        # be present; skip the test in that case rather than failing.
-        import pytest
+    monkeypatch.setattr(admin_service, 'reload_config', fail_reload)
 
-        pytest.skip('planner_lib.cost.config not available')
-
-    # create account and session for auth
-    r = client.post('/api/config', json={'email': 'a@test.com', 'pat': 't'})
-    assert r.status_code in (200, 201)
-    r2 = client.post('/api/session', json={'email': 'a@test.com'})
-    assert r2.status_code == 200
-    sid = r2.json().get('sessionId')
-
-    from fastapi.testclient import TestClient
-
-    tc = TestClient(client.app, raise_server_exceptions=False)
-    resp = tc.post('/admin/v1/reload-config', headers={'X-Session-Id': sid})
-    assert resp.status_code == 500
+    response = client.post('/admin/v1/reload-config')
+    assert response.status_code == 500

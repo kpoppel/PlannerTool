@@ -495,6 +495,23 @@ async def admin_get_backup(request: Request):
         raise HTTPException(status_code=500, detail='Internal server error')
 
 
+@router.post('/admin/v1/restore/validate')
+@require_admin_session
+async def admin_validate_backup(request: Request):
+    """Reject incompatible system backups before the administrator selects restore categories."""
+    try:
+        payload = await request.json()
+        admin_svc = resolve_service(request, 'admin_service')
+        return JSONResponse(content=await asyncio.to_thread(admin_svc.validate_backup, payload))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail={
+            'error': 'restore_rejected', 'message': str(error),
+        }) from error
+    except Exception as error:
+        logger.exception('Failed to validate backup compatibility')
+        raise HTTPException(status_code=500, detail='Internal server error') from error
+
+
 @router.post('/admin/v1/restore')
 @require_admin_session
 async def admin_restore_backup(request: Request):

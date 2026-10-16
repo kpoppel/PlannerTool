@@ -23,11 +23,13 @@ Template - do not change :
 - Preserve dormant scenario overrides for unavailable backend tasks without blocking workforce group changes; retain conflict checks on present tasks.
 - Fix workforce group reassignment rejecting matching task revisions with complementary retained context enrichment.
 - Remove legacy People, Cost and Teams admin screens, APIs, services, storage readers and transitional tests; preserve canonical Workforce configuration during mock generation.
+- Restore admin reload failure coverage using the current service boundary instead of a removed cost-config module.
 - Wire the canonical Workforce admin and runtime with revision-35 anonymous staffing migration, validated plan availability, strict publication and separate group/member accounting.
 - Activate and verify revision-35 Workforce cutover with preserved identities, saved records and pricing bases, including idempotent live restart.
 - Preserve unresolved ADO allocation entries during reads and known-team edits, with token-only canonical repository ports and clarified local-ID migration rules.
 ### Added
 - Make full logical backups and restores round-trip paired canonical workforce data with globally unique object IDs.
+- Add standalone workforce YAML export and reviewed additive import under Admin Utilities Backup & Restore, preserving identities and tokens with explicit conflict choices and atomic validation.
 - Clarify allocation planning intent, estimate uncertainty, team-specific man-days and the input-data requirements for complete cost forecasts in the user documentation.
 - Add browser-local whole-man-day allocation editing with precise fractional-percentage persistence, ceiling displays, effort-preserving scheduling, removal notices, child-boundary feedback and existing scenario revert.
 - Added reversible, auto-saved project archiving in administration, excluding archived projects from user project choices, task loading, and explicit area refreshes while preserving active-project API enrichment.
@@ -75,6 +77,7 @@ Template - do not change :
 
 ### Changed
 - Task warning markers now scroll the reconciliation toolbox to the selected task's expanded details and actions, including repeated selection and hidden review.
+- Align System and Workforce Backup/Restore controls and validate system backup schema compatibility before offering restore options and before writing, with detailed server rejection messages.
 - Reconciliation groups labelled Sidebar-style controls and issue actions into two blue sections, re-highlights tasks on repeated clicks, and shows only class-specific multiple-finding counts.
 - Reconciliation adopts Sidebar-styled issue-class accordions, inline task actions, clearer local/cross-plan labels, a top marker toggle, and automatic task location with temporary board context.
 - Reconciliation now toggles directly from its active top-bar button, keeps an independent status footer visible, and separates category controls, issue classes, and selected-task details without an internal close button.

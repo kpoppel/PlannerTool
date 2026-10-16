@@ -25,6 +25,10 @@ const WORKFORCE_SNAPSHOT = {
 };
 
 const METHOD_ARGS = {
+  validateBackup: [{ schema_revision: 38, config: {} }],
+  previewWorkforceImport: ['format: plannertool-workforce', { 'team-one': 'skip' }],
+  importWorkforce: [{ source: 'format: plannertool-workforce', decisions: {},
+    revision: 'current', review_revision: 'reviewed' }],
   reviewWorkforceTeamDeletion: ['team/one'],
   deleteWorkforceTeam: ['team/one', { revision: 'first', confirmation: {
     acknowledged: true, review_revision: 'review-one',
@@ -76,6 +80,9 @@ const SUCCESS_JSON_METHODS = [
   'getGroupsConfig',
   'saveGroupsConfig',
   'getWorkforce',
+  'exportWorkforce',
+  'previewWorkforceImport',
+  'importWorkforce',
   'reviewWorkforceTeamDeletion',
   'deleteWorkforceTeam',
   'saveWorkforce',
@@ -103,6 +110,7 @@ const SUCCESS_JSON_METHODS = [
   'invalidateCache',
   'reloadConfig',
   'getBackup',
+  'validateBackup',
   'restoreBackup',
   'getGlobalSettings',
   'saveGlobalSettings',
@@ -245,6 +253,36 @@ describe('AdminProviderREST Result contract', () => {
     expect(JSON.parse(options.body)).toEqual(WORKFORCE_SNAPSHOT);
     expect(result.data).toEqual({ ok: true, content: committed, warnings });
     expect(provider._fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('validates the exact system backup through the read-only restore preflight', async () => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { ok: true, schema_revision: 38 } }));
+    const payload = METHOD_ARGS.validateBackup[0];
+    const result = await provider.validateBackup(payload);
+    const [url, options] = provider._fetch.mock.calls[0];
+    expect(url).toBe('/admin/v1/restore/validate');
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual(payload);
+    expect(result.data).toEqual({ ok: true, schema_revision: 38 });
+    expect(provider._fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('previews and commits the exact workforce file, choices and review receipts', async () => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { content: { ready: true } } }));
+    const source = 'format: plannertool-workforce';
+    const decisions = { 'team-one': 'overwrite' };
+    await provider.previewWorkforceImport(source, decisions);
+    const payload = { source, decisions, revision: 'current', review_revision: 'reviewed' };
+    await provider.importWorkforce(payload);
+    const [previewUrl, previewOptions] = provider._fetch.mock.calls[0];
+    const [commitUrl, commitOptions] = provider._fetch.mock.calls[1];
+    expect(previewUrl).toBe('/admin/v1/workforce/import/preview');
+    expect(JSON.parse(previewOptions.body)).toEqual({ source, decisions });
+    expect(commitUrl).toBe('/admin/v1/workforce/import');
+    expect(JSON.parse(commitOptions.body)).toEqual(payload);
+    expect(provider._fetch).toHaveBeenCalledTimes(2);
   });
 
   it('creates a supplier-scoped profile using only supplied editable fields and revision', async () => {

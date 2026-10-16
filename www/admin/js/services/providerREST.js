@@ -101,6 +101,22 @@ export class AdminProviderREST extends RestProviderBase {
     return this._requestJson('/admin/v1/workforce', { method: 'GET' });
   }
 
+  async validateBackup(data) {
+    return this._requestWithBody('/admin/v1/restore/validate', data);
+  }
+
+  async exportWorkforce() {
+    return this._requestJson('/admin/v1/workforce/export', { method: 'GET' });
+  }
+
+  async previewWorkforceImport(source, decisions) {
+    return this._requestWithBody('/admin/v1/workforce/import/preview', { source, decisions });
+  }
+
+  async importWorkforce(payload) {
+    return this._requestWithBody('/admin/v1/workforce/import', payload);
+  }
+
   async saveWorkforce(snapshot) {
     return this._requestWithBody('/admin/v1/workforce', snapshot);
   }

@@ -1,5 +1,125 @@
 import { test, expect } from '@playwright/test';
 
+test('Utilities transfers workforce through a fresh explicit import review', async ({ page }, testInfo) => {
+  const current = { id: 'team-one', allocation_token: 'ONE', name: 'Engineering',
+    short_name: 'ENG', archived: false, group_id: null };
+  const incoming = { ...current, name: 'Engineering imported' };
+  const added = { ...current, id: 'team-two', allocation_token: 'TWO', name: 'New team' };
+  const document = { format: 'plannertool-workforce', version: 1,
+    teams: { schema_version: 3, teams: [incoming, added], groups: [] },
+    workforce: { schema_version: 2, suppliers: [], staffing: [] } };
+  const source = JSON.stringify(document, null, 2);
+  const previews = [];
+  const commits = [];
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  await page.route('**/admin/', route => route.fulfill({
+    contentType: 'text/html', body: `<!doctype html><html><head><title>Utilities fixture</title>
+      <style>body { margin: 32px; font: 14px 'Segoe UI', sans-serif; background: #fff; }
+      main { max-width: 1160px; margin: 0 auto; }</style></head><body>
+      <main><admin-utilities></admin-utilities></main>
+      <script type="module" src="/admin/js/components/admin/Utilities.lit.js"></script>
+      </body></html>`,
+  }));
+  await page.route('**/admin/v1/workforce/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/export')) {
+      await route.fulfill({ json: { content: { filename: 'planner-workforce.yaml', source } } });
+      return;
+    }
+    const payload = route.request().postDataJSON();
+    if (path.endsWith('/import/preview')) {
+      previews.push(payload);
+      const ready = Object.hasOwn(payload.decisions, 'team-one');
+      await route.fulfill({ json: { content: {
+        revision: 'destination-revision', review_revision: `review-${previews.length}`, ready,
+        records: [
+          { id: current.id, kind: 'team', name: incoming.name, current, incoming,
+            status: 'conflict', structural: false,
+            decision: ready ? payload.decisions['team-one'] : null },
+          { id: added.id, kind: 'team', name: added.name, current: null, incoming: added,
+            status: 'new', structural: false, decision: null },
+        ],
+        errors: ready ? [] : ['Choose a skip or overwrite decision for every conflicting record'],
+        coverage: { historically_complete: false, retained_tasks: 4, scenarios: 1, views: 2 },
+      } } });
+      return;
+    }
+    expect(path).toBe('/admin/v1/workforce/import');
+    commits.push(payload);
+    await route.fulfill({ json: { ok: true, content: { revision: 'imported' } } });
+  });
+  await page.route('**/admin/v1/restore/validate', async route => {
+    const backup = route.request().postDataJSON();
+    if (backup.schema_revision !== 38) {
+      await route.fulfill({ status: 400, json: {
+        error: 'restore_rejected', message: 'Incompatible backup schema; server requires revision 38',
+      } });
+    } else {
+      await route.fulfill({ json: { ok: true, schema_revision: 38 } });
+    }
+  });
+  await page.goto('/admin/');
+  const system = page.getByRole('region', { name: 'System', exact: true });
+  const workforce = page.getByRole('region', { name: 'Workforce', exact: true });
+  await expect(system.getByRole('button', { name: 'Backup', exact: true })).toBeVisible();
+  await expect(workforce.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('backup-restore-rows-desktop.png'), fullPage: true });
+  let chooserPromise = page.waitForEvent('filechooser');
+  await system.getByRole('button', { name: 'Restore', exact: true }).click();
+  await (await chooserPromise).setFiles({ name: 'future-system.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ schema_revision: 99, config: {} })) });
+  await expect(system.locator('.status')).toContainText('Incompatible backup schema');
+  await expect(system.getByRole('button', { name: 'Restore Selected', exact: true })).toHaveCount(0);
+  chooserPromise = page.waitForEvent('filechooser');
+  await system.getByRole('button', { name: 'Restore', exact: true }).click();
+  await (await chooserPromise).setFiles({ name: 'system.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ schema_revision: 38, config: {} })) });
+  await expect(system.locator('.status')).toContainText('Backup compatible with server schema 38');
+  await expect(system.getByRole('button', { name: 'Restore Selected', exact: true })).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await workforce.getByRole('button', { name: 'Backup', exact: true }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe('planner-workforce.yaml');
+  const file = { name: 'workforce.yaml', mimeType: 'application/yaml', buffer: Buffer.from(source) };
+  chooserPromise = page.waitForEvent('filechooser');
+  await workforce.getByRole('button', { name: 'Restore', exact: true }).click();
+  await (await chooserPromise).setFiles(file);
+  const importButton = page.getByRole('button', { name: 'Import Workforce', exact: true });
+  await expect(importButton).toBeDisabled();
+  const decision = page.getByRole('combobox', { name: 'Decision for Engineering imported (team-one)' });
+  await expect(decision).toHaveValue('');
+  await decision.selectOption('overwrite');
+  await page.getByRole('combobox', { name: 'Decision for New team (team-two)' }).selectOption('skip');
+  await expect(importButton).toBeDisabled();
+  await page.getByRole('button', { name: 'Review Choices', exact: true }).click();
+  await expect(importButton).toBeEnabled();
+  await expect(decision).toHaveValue('overwrite');
+  await page.getByText('Incoming values', { exact: true }).first().click();
+  await expect(page.getByRole('table', { name: 'Workforce import records' })).toContainText('Engineering imported');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('workforce-transfer-preview-desktop.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(importButton).toHaveCount(0);
+  expect(commits).toHaveLength(0);
+  chooserPromise = page.waitForEvent('filechooser');
+  await workforce.getByRole('button', { name: 'Restore', exact: true }).click();
+  await (await chooserPromise).setFiles(file);
+  await expect(decision).toHaveValue('');
+  await decision.selectOption('overwrite');
+  await page.getByRole('button', { name: 'Review Choices', exact: true }).click();
+  await expect(importButton).toBeEnabled();
+  page.once('dialog', dialog => dialog.dismiss());
+  await importButton.click();
+  expect(commits).toHaveLength(0);
+  page.once('dialog', dialog => dialog.accept());
+  await importButton.click();
+  await expect(page.getByRole('status')).toHaveText('Workforce imported successfully.');
+  expect(commits).toEqual([{ source, decisions: { 'team-one': 'overwrite' },
+    revision: 'destination-revision', review_revision: `review-${previews.length}` }]);
+  expect(pageErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('workforce-transfer-success-desktop.png'), fullPage: true });
+});
+
 test('Admin entrypoint mounts canonical Workforce without legacy requests', async ({ page }, testInfo) => {
   const snapshot = {
     revision: 'fixture-revision',

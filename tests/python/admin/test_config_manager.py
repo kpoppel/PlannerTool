@@ -178,6 +178,7 @@ def test_restore_backup_writes_global_settings():
     store = _Store()
     cm = ConfigManager(storage=store)
     data = {
+        'schema_revision': TARGET_REVISION,
         'config': {
             'global_settings': {
                 'task_type_hierarchy': [{'level': 0}],
@@ -211,7 +212,7 @@ def test_restore_backup_writes_config():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
     cm = ConfigManager(storage=store)
-    data = {'config': {'server_config': {'org': 'restored-org'}}}
+    data = {'schema_revision': TARGET_REVISION, 'config': {'server_config': {'org': 'restored-org'}}}
     result = cm.restore_backup(data)
     assert result['ok'] is True
     assert store.load('config', 'server_config') == {'org': 'restored-org'}
@@ -228,7 +229,7 @@ def test_restore_backup_calls_sync_accounts_fn():
 
     cm = ConfigManager(storage=_Store())
     # New backup format: admin status in permissions field, no separate 'admins' dict
-    data = {'accounts': {'users': {'u@x.com': {
+    data = {'schema_revision': TARGET_REVISION, 'accounts': {'users': {'u@x.com': {
         'account_id': account_id,
         'email': 'u@x.com',
         'permissions': ['admin'],
@@ -243,7 +244,7 @@ def test_restore_backup_calls_sync_accounts_fn():
 def test_restore_backup_guards_current_admin():
     from planner_lib.admin.config_manager import ConfigManager
     cm = ConfigManager(storage=_Store())
-    data = {'accounts': {'users': {}, 'admins': {}}}
+    data = {'schema_revision': TARGET_REVISION, 'accounts': {'users': {}, 'admins': {}}}
     data['authentication'] = {'account_auth': {}, 'auth_control': {}}
     with pytest.raises(ValueError, match="Cannot remove the current admin"):
         cm.restore_backup(
@@ -358,6 +359,7 @@ def test_account_restore_without_authentication_is_rejected_before_writes():
     store.save('config', 'server_config', {'version': 'current'})
     with pytest.raises(ValueError, match='authentication'):
         ConfigManager(store).restore_backup({
+            'schema_revision': TARGET_REVISION,
             'config': {'server_config': {'version': 'old'}},
             'accounts': {'users': {}},
         }, sync_accounts_fn=lambda users, admins: None)
@@ -372,6 +374,7 @@ def test_restore_rejects_email_owned_data_before_writes(namespace, register_key)
     store = _Store()
     store.save('config', 'server_config', {'version': 'current'})
     backup = {
+        'schema_revision': TARGET_REVISION,
         'config': {'server_config': {'version': 'restored'}},
         namespace: {
             'owner@example.com_item': {'name': 'Private data'},
@@ -391,6 +394,7 @@ def test_invalid_authentication_backup_is_rejected_before_writes(invalid_part):
         'devices': {'b' * 32: {'hash': 'c' * 64, 'expires': 2000000000}},
     }
     backup = {
+        'schema_revision': TARGET_REVISION,
         'config': {'server_config': {'version': 'restored'}},
         'accounts': {'users': {'admin@example.com': {'account_id': ACCOUNT_ID, 'email': 'admin@example.com'}}},
         'authentication': {'account_auth': {ACCOUNT_ID: record}, 'auth_control': {'bootstrap_claimed': True}},
@@ -454,7 +458,10 @@ def test_selective_restore_without_accounts_preserves_current_credentials(tmp_pa
         accounts.update_credentials(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
         account_id = accounts.get_account_id('owner@example.com')
         original = storage.load('account_auth', account_id)
-        ConfigManager(storage).restore_backup({'config': {'server_config': {'version': 'restored'}}})
+        ConfigManager(storage).restore_backup({
+            'schema_revision': TARGET_REVISION,
+            'config': {'server_config': {'version': 'restored'}},
+        })
         assert storage.load('account_auth', account_id) == original
         assert accounts.load('owner@example.com')['pat'] == 'azure-pat'
         assert not sessions.is_valid(session)
@@ -505,6 +512,7 @@ def test_restore_backup_reencrypts_plaintext_pats(monkeypatch):
 
     cm = ConfigManager(storage=_Store())
     data = {
+        'schema_revision': TARGET_REVISION,
         '_meta': {'pat_format': 'plaintext'},
         'accounts': {
             'users': {'user@example.com': {'account_id': ACCOUNT_ID, 'email': 'user@example.com', 'pat': 'plaintext-pat'}},
@@ -534,6 +542,7 @@ def test_restore_backup_encrypts_plaintext_pats_without_metadata(monkeypatch):
     # Backup payload omits _meta but still carries plaintext PAT.
     cm = ConfigManager(storage=_Store())
     data = {
+        'schema_revision': TARGET_REVISION,
         'accounts': {
             'users': {'user@example.com': {'account_id': ACCOUNT_ID, 'email': 'user@example.com', 'pat': 'plaintext-pat'}},
             'admins': {},
