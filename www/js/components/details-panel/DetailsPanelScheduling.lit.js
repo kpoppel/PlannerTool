@@ -1,5 +1,11 @@
 import { html } from '../../vendor/lit.js';
 
+async function commitSchedulingInput(event, action, previousValue) {
+  const input = event.target;
+  const result = await action(input.value);
+  if (result instanceof Array && result.length === 0) input.value = previousValue;
+}
+
 /** Bounds from effective children; missing children or unplanned dates do not contribute. */
 export function getDetailsPanelChildDateBounds(children) {
   let earliest = null;
@@ -80,7 +86,7 @@ export function renderDetailsPanelScheduling({ model, actions }) {
       <select
         class="iteration-select"
         .value=${selectedPresetId}
-        @change=${(event) => actions.selectPreset(event.target.value)}
+        @change=${(event) => commitSchedulingInput(event, actions.selectPreset, selectedPresetId)}
         aria-label="Schedule preset"
         title="Schedule preset"
       >
@@ -99,7 +105,7 @@ export function renderDetailsPanelScheduling({ model, actions }) {
         class="date-input${startChanged ? ' details-changed' : ''}"
         .value=${start}
         title=${startTitle}
-        @change=${(event) => actions.changeStart(event.target.value)}
+        @change=${(event) => commitSchedulingInput(event, actions.changeStart, start)}
       />
       <span class="date-sep">→</span>
       <input
@@ -107,7 +113,7 @@ export function renderDetailsPanelScheduling({ model, actions }) {
         class="date-input${endChanged ? ' details-changed' : ''}"
         .value=${end}
         title=${endTitle}
-        @change=${(event) => actions.changeEnd(event.target.value)}
+        @change=${(event) => commitSchedulingInput(event, actions.changeEnd, end)}
       />
     </div>
     ${hasChildren || hasAnyDate ?

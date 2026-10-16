@@ -75,6 +75,10 @@ export function createInitialAppState() {
     featureDisplay: {
       selectedId: null,
     },
+    allocation: {
+      unit: 'percent',
+      staffing: { status: 'idle', fteById: {}, error: null, generation: 0 },
+    },
     notifications: [],
   };
 }

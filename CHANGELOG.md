@@ -27,6 +27,8 @@ Template - do not change :
 - Preserve unresolved ADO allocation entries during reads and known-team edits, with token-only canonical repository ports and clarified local-ID migration rules.
 ### Added
 - Make full logical backups and restores round-trip paired canonical workforce data with globally unique object IDs.
+- Clarify allocation planning intent, estimate uncertainty, team-specific man-days and the input-data requirements for complete cost forecasts in the user documentation.
+- Add browser-local whole-man-day allocation editing with precise fractional-percentage persistence, ceiling displays, effort-preserving scheduling, removal notices, child-boundary feedback and existing scenario revert.
 - Added reversible, auto-saved project archiving in administration, excluding archived projects from user project choices, task loading, and explicit area refreshes while preserving active-project API enrichment.
 - Added confirmed deletion of individual staffing rows from the canonical Workforce editor.
 - Added anonymous workforce candidate conversion with archived incomplete review items, explicit admin review completion and measured per-team/accounting parity.

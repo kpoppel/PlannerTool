@@ -111,6 +111,135 @@ describe('application/commands/featureCommands', () => {
     return state;
   }
 
+  function prepareManDayState(capacity = [{ team: 'A', capacity: 20 }]) {
+    const state = prepareAllocationState();
+    state.baseline.features = [{ ...state.baseline.features[1], parentId: null,
+      start: '2026-10-05', end: '2026-10-16', capacity }];
+    state.baseline.teams[0].group_id = null;
+    state.scenarios.items[0].overrides = {};
+    state.allocation = { unit: 'man-days', staffing: {
+      status: 'ready', fteById: { A: 5, G: 10 }, generation: 1, error: null,
+    } };
+    return state;
+  }
+
+  it('preserves man-days once per final task schedule and commits dates with integer allocations', () => {
+    store.setState(prepareManDayState(), true);
+    const notify = vi.fn();
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), notify);
+    const commits = [];
+    const unsubscribe = store.subscribe((state) => commits.push(state));
+    commands.updateFeatureDates([
+      { id: 'f1', end: '2026-10-23' }, { id: 'f1', end: '2026-10-30' },
+    ]);
+    unsubscribe();
+    expect(commits).toHaveLength(1);
+    expect(commits[0].scenarios.items[0].overrides.f1).toEqual({
+      start: '2026-10-05', end: '2026-10-30', capacity: [{ team: 'A', capacity: 10 }],
+    });
+    expect(notify).not.toHaveBeenCalled();
+    commands.revertFeature('f1');
+    expect(store.getState().scenarios.items[0].overrides.f1).toBeUndefined();
+  });
+
+  it('removes unconvertible rows while retaining valid allocations and the requested dates', () => {
+    store.setState(prepareManDayState([
+      { team: 'A', capacity: 20 }, { team: 'G', capacity: 70 }, { team: 'unknown', capacity: 10 },
+    ]), true);
+    const notify = vi.fn();
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), notify);
+    commands.updateFeatureDates([{ id: 'f1', end: '2026-10-09' }]);
+    expect(store.getState().scenarios.items[0].overrides.f1).toMatchObject({
+      end: '2026-10-09', capacity: [{ team: 'A', capacity: 40 }],
+    });
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning',
+      message: expect.stringContaining('unknown') }));
+    commands.updateFeatureDates([{ id: 'f1', start: null, end: null }]);
+    expect(store.getState().scenarios.items[0].overrides.f1.capacity).toEqual([]);
+  });
+
+  it('does not persist redundant capacity overrides when scheduling leaves the percentage unchanged', () => {
+    store.setState(prepareManDayState(), true);
+    const notify = vi.fn();
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), notify);
+    commands.updateFeatureDates([{ id: 'f1', start: '2026-10-12', end: '2026-10-23' }]);
+    expect(store.getState().scenarios.items[0].overrides.f1).toEqual({
+      start: '2026-10-12', end: '2026-10-23',
+    });
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('explains the child boundary and rejects a fully blocked man-day date edit', () => {
+    const state = prepareManDayState([{ team: 'A', capacity: 15 }]);
+    state.baseline.features = [
+      { ...state.baseline.features[0], id: '795708', start: '2026-06-17', end: '2026-08-04' },
+      { ...state.baseline.features[0], id: '750624', parentId: '795708',
+        start: '2026-07-21', end: '2026-08-03', capacity: [] },
+    ];
+    state.allocation.staffing.fteById.A = 6;
+    store.setState(state, true);
+    const notify = vi.fn();
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), notify);
+    commands.updateFeatureDates([{ id: '795708', end: '2026-07-24' }]);
+    expect(store.getState().scenarios.items[0].overrides['795708']).toEqual({
+      start: '2026-06-17', end: '2026-08-03',
+      capacity: [{ team: 'A', capacity: 15 * 35 / 34 }],
+    });
+    expect(store.getState().scenarios.items[0].overrides['750624']).toBeUndefined();
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ code: 'schedule-child-boundary',
+      message: expect.stringContaining('750624 (2026-08-03)') }));
+    const scenarios = store.getState().scenarios;
+    notify.mockClear();
+    expect(commands.updateFeatureDates([{ id: '795708', end: '2026-07-24' }])).toEqual([]);
+    expect(store.getState().scenarios).toBe(scenarios);
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ code: 'schedule-child-boundary' }));
+  });
+
+  it('blocks loading/error staffing and protected duplicate removal without any mutation', () => {
+    for (const status of ['idle', 'loading', 'error', 'duplicates']) {
+      const state = prepareManDayState(status === 'duplicates'
+        ? [{ team: 'unknown', capacity: 20 }, { team: 'unknown', capacity: 30 }]
+        : [{ team: 'A', capacity: 20 }]);
+      if (status !== 'duplicates') state.allocation.staffing.status = status;
+      store.setState(state, true);
+      const before = store.getState();
+      const notify = vi.fn();
+      const recompute = vi.fn();
+      const commands = createFeatureCommands(store, { emit: vi.fn() }, recompute, notify);
+      expect(commands.updateFeatureDates([{ id: 'f1', end: '2026-10-30' }])).toEqual([]);
+      expect(store.getState()).toBe(before);
+      expect(recompute).not.toHaveBeenCalled();
+      expect(notify).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning' }));
+    }
+  });
+
+  it('converts propagated parents but leaves unchanged overridden children untouched', () => {
+    const state = prepareManDayState();
+    state.baseline.features.push({ ...state.baseline.features[0], id: 'child', parentId: 'f1',
+      start: '2026-10-05', end: '2026-10-09', capacity: [{ team: 'A', capacity: 10 }] });
+    state.scenarios.items[0].overrides.child = { state: 'Done' };
+    store.setState(state, true);
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), vi.fn());
+    commands.updateFeatureDates([{ id: 'f1', start: '2026-10-12', end: '2026-10-30' }]);
+    expect(store.getState().scenarios.items[0].overrides.child).toEqual({ state: 'Done' });
+    expect(store.getState().scenarios.items[0].overrides.f1.capacity)
+      .toEqual([{ team: 'A', capacity: 200 / 15 }]);
+    commands.updateFeatureDates([{ id: 'child', end: '2026-11-06' }]);
+    expect(store.getState().scenarios.items[0].overrides.f1.end).toBe('2026-11-06');
+    expect(store.getState().scenarios.items[0].overrides.f1.capacity)
+      .toEqual([{ team: 'A', capacity: 8 }]);
+  });
+
+  it('keeps percentage mode independent of staffing and does not change allocations on no-op dates', () => {
+    const state = prepareManDayState();
+    state.allocation.unit = 'percent';
+    state.allocation.staffing.status = 'error';
+    store.setState(state, true);
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), vi.fn());
+    commands.updateFeatureDates([{ id: 'f1', end: '2026-10-30' }]);
+    expect(store.getState().scenarios.items[0].overrides.f1.capacity).toBeUndefined();
+  });
+
   it('rejects a capacity choice outside the explicit owner override without side effects', () => {
     const state = prepareAllocationState();
     state.baseline.projects[0].allocatable_ids = [];

@@ -36,11 +36,14 @@ export class DetailsPanelController {
 			if (host.open && down && down.x === event.clientX && down.y === event.clientY) host.hide();
 		};
 		this._scenarios = new StoreController(host, (state) => state.scenarios);
+		this._allocation = new StoreController(host, (state) => state.allocation);
+		this._allocationSnapshot = this._allocation.value;
 		host.addController(this);
 	}
 
 	hostConnected() {
 		this._scenarioSnapshot = this._scenarios.value;
+		this._allocationSnapshot = this._allocation.value;
 		this._subscriptions = [
 			bus.on(UIEvents.DETAILS_SHOW, () => this.show()),
 			bus.on(FeatureEvents.SELECTED, () => this.show()),
@@ -60,6 +63,10 @@ export class DetailsPanelController {
 			(this._open && !this.host.open)) this.resetEditors();
 		this._featureId = featureId;
 		this._open = this.host.open;
+		if (this._allocationSnapshot !== this._allocation.value) {
+			this._allocationSnapshot = this._allocation.value;
+			this.resetEditors();
+		}
 		if (this._scenarioSnapshot !== this._scenarios.value) {
 			this._scenarioSnapshot = this._scenarios.value;
 			this.resetEditors();
@@ -113,13 +120,16 @@ export class DetailsPanelController {
 			generation: this._generation,
 			featureId: this.host.feature === null ? null : String(this.host.feature.id),
 			scenarios: this._scenarios.value,
+			allocation: this._allocation.value,
+			feature: this.host.feature,
 		};
 	}
 
 	isCurrent(work) {
 		return work.generation === this._generation && this.host.isConnected && this.host.open &&
 			this.host.feature !== null && String(this.host.feature.id) === work.featureId &&
-			this._scenarios.value === work.scenarios;
+			this._scenarios.value === work.scenarios && this.host.feature === work.feature &&
+			this._allocation.value === work.allocation;
 	}
 
 	defer(callback, delay) {
@@ -178,6 +188,7 @@ export class DetailsPanelController {
 				childrenByParent: sel.feature.getChildrenByParentMap(), orig: feature.original, today,
 			}),
 			capacity: buildDetailsPanelCapacityModel({
+				allocation: this._allocation.value, feature,
 				capacity: feature.capacity, orgLoad: feature.orgLoad, teams,
 				availability: sel.feature.getAllocationAvailability(feature),
 				showAddTeamPopover: this.editor.showAddTeamPopover,

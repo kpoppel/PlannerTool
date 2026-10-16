@@ -4,9 +4,57 @@ import {
   computeMoveUpdates,
   computeResizeUpdates,
   applyUpdates,
+  startResize,
 } from '../../www/js/components/dragManager.js';
+import sinon from 'sinon';
+import { cmd, sel } from '../../www/js/application/imports.js';
 
 describe('dragManager helpers', () => {
+  it('explains a descendant-limited man-day resize once on release, not on every move', () => {
+    const feature = { id: '795708', start: '2026-06-17', end: '2026-08-03' };
+    const child = { id: '750624', parentId: '795708', start: '2026-07-21', end: '2026-08-03' };
+    const features = sinon.stub(sel.feature, 'getEffectiveFeatures').returns([feature, child]);
+    const settings = sinon.stub(sel.capacity, 'getAllocationSettings').returns({ unit: 'man-days' });
+    const notify = sinon.stub(cmd.ui, 'addNotification');
+    const card = document.createElement('div');
+    card.style.width = '300px';
+    card.setLiveDates = sinon.spy();
+    card.clearLiveDates = sinon.spy();
+    try {
+      startResize({ clientX: 0 }, feature, card, null, () => []);
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: -10000 }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: -10001 }));
+      expect(notify.called).to.be.false;
+      window.dispatchEvent(new MouseEvent('mouseup'));
+      expect(notify.calledOnce).to.be.true;
+      expect(notify.firstCall.args[0].code).to.equal('schedule-child-boundary');
+      expect(notify.firstCall.args[0].message).to.contain('750624 (2026-08-03)');
+    } finally {
+      features.restore();
+      settings.restore();
+      notify.restore();
+    }
+  });
+
+  it('restores resize preview geometry when the scheduling command rejects the batch', () => {
+    const feature = { id: 'blocked', start: '2026-10-05', end: '2026-10-16' };
+    const stub = sinon.stub(sel.feature, 'getEffectiveFeatures').returns([feature]);
+    const card = document.createElement('div');
+    card.style.width = '100px';
+    card.setLiveDates = sinon.spy();
+    card.clearLiveDates = sinon.spy();
+    try {
+      startResize({ clientX: 0 }, feature, card, null, () => []);
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100 }));
+      expect(card.style.width).not.to.equal('100px');
+      window.dispatchEvent(new MouseEvent('mouseup'));
+      expect(card.style.width).to.equal('100px');
+      expect(card.clearLiveDates.calledOnce).to.be.true;
+    } finally {
+      stub.restore();
+    }
+  });
+
   it('computeMoveUpdates for epic shifts children and returns updates', () => {
     const epic = {
       id: 'E1',

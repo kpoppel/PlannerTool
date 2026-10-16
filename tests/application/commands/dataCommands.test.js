@@ -40,6 +40,70 @@ describe('application/commands/dataCommands', () => {
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
+  it('restores a browser-local allocation unit without changing scenarios', async () => {
+    const service = makeDataServiceMock();
+    service.getLocalPref = vi.fn(async () => undefined);
+    service.setLocalPref = vi.fn(async () => {});
+    service.getCostTeams = vi.fn(async () => ({ ok: true, data: {
+      teams: { alpha: { internal: { fte: 3 }, external: { fte: 2 } } }, groups: {},
+    } }));
+    const commands = createDataCommands(store, { emit: vi.fn() }, service);
+    const scenarios = store.getState().scenarios;
+    const allocation = store.getState().allocation;
+    await commands.initializeAllocationPreferences();
+    expect(store.getState().allocation).toBe(allocation);
+    expect(store.getState().allocation.unit).toBe('percent');
+    expect(service.getCostTeams).not.toHaveBeenCalled();
+    await commands.setAllocationUnit('man-days');
+    expect(service.setLocalPref).toHaveBeenCalledWith('allocation.unit', 'man-days');
+    expect(store.getState().allocation.staffing).toMatchObject({ status: 'ready', fteById: { alpha: 5 } });
+    expect(store.getState().scenarios).toBe(scenarios);
+    service.getLocalPref.mockResolvedValue('man-days');
+    const loadedAllocation = store.getState().allocation;
+    await commands.initializeAllocationPreferences();
+    await commands.setAllocationUnit('man-days');
+    expect(store.getState().allocation).toBe(loadedAllocation);
+    expect(store.getState().allocation.unit).toBe('man-days');
+    expect(service.getCostTeams).toHaveBeenCalledTimes(1);
+    await expect(commands.setAllocationUnit('hours')).rejects.toThrow('allocation unit');
+  });
+
+  it('shares staffing loads, clears stale account data and distinguishes errors from absent teams', async () => {
+    const service = makeDataServiceMock();
+    let finish;
+    service.getCostTeams = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const commands = createDataCommands(store, { emit: vi.fn() }, service);
+    const first = commands.refreshAllocationStaffing();
+    const second = commands.refreshAllocationStaffing();
+    expect(service.getCostTeams).toHaveBeenCalledTimes(1);
+    expect(store.getState().allocation.staffing.status).toBe('loading');
+    commands.clearAllocationStaffing();
+    finish({ ok: true, data: { teams: {}, groups: {} } });
+    await Promise.all([first, second]);
+    expect(store.getState().allocation.staffing.status).toBe('idle');
+    service.getCostTeams.mockResolvedValue({ ok: false, error: { message: 'Offline' } });
+    await commands.refreshAllocationStaffing();
+    expect(store.getState().allocation.staffing).toMatchObject({ status: 'error', fteById: {}, error: 'Offline' });
+    service.getCostTeams.mockResolvedValue({ ok: true, data: { teams: {}, groups: {} } });
+    await commands.refreshAllocationStaffing();
+    expect(store.getState().allocation.staffing).toMatchObject({ status: 'ready', fteById: {}, error: null });
+    service.getCostTeams.mockResolvedValue({ ok: true, data: { teams: null, groups: {} } });
+    await commands.refreshAllocationStaffing();
+    expect(store.getState().allocation.staffing.status).toBe('error');
+  });
+
+  it('refreshes staffing with the baseline only in man-day mode', async () => {
+    const service = makeDataServiceMock();
+    service.setLocalPref = vi.fn(async () => {});
+    service.getCostTeams = vi.fn(async () => ({ ok: true, data: { teams: {}, groups: {} } }));
+    const commands = createDataCommands(store, { emit: vi.fn() }, service);
+    await commands.hydrateBaseline();
+    expect(service.getCostTeams).not.toHaveBeenCalled();
+    await commands.setAllocationUnit('man-days');
+    await commands.hydrateBaseline();
+    expect(service.getCostTeams).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps organization capacity independent of the legacy selected-plan graph flag', () => {
     const dataService = makeDataServiceMock();
     const bus = { emit: vi.fn() };

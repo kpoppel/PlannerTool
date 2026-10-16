@@ -71,8 +71,8 @@ describe('MainGraph Tests', () => {
         endX: 300,
         date: '2025-01-01',
         entries: [
-          { name: 'Team A', color: '#111111', value: 60.6 },
-          { name: 'Team B', color: '#222222', value: 40 },
+          { name: 'Team A', color: '#111111', value: 60.1 },
+          { name: 'Team B', color: '#222222', value: 0.01 },
         ],
       }];
       canvas.getBoundingClientRect = () => ({ left: 0, width: 300 });
@@ -86,6 +86,8 @@ describe('MainGraph Tests', () => {
       expect(tooltip.textContent).to.contain('Team A');
       expect(tooltip.textContent).to.contain('61%');
       expect(tooltip.textContent).to.contain('Team B');
+      expect(tooltip.querySelectorAll('.graph-tooltip-row')[1].textContent).to.contain('1%');
+      expect(el._hoverDays[0].entries[1].value).to.equal(0.01);
       expect(tooltip.dataset.side).to.equal('right');
       expect(tooltip.style.left).to.equal('27px');
 

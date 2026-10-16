@@ -10,6 +10,10 @@ function toArray(value) {
  */
 export function createCapacitySelectors(store) {
   return {
+    getAllocationSettings() {
+      return store.getState().allocation;
+    },
+
     getCapacityDates() {
       return toArray(store.getState()?.capacity?.dates);
     },

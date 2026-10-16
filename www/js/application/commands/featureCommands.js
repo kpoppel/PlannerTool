@@ -6,6 +6,7 @@ import {
 } from '../shared/featureProjection.js';
 import { projectAllocationAvailability, validateAllocationChange } from '../shared/allocationAvailability.js';
 import { allocationConflicts } from '../shared/allocationRule.js';
+import { resizeAllocations } from '../shared/allocationUnits.js';
 import {
   getActiveScenario,
   getActiveScenarioId,
@@ -77,9 +78,10 @@ function assertScenarioAllocationMutation(snapshot, mutation, restoringBaseline 
  * @param {StoreApi} store
  * @param {EventBusLike} bus
  * @param {((changedFeatureIds?: string[]|null) => void)|null} [recomputeCapacity]
+ * @param {Function|null} [notify]
  * @returns {object}
  */
-export function createFeatureCommands(store, bus, recomputeCapacity = null) {
+export function createFeatureCommands(store, bus, recomputeCapacity = null, notify = null) {
   /**
    * @param {string[]|null} [changedFeatureIds]
    */
@@ -92,6 +94,13 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
     bus.emit(ScenarioEvents.UPDATED);
   }
 
+  function reportScheduleLimits(limits) {
+    for (const limit of limits) {
+      notify({ source: 'Scheduling', code: 'schedule-child-boundary', severity: 'info',
+        message: `Schedule limited: task ${limit.featureId} cannot end before child ${limit.childId} (${limit.end}).` });
+    }
+  }
+
   return {
     updateFeatureDates(updates) {
       const safeUpdates = updates;
@@ -101,6 +110,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       const baselineById = getBaselineFeatureMap(snapshot);
       const childrenByParent = buildChildrenByParentMap(snapshot.baseline.features);
       const changedIds = new Set();
+      const scheduleLimits = [];
 
       const activeScenario = getActiveScenario(snapshot);
       const mergedOverrides = {
@@ -140,6 +150,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
           const childIds = childrenByParent.get(id);
           if (entry.shiftChildren !== false && childIds !== undefined && childIds.length > 0) {
             let maxChildEnd = null;
+            let limitingChildId = null;
             for (const childId of childIds) {
               const childBase = baselineById.get(String(childId));
               if (!childBase) continue;
@@ -148,12 +159,17 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
               if (!effectiveChildEnd) continue;
               if (maxChildEnd === null) {
                 maxChildEnd = effectiveChildEnd;
+                limitingChildId = childId;
               } else if (effectiveChildEnd > maxChildEnd) {
                 maxChildEnd = effectiveChildEnd;
+                limitingChildId = childId;
               }
             }
             if (maxChildEnd && requestedEnd && requestedEnd < maxChildEnd) {
               requestedEnd = maxChildEnd;
+              if (snapshot.allocation.unit === 'man-days') {
+                scheduleLimits.push({ featureId: id, childId: limitingChildId, end: maxChildEnd });
+              }
             }
           }
 
@@ -253,10 +269,49 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       });
 
       if (!mutation) {
+        reportScheduleLimits(scheduleLimits);
         const ids = safeUpdates.map((entry) => String(entry.id)).filter((id) => id !== '');
         recomputeAndEmitCapacity(ids.length ? ids : null);
         emitFeatureMutation({ ids });
-        return safeUpdates;
+        return scheduleLimits.length > 0 ? [] : safeUpdates;
+      }
+
+      const removalMessages = [];
+      if (snapshot.allocation.unit === 'man-days') {
+        const candidate = { ...snapshot, scenarios: { ...snapshot.scenarios, items: mutation.items } };
+        const before = buildFeatureMap(deriveEffectiveFeatures(snapshot, { includeDirtyMetadata: false }));
+        const after = deriveEffectiveFeatures(candidate, { includeDirtyMetadata: false });
+        const knownIds = new Set(snapshot.baseline.teams.map((team) => team.id));
+        let scenario = getActiveScenario(candidate);
+        for (const feature of after) {
+          const original = before.get(String(feature.id));
+          if (original.start === feature.start && original.end === feature.end) continue;
+          if (original.capacity.length === 0) continue;
+          if (snapshot.allocation.staffing.status !== 'ready') {
+            notify({ source: 'Allocation', code: 'staffing-unavailable', severity: 'warning',
+              message: 'Schedule unchanged: staffing is unavailable. Retry staffing in Configuration.' });
+            return [];
+          }
+          const converted = resizeAllocations(original, feature, snapshot.allocation.staffing.fteById);
+          const unknownIds = original.capacity.filter((row) => !knownIds.has(row.team))
+            .map((row) => row.team);
+          if (unknownIds.length !== new Set(unknownIds).size) {
+            notify({ source: 'Allocation', code: 'protected-duplicates', severity: 'warning',
+              message: `Schedule unchanged: task ${feature.id} has protected duplicate unknown-team allocations.` });
+            return [];
+          }
+          if (converted.capacity.length !== original.capacity.length
+            || converted.capacity.some((row, index) => row.team !== original.capacity[index].team
+              || row.capacity !== original.capacity[index].capacity)) {
+            scenario = withFeatureOverride(scenario, feature.id, (current) => ({
+              ...current, capacity: converted.capacity,
+            }));
+          }
+          for (const row of converted.removed) {
+            removalMessages.push(`${feature.id}/${row.team}: ${row.reason}`);
+          }
+        }
+        mutation.items = mutation.items.map((item) => item.id === mutation.activeId ? scenario : item);
       }
 
       assertScenarioAllocationMutation(snapshot, mutation);
@@ -273,6 +328,11 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
         'feature.updateFeatureDates'
       );
 
+      reportScheduleLimits(scheduleLimits);
+      if (removalMessages.length > 0) {
+        notify({ source: 'Allocation', code: 'removed-on-resize', severity: 'warning',
+          message: `Allocations removed: ${removalMessages.join('; ')}. Scenario changes can be reverted.` });
+      }
       const ids = Array.from(changedIds);
       recomputeAndEmitCapacity(ids.length ? ids : null);
       emitFeatureMutation({ ids });

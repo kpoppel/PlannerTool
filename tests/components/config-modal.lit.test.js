@@ -2,10 +2,13 @@ import { expect } from '@esm-bundle/chai';
 import '../../www/js/components/ConfigModal.lit.js';
 import { dataService } from '../../www/js/services/dataService.js';
 import { vi } from 'vitest';
+import { store } from '../../www/js/application/store.js';
+import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 
 describe('config-modal', () => {
   let modal;
   beforeEach(() => {
+    store.setState(createInitialAppState(), true);
     modal = document.createElement('config-modal');
     document.body.appendChild(modal);
   });
@@ -15,6 +18,26 @@ describe('config-modal', () => {
     vi.restoreAllMocks();
   });
 
+  it('saves the allocation unit locally and loads staffing without changing scenario data', async () => {
+    await modal.updateComplete;
+    const scenarios = store.getState().scenarios;
+    const setPref = vi.spyOn(dataService, 'setLocalPref').mockResolvedValue(undefined);
+    vi.spyOn(dataService, 'saveConfig').mockResolvedValue({ ok: true });
+    const load = vi.spyOn(dataService, 'getCostTeams').mockResolvedValue({ ok: true, data: {
+      teams: {}, groups: {},
+    } });
+    const select = modal._qs('#allocationUnit');
+    expect(select.value).to.equal('percent');
+    select.value = 'man-days';
+    modal._qs('#saveConfigBtn').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.getState().allocation.unit).to.equal('man-days');
+    expect(setPref.mock.calls.some(([key, value]) => key === 'allocation.unit' && value === 'man-days'))
+      .to.equal(true);
+    expect(load.mock.calls.length).to.equal(1);
+    expect(store.getState().scenarios).to.equal(scenarios);
+  });
+
   it('offers sign out and leaves browser data alone when cancelled', async () => {
     await modal.updateComplete;
     const signOut = vi.spyOn(dataService, 'signOut').mockResolvedValue(undefined);
@@ -22,6 +45,25 @@ describe('config-modal', () => {
     expect(modal._qs('#signOutBtn').textContent.trim()).to.equal('Sign out');
     await modal._signOut();
     expect(signOut.mock.calls.length).to.equal(0);
+  });
+
+  it('offers staffing retry when reopened after a failed load', async () => {
+    modal.remove();
+    store.setState((state) => ({ ...state, allocation: { ...state.allocation,
+      unit: 'man-days', staffing: { ...state.allocation.staffing, status: 'error', error: 'Offline' },
+    } }));
+    vi.spyOn(dataService, 'getCostTeams').mockResolvedValue({ ok: true, data: {
+      teams: {}, groups: {},
+    } });
+    modal = document.createElement('config-modal');
+    document.body.appendChild(modal);
+    await modal.updateComplete;
+    expect(modal._qs('#retryStaffingBtn').hidden).to.equal(false);
+    expect(modal._qs('#configStatus').textContent).to.contain('Could not load staffing');
+    modal._qs('#retryStaffingBtn').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.getState().allocation.staffing.status).to.equal('ready');
+    expect(modal._qs('#retryStaffingBtn').hidden).to.equal(true);
   });
 
   it('offers account deletion without any pairing controls', async () => {

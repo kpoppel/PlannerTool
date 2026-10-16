@@ -152,6 +152,78 @@ describe('DetailsPanel editing and scheduling commands', () => {
     await el.updateComplete;
   });
 
+  it('converts man-day edits, preserves unchanged rounded displays and ignores stale unit drafts', async () => {
+    store.setState((state) => ({ ...state, allocation: { unit: 'man-days', staffing: {
+      status: 'ready', fteById: { t1: 5 }, generation: 1, error: null,
+    } } }));
+    const el = await fixture(html`<details-panel></details-panel>`);
+    sinon.stub(sel.selection, 'getTeams').returns([{ id: 't1', name: 'Team', color: '#ffffff' }]);
+    el.feature = { id: 'first', state: 'New', start: '2026-10-05', end: '2026-10-16',
+      capacity: [{ team: 't1', capacity: 20 }], orgLoad: '20%', relations: [] };
+    el.open = true;
+    await el.updateComplete;
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    const input = el.shadowRoot.querySelector('.capacity-bar-input');
+    expect(input.value).to.equal('10');
+    input.dispatchEvent(new Event('blur'));
+    expect(update.called).to.be.false;
+    input.value = '15';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    input.dispatchEvent(new Event('blur'));
+    expect(update.calledOnceWithExactly('first', 'capacity', [{ team: 't1', capacity: 30 }])).to.be.true;
+    await el.updateComplete;
+    const stale = el.shadowRoot.querySelector('.capacity-bar-input');
+    update.resetHistory();
+    store.setState((state) => ({ ...state, allocation: { ...state.allocation, unit: 'percent' } }));
+    stale.value = '40';
+    stale.dispatchEvent(new Event('blur'));
+    expect(update.called).to.be.false;
+    await el.updateComplete;
+  });
+
+  it('validates direct man-day input and converts new team allocations without clamping', async () => {
+    store.setState((state) => ({ ...state, allocation: { unit: 'man-days', staffing: {
+      status: 'ready', fteById: { t1: 5 }, generation: 1, error: null,
+    } } }));
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'first', state: 'New', start: '2026-10-05', end: '2026-10-16',
+      capacity: [], orgLoad: '0%', relations: [] };
+    el.open = true;
+    await el.updateComplete;
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    const notify = sinon.stub(cmd.ui, 'addNotification');
+    el._addCapacityTeam('t1', '51');
+    el._addCapacityTeam('t1', '');
+    el._addCapacityTeam('t1', '10.1');
+    expect(update.called).to.be.false;
+    expect(notify.called).to.be.true;
+    el._addCapacityTeam('t1', '10');
+    expect(update.calledOnceWithExactly('first', 'capacity', [{ team: 't1', capacity: 20 }])).to.be.true;
+  });
+
+  it('preserves fractional percentages from whole man-day entry without rounding notices', async () => {
+    store.setState((state) => ({ ...state, allocation: { unit: 'man-days', staffing: {
+      status: 'ready', fteById: { t1: 6 }, generation: 1, error: null,
+    } } }));
+    const el = await fixture(html`<details-panel></details-panel>`);
+    sinon.stub(sel.selection, 'getTeams').returns([{ id: 't1', name: 'Team', color: '#ffffff' }]);
+    const feature = { id: 'first', state: 'New', start: '2026-10-05', end: '2026-10-16',
+      capacity: [{ team: 't1', capacity: 20 }], orgLoad: '20%', relations: [] };
+    el.feature = feature;
+    el.open = true;
+    await el.updateComplete;
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    const notify = sinon.stub(cmd.ui, 'addNotification');
+    const input = el.shadowRoot.querySelector('.capacity-bar-input');
+    input.value = '11';
+    input.dispatchEvent(new Event('blur'));
+    await el.updateComplete;
+    expect(input.value).to.equal('11');
+    expect(update.calledOnce).to.be.true;
+    expect(update.firstCall.args[2][0].capacity).to.be.closeTo(11 / 60 * 100, 1e-12);
+    expect(notify.called).to.be.false;
+  });
+
   it('computes child date bounds independently, ignoring absent and invalid dates', () => {
     const children = Object.freeze([
       Object.freeze({ start: '2026-10-02', end: '2026-10-04' }),

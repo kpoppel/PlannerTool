@@ -185,8 +185,8 @@ describe('FeatureCardLit basic behaviors', () => {
       id: 'f5',
       title: 'Shared allocation',
       capacity: [
-        { team: 't1', capacity: '30%' },
-        { team: 't2', capacity: '40%' },
+        { team: 't1', capacity: 30.1 },
+        { team: 't2', capacity: 0.01 },
       ],
     };
     el.teams = [
@@ -199,7 +199,10 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(teamBadges).to.have.lengthOf(2);
     expect(teamBadges[0].classList.contains('team-load-box--dimmed')).to.be.false;
     expect(teamBadges[1].classList.contains('team-load-box--dimmed')).to.be.true;
-    expect(teamBadges[1].textContent.trim()).to.equal('40%');
+    expect(teamBadges[0].textContent.trim()).to.equal('31');
+    expect(teamBadges[1].textContent.trim()).to.equal('1');
+    expect(teamBadges[1].title).to.equal('Deselected team: 1');
+    expect(el.feature.capacity[1].capacity).to.equal(0.01);
   });
 
   it('renders ghost title text with initial card render', async () => {

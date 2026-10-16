@@ -13,6 +13,7 @@ import {
 } from '../../www/js/components/details-panel/DetailsPanelRelations.lit.js';
 import { renderDetailsPanelTags } from '../../www/js/components/details-panel/DetailsPanelTags.lit.js';
 import { renderDetailsPanelHeader } from '../../www/js/components/details-panel/DetailsPanelHeader.lit.js';
+import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 
 describe('DetailsPanel header and tag section actions', () => {
   it('dispatches tag draft values, additions, and removals without private host methods', async () => {
@@ -128,6 +129,8 @@ describe('DetailsPanel relations section contract', () => {
 });
 
 describe('DetailsPanel capacity section contract', () => {
+  const allocation = createInitialAppState().allocation;
+  const feature = { start: '2026-10-05', end: '2026-10-16' };
   const teams = [
     { id: 't1', name: 'Alpha', color: '#ff0000' },
     { id: 't2', name: 'Beta', color: '#00ff00' },
@@ -147,6 +150,7 @@ describe('DetailsPanel capacity section contract', () => {
 
   it('offers only eligible new identities without hiding retained allocations', () => {
     const model = buildDetailsPanelCapacityModel({
+      allocation, feature,
       capacity: [{ team: 't1', capacity: 40 }, { team: 'missing', capacity: 20 }],
       orgLoad: '60%', teams, availability: { allowed_ids: ['t2'] }, showAddTeamPopover: true,
     });
@@ -160,6 +164,7 @@ describe('DetailsPanel capacity section contract', () => {
       Object.freeze({ team: 't2', capacity: 70 }),
     ]);
     const model = buildDetailsPanelCapacityModel({
+      allocation, feature,
       capacity, orgLoad: '150%', teams, availability: { allowed_ids: ['t1', 't2', 't3'] }, showAddTeamPopover: false,
     });
 
@@ -175,6 +180,7 @@ describe('DetailsPanel capacity section contract', () => {
 
   it('keeps unresolved allocations visible for explicit correction or removal', () => {
     const model = buildDetailsPanelCapacityModel({
+      allocation, feature,
       capacity: [{ team: 'missing', capacity: 40 }, { team: 't1', capacity: 20 }],
       orgLoad: '60%', teams, availability: { allowed_ids: ['t1', 't2', 't3'] }, showAddTeamPopover: false,
     });
@@ -187,12 +193,14 @@ describe('DetailsPanel capacity section contract', () => {
 
   it('renders and dispatches edits without a panel host or application state', async () => {
     const model = buildDetailsPanelCapacityModel({
+      allocation, feature,
       capacity: [{ team: 't1', capacity: 40 }],
       orgLoad: '40%', teams, availability: { allowed_ids: ['t1', 't2', 't3'] }, showAddTeamPopover: false,
     });
     const actions = createActions();
     const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);
     const input = root.querySelector('.capacity-bar-input');
+    expect(input.required).to.be.false;
     input.value = '70';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
     expect(actions.changeCapacity.calledOnceWithExactly('t1', '70')).to.be.true;
@@ -202,8 +210,31 @@ describe('DetailsPanel capacity section contract', () => {
     expect(actions.toggleAddTeam.calledOnce).to.be.true;
   });
 
+  it('ceil-displays both units without committing an untouched rounded value', async () => {
+    for (const unit of ['percent', 'man-days']) {
+      for (const percent of [20.2, 0.1, 0]) {
+        const capacity = [{ team: 't1', capacity: percent }];
+        const model = buildDetailsPanelCapacityModel({
+          allocation: { unit, staffing: { status: 'ready', fteById: { t1: 5 } } }, feature,
+          capacity, orgLoad: '1%', teams, availability: { allowed_ids: ['t1'] },
+          showAddTeamPopover: false,
+        });
+        const actions = createActions();
+        const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);
+        const input = root.querySelector('.capacity-bar-input');
+        expect(input.value).to.equal(String(Math.ceil(unit === 'percent' ? percent : percent / 2)));
+        expect(root.querySelector('.capacity-bar-label').textContent).to.equal(`${Math.ceil(percent)}%`);
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        input.dispatchEvent(new Event('blur'));
+        expect(actions.changeCapacity.called).to.be.false;
+        expect(capacity[0].capacity).to.equal(percent);
+      }
+    }
+  });
+
   it('submits only the selected team and input value to the add action', async () => {
     const model = buildDetailsPanelCapacityModel({
+      allocation, feature,
       capacity: [{ team: 't1', capacity: 40 }],
       orgLoad: '40%', teams, availability: { allowed_ids: ['t1', 't2', 't3'] }, showAddTeamPopover: true,
     });
@@ -217,6 +248,34 @@ describe('DetailsPanel capacity section contract', () => {
     expect(event.defaultPrevented).to.be.true;
     expect(actions.addTeam.calledOnceWithExactly('t2', '30')).to.be.true;
     expect(root.querySelector('.add-team-form select').options).to.have.length(3);
+  });
+
+  it('renders man-day inputs while keeping bars in percent and unavailable rows visible', async () => {
+    const model = buildDetailsPanelCapacityModel({
+      allocation: { unit: 'man-days', staffing: {
+        status: 'ready', fteById: { t1: 5, t2: 2.5 }, generation: 1,
+      } }, feature,
+      capacity: [{ team: 't1', capacity: 20 }, { team: 'missing', capacity: 40 }],
+      orgLoad: '20%', teams, availability: { allowed_ids: ['t2'] }, showAddTeamPopover: true,
+    });
+    const actions = createActions();
+    const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);
+    const inputs = root.querySelectorAll('.capacity-bar-input');
+    expect(inputs[0].value).to.equal('10');
+    expect(inputs[0].step).to.equal('1');
+    expect(inputs[0].max).to.equal('50');
+    expect(inputs[1].disabled).to.be.true;
+    expect(root.querySelector('.capacity-bar-fill').style.width).to.equal('20%');
+    expect(root.textContent).to.include('20%');
+    expect(root.textContent).to.include('staffing');
+    const select = root.querySelector('.add-team-form select');
+    const addInput = root.querySelector('.add-team-form input');
+    expect(addInput.step).to.equal('1');
+    expect(addInput.disabled).to.be.true;
+    select.value = 't2';
+    select.dispatchEvent(new Event('change'));
+    expect(addInput.disabled).to.be.false;
+    expect(addInput.max).to.equal('25');
   });
 });
 

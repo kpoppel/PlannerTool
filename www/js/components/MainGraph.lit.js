@@ -4,6 +4,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
 import { isLowestContainer } from '../application/shared/ownership.js';
+import { ceilAllocation } from '../application/shared/teamAllocation.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import {
@@ -143,7 +144,7 @@ export class MainGraphLit extends LitElement {
                 <span class="graph-tooltip-label">
                   <span class="graph-tooltip-swatch" style="background: ${entry.color}"></span>${entry.name}
                 </span>
-                <span>${Math.round(entry.value)}%</span>
+                <span>${ceilAllocation(entry.value)}%</span>
               </div>
             `)}
           </div>

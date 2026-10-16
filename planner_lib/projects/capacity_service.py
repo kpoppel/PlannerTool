@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from typing import List, Optional
 from collections import Counter
+from math import isfinite
 import re
 import logging
 
 logger = logging.getLogger(__name__)
+CAPACITY_LINE = re.compile(r'^([^:]+)\s*:\s*((?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)%?\s*$')
 
 
 class CapacityService:
@@ -46,15 +48,17 @@ class CapacityService:
                 if line.startswith('#'):
                     continue
 
-                mm = re.match(r"^([^:]+)\s*:\s*(\d+)%?\s*$", line)
+                mm = CAPACITY_LINE.match(line)
                 if not mm:
                     continue
                 team = mm.group(1).strip()
 
                 # Clamp capacity to [0, 100]
                 try:
-                    capacity = int(mm.group(2))
+                    capacity = float(mm.group(2))
                 except Exception:
+                    continue
+                if not isfinite(capacity):
                     continue
                 if capacity < 0:
                     capacity = 0
@@ -84,12 +88,15 @@ class CapacityService:
         retained = []
         unresolved = Counter()
         for line in self._capacity_lines(description):
-            match = re.match(r'^([^:]+)\s*:\s*(\d+)%?\s*$', line.strip())
+            match = CAPACITY_LINE.match(line.strip())
             if match is not None and self._team_repository.allocation_token_to_id(
                 match.group(1).strip()
             ) is None:
+                capacity = float(match.group(2))
+                if not isfinite(capacity):
+                    continue
                 retained.append(line)
-                unresolved[(match.group(1).strip(), min(int(match.group(2)), 100))] += 1
+                unresolved[(match.group(1).strip(), min(capacity, 100))] += 1
         known = []
         for allocation in capacity_list:
             if self._team_repository.id_to_allocation_token(allocation['team']) is not None:

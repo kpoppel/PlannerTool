@@ -10,6 +10,7 @@ import { renderDetailsPanelScheduling } from './details-panel/DetailsPanelSchedu
 import { renderDetailsPanelCapacity } from './details-panel/DetailsPanelCapacity.lit.js';
 import { parseDetailsPanelTags, renderDetailsPanelTags } from './details-panel/DetailsPanelTags.lit.js';
 import { renderDetailsPanelRelations } from './details-panel/DetailsPanelRelations.lit.js';
+import { formatManDays, getAllocationBasis, manDaysToPercent, percentToManDays } from '../application/shared/allocationUnits.js';
 
 export class DetailsPanelLit extends LitElement {
   static properties = {
@@ -222,14 +223,24 @@ export class DetailsPanelLit extends LitElement {
   }
 
   _saveCapacityEdit(teamId, newValue) {
-    const parsed = parseInt(newValue, 10);
-    const capacity = Number.isNaN(parsed) ? 0 : parsed;
-    const clampedCapacity = Math.max(0, Math.min(100, capacity));
+    if (sel.capacity.getAllocationSettings().unit === 'man-days') {
+      const row = this.feature.capacity.find((item) => item.team === teamId);
+      const basis = getAllocationBasis(teamId, this.feature,
+        sel.capacity.getAllocationSettings().staffing.fteById);
+      if (row !== undefined && basis.reason === '' && newValue !== ''
+        && Number(newValue) === Number(formatManDays(percentToManDays(row.capacity, basis.fte, basis.days)))) {
+        return true;
+      }
+    }
+    const clampedCapacity = this._parseAllocationInput(teamId, newValue);
+    if (clampedCapacity === null) return false;
 
     // Create a new capacity array to avoid mutating the baseline
-    if (this.feature && this.feature.capacity) {
+    if (this.feature && this.feature.capacity && this.feature.capacity.some(
+      (row) => row.team === teamId && row.capacity !== clampedCapacity
+    )) {
       const newCapacity = this.feature.capacity.map((c) =>
-        c.team === teamId ? { ...c, capacity: clampedCapacity } : { ...c }
+        c.team === teamId ? { ...c, capacity: clampedCapacity } : c
       );
       // Store as override in the scenario
       cmd.feature.updateFeatureField(this.feature.id, 'capacity', newCapacity);
@@ -237,6 +248,29 @@ export class DetailsPanelLit extends LitElement {
 
     this.editingCapacityTeam = null;
     this.requestUpdate();
+    const settings = sel.capacity.getAllocationSettings();
+    if (settings.unit === 'man-days') {
+      const basis = getAllocationBasis(teamId, this.feature, settings.staffing.fteById);
+      return formatManDays(percentToManDays(clampedCapacity, basis.fte, basis.days));
+    }
+    return true;
+  }
+
+  _parseAllocationInput(teamId, value) {
+    const allocation = sel.capacity.getAllocationSettings();
+    if (allocation.unit === 'percent') {
+      const parsed = parseInt(value, 10);
+      return Math.max(0, Math.min(100, Number.isNaN(parsed) ? 0 : parsed));
+    }
+    const basis = getAllocationBasis(teamId, this.feature, allocation.staffing.fteById);
+    const manDays = Number(value);
+    if (allocation.staffing.status !== 'ready' || basis.reason !== '' || value.trim() === ''
+      || !Number.isInteger(manDays) || manDays < 0 || manDays > basis.max) {
+      cmd.ui.addNotification({ source: 'Allocation', code: 'invalid-man-days', severity: 'warning',
+        message: 'Allocation unchanged: enter whole man-days within the staffed working-day capacity.' });
+      return null;
+    }
+    return manDaysToPercent(manDays, basis.fte, basis.days);
   }
 
   _handleDeleteCapacity(teamId, e) {
@@ -265,9 +299,8 @@ export class DetailsPanelLit extends LitElement {
   }
 
   _addCapacityTeam(teamId, value) {
-    const parsed = parseInt(value, 10);
-    const capacity = Number.isNaN(parsed) ? 0 : parsed;
-    const clampedCapacity = Math.max(0, Math.min(100, capacity));
+    const clampedCapacity = this._parseAllocationInput(teamId, value);
+    if (clampedCapacity === null) return false;
 
     if (teamId && this.feature) {
       // Check if team already exists
@@ -373,7 +406,7 @@ export class DetailsPanelLit extends LitElement {
     if (!this.feature) return;
     const end = this.feature.end ? this.feature.end : null;
     try {
-      cmd.feature.updateFeatureDates([{ id: this.feature.id, start: val, end }]);
+      return cmd.feature.updateFeatureDates([{ id: this.feature.id, start: val, end }]);
     } catch (err) {
       console.warn('Failed to update start date', err);
     }
@@ -392,7 +425,7 @@ export class DetailsPanelLit extends LitElement {
     if (!this.feature) return;
     const start = this.feature.start ? this.feature.start : null;
     try {
-      cmd.feature.updateFeatureDates([{ id: this.feature.id, start, end: val }]);
+      return cmd.feature.updateFeatureDates([{ id: this.feature.id, start, end: val }]);
     } catch (err) {
       console.warn('Failed to update end date', err);
     }
@@ -413,7 +446,7 @@ export class DetailsPanelLit extends LitElement {
     if (!preset) return;
     if (!this.feature) return;
     try {
-      cmd.feature.updateFeatureDates([{
+      return cmd.feature.updateFeatureDates([{
         id: this.feature.id, start: preset.start, end: preset.end,
       }]);
     } catch (err) {

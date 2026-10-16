@@ -9,6 +9,7 @@ import { startDragMove, startResize } from './dragManager.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { getBoardZoom, findInBoard } from './board-utils.js';
 import { hasTimelinePlacement, isAnchorPresentation } from '../application/shared/featurePresentation.js';
+import { ceilAllocation } from '../application/shared/teamAllocation.js';
 
 // Minimum visible gap (px) required to the left of a card, within the
 // scroll container's viewport, before its ghost title flips to the right.
@@ -965,9 +966,9 @@ export class FeatureCardLit extends LitElement {
             <span
               class="team-load-box ${team.selected ? '' : 'team-load-box--dimmed'}"
               style="background: ${team.color};"
-              title="${team.name}: ${tl.capacity}"
+              title="${team.name}: ${ceilAllocation(tl.capacity)}"
             >
-              ${tl.capacity}
+              ${ceilAllocation(tl.capacity)}
             </span>
           `;
         }).filter(Boolean);

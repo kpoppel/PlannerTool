@@ -36,6 +36,46 @@ team_repository = FakeTeamRepository()
 cap_service = CapacityService(team_repository)
 
 
+@pytest.mark.parametrize('amount', [0, 15, 0.5, 20.2, 100 / 210 * 100, 1e-7, 1e-30])
+def test_fractional_capacity_survives_publication_and_adapter_reload(amount):
+    repository = FakeTeamRepository([
+        {'id': 'opaque-alpha', 'name': 'Alpha', 'short_name': 'ALPHA'},
+    ])
+    service = CapacityService(repository)
+    allocations = [{'team': 'opaque-alpha', 'capacity': amount}]
+    description = service.update_description('Original description', allocations, {})
+    task = AzureAdapter().to_domain(
+        {'id': '795708', 'description': description}, 'plan', repository, {}, {}, service,
+    )
+    assert task['capacity'] == allocations
+    assert 'Original description' in description
+
+
+def test_fractional_unknown_rows_retain_their_literal_spelling():
+    service = CapacityService(FakeTeamRepository([
+        {'id': 'opaque-alpha', 'name': 'Alpha', 'short_name': 'ALPHA'},
+    ]))
+    description = '[PlannerTool Team Capacity]\nALPHA: 40\nNone: .5%\nNone: .5%\nGhost: 1e-07\n[/PlannerTool Team Capacity]'
+    allocations = [
+        {'team': 'opaque-alpha', 'capacity': 12.75},
+        {'team': 'None', 'capacity': 0.5}, {'team': 'None', 'capacity': 0.5},
+        {'team': 'Ghost', 'capacity': 1e-7},
+    ]
+    edited = service.update_description(description, allocations, {})
+    assert edited.count('None: .5%') == 2
+    assert 'Ghost: 1e-07' in edited
+    assert service.parse(edited) == [
+        {'team': 'ALPHA', 'capacity': 12.75}, *allocations[1:],
+    ]
+
+
+def test_fractional_parser_keeps_bounds_and_rejects_nonfinite_values():
+    description = '[PlannerTool Team Capacity]\nAlpha: 100.5\nBeta: .5%\nInvalid: 1e309\nInvalid: NaN\nInvalid: Infinity\nInvalid: -0.5\n[/PlannerTool Team Capacity]'
+    assert cap_service.parse(description) == [
+        {'team': 'Alpha', 'capacity': 100}, {'team': 'Beta', 'capacity': 0.5},
+    ]
+
+
 def test_unknown_source_allocations_are_retained_without_guessing_identity() -> None:
     """An unknown literal token stays unresolved, including repeated None rows."""
     repository = SimpleNamespace(

@@ -142,7 +142,7 @@ describe('application/shared/featureProjection', () => {
       },
     };
 
-    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('8.0%');
+    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('8%');
   });
 
   it('keeps orgLoad stable when teams are deselected from Team Drill-down', () => {
@@ -166,7 +166,7 @@ describe('application/shared/featureProjection', () => {
       },
     };
 
-    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('30.0%');
+    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('30%');
   });
 
   it('derives orgLoad from scenario-overridden capacity', () => {
@@ -194,7 +194,7 @@ describe('application/shared/featureProjection', () => {
       },
     };
 
-    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('40.0%');
+    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('40%');
   });
 
   it('derives orgLoad from the organization roster when no teams are selected', () => {
@@ -210,7 +210,7 @@ describe('application/shared/featureProjection', () => {
       },
     };
 
-    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('10.0%');
+    expect(deriveEffectiveFeatures(state)[0].orgLoad).toBe('10%');
   });
 
   it('builds children-by-parent maps from feature lists', () => {

@@ -1,3 +1,9 @@
+export function ceilAllocation(value) {
+  const integer = Math.round(value);
+  return Math.abs(value - integer) <= Number.EPSILON * Math.abs(value) * 2
+    ? integer : Math.ceil(value);
+}
+
 // Capacity entries follow the backend contract `{ team, capacity }`.
 export function getCapacityTeamId(capacityEntry) {
   return capacityEntry.team;
@@ -33,10 +39,10 @@ export function hasFeatureTeamId(feature, teamId) {
  * full organization roster. Team Drill-down only changes presentation.
  * @param {{capacity: {team: string, capacity: number}[]}} feature
  * @param {Set<string>} organizationTeamIds
- * @returns {string} Percentage with one decimal, e.g. '8.0%'
+ * @returns {string} Ceiling percentage for display, e.g. '8%'
  */
 export function computeFeatureOrgLoad(feature, organizationTeamIds, groupMembers = new Map()) {
-  if (organizationTeamIds.size === 0) return '0.0%';
+  if (organizationTeamIds.size === 0) return '0%';
   let sum = 0;
   for (const entry of feature.capacity) {
     if (groupMembers.has(entry.team)) {
@@ -46,5 +52,5 @@ export function computeFeatureOrgLoad(feature, organizationTeamIds, groupMembers
       sum += entry.capacity;
     }
   }
-  return (sum / organizationTeamIds.size).toFixed(1) + '%';
+  return ceilAllocation(sum / organizationTeamIds.size) + '%';
 }

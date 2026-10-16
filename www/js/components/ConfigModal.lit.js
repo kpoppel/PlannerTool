@@ -4,6 +4,7 @@ import './Modal.lit.js';
 import { ConfigEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { showAccountDeletionDialog } from './AuthDialog.lit.js';
+import { cmd, sel } from '../application/imports.js';
 
 class ConfigModal extends LitElement {
   static properties = {
@@ -101,7 +102,7 @@ class ConfigModal extends LitElement {
               color: #333;
               font-size: 14px;
             }
-            .form-row input {
+            .form-row input, .form-row select {
               width: 100%;
               max-width: 100%;
               box-sizing: border-box;
@@ -160,7 +161,23 @@ class ConfigModal extends LitElement {
                 value="0"
               />
             </div>
+            <div class="form-row">
+              <label for="allocationUnit">Allocation unit</label>
+              <select id="allocationUnit">
+                <option value="percent" .selected=${sel.capacity.getAllocationSettings().unit === 'percent'}>Percent</option>
+                <option value="man-days" .selected=${sel.capacity.getAllocationSettings().unit === 'man-days'}>Man-days</option>
+              </select>
+            </div>
             <div id="configStatus" class="status" aria-live="polite"></div>
+            <button id="retryStaffingBtn" type="button"
+              ?hidden=${sel.capacity.getAllocationSettings().unit !== 'man-days'
+                || sel.capacity.getAllocationSettings().staffing.status === 'ready'}
+              @click=${async () => {
+              const result = await cmd.data.refreshAllocationStaffing();
+              this._qs('#retryStaffingBtn').hidden = result.ok;
+              this._qs('#configStatus').textContent = result.ok ? 'Staffing loaded.'
+                : 'Could not load staffing. Man-day edits are unavailable.';
+            }}>Retry staffing</button>
           </form>
         </div>
         <div slot="footer" class="modal-footer">
@@ -183,6 +200,11 @@ class ConfigModal extends LitElement {
     const emailInput = this._qs('#configEmail');
     const patInput = this._qs('#configPat');
     const autosaveInput = this._qs('#autosaveInterval');
+
+    const allocation = sel.capacity.getAllocationSettings();
+    if (allocation.unit === 'man-days' && allocation.staffing.status !== 'ready') {
+      status.textContent = 'Could not load staffing. Man-day edits are unavailable.';
+    }
 
     // Save handler wired to Save button so the footer button can trigger form submit
     const saveBtn = this._qs('#saveConfigBtn');
@@ -229,6 +251,7 @@ class ConfigModal extends LitElement {
         }
         if (email) await dataService.setLocalPref('user.email', email);
         await dataService.setLocalPref('autosave.interval', autosaveInterval);
+        const allocationResult = await cmd.data.setAllocationUnit(this._qs('#allocationUnit').value);
         let patText = '';
         if (pat) patText = 'Access token updated.';
         try {
@@ -240,6 +263,10 @@ class ConfigModal extends LitElement {
           }
         } catch (err) {
           status.textContent = 'Configuration saved locally, but server save failed.';
+        }
+        this._qs('#retryStaffingBtn').hidden = allocationResult.ok;
+        if (!allocationResult.ok) {
+          status.textContent += ' Could not load staffing. Man-day edits are unavailable.';
         }
         bus.emit(ConfigEvents.UPDATED, { email });
         bus.emit(ConfigEvents.AUTOSAVE, { autosaveInterval });

@@ -143,11 +143,13 @@ export function startDragMove(
         }
       }
 
-      applyUpdates(updates, updateDatesCb);
+      const result = applyUpdates(updates, updateDatesCb);
+      const rejected = result instanceof Array && result.length === 0;
+      if (rejected) card.style.left = origLeft + 'px';
       bus.emit(DragEvents.END, {
         featureId: feature.id,
-        start: newStartStr,
-        end: newEndStr,
+        start: rejected ? feature.start : newStartStr,
+        end: rejected ? feature.end : newEndStr,
       });
     } else {
       card.style.left = origLeft + 'px';
@@ -174,6 +176,7 @@ export function startResize(
   const startDate = isUnplanned ? new Date() : parseDate(feature.start);
   const startX = e.clientX;
   const origWidth = parseInt(card.style.width, 10);
+  let limitingDescendant = null;
 
   function endDateFromWidth(width) {
     let remaining = width;
@@ -232,21 +235,21 @@ export function startResize(
     const dx = ev.clientX - startX;
     let tentativeWidth = Math.max(10, origWidth + dx);
     let tentativeEnd = endDateFromWidth(tentativeWidth);
+    limitingDescendant = null;
     {
       // Use full feature tree so parent/child constraints work across all hierarchy levels
       const allFeatures = getAllFeatures();
       const descendants = collectAllDescendants(feature.id, allFeatures);
       if (descendants.length) {
-        const descendantEndDates = descendants
-          .map((ch) => ch.end)
-          .filter(Boolean)
-          .map((s) => parseDate(s));
-        if (descendantEndDates.length) {
-          const maxDescendantEnd = descendantEndDates.reduce(
-            (max, d) => (d > max ? d : max),
-            descendantEndDates[0]
+        const datedDescendants = descendants.filter((child) => child.end);
+        if (datedDescendants.length) {
+          const latestDescendant = datedDescendants.reduce(
+            (latest, child) => child.end > latest.end ? child : latest,
+            datedDescendants[0]
           );
+          const maxDescendantEnd = parseDate(latestDescendant.end);
           if (tentativeEnd < maxDescendantEnd) {
+            limitingDescendant = latestDescendant;
             tentativeEnd = maxDescendantEnd;
             tentativeWidth = widthForSpan(startDate, tentativeEnd);
           }
@@ -271,6 +274,11 @@ export function startResize(
     const newStartStr = formatDate(startDate);
     const newEndStr = formatDate(adjustedFinalEnd);
 
+    if (limitingDescendant !== null && sel.capacity.getAllocationSettings().unit === 'man-days') {
+      cmd.ui.addNotification({ source: 'Scheduling', code: 'schedule-child-boundary', severity: 'info',
+        message: `Schedule limited: task ${feature.id} cannot end before child ${limitingDescendant.id} (${limitingDescendant.end}).` });
+    }
+
     // For unplanned features, we need to set both start and end dates
     if (isUnplanned) {
       if (newEndStr !== feature.end || newStartStr !== feature.start) {
@@ -286,11 +294,13 @@ export function startResize(
           }
         }
 
-        applyUpdates(updates, updateDatesCb);
+        const result = applyUpdates(updates, updateDatesCb);
+        const rejected = result instanceof Array && result.length === 0;
+        if (rejected) card.style.width = origWidth + 'px';
         bus.emit(DragEvents.END, {
           featureId: feature.id,
-          start: newStartStr,
-          end: newEndStr,
+          start: rejected ? feature.start : newStartStr,
+          end: rejected ? feature.end : newEndStr,
         });
       } else {
         card.style.width = origWidth + 'px';
@@ -300,8 +310,10 @@ export function startResize(
       if (newEndStr !== feature.end) {
         const allFeatures = getAllFeatures();
         const updates = computeResizeUpdates(feature, adjustedFinalEnd, allFeatures);
-        applyUpdates(updates, updateDatesCb);
-        bus.emit(DragEvents.END, { featureId: feature.id, end: newEndStr });
+        const result = applyUpdates(updates, updateDatesCb);
+        const rejected = result instanceof Array && result.length === 0;
+        if (rejected) card.style.width = origWidth + 'px';
+        bus.emit(DragEvents.END, { featureId: feature.id, end: rejected ? feature.end : newEndStr });
       } else {
         card.style.width = origWidth + 'px';
       }
@@ -408,7 +420,7 @@ function computeResizeUpdates(feature, newEndDate, features) {
 
 // Apply a list of updates using provided callback.
 function applyUpdates(updates, updateDatesCb) {
-  updateDatesCb(updates);
+  return updateDatesCb(updates);
 }
 
 // Export schedule helper functions for tests and other modules

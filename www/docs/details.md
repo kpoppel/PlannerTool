@@ -28,9 +28,11 @@ Scheduling
 Choosing an iteration or using a date-alignment button is an explicit action that sets dates, not implicit date resolution.
 
 Allocated capacity
-- Add allocation: choose a team and set percentage.
-- Adjust allocation with the mouse wheel over the percent field for 10% steps or enter a precise value.
+- Choose Percent (default) or Man-days in Configuration. This browser-local setting changes the entry unit, not the estimate's accuracy or confidence.
+- Add allocation: choose a team and enter a whole percentage or whole man-days in the selected unit. The mouse wheel adjusts percentages in 10% steps and man-days in single-day steps.
+- Both units display whole numbers rounded upward. Stored percentages retain fractional precision; leaving a rounded value unchanged does not overwrite the underlying allocation.
 - Allocations are saved into the scenario and can be written back to Azure DevOps via the review modal.
+- Man-days are team-specific and are not comparable between teams as measures of output, productivity or cost. Allocations support forward resource planning, reservation and budgeting; they are not automatically up-front delivery commitments. See [Capacity and allocations](best_practices.md#capacity-and-allocations).
 
 Description
 - Free-text area for description. Description field is currently not editable from the tool.
@@ -66,9 +68,9 @@ Step-by-step example: change dates and team allocations
 3. Edit Team Allocations
 	- Find the "Team allocations" section.
 	- To add a new allocation, click the `Add allocation` button.
-	- In the new allocation row select a `Team` from the dropdown and enter a `Percent` value (e.g., `40`).
-	- To quickly adjust the percent, hover over the `Percent` field and use the mouse wheel for ±10% steps.
-	- Existing allocations show as rows with `Team` and `Percent` columns and a delete/trash control to remove them.
+	- In the new allocation row select a `Team` from the dropdown and enter a whole value in your configured unit (e.g., `40` percent or `10` man-days).
+	- Use the mouse wheel over the allocation field for 10% steps in Percent mode or single-day steps in Man-days mode.
+	- Existing allocations show team names and allocation fields, with a delete/trash control to remove them. Bars remain percent-based in either mode.
 
 4. Add notes (not implemented)
 	- Edit the `Description` or `Notes` field to add context for the change.

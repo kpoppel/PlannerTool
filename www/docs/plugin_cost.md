@@ -16,9 +16,17 @@ This user guide explains what each view displays and how to interpret the figure
 - Date range: choose From and To to set the displayed months.
 - View mode: toggle between Cost and Hours to change the displayed units where relevant.
 - Task types are selectable in the sidebar. The default task type selection is all types selected.
-- Including unplanned tasks in the calculation. Default is unselected as unplanned work is assigned dates by the tool to becoe visible in the user interface.
+- Unplanned tasks: hidden by default. Making them visible does not give them a dated allocation or create a cost estimate.
 
 The report payload contains the selected plans and their enabled Context from the canonical resolved dataset. Final board visibility and Team Drill-down do not filter financial inputs. Scenario changes, Context changes, task-type selection, and the Cost date range trigger recalculation.
+
+### Input completeness
+
+Cost Analysis prices dated allocations, not the mere presence of a task. A task without a valid start/end date range or an applicable team/group allocation contributes no directly calculated planned hours or cost. Including unplanned tasks in the display does not supply these missing inputs. Parent rows may still show rolled-up child costs under the hierarchy rules below.
+
+Missing or zero calculated cost must not be interpreted as evidence that the work is free. Reported totals cover only the work represented by usable planning data in the selected scope. Omitted work, dates or allocations can understate future resource demand and spending. Cost calculations also depend on available workforce, project-hour and rate data; missing cost bases must be resolved before treating a report as complete.
+
+Forward-planning accuracy depends on complete, correct and current input data. Review these assumptions with the teams as plans change. More precise numbers or a different allocation display unit do not make incomplete estimates reliable, and even well-maintained inputs cannot remove uncertainty about future delivery.
 
 ## Reading the tables
 

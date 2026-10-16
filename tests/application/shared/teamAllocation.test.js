@@ -12,9 +12,18 @@ describe('application/shared/teamAllocation', () => {
     const roster = new Set(['A', 'B']);
     const groups = new Map([['G', ['A', 'B']], ['empty', []]]);
     const feature = { capacity: [{ team: 'G', capacity: 50 }, { team: 'None', capacity: 20 }] };
-    expect(computeFeatureOrgLoad(feature, roster, groups)).toBe('50.0%');
+    expect(computeFeatureOrgLoad(feature, roster, groups)).toBe('50%');
     expect(computeFeatureOrgLoad({ capacity: [{ team: 'empty', capacity: 50 }] }, roster, groups))
-      .toBe('0.0%');
+      .toBe('0%');
+  });
+  it('ceils organization-load labels without displaying positive allocations as zero', () => {
+    const roster = new Set(['A', 'B']);
+    expect(computeFeatureOrgLoad({ capacity: [{ team: 'A', capacity: 20.2 }] }, roster)).toBe('11%');
+    expect(computeFeatureOrgLoad({ capacity: [{ team: 'A', capacity: 0.001 }] }, roster)).toBe('1%');
+    expect(computeFeatureOrgLoad({ capacity: [{ team: 'A', capacity: 20 + Number.EPSILON * 20 }] }, roster))
+      .toBe('10%');
+    expect(computeFeatureOrgLoad({ capacity: [{ team: 'A', capacity: 0 }] }, roster)).toBe('0%');
+    expect(computeFeatureOrgLoad({ capacity: [] }, new Set())).toBe('0%');
   });
   it('expands group focus to members without making member focus include sibling-only work', () => {
     const catalogue = [

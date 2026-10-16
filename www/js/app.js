@@ -113,6 +113,7 @@ async function init() {
     await dataService.init();
     const { cmd } = await import('./application/imports.js');
     await cmd.data.hydrateBaseline();
+    await cmd.data.initializeAllocationPreferences();
     await cmd.data.hydrateScenarioData();
     await cmd.viewRestore.restoreLastView();
     // View restore updates selection/filter slices; recompute capacity so graph data is fresh.

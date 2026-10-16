@@ -8,6 +8,7 @@ import { ColorService, PALETTE } from '../../services/ColorService.js';
 import { featureFlags } from '../../config.js';
 import { deriveEffectiveFeatures } from '../shared/featureProjection.js';
 import { deriveOrderedFeatureStateNames } from '../shared/stateDerivations.js';
+import { normalizeStaffing } from '../shared/allocationUnits.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -85,8 +86,85 @@ function derivePaletteColor(item, mappedColor, fallbackIndex) {
  */
 export function createDataCommands(store, bus, dataService) {
   const capacityCalculator = new CapacityCalculator(NO_OP_BUS);
+  let staffingRequest = null;
+
+  function applyAllocationUnit(unit) {
+    if (unit !== 'percent' && unit !== 'man-days') throw new Error(`Invalid allocation unit: ${unit}`);
+    if (store.getState().allocation.unit === unit) return;
+    store.setState((state) => ({
+      ...state, allocation: { ...state.allocation, unit },
+    }), false, 'data.setAllocationUnit');
+  }
 
   const commands = {
+    async initializeAllocationPreferences() {
+      const stored = await dataService.getLocalPref('allocation.unit');
+      // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+      const unit = stored === undefined ? 'percent' : stored;
+      applyAllocationUnit(unit);
+      if (unit === 'man-days' && store.getState().allocation.staffing.status !== 'ready') {
+        await commands.refreshAllocationStaffing();
+      }
+    },
+
+    async setAllocationUnit(unit) {
+      if (unit !== 'percent' && unit !== 'man-days') throw new Error(`Invalid allocation unit: ${unit}`);
+      await dataService.setLocalPref('allocation.unit', unit);
+      applyAllocationUnit(unit);
+      if (unit === 'man-days' && store.getState().allocation.staffing.status !== 'ready') {
+        return commands.refreshAllocationStaffing();
+      }
+      return { ok: true };
+    },
+
+    clearAllocationStaffing() {
+      staffingRequest = null;
+      store.setState((state) => ({
+        ...state,
+        allocation: {
+          ...state.allocation,
+          staffing: { status: 'idle', fteById: {}, error: null,
+            generation: state.allocation.staffing.generation + 1 },
+        },
+      }), false, 'data.clearAllocationStaffing');
+    },
+
+    refreshAllocationStaffing() {
+      if (staffingRequest !== null) return staffingRequest.promise;
+      const generation = store.getState().allocation.staffing.generation + 1;
+      store.setState((state) => ({
+        ...state,
+        allocation: { ...state.allocation,
+          staffing: { status: 'loading', fteById: {}, error: null, generation } },
+      }), false, 'data.loadAllocationStaffing');
+      const request = { promise: null };
+      staffingRequest = request;
+      request.promise = (async () => {
+        try {
+          const result = await dataService.getCostTeams();
+          if (!result.ok) throw new Error(result.error.message);
+          const fteById = normalizeStaffing(result.data);
+          if (store.getState().allocation.staffing.generation !== generation) return { ok: false };
+          store.setState((state) => ({
+            ...state, allocation: { ...state.allocation,
+              staffing: { status: 'ready', fteById, error: null, generation } },
+          }), false, 'data.allocationStaffingReady');
+          return { ok: true };
+        } catch (error) {
+          if (store.getState().allocation.staffing.generation !== generation) return { ok: false };
+          console.error('Loading allocation staffing failed', error);
+          store.setState((state) => ({
+            ...state, allocation: { ...state.allocation,
+              staffing: { status: 'error', fteById: {}, error: error.message, generation } },
+          }), false, 'data.allocationStaffingFailed');
+          return asFailure(bus, 'allocation-staffing', { message: error.message });
+        } finally {
+          if (staffingRequest === request) staffingRequest = null;
+        }
+      })();
+      return request.promise;
+    },
+
     recomputeCapacity() {
       const state = store.getState();
       const features = deriveEffectiveFeatures(state, { includeDirtyMetadata: false });
@@ -127,6 +205,7 @@ export function createDataCommands(store, bus, dataService) {
     },
 
     async hydrateBaseline(options = {}) {
+      if (store.getState().allocation.unit === 'man-days') commands.clearAllocationStaffing();
       const preloaded = options.preloaded;
       const hasPreloaded = preloaded !== undefined && preloaded !== null;
 
@@ -290,6 +369,8 @@ export function createDataCommands(store, bus, dataService) {
       bus.emit(StateFilterEvents.CHANGED);
       bus.emit(DataEvents.LOADED);
       bus.emit(DataCommandEvents.BASELINE_HYDRATED, { revision });
+
+      if (store.getState().allocation.unit === 'man-days') await commands.refreshAllocationStaffing();
 
       return {
         ok: true,

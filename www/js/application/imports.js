@@ -21,7 +21,7 @@ import { createScenarioSelectors } from './selectors/scenarioSelectors.js';
 import { createGroupSelectors } from './selectors/groupSelectors.js';
 import { createScopeSelectors } from './selectors/scopeSelectors.js';
 import { dataService } from '../services/dataService.js';
-import { DataEvents } from '../core/EventRegistry.js';
+import { DataEvents, SessionEvents } from '../core/EventRegistry.js';
 
 /** @typedef {import('./types.js').AppState} AppState */
 /** @typedef {import('./types.js').StoreApi} StoreApi */
@@ -135,13 +135,15 @@ stateStoreCommands.filter = createFilterCommands(
 stateStoreCommands.feature = createFeatureCommands(
   store,
   bus,
-  () => stateStoreCommands.data.recomputeCapacity()
+  () => stateStoreCommands.data.recomputeCapacity(),
+  (notice) => stateStoreCommands.ui.addNotification(notice)
 );
 stateStoreCommands.scenario = createScenarioCommands(store, bus, {
   hydrateBaseline: () => stateStoreCommands.data.hydrateBaseline(),
   recomputeCapacity: () => stateStoreCommands.data.recomputeCapacity(),
   invalidateCache: () => dataService.invalidateCache(),
 });
+bus.on(SessionEvents.CHANGED, () => stateStoreCommands.data.clearAllocationStaffing());
 const stateStoreSelectors = {
   ui: uiSelectors,
   selection: createSelectionSelectors(store),

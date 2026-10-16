@@ -44,6 +44,16 @@ The application supports:
 - drag-based date and allocation adjustments
 - review before pushing changes back to Azure
 
+### Allocation units
+
+Configuration offers a browser-local allocation unit: Percent (default) or Man-days. A project man-day is one person's average project working day, not a fixed eight-hour day. DetailsPanel uses allocation percent / 100 x internal/external FTE x inclusive Monday-Friday days, without holidays or leave. Monthly project hours cancel in this conversion. Groups use their existing aggregate FTE.
+
+Man-day entry accepts whole days only. Both man-day and percentage displays round upward to whole numbers; zero is displayed only for an actual zero. Stored and published allocations retain fractional percentage precision, including through scenario saves and Azure reloads. Scheduling and financial calculations use those precise values, not the rounded display. Feature cards, allocation bars and graphs remain percent-based. Changing units, leaving a displayed value unchanged, or refreshing data does not rewrite allocations. Existing integer allocations remain valid.
+
+In Man-days mode, scheduling preserves previous effort against final dates. It removes rows with missing/zero staffing, invalid or zero-working-day schedules, or a result above 100%. Failed/loading staffing and protected duplicate unknown-team allocations block the batch instead. Retry staffing in Configuration or switch to Percent. Notifications explain removals. Existing feature/scenario revert controls recover changes; feature revert removes all of that feature's overrides.
+
+Parents still cannot end before their scheduled children. Man-day edits report the limiting child and date; parent resizing does not compress descendants. Propagated changes may require reverting other affected features or the scenario.
+
 ### Visual planning surfaces
 
 The product includes:
