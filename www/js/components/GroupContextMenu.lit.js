@@ -407,12 +407,12 @@ class GroupContextMenu extends LitElement {
   }
 
   _renderBoardMenu() {
-    const selectedPlans = sel.selection.getSelectedProjects();
-    // Multiple plans selected — can't determine which plan to create group in
-    if (selectedPlans.length !== 1) {
+    const selectedPlans = sel.selection.getProjects().filter((plan) => plan.selected);
+    const plan = selectedPlans.find((item) => String(item.id) === String(this._config.planId));
+    if (!this._config.planId || !plan) {
       return html`
         <div class="menu-item" style="pointer-events:none; color:#888; font-size:0.8rem;">
-          Select a single plan to create groups
+          Right-click a plan swimlane to choose where to create the group
         </div>
       `;
     }
@@ -451,7 +451,7 @@ class GroupContextMenu extends LitElement {
       ? null
       : sel.group.getGroupById(insertion.parentId);
     const siblingLabel = parentGroup === null
-      ? `New group here in "${selectedPlans[0].name}"`
+      ? `New group here in "${plan.name}"`
       : `New group here inside "${parentGroup.name}"`;
     const container = insertion.container;
     // The container is the band the cursor is inside; nesting into it is a

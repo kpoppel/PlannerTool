@@ -147,6 +147,38 @@ describe('resolveInsertionSlot', () => {
     expect(resolveInsertionSlot(mixed, 20, BOTTOM).planId).toBe('p1');
   });
 
+  it('uses the plan lane under the cursor when several plans are rendered', () => {
+    const multiPlan = [
+      { ...card('p1-task', 0, 1024), planId: 'p1', laneTop: 0, laneBottom: 80 },
+      { ...pill('p1-group', 40, 1536), planId: 'p1', laneTop: 0, laneBottom: 80 },
+      { ...card('p2-task', 100, 1024), planId: 'p2', laneTop: 100, laneBottom: 180 },
+      {
+        ...pill('p2-group', 140, 1536),
+        groupObj: { id: 'p2-group', plan_id: 'p2', name: 'p2-group', parent_id: null },
+        planId: 'p2',
+        laneTop: 100,
+        laneBottom: 180,
+      },
+    ];
+
+    const slot = resolveInsertionSlot(multiPlan, 120, 200);
+    expect(slot.planId).toBe('p2');
+    expect(slot.rank).toBe(1280);
+    expect(slot.rankUpdates).toEqual([]);
+  });
+
+  it('resolves the plan lane even when packed cards have no ordering ranks', () => {
+    const packedCard = {
+      feature: { id: 'p2-task' },
+      top: 100,
+      planId: 'p2',
+      laneTop: 100,
+      laneBottom: 180,
+    };
+
+    expect(resolveInsertionSlot([packedCard], 120, 200).planId).toBe('p2');
+  });
+
   it('places a new group after a parent and descendant task stream', () => {
     const hierarchical = [
       card('parent', 0, RANK_GAP),

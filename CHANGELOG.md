@@ -15,6 +15,7 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Allow group creation from the plan swimlane under the cursor when multiple plans are selected.
 - Bump plugin versions to reflect the v5 feature, compatibility, and calculation changes.
 - Remove the obsolete Show Onboarding action from the Help modal.
 - Give embedded enrollment guides a compact reading layout while retaining their full standalone pages.

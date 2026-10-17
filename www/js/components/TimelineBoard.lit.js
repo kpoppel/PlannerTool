@@ -127,9 +127,11 @@ export class TimelineBoard extends LitElement {
       e.preventDefault();
       if (!sel.scenario.isActiveScenarioMutable()) return;
       const selectedPlans = sel.selection.getSelectedProjects();
-      const planId = selectedPlans.length === 1 ? selectedPlans[0].id : null;
       const board = this.shadowRoot.querySelector('feature-board');
       const insertion = board.getInsertionSlotAt(e.clientY);
+      const planId = insertion.planId !== null
+        ? insertion.planId
+        : selectedPlans.length === 1 ? selectedPlans[0].id : null;
       board.showInsertionCaret(insertion.caretTop, insertion.parentId);
       GroupContextMenu.show({
         type: 'board',

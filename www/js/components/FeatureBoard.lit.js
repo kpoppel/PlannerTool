@@ -839,6 +839,7 @@ class FeatureBoard extends LitElement {
       for (const swimlane of swimlanesToRender) {
         const bucket = buckets.get(swimlane.id) || [];
         const swimlaneTop = currentTop;
+        const laneStartIndex = renderList.length;
         let swimlaneHeight = 0;
         const planOrigins = new Map();
         const teamOrigins = new Map();
@@ -981,6 +982,15 @@ class FeatureBoard extends LitElement {
           }
           // Reserve at least one lane height even for empty swimlanes.
           swimlaneHeight = Math.max(bucket.length, 1) * laneHeight();
+        }
+
+        const lanePlanId = swimlane.type === 'plan' || swimlane.type === 'expanded-plan'
+          ? String(swimlane.id)
+          : null;
+        for (const item of renderList.slice(laneStartIndex)) {
+          item.planId = lanePlanId;
+          item.laneTop = swimlaneTop;
+          item.laneBottom = swimlaneTop + swimlaneHeight;
         }
 
         // The band height includes the gap that visually separates this lane

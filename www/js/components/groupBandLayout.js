@@ -90,7 +90,14 @@ function parentKey(parentId) {
  *            container: { id: string, name: string, caretTop: number }|null }}
  */
 export function resolveInsertionSlot(items, y, bottomY) {
-  const rows = items.filter((item) => Number.isInteger(item.slotRank));
+  const lane = items.find((item) =>
+    Number.isFinite(item.laneTop) && Number.isFinite(item.laneBottom)
+      && item.laneTop <= y && y <= item.laneBottom
+  );
+  const allRows = items.filter((item) => Number.isInteger(item.slotRank));
+  const rows = lane === undefined
+    ? allRows
+    : allRows.filter((item) => item.planId === lane.planId);
   const pills = rows.filter((item) => item.isGroup);
 
   const enclosing = pills.filter((item) => item.top <= y);
@@ -106,7 +113,9 @@ export function resolveInsertionSlot(items, y, bottomY) {
   const next = rows.find((item) => item.top > y);
   const parentId = next === undefined ? null : next.slotParentId;
   const caretTop = next === undefined ? bottomY : next.top;
-  const planId = pills.length === 0 ? null : pills[0].groupObj.plan_id;
+  const planId = lane === undefined
+    ? (pills.length === 0 ? null : pills[0].groupObj.plan_id)
+    : lane.planId;
 
   const siblings = rows.filter((item) => parentKey(item.slotParentId) === parentKey(parentId));
   const before = next === undefined ? null : next;

@@ -51,6 +51,7 @@ import { GroupContextMenu } from '../../www/js/components/GroupContextMenu.lit.j
 describe('GroupContextMenu application contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockProjects.mockReturnValue([{ id: 'p1', selected: true }]);
   });
 
   it('creates a group via cmd.group.createGroupInScenario', async () => {
@@ -78,6 +79,23 @@ describe('GroupContextMenu application contract', () => {
     await menu._saveNewGroup();
 
     expect(mockCreateGroup).toHaveBeenCalledWith('p1', 'Child', '#123', 'g1', 1024, []);
+  });
+
+  it('offers group creation for the plan lane under the cursor with multiple plans selected', () => {
+    mockProjects.mockReturnValue([
+      { id: 'p1', name: 'Plan One', selected: true },
+      { id: 'p2', name: 'Plan Two', selected: true },
+    ]);
+    const menu = new GroupContextMenu();
+    menu._config = {
+      planId: 'p2',
+      insertion: { parentId: null, caretTop: 40, rank: 1536, rankUpdates: [], container: null },
+    };
+
+    const result = menu._renderBoardMenu();
+
+    expect(result.values).toContain('New group here in "Plan Two"');
+    expect(result.values).not.toContain('Select a single plan to create groups');
   });
 
   it('reassigns feature membership via sel.group + cmd.group calls', () => {
