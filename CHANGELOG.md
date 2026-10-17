@@ -14,7 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v5.0.0] - unreleased
+## [v5.0.0] - 2026-10-17
 Note, this is a major update. Backup the physical data directory.  JSON backups do not transfer.
 
 ### Added
