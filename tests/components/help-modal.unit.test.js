@@ -3,6 +3,15 @@ import { vi } from 'vitest';
 import { HelpModal } from '../../www/js/components/HelpModal.lit.js';
 
 describe('HelpModal unit tests', () => {
+  it('does not offer onboarding from the help footer', async () => {
+    const hm = new HelpModal();
+    document.body.appendChild(hm);
+    await hm.updateComplete;
+
+    expect(hm.renderRoot.textContent).not.to.include('Show Onboarding');
+    hm.remove();
+  });
+
   it('_escapeHtml and _inline and _renderMarkdown produce expected HTML snippets', () => {
     const hm = new HelpModal();
     expect(hm._escapeHtml('<&>')).to.equal('&lt;&amp;&gt;');

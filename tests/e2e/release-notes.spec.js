@@ -6,6 +6,7 @@ test('unread release is first, stays open on Escape and is acknowledged across b
   } });
   expect(enrollment.ok()).toBe(true);
   const accountKey = (await enrollment.json()).accountKey;
+  await page.addInitScript(() => localStorage.removeItem('az_planner:onboarding_seen'));
   await page.goto('/');
   const reader = page.locator('release-notes');
   await expect(reader.getByRole('dialog')).toBeVisible();
@@ -17,6 +18,9 @@ test('unread release is first, stays open on Escape and is acknowledged across b
   })).toBeVisible();
   await reader.getByRole('button', { name: 'Continue to Planner' }).click();
   await expect(reader).toHaveCount(0);
+  await expect(page.locator('app-sidebar aside.sidebar')).toBeVisible();
+  await expect(page.locator('onboarding-modal')).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('az_planner:onboarding_seen'))).toBeNull();
   const otherBrowser = await browser.newContext();
   try {
     const response = await otherBrowser.request.post(new URL('/api/auth/enroll', page.url()).href, {
@@ -54,7 +58,6 @@ test('capture release illustrations from isolated application components', async
   });
   await page.goto('/');
   await page.evaluate(() => {
-    localStorage.setItem('az_planner:onboarding_seen', '1');
     localStorage.setItem('az_planner:tour_seen', '1');
   });
   await page.reload();
@@ -106,10 +109,12 @@ test('release and enrollment guides are public and all illustrations load', asyn
     const page = await anonymous.newPage();
     for (const width of [1366, 1024]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const path of ['/static/docs/releases/v5.0.0/index.html', '/static/docs/account-access/index.html']) {
+      for (const path of ['/static/docs/releases/v5.0.0/index.html',
+        '/static/docs/account-access/index.html', '/static/docs/onboarding/index.html']) {
         const response = await page.goto(`${baseURL}${path}`);
         expect(response.status()).toBe(200);
         await expect(page.locator('h1')).toBeVisible();
+        await expect(page.locator('.masthead')).toBeVisible();
         await expect.poll(() => page.locator('img').evaluateAll((images) =>
           images.every((image) => image.complete && image.naturalWidth > 0))).toBe(true);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -118,12 +123,40 @@ test('release and enrollment guides are public and all illustrations load', asyn
       }
     }
     await page.goto(`${baseURL}/`);
-    const help = page.locator('auth-dialog').getByRole('link', { name: 'Enrollment help' });
+    const help = page.locator('auth-dialog').getByRole('button', { name: 'Enrollment help' });
     await expect(help).toBeVisible();
-    const popupPromise = page.waitForEvent('popup');
+    const infoFrame = page.locator('auth-dialog .info-panel iframe');
+    await expect(infoFrame).toHaveAttribute('src', '/static/docs/onboarding/index.html?embedded=1');
+    const overview = page.frameLocator('auth-dialog .info-panel iframe');
+    await expect(overview.locator('.masthead')).toBeHidden();
+    await expect(overview.locator('footer')).toBeHidden();
+    await expect(overview.locator('.project-note')).toBeVisible();
+    expect(await overview.locator('.project-note').evaluate((element) =>
+      getComputedStyle(element).backgroundColor)).toBe('rgb(237, 247, 242)');
+    await expect(overview.locator('figure')).toHaveCount(0);
+    expect(await overview.locator('h1').evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).fontSize))).toBeLessThan(30);
+    expect(await overview.locator('body').evaluate((element) =>
+      getComputedStyle(element).backgroundColor)).toBe('rgb(243, 247, 246)');
+    const formTile = page.locator('auth-dialog .auth-main');
+    const infoTile = page.locator('auth-dialog .info-panel');
+    const formBounds = await formTile.boundingBox();
+    const infoBounds = await infoTile.boundingBox();
+    expect(formBounds.width).toBe(440);
+    expect(formBounds.height).toBeLessThan(infoBounds.height);
+    expect(formBounds.x + formBounds.width / 2).toBeCloseTo(512, 0);
+    expect(formBounds.x + formBounds.width).toBeLessThan(infoBounds.x);
+    expect(1024 - infoBounds.x - infoBounds.width).toBe(32);
+    expect(infoBounds.height).toBe(774);
+    expect(formBounds.y + formBounds.height / 2).toBeCloseTo(450, 0);
+    const formColor = await formTile.evaluate((element) => getComputedStyle(element).backgroundColor);
+    const infoColor = await infoTile.evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(formColor).not.toBe(infoColor);
     await help.click();
-    const popup = await popupPromise;
-    await expect(popup.getByRole('heading', { name: 'Enrollment & Account Access', exact: true })).toBeVisible();
+    await expect(infoFrame).toHaveAttribute('src', '/static/docs/account-access/index.html?embedded=1');
+    const guide = page.frameLocator('auth-dialog .info-panel iframe');
+    await expect(guide.locator('.masthead')).toBeHidden();
+    await expect(guide.locator('footer')).toBeHidden();
   } finally {
     await anonymous.close();
   }

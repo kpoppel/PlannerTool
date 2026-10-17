@@ -11,14 +11,27 @@ from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
 def test_live_ado_enrollment_requires_pat_without_creating_account(client, app):
     storage = app.state.container.get('storage')
+    first = client.post('/api/auth/enroll', json={
+        'email': 'existing@example.com', 'name': 'Existing',
+    }).json()
     storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
 
+    status = client.post('/api/auth/enrollment-status', json={
+        'email': 'existing@example.com',
+    })
+    assert status.json() == {'requiresKey': True, 'requiresPat': False}
+    existing = client.post('/api/auth/enroll', json={
+        'email': 'existing@example.com', 'accountKey': first['accountKey'],
+    })
+    assert existing.status_code == 200
+
+    status = client.post('/api/auth/enrollment-status', json={'email': 'new@example.com'})
+    assert status.json() == {'requiresKey': False, 'requiresPat': True}
     response = client.post('/api/auth/enroll', json={'email': 'new@example.com', 'name': 'New'})
 
     assert response.status_code == 400
     assert response.json()['error'] == 'pat_required'
     assert not storage.exists('accounts', 'new@example.com')
-    assert not client.cookies.get('sessionId')
 
 
 def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monkeypatch):
@@ -49,26 +62,26 @@ def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monke
     assert storage.exists('accounts', 'new@example.com')
 
 
-def test_rejected_pat_does_not_rotate_enrollment_key(client, app, monkeypatch):
+def test_existing_account_enrollment_does_not_revalidate_or_replace_pat(client, app, monkeypatch):
     from planner_lib.azure.AzureClient import AzureClient
     first = client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'}).json()
     storage = app.state.container.get('storage')
     storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    configured = client.post('/api/config', json={
+        'email': 'owner@example.com', 'pat': 'active-pat',
+    })
+    assert configured.status_code == 200
 
     def reject(client):
         raise RuntimeError('401 Unauthorized')
 
     monkeypatch.setattr(AzureClient, 'get_projects', reject)
     response = client.post('/api/auth/enroll', json={
-        'email': 'owner@example.com', 'accountKey': first['accountKey'], 'pat': 'revoked-pat',
-    })
-    assert response.status_code == 400
-    assert response.json()['error'] == 'pat_invalid'
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
-    response = client.post('/api/auth/enroll', json={
-        'email': 'owner@example.com', 'accountKey': first['accountKey'], 'pat': 'valid-pat',
+        'email': 'owner@example.com', 'accountKey': first['accountKey'],
     })
     assert response.status_code == 200
+    assert app.state.container.get('account_manager').load('owner@example.com')['pat'] == 'active-pat'
     assert response.json()['accountKey'] != first['accountKey']
 
 

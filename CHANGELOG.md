@@ -15,6 +15,10 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Remove the obsolete Show Onboarding action from the Help modal.
+- Give embedded enrollment guides a compact reading layout while retaining their full standalone pages.
+- Allow MCP Playwright runs to select a configured project, such as Chromium.
+- Keep MCP test summaries to one diagnostic line per failure and point to on-demand detail tools.
 - Show v5.0.0 release notes as an embedded Help sidebar page and resolve Help docs correctly on the Vite server.
 - Keep existing-account browser enrollment independent of PAT validation; configure PATs through account settings.
 - Refresh the Help documentation against the current UI with screenshots regenerated from the synthetic generator (`tests/playwright.docs.config.js`), new Plans, Workforce, Azure DevOps Processes, Server and Reconciliation pages, and removal of retired Plan Health, Teams, People, Cost and Cache Invalidation pages.

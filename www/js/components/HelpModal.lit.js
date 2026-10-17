@@ -1,11 +1,11 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
+import { getDocsUrl } from '../services/docsUrl.js';
 
 /*
  * HelpModal: lightweight two-column help viewer
- * - loads `/static/docs/index.json` for list of docs
- * - fetches selected markdown under `/static/docs/` and renders to HTML
- * - supports title search, simple toc, images (served from /static/docs/)
+ * - loads the docs index and renders selected documents
+ * - supports title search, simple toc, and images
  * This keeps the implementation dependency-free and easy to maintain.
  */
 export class HelpModal extends LitElement {
@@ -72,6 +72,12 @@ export class HelpModal extends LitElement {
       display: block;
       margin: 8px 0;
     }
+    .help-panel iframe {
+      display: block;
+      width: 100%;
+      height: 65vh;
+      border: 0;
+    }
     .help-panel pre {
       background: #f6f6f6;
       padding: 8px;
@@ -133,7 +139,7 @@ export class HelpModal extends LitElement {
 
   async _loadIndex() {
     try {
-      const res = await fetch((window.APP_BASE_URL || '') + '/static/docs/index.json');
+      const res = await fetch(getDocsUrl('index.json'));
       if (res.ok) this.index = await res.json();
       else {
         console.warn('[HelpModal] index.json fetch returned', res.status);
@@ -166,10 +172,19 @@ export class HelpModal extends LitElement {
   async _selectDoc(doc) {
     if (!doc) return;
     this.current = doc;
+    if (doc.format === 'html') {
+      const title = this._escapeHtml(doc.title === undefined ? '' : doc.title).replace(/"/g, '&quot;');
+      const src = this._escapeHtml(getDocsUrl(doc.file)).replace(/"/g, '&quot;');
+      this.content = `<iframe title="${title}" src="${src}"></iframe>`;
+      this.requestUpdate();
+      const panel = this.renderRoot.querySelector('.help-panel');
+      if (panel) panel.scrollTop = 0;
+      return;
+    }
     this.content = 'Loading...';
     this.requestUpdate();
     try {
-      const res = await fetch((window.APP_BASE_URL || '') + `/static/docs/${doc.file}`);
+      const res = await fetch(getDocsUrl(doc.file));
       if (res.ok) {
         const md = await res.text();
         this.content = this._renderMarkdown(md, doc.file);
@@ -185,19 +200,6 @@ export class HelpModal extends LitElement {
 
   _onModalClose() {
     this.remove();
-  }
-
-  async _showOnboarding() {
-    // Dynamically import onboarding module if not already loaded, then append or reopen it
-    const existing = document.querySelector('onboarding-modal');
-    if (existing) {
-      const inner = existing.renderRoot.querySelector('modal-lit');
-      if (inner) inner.open = true;
-    } else {
-      await import('./OnboardingModal.lit.js');
-      const el = document.createElement('onboarding-modal');
-      document.body.appendChild(el);
-    }
   }
 
   _filteredIndex() {
@@ -326,7 +328,7 @@ export class HelpModal extends LitElement {
     if (!text) return '';
     // images ![alt](url)
     text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) => {
-      const u = url.startsWith('http') ? url : `/static/docs/${url}`;
+      const u = url.startsWith('http') ? url : getDocsUrl(url);
       return `<img src="${u}" alt="${this._escapeHtml(alt)}" />`;
     });
     // links [text](url)
@@ -408,11 +410,6 @@ export class HelpModal extends LitElement {
           <div class="help-panel" .innerHTML=${this.content}></div>
         </div>
         <div slot="footer" class="modal-footer">
-          <a href=${`${window.APP_BASE_URL}/static/docs/releases/v5.0.0/index.html`}
-            target="_blank" rel="noopener">What's New in v5.0.0</a>
-          <button class="btn secondary" @click=${() => this._showOnboarding()}>
-            Show Onboarding
-          </button>
           <button
             class="btn"
             @click=${() => {

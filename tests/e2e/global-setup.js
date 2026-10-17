@@ -218,9 +218,8 @@ export default async function globalSetup(config) {
     }, userEmail);
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
-    // Mark onboarding/tour as seen so modals don't intercept clicks in later sessions
+    // Mark the tour as seen so it does not intercept clicks in later sessions
     await page.evaluate(() => {
-      localStorage.setItem('az_planner:onboarding_seen', '1');
       localStorage.setItem('az_planner:tour_seen', '1');
     });
     await context.storageState({ path: storageStatePath });

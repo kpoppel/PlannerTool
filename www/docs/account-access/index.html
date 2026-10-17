@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PlannerTool - Enrollment and Account Access</title>
   <link rel="stylesheet" href="../releases/release.css">
+  <script>
+    if (new URLSearchParams(location.search).get('embedded') === '1') {
+      document.documentElement.classList.add('embedded');
+    }
+  </script>
 </head>
 <body>
   <header class="masthead"><span class="brand">PlannerTool / Account Access</span>

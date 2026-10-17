@@ -87,7 +87,8 @@ async def enrollment_status(payload: EnrollmentEmail, response: Response, reques
         raise HTTPException(status_code=400, detail=str(error)) from error
     response.headers['Cache-Control'] = 'no-store'
     return {'requiresKey': requires_key,
-            'requiresPat': resolve_service(request, 'account_manager').requires_pat()}
+            'requiresPat': not requires_key
+            and resolve_service(request, 'account_manager').requires_pat()}
 
 
 @router.post('/auth/enroll')

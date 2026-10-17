@@ -21,6 +21,8 @@ h3 { font-size: 20px; line-height: 1.35; margin: 24px 0 8px; }
 p { margin: 0 0 16px; }
 section { padding: 32px 0; border-bottom: 1px solid var(--line); }
 .notice { padding: 16px 20px; background: #edf7f2; border-left: 4px solid var(--green); }
+.project-note { margin-top: 22px; border-radius: 3px; }
+.project-note p:last-child { margin-bottom: 0; }
 .warning { background: #fff2ee; border-color: var(--accent); }
 .columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
 .columns h3:first-child { margin-top: 0; }
@@ -34,5 +36,18 @@ ol, ul { padding-left: 24px; }
 footer { padding: 24px 32px; border-top: 1px solid var(--line); color: var(--muted);
   max-width: 1080px; margin: 0 auto; font-size: 14px; }
 code { background: #eef2f0; padding: 2px 5px; border-radius: 3px; }
+html.embedded body { background: #f3f7f6; font-size: 14px; line-height: 1.55; }
+html.embedded .masthead,
+html.embedded footer { display: none; }
+html.embedded main,
+html.embedded main.compact { max-width: 68ch; margin: 0 auto; padding: 18px 24px 28px; }
+html.embedded .intro { padding: 12px 0 16px; border-bottom-width: 2px; }
+html.embedded h1 { font-size: 26px; line-height: 1.18; margin-bottom: 10px; }
+html.embedded h2 { font-size: 20px; line-height: 1.25; margin-bottom: 10px; }
+html.embedded .lead { max-width: 62ch; margin-bottom: 12px; font-size: 16px; }
+html.embedded section { padding: 18px 0; }
+html.embedded figure { display: none; }
+html.embedded .notice { padding: 12px 14px; }
+html.embedded li { margin: 5px 0; }
 @media print { nav, .masthead { display: none; } main { max-width: none; padding: 0; }
   section, figure { break-inside: avoid; } }

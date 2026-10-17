@@ -144,7 +144,6 @@ export default async function globalSetup(config) {
     const summary = await seedDocsData(page, config.metadata.testDataDir);
     console.log('[docs-setup] synthetic organisation ready', summary);
     await page.evaluate(() => {
-      localStorage.setItem('az_planner:onboarding_seen', '1');
       localStorage.setItem('az_planner:tour_seen', '1');
     });
     await context.storageState({ path: config.metadata.storageStatePath });

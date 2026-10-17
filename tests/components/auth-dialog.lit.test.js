@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { showAuthDialog, showAccountKeyDialog } from '../../www/js/components/AuthDialog.lit.js';
 import '../../www/admin/js/components/admin/Users.lit.js';
 import { adminProvider } from '../../www/admin/js/services/providerREST.js';
@@ -10,19 +10,46 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   localStorage.clear();
+  delete window.APP_BASE_URL;
 });
 
 describe('account enrollment dialog', () => {
-  it('links enrollment and key-saving to public help under the application root', async () => {
+  beforeEach(() => {
+    window.APP_BASE_URL = '';
+  });
+
+  it('shows overview beside enrollment and opens the enrollment guide in the same panel', async () => {
     showAuthDialog('/prefix/api');
     const dialog = document.querySelector('auth-dialog');
     await dialog.updateComplete;
-    const help = dialog.renderRoot.querySelector('a[aria-label="Enrollment help"]');
-    expect(help.getAttribute('href')).toBe('/prefix/static/docs/account-access/index.html');
-    expect(help.target).toBe('_blank');
+    const frame = dialog.renderRoot.querySelector('.info-panel iframe');
+    expect(frame.getAttribute('src')).toBe('/prefix/static/docs/onboarding/index.html?embedded=1');
+    const help = dialog.renderRoot.querySelector('button[aria-label="Enrollment help"]');
+    help.click();
+    await dialog.updateComplete;
+    expect(dialog.renderRoot.querySelector('.info-panel iframe').getAttribute('src'))
+      .toBe('/prefix/static/docs/account-access/index.html?embedded=1');
+    expect(help.closest('a')).toBeNull();
     dialog.accountKey = 'test-only-key';
     await dialog.updateComplete;
-    expect(dialog.renderRoot.querySelector('a[aria-label="Enrollment help"]')).not.toBeNull();
+    expect(dialog.renderRoot.querySelector('.info-panel iframe').getAttribute('src'))
+      .toBe('/prefix/static/docs/account-access/index.html?embedded=1');
+  });
+
+  it('uses Vite docs URLs for both enrollment information pages', async () => {
+    const originalIsViteDev = window.IS_VITE_DEV;
+    window.IS_VITE_DEV = true;
+    showAuthDialog('/api');
+    const dialog = document.querySelector('auth-dialog');
+    await dialog.updateComplete;
+    expect(dialog.renderRoot.querySelector('.info-panel iframe').getAttribute('src'))
+      .toBe('/docs/onboarding/index.html?embedded=1');
+    dialog.renderRoot.querySelector('button[aria-label="Enrollment help"]').click();
+    await dialog.updateComplete;
+    expect(dialog.renderRoot.querySelector('.info-panel iframe').getAttribute('src'))
+      .toBe('/docs/account-access/index.html?embedded=1');
+    if (originalIsViteDev === undefined) delete window.IS_VITE_DEV;
+    else window.IS_VITE_DEV = originalIsViteDev;
   });
 
   it('saves a masked PAT through the shared repair screen', async () => {
@@ -110,7 +137,7 @@ describe('account enrollment dialog', () => {
 
   it('switches to the required account key for an enrolled email', async () => {
     const fetch = vi.fn().mockResolvedValue({
-      ok: true, json: async () => ({ requiresKey: true }),
+      ok: true, json: async () => ({ requiresKey: true, requiresPat: true }),
     });
     vi.stubGlobal('fetch', fetch);
     showAuthDialog('/dev/api');
@@ -121,6 +148,7 @@ describe('account enrollment dialog', () => {
     await dialog.updateComplete;
     expect(dialog.renderRoot.querySelector('#name')).toBeNull();
     expect(dialog.renderRoot.querySelector('#accountKey').required).toBe(true);
+    expect(dialog.renderRoot.querySelector('#pat')).toBeNull();
     expect(fetch).toHaveBeenCalledWith('/dev/api/auth/enrollment-status', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ email: 'existing@example.com' }),
     }));
@@ -161,7 +189,8 @@ describe('account enrollment dialog', () => {
     await dialog.updateComplete;
     expect(dialog.renderRoot.querySelector('code').textContent).toBe('replacement-account-key');
     expect(dialog.renderRoot.textContent).toContain('user@example.com');
-    const continueButton = dialog.renderRoot.querySelector('button');
+    const continueButton = [...dialog.renderRoot.querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Continue');
     const saved = dialog.renderRoot.querySelector('#saved');
     expect(continueButton.disabled).toBe(true);
     continueButton.click();
@@ -204,7 +233,8 @@ describe('account enrollment dialog', () => {
     expect(component.resetting).toBe(true);
     dialog.renderRoot.querySelector('#saved').click();
     await dialog.updateComplete;
-    dialog.renderRoot.querySelector('button').click();
+    [...dialog.renderRoot.querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Continue').click();
     await reset;
     expect(component.resetting).toBe(false);
     expect(getUsers).toHaveBeenCalledTimes(1);
@@ -224,13 +254,15 @@ describe('account enrollment dialog', () => {
     await dialog._submit({ preventDefault() {} });
     await dialog.updateComplete;
     expect(dialog.renderRoot.querySelector('code').textContent).toBe('generated-account-key');
-    expect(dialog.renderRoot.querySelector('button').disabled).toBe(true);
-    dialog.renderRoot.querySelector('button').click();
+    const continueButton = [...dialog.renderRoot.querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Continue');
+    expect(continueButton.disabled).toBe(true);
+    continueButton.click();
     expect(document.querySelector('auth-dialog')).toBe(dialog);
     expect(dialog.error).toBe('');
     dialog.renderRoot.querySelector('#saved').click();
     await dialog.updateComplete;
-    dialog.renderRoot.querySelector('button').click();
+    continueButton.click();
     await done;
     expect(document.querySelector('auth-dialog')).toBeNull();
     expect(JSON.parse(localStorage.getItem('az_planner:user_prefs:v1'))).toEqual({
@@ -257,7 +289,8 @@ describe('account enrollment dialog', () => {
     expect(localStorage.getItem('az_planner:user_prefs:v1')).toBe('invalid-json');
     dialog.renderRoot.querySelector('#saved').click();
     await dialog.updateComplete;
-    dialog.renderRoot.querySelector('button').click();
+    [...dialog.renderRoot.querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Continue').click();
     await done;
   });
 

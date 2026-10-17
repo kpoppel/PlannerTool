@@ -1,4 +1,5 @@
 import { LitElement, css, html } from '../vendor/lit.js';
+import { getDocsUrl } from '../services/docsUrl.js';
 
 export class AuthDialog extends LitElement {
   static properties = {
@@ -11,6 +12,7 @@ export class AuthDialog extends LitElement {
     keySaved: { type: Boolean },
     accountEmail: { type: String },
     busy: { type: Boolean },
+    infoView: { type: String },
   };
 
   static styles = css`
@@ -20,27 +22,47 @@ export class AuthDialog extends LitElement {
       z-index: 100000;
       display: grid;
       place-items: center;
-      padding: 18px;
+      padding: 24px 32px;
       box-sizing: border-box;
       background: rgba(19, 34, 39, 0.82);
       font: 16px Arial, sans-serif;
       color: #21343a;
     }
     section {
-      width: min(100%, 440px);
+      width: 100%;
+      max-width: calc(100vw - 64px);
       max-height: 90vh;
-      overflow: auto;
-      padding: 28px;
+      overflow: visible;
+      padding: 0;
       box-sizing: border-box;
-      border-radius: 6px;
-      background: #f6f8f7;
-      border-top: 5px solid #0d7974;
-      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+      background: transparent;
+      border: 0;
+      box-shadow: none;
     }
+    section.single { width: min(100%, 440px); }
+    .auth-layout { --info-tile-height: 86vh; display: grid; width: 100%;
+      grid-template-columns: minmax(0, 1fr) 440px minmax(0, 1fr); gap: 0; align-items: start; }
+    .auth-layout.single { grid-template-columns: minmax(0, 1fr); }
+    .auth-layout:not(.single) > .auth-main { align-self: center; }
+    .auth-layout:not(.single) > .info-panel { grid-column: 3; margin-left: 18px; }
+    .auth-layout.single > .auth-main { grid-column: 1; }
+    .auth-layout:not(.single) > .auth-main { grid-column: 2; }
+    .auth-main { min-width: 0; padding: 28px; box-sizing: border-box; border-radius: 6px;
+      background: #f6f8f7; border-top: 5px solid #0d7974;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25); }
+    .auth-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
     h2 { margin: 0 0 20px; font-size: 22px; }
-    .help { float: right; display: grid; place-items: center; width: 28px; height: 28px;
+    .help { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px;
       border: 1px solid #97adae; border-radius: 50%; color: #095d59;
-      text-decoration: none; font-weight: bold; }
+      font-weight: bold; padding: 0; background: transparent; }
+    .info-panel { min-width: 0; padding: 18px; box-sizing: border-box; border: 1px solid #cbd8d6;
+      border-top: 5px solid #547c7b; border-radius: 6px; background: #f3f7f6;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18); height: var(--info-tile-height);
+      display: flex; flex-direction: column; }
+    .info-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+    .info-tabs button { flex: 1; padding: 8px 6px; border-color: #97adae; background: #e2eeec; color: #095d59; }
+    .info-tabs button[aria-selected="true"] { background: #0d7974; color: white; }
+    .info-panel iframe { display: block; width: 100%; height: auto; min-height: 0; flex: 1; border: 0; background: white; }
     label { display: block; margin: 16px 0 6px; font-weight: 600; font-size: 14px; }
     input {
       width: 100%;
@@ -82,44 +104,71 @@ export class AuthDialog extends LitElement {
     this.accountEmail = '';
     this.initialSetup = false;
     this.busy = false;
+    this.infoView = 'about';
+  }
+
+  _renderInfoPanel() {
+    const showEnrollment = this.infoView === 'enrollment';
+    const file = showEnrollment ? 'account-access/index.html' : 'onboarding/index.html';
+    const title = showEnrollment ? 'Enrollment and account access' : 'About PlannerTool and enrollment';
+    return html`<aside class="info-panel" aria-label="Enrollment information">
+      <div class="info-tabs" role="tablist" aria-label="Information pages">
+        <button type="button" role="tab" aria-selected=${!showEnrollment}
+          @click=${() => { this.infoView = 'about'; }}>About</button>
+        <button type="button" role="tab" aria-selected=${showEnrollment}
+          @click=${() => { this.infoView = 'enrollment'; }}>Enrollment guide</button>
+      </div>
+      <iframe title=${title} src=${`${getDocsUrl(file, this.apiBase)}?embedded=1`}></iframe>
+    </aside>`;
+  }
+
+  _showEnrollmentHelp() {
+    this.infoView = 'enrollment';
   }
 
   render() {
-    const root = this.apiBase === undefined ? window.APP_BASE_URL : this.apiBase.replace(/\/api$/, '');
-    const help = html`<a class="help" href=${`${root}/static/docs/account-access/index.html`}
-      target="_blank" rel="noopener" title="Enrollment help" aria-label="Enrollment help">?</a>`;
+    const help = this.deleting ? '' : html`<button type="button" class="help"
+      @click=${this._showEnrollmentHelp} title="Enrollment help" aria-label="Enrollment help">?</button>`;
     if (this.accountKey) {
       return html`<section role="dialog" aria-modal="true" aria-labelledby="authTitle">
-        ${help}
-        <h2 id="authTitle">Save your account key</h2>
-        ${this.accountEmail ? html`<p>${this.accountEmail}</p>` : ''}
-        <code>${this.accountKey}</code>
-        <label class="confirm"><input type="checkbox" id="saved" .checked=${this.keySaved} @change=${this._onKeySavedChange} />I have saved this key. It will not be shown again.</label>
-        <p class="error" role="alert">${this.error}</p>
-        <div class="actions"><button ?disabled=${!this.keySaved} @click=${this._resolve}>Continue</button></div>
+        <div class="auth-layout">
+          <div class="auth-main">
+            <div class="auth-heading"><h2 id="authTitle">Save your account key</h2>${help}</div>
+            ${this.accountEmail ? html`<p>${this.accountEmail}</p>` : ''}
+            <code>${this.accountKey}</code>
+            <label class="confirm"><input type="checkbox" id="saved" .checked=${this.keySaved} @change=${this._onKeySavedChange} />I have saved this key. It will not be shown again.</label>
+            <p class="error" role="alert">${this.error}</p>
+            <div class="actions"><button ?disabled=${!this.keySaved} @click=${this._resolve}>Continue</button></div>
+          </div>
+          ${this._renderInfoPanel()}
+        </div>
       </section>`;
     }
-    return html`<section role="dialog" aria-modal="true" aria-labelledby="authTitle">
-      ${help}
-      <h2 id="authTitle">${this.deleting ? 'Delete account' : 'Enrollment'}</h2>
-      <form @submit=${this._submit}>
-        <label for="email">Email address</label>
-        <input id="email" type="email" autocomplete="email" .value=${this.accountEmail} @input=${this._onEmailInput} @change=${this._checkEnrollment} ?readonly=${this.standaloneDeletion} ?disabled=${this.busy} required />
-        ${!this.deleting && !this.requiresKey
-          ? html`<label for="name">Real name (first enrollment)</label><input id="name" autocomplete="name" ?disabled=${this.busy} required />`
-          : ''}
-        ${this.requiresKey || this.deleting
-          ? html`<label for="accountKey">Account key</label><input id="accountKey" type="password" autocomplete="off" ?disabled=${this.busy} required />`
-          : ''}
-        ${this.requiresPat && !this.deleting
-          ? html`<label for="pat">Azure DevOps PAT</label><input id="pat" type="password" autocomplete="off" ?disabled=${this.busy} required />`
-          : ''}
-        <p class="error" role="alert">${this.error}</p>
-        <div class="actions">
-          <button type="submit" ?disabled=${this.busy || this.checkingEmail}>${this.deleting ? 'Delete account' : 'Enroll'}</button>
-          <button type="button" class="link" ?disabled=${this.busy} @click=${this._toggleDeletion}>${this.deleting ? 'Cancel' : 'Delete account'}</button>
+    return html`<section class=${this.deleting ? 'single' : ''} role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class=${this.deleting ? 'auth-layout single' : 'auth-layout'}>
+        <div class="auth-main">
+          <div class="auth-heading"><h2 id="authTitle">${this.deleting ? 'Delete account' : 'Enrollment'}</h2>${help}</div>
+          <form @submit=${this._submit}>
+            <label for="email">Email address</label>
+            <input id="email" type="email" autocomplete="email" .value=${this.accountEmail} @input=${this._onEmailInput} @change=${this._checkEnrollment} ?readonly=${this.standaloneDeletion} ?disabled=${this.busy} required />
+            ${!this.deleting && !this.requiresKey
+              ? html`<label for="name">Real name (first enrollment)</label><input id="name" autocomplete="name" ?disabled=${this.busy} required />`
+              : ''}
+            ${this.requiresKey || this.deleting
+              ? html`<label for="accountKey">Account key</label><input id="accountKey" type="password" autocomplete="off" ?disabled=${this.busy} required />`
+              : ''}
+            ${this.requiresPat && !this.deleting
+              ? html`<label for="pat">Azure DevOps PAT</label><input id="pat" type="password" autocomplete="off" ?disabled=${this.busy} required />`
+              : ''}
+            <p class="error" role="alert">${this.error}</p>
+            <div class="actions">
+              <button type="submit" ?disabled=${this.busy || this.checkingEmail}>${this.deleting ? 'Delete account' : 'Enroll'}</button>
+              <button type="button" class="link" ?disabled=${this.busy} @click=${this._toggleDeletion}>${this.deleting ? 'Cancel' : 'Delete account'}</button>
+            </div>
+          </form>
         </div>
-      </form>
+        ${this.deleting ? '' : this._renderInfoPanel()}
+      </div>
     </section>`;
   }
 
@@ -148,7 +197,7 @@ export class AuthDialog extends LitElement {
       const result = await response.json();
       if (checkId === this._emailCheckId) {
         this.requiresKey = result.requiresKey;
-        this.requiresPat = result.requiresPat === true;
+        this.requiresPat = result.requiresKey !== true && result.requiresPat === true;
       }
     } catch (error) {
       if (checkId === this._emailCheckId) {
@@ -200,7 +249,7 @@ export class AuthDialog extends LitElement {
         this.accountEmail = email;
         if (response.status === 400) {
           const result = await response.json();
-          if (result.error === 'pat_required' || result.error === 'pat_invalid') {
+          if (!this.requiresKey && (result.error === 'pat_required' || result.error === 'pat_invalid')) {
             this.requiresPat = true;
             this.error = result.error === 'pat_required'
               ? 'Enter your Azure DevOps PAT.' : 'Your Azure DevOps PAT is invalid or expired.';

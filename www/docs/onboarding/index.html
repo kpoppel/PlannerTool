@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>About PlannerTool and Enrollment</title>
+    <link rel="stylesheet" href="../releases/release.css">
+    <script>
+        if (new URLSearchParams(location.search).get('embedded') === '1') {
+            document.documentElement.classList.add('embedded');
+        }
+    </script>
+</head>
+
+<body>
+    <header class="masthead"><span class="brand">PlannerTool / Getting Started</span>
+        <nav aria-label="Getting started sections"><a href="#about">About</a>
+            <a href="#enrollment">Enrollment</a>
+        </nav>
+    </header>
+    <main class="compact">
+        <div class="intro" id="about">
+            <p class="eyebrow">Welcome to PlannerTool</p>
+            <h1>Plan work with the wider picture</h1>
+            <aside class="notice project-note" aria-label="Project and license">
+                <p>PlannerTool is an independent project by Kim Poulsen released under the MIT license. Report issues
+                    or request improvements on
+                    <a href="https://github.com/kpoppel/PlannerTool" target="_blank" rel="noopener">GitHub</a>.</p>
+                <p>The MIT license lets anyone use, copy, modify, and redistribute the software, including commercially,
+                    provided they retain the copyright and license notice.</p>
+                <p>Contributions are not required by the license, but sharing contributions and improvements is very
+                    much appreciated.</p>
+            </aside>
+            <br>
+            <p class="lead">PlannerTool turns Azure DevOps work into a shared planning view for teams, schedules and
+                capacity.</p>
+            <p>It helps teams explore work, compare scenarios and understand how plans connect. It is a planning tool,
+                not a second work-item database.</p>
+            <p>The tool implements a comprehensive planning layer on top of Azure DevOps, providing enhanced visibility
+                and control over project planning and execution.</p>
+        </div>
+        <section>
+            <h2>What is it and what can you do</h2>
+
+            <ul>
+                <li>See work across plans, with hierarchy and dependencies in context.</li>
+                <li>Schedule work and compare team capacity across the timeline.</li>
+                <li>Explore editable scenarios, then review proposed changes before publishing.</li>
+                <li>Use filters and focused tools for dependencies, events, annotations and cost forecasting.</li>
+            </ul>
+        </section>
+        <section id="enrollment">
+            <h2>Getting into your account</h2>
+            <ol>
+                <li>Use your work email. First enrollment asks for your real name; an enrolled account asks for its
+                    current account key.</li>
+                <li>If Azure DevOps requires a PAT, enter it in the separate masked field. Existing account PATs stay
+                    with the account.</li>
+                <li>Save the new account key shown after enrollment. It replaces the previous key and cannot be shown
+                    again.</li>
+            </ol>
+            <p>Your PlannerTool account key and Azure PAT are different credentials. Configure or replace a PAT in
+                Configuration, not with your account key.</p>
+            <p><a href="../account-access/index.html">Read the complete enrollment and account-access guide.</a></p>
+        </section>
+    </main>
+    <footer>PlannerTool planning and account access overview.</footer>
+</body>
+
+</html>

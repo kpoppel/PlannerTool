@@ -2,7 +2,7 @@ import { expect } from '@esm-bundle/chai';
 import { vi } from 'vitest';
 import '../../www/js/components/OnboardingModal.lit.js';
 
-describe('OnboardingModal lifecycle and preferences', () => {
+describe('OnboardingModal shared documentation view', () => {
   beforeEach(() => {
     // ensure clean localStorage
     try {
@@ -28,6 +28,7 @@ describe('OnboardingModal lifecycle and preferences', () => {
     }
 
     const el = document.createElement('onboarding-modal');
+    window.IS_VITE_DEV = true;
     document.body.appendChild(el);
 
     // wait for a short time for lifecycle hooks
@@ -36,11 +37,14 @@ describe('OnboardingModal lifecycle and preferences', () => {
     const inner = el.renderRoot && el.renderRoot.querySelector('modal-lit');
     expect(inner).to.exist;
     expect(inner.open).to.equal(true);
+    expect(el.renderRoot.querySelector('iframe').getAttribute('src'))
+      .to.equal('/docs/onboarding/index.html?embedded=1');
 
     el.remove();
+    delete window.IS_VITE_DEV;
   });
 
-  it('_dontShowAgain sets localStorage and closes inner modal', async () => {
+  it('closes without persisting an onboarding display flag', async () => {
     // Provide modal-lit with close spy
     if (!customElements.get('modal-lit')) {
       class FakeModal extends HTMLElement {
@@ -56,13 +60,12 @@ describe('OnboardingModal lifecycle and preferences', () => {
     }
 
     const el = document.createElement('onboarding-modal');
+    window.IS_VITE_DEV = true;
     document.body.appendChild(el);
     await new Promise((r) => setTimeout(r, 20));
 
-    // call dontShowAgain
-    el._dontShowAgain();
-
-    expect(localStorage.getItem('az_planner:onboarding_seen')).to.equal('1');
+    el.renderRoot.querySelector('button').click();
+    expect(localStorage.getItem('az_planner:onboarding_seen')).to.equal(null);
 
     // inner should be closed or element removed
     const inner = el.renderRoot && el.renderRoot.querySelector('modal-lit');
@@ -74,5 +77,6 @@ describe('OnboardingModal lifecycle and preferences', () => {
     } catch (e) {
       // element may already be detached
     }
+    delete window.IS_VITE_DEV;
   });
 });

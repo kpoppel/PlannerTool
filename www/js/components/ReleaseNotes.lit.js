@@ -1,4 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
+import { getDocsUrl } from '../services/docsUrl.js';
 
 export class ReleaseNotes extends LitElement {
   static properties = {
@@ -33,7 +34,7 @@ export class ReleaseNotes extends LitElement {
   }
 
   get pageUrl() {
-    return `${this.apiBase.replace(/\/api$/, '')}/static/docs/releases/${this.releaseId}/index.html`;
+    return getDocsUrl(`releases/${this.releaseId}/index.html`, this.apiBase);
   }
 
   firstUpdated() {

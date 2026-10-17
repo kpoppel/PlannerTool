@@ -37,6 +37,26 @@ it('opens a permanent page and acknowledges only on Continue', async () => {
   expect(document.querySelector('release-notes')).toBeNull();
 });
 
+it('uses the Vite docs root for the release iframe and open-page link', async () => {
+  const originalIsViteDev = window.IS_VITE_DEV;
+  window.IS_VITE_DEV = true;
+  const reader = document.createElement('release-notes');
+  reader.apiBase = '/api';
+  reader.releaseId = 'v5.0.0';
+  document.body.appendChild(reader);
+  await reader.updateComplete;
+
+  expect(reader.pageUrl).toBe('/docs/releases/v5.0.0/index.html');
+  expect(reader.renderRoot.querySelector('iframe').getAttribute('src'))
+    .toBe('/docs/releases/v5.0.0/index.html');
+  expect(reader.renderRoot.querySelector('a').getAttribute('href'))
+    .toBe('/docs/releases/v5.0.0/index.html');
+
+  reader.remove();
+  if (originalIsViteDev === undefined) delete window.IS_VITE_DEV;
+  else window.IS_VITE_DEV = originalIsViteDev;
+});
+
 it('keeps the reader open when acknowledgement fails and allows retry', async () => {
   vi.stubGlobal('fetch', vi.fn()
     .mockResolvedValueOnce(new Response(JSON.stringify({ releaseId: 'v5.0.0', acknowledged: false })))

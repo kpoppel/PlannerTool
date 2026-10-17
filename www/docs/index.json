@@ -1,7 +1,9 @@
 [
   { "title": "Introduction", "file": "intro.md", "tags": ["overview","help"] },
+  { "title": "About PlannerTool & Enrollment", "file": "onboarding/index.html", "format": "html", "tags": ["getting started", "overview", "enrollment", "help"] },
   { "title": "Getting Started", "file": "getting_started.md", "tags": ["config", "setup", "overview","help"] },
   { "title": "Account Access: Enrollment & Deletion", "file": "account_access.md", "tags": ["account", "enrollment", "key", "deletion", "reset", "help"] },
+  { "title": "What's New in v5.0.0", "file": "releases/v5.0.0/index.html", "format": "html", "tags": ["release", "what's new", "v5.0.0", "help"] },
   { "title": "Quick Usage", "file": "usage.md", "tags": ["howto","examples"] },
   { "title": "Best Practices", "file": "best_practices.md", "tags": ["azure","best-practices","planning","capacity","project hours","buffers","unplanned"] },
   { "title": "Top Menu & View Options", "file": "topmenu.md", "tags": ["topmenu","view"] },
