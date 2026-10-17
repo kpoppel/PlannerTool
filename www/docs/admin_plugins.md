@@ -1,19 +1,21 @@
 # Admin - Plugins
 
-The Plugins screen controls which plugins are enabled, their display order, startup activation, and per-plugin configuration.
+The **Plugins** section (`#plugins`, full administrators only) controls which plugins are enabled, their display order, startup activation, and per-plugin configuration.
+
+![Plugins](img/admin_plugins.png)
 
 ## The plugin table
 
-Each row shows name, version, type and description from the static registration.
+Columns: Name, Version, Type, Description, Menu Position, Enabled, At Startup and Actions.
 
 - Type: `tool` appears inside Tools, `hidden` has no menu entry, and `menu` contributes its own top-menu dropdown. Type is not editable here.
 - Enabled: a disabled plugin is not loaded and contributes no menu entry.
 - At Startup: selects the single plugin to activate when the application starts. Menu plugins have no startup-activation control; opening their dropdown does not activate a tool.
 - Menu Position: menu plugins can appear Before Tools or After Tools. All plugin menus remain to the right of Scope.
-- Order: up/down controls set display sequence within Tools and within each top-menu position. Dependencies can change initialization order, but not display sequence.
-- Config: opens an editor for the plugin's own `custom_config`, using a schema-driven form when the plugin declares one, or a raw JSON editor otherwise.
+- Order: the ▲ / ▼ actions set display sequence within Tools and within each top-menu position. Dependencies can change initialization order, but not display sequence.
+- Config: shown in Actions for plugins with configurable settings; opens an editor for the plugin's own `custom_config`, using a schema-driven form when the plugin declares one, or a raw JSON editor otherwise.
 
-Rows missing a required id are highlighted with a warning badge and block saving until fixed.
+Rows missing a required id are highlighted with a "missing id" badge and block saving until fixed.
 
 ## Saving
 

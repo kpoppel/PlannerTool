@@ -1,25 +1,23 @@
 # Admin - Global Project Settings
 
-This screen configures two hierarchies shared by every project: the task type hierarchy and the state display sequence.
+The **Global Project Settings** section (`#global-project-settings`) orders processes and work item types for the whole installation. It requires the `manage_projects` permission.
 
-## Task type hierarchy
+![Global project settings](img/admin_global_settings.png)
 
-Defines the parent/child ordering of work item types across the whole installation (for example Initiative → Epic → Feature → Bug/User Story → Sub-Task). This ordering drives how the tool expands and nests cards.
+## Process order
 
-- Task types not yet assigned to a level sit in a highlighted "pool" row at the bottom.
-- Click "Add Level" to create a new level, then click pool chips to assign types to the active level.
-- Remove a type from a level with its × control; it returns to the pool.
-- Every task type must end up in exactly one level — the pool makes it easy to spot anything unassigned.
+Each process with imported types has its own section. Use ↑ / ↓ to change the order in which processes are listed.
 
-## State display sequence
+## Type tiers
 
-Defines the ordered sequence of state categories (and their colours) used to present work item states consistently across the application, independent of how any single Azure DevOps project happens to order its states.
+Within a process, imported work item types are arranged in tiers: Tier 1 is the highest level (for example Epic), followed by lower tiers (for example Feature, then User Story). The tiers define the type order used in the planner, for example in the Plan menu counts, the Sidebar's Task Types and team counts.
 
-## Editing
+Use the ↑ / ↓ buttons on a type ("Move X up a tier" / "down a tier") to move it. Moving past the first or last tier creates a new tier; empty tiers are removed. Several types can share a tier.
 
-- Both hierarchies support a form view and a raw JSON view; toggle between them as needed.
-- Save persists the configuration; Reload discards local edits and re-fetches the current server value.
+## State order
 
-## Impact
+The state sequence of each type is shown read-only. Types sharing the same states are grouped. States follow Azure DevOps' order, are coloured by state category, and Removed states are hidden. States are changed in Azure DevOps, not here.
 
-Because these settings apply to every project, changes here affect how cards nest and how state colours appear across the whole installation — review with care, ideally with a small set of test projects, before rolling out to a full user base.
+## Saving
+
+**Save** (enabled when there are changes) stores the order; **Reload** discards edits. Every imported process and type must appear exactly once. "No work item types imported" is shown until types are imported in [Azure DevOps Processes](admin_ado_processes.md).

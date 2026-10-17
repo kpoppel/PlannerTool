@@ -16,5 +16,5 @@ Turn it on and off using the "Dependencies" option in the Top Menu → Scope men
 ## Usage notes
 
 - Arrows update live as you drag or resize cards, or as the visible set of cards changes with filters.
-- Hover a card to see which other cards it connects to; click a card to inspect or edit its relationships in the [Details Panel](details.md).
-- To create or change the underlying links, use the Details Panel, or the [Link Editor](plugin_link_editor.md) tool if it is enabled on your installation.
+- Hover a card to see which other cards it connects to; click a card to inspect its relationships in the [Details Panel](details.md) under Links.
+- To create links, use the [Link Editor](plugin_link_editor.md) tool if it is enabled on your installation, or edit the work items in Azure DevOps. [Reconciliation](plugin_reconciliation.md) can remove a reviewed dependency in a scenario.

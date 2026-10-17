@@ -85,7 +85,10 @@ continues to zoom the board independently of the letter-shortcut setting.
 
 ## Search tool
 
-Press `f` on the board to open Search (see [Getting Started](getting_started.md)).
+Press `f` on the board to open Search. Type part of a task title or ID; matching tasks are listed below the field.
+
+![Search](img/search_tool.png)
+
 Once open, letters enter the query rather than trigger board shortcuts:
 
 - `Arrow Down` / `Arrow Up`: move the highlighted result.

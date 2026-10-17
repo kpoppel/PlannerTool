@@ -4,32 +4,32 @@ This walkthrough follows Marcus, a Project Manager responsible for a portfolio o
 
 ## 1. Get an organisation-wide view
 
-- In the Sidebar, Marcus selects every project in his portfolio and every team that contributes to them, rather than a single product (see [Sidebar (Filters & Options)](sidebar.md)).
+- In the Plan menu, Marcus selects every plan in his portfolio, and in the Sidebar's Team Drill-down every team that contributes to them, rather than a single product (see [Top Menu & View Options](topmenu.md) and [Sidebar (Filters & Options)](sidebar.md)).
 - He sets the Timeline scale to months, since he is looking at a multi-quarter horizon rather than individual sprints.
-- He switches the [Graph Area](graph.md) to Project graph mode to see organisational capacity across all his projects, and deselects a couple of purely internal support teams so they do not skew the organisational-weight calculation.
+- He sets **View → Graph Type** to the project level to see organisational capacity across all his projects. Team selection only changes which lines are visible; it does not change the organisational weighting (see [Graph Area](graph.md)).
 
 ## 2. Check overall plan health
 
-- Marcus opens [Tool - Plan Health](plugin_plan_health.md) across the full portfolio to catch hierarchy violations, dependency violations and state inconsistencies before he reports status upward.
+- Marcus opens [Reconciliation](plugin_reconciliation.md) across the full portfolio to catch schedule conflicts across plans and dependencies, and plan quality issues, before he reports status upward.
 - He opens [Tool - Dependencies](plugin_dependencies.md) (via the Scope menu) to see cross-team dependency arrows and identify any project that is blocked waiting on another team's delivery.
 
 ## 3. Look for capacity conflicts
 
-- Before interpreting available capacity, Marcus confirms that team definitions use available project hours rather than total working hours. Holidays, absences and company administration are outside that capacity and are not specified separately in the tool (see [Admin - Teams](admin_teams.md#available-project-hours)).
+- Before interpreting available capacity, Marcus confirms that team definitions use available project hours rather than total working hours. Holidays, absences and company administration are outside that capacity and are not specified separately in the tool (see [Admin - Workforce](admin_workforce.md#available-project-hours)).
 - He checks that all work intended for the plan has explicit start and end dates, regardless of work item type. Dates are not inferred from parents, states or dependencies; undated work remains unplanned.
 - He includes maintenance, internal projects and other work competing for the same project capacity with explicit dates and team allocations. PlannerTool provides no implicit buffers for omitted work (see [Planning principles](best_practices.md#planning-principles)).
 - Using [Tool - Portfolio Board](plugin_portfolio.md), Marcus reviews every team's work by state in one Kanban-style screen, which is a faster way to spot idle or overloaded teams than scrolling the full timeline.
-- He switches to [Tool - XY Board](plugin_xyboard.md) with X = Team and Y = State to get a matrix view of exactly how much work each team has in each state, which he uses directly in his status reporting.
+- He switches to [Tool - XY Board](plugin_xyboard.md) with X = State and Y = Area Path to get a matrix of how much work each area has in each state, which he uses directly in his status reporting.
 
 ## 4. Model a what-if scenario
 
-- Marcus wants to see the impact of delaying one project by a month without committing to it yet. He clones the current scenario (see [Scenarios & Saving](scenarios.md)) into "Delay Project X - draft".
-- He drags the relevant Epics later on the timeline and checks the Project graph again to see the effect on organisational allocation.
+- Marcus wants to see the impact of delaying one project by a month without committing to it yet. He copies the baseline with Scenario → Copy Scenario (see [Scenarios & Saving](scenarios.md)) into "Delay Project X - draft".
+- He drags the relevant Epics later on the timeline and checks the project-level graph again to see the effect on organisational allocation.
 - He adds milestones for steering committee dates using [Tool - Plan Events](plugin_events.md) so both scenarios show the same key dates for comparison.
 
 ## 5. Track cost impact
 
-- Marcus opens [Tool - Cost Estimates & Teams](plugin_cost.md) and switches to Project view to see the internal/external cost and hours impact of the draft delay, month by month, before presenting the option to stakeholders.
+- Marcus opens [Tool - Cost Analysis](plugin_cost.md) and uses Plan View to see the internal/external cost and hours impact of the draft delay, month by month, before presenting the option to stakeholders.
 
 ## 6. Report and hand off
 

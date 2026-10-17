@@ -15,6 +15,7 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Refresh the Help documentation against the current UI with screenshots regenerated from the synthetic generator (`tests/playwright.docs.config.js`), new Plans, Workforce, Azure DevOps Processes, Server and Reconciliation pages, and removal of retired Plan Health, Teams, People, Cost and Cache Invalidation pages.
 - Persist MCP check history, add the fixed npm build check, support parallel targeted runs with isolated Playwright servers, and log run scope/lifecycle to `.test-runs/mcp-server.log` while keeping tool responses minimal.
 - Register the test runner in portable workspace `.mcp.json` and migrate the installer away from deprecated `.vscode/mcp.json`.
 - Add illustrated permanent v5 release notes, account-wide first-update acknowledgement and public contextual enrollment help.

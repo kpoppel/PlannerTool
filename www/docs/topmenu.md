@@ -1,40 +1,76 @@
 # Top Menu & View Options
 
-Top Menu
+The top menu holds the menus that decide what is shown on the board, plus the board counter, settings and help.
 
-- Search: press `f` on the board to open the task search tool.
-- View: timeline scale, card display mode, task sort, graph type and your saved Views (see "View menu" below).
-- Scenario: switch, clone, rename or delete scenarios (see [Scenarios & Saving](scenarios.md)).
-- Plan: select which plans (projects) are included — delivery plans and team backlogs each have their own checklist.
-- Scope: choose which related work is pulled in around your selected plans, and see the Selected → Related → Shown task funnel.
-- Tools: activates plugins/tools such as Export, Plan Health or Portfolio Board (see [Tools Overview](tools_overview.md)).
-- Help: opens the Help modal which lists the documentation pages (from `www/docs/`).
+![Top menu](img/topmenu.png)
 
-View menu
+From left to right:
 
-- Timeline Scale (`t`): 3 Months / Weeks / Months / Quarters / Years — choose the time scale appropriate for your planning horizon.
-- Cards (`c`): Normal / Compact / Packed display mode.
-- Task Sort (`s`): Rank or Date ordering (disabled while Packed card mode is active).
-- Graph Type (`g`): choose among the container levels represented by tasks in Scope, including Ancestors and Descendant work; controls which plan allocations the [Graph Area](graph.md) shows.
-- Saved Views: load one of your saved Views, or save the current Plan/Scope/filter selection as a new named View.
+- **View**: timeline scale, card mode, task sort, graph type and saved views. The badge shows the active view.
+- **Scenario**: switch, copy, save, publish, rename or delete scenarios. The badge shows the active scenario. See [Scenarios & Saving](scenarios.md).
+- **Plan**: choose which plans are on the board. The badge shows the plan name, or the number of selected plans.
+- **Scope**: pull related work into the board around the selected plans. Arrows after the label show which scope options are on.
+- **Reconciliation**: schedule conflicts and plan quality findings, with counts per category. See [Reconciliation](plugin_reconciliation.md).
+- **Tools**: optional tools such as Portfolio Board or Cost Analysis. See [Tools Overview](tools_overview.md).
+- **N on board**: board information, explaining how the number of cards on the board is reached.
+- **🔔 Notification log**: appears when the application has reported notifications (for example warnings from the server). It lists each message with severity, source and time; **Clear log** empties it.
+- **⚙ Settings**: Configuration and, for administrators, links to the administration sections.
+- **?**: this Help.
 
-Plan menu
+Menus close with Escape or by clicking outside them. Left and right arrow keys move between the top menu entries.
 
-- Lists plans grouped by the ordered container hierarchy configured in Admin > Projects; check/uncheck a plan to include or exclude it from the board.
-- The searchable "Connected to" selector lists plans by configured container level and narrows the list to plans linked through task ancestry without changing which plans are checked. Choose "All plans" to clear the focus; saved Views remember the chosen focus.
-- All/None selects or clears only the plans currently shown. While focused, Clear hidden appears only when a checked plan is hidden by the focus and clears only hidden plans.
-- Which teams are shown for drill-down in the Sidebar depends on which plans are selected here (see [Sidebar — Team Drill-down & Task Filters](sidebar.md)).
+## View menu
 
-Scope menu
+![View menu](img/menu_view.png)
 
-- Ancestors / Descendant work / Dependencies / Other work by participating teams: toggle each to pull related tasks into scope around your selected plans, with a live count of how many extra tasks each toggle would add.
-- A summary line shows the current Selected (base) + Related = Shown task counts for the active scope.
+- **Timeline Scale** (`t`): 3mo, Weeks, Months, Quarters or Years.
+- **Cards** (`c`): Normal, Compact or Packed. See [Timeline & Board](timeline.md) for examples.
+- **Task Sort** (`s`): Rank (backlog order) or Date. Unavailable in Packed mode.
+- **Graph Type** (`g`): one button per plan level represented in the current scope (for example `project` and `team`). It controls which level the [Graph Area](graph.md) shows.
+- **Saved Views**: click a view to apply it. Your own views have buttons to update it with the current settings (💾), rename it (✏️) and delete it (🗑️).
+- **💾 Save Settings as View**: saves the current plans, scope, filters, team selection and display options under a new name.
 
-Using Views
+## Plan menu
 
-- Create and save a View to capture a particular combination of selected plans, scope, filters and view options.
-- Loading a saved View applies its selections immediately and updates the timeline and Sidebar accordingly.
+![Plan menu](img/menu_plan.png)
 
-Most View menu options, plus board zoom and search, also have a [keyboard shortcut](keyboard_shortcuts.md).
-Plain letters work outside text fields, menus and dialogs. Disable them with
-**Configuration > Letter shortcuts**, then **Save**, when needed.
+- Plans are grouped by plan level (configured by your administrator, see [Admin - Plans](admin_plans.md)). Click a plan to include or exclude it.
+- The columns to the right count the plan's tasks per work item type.
+- Click a plan's colour dot to change its colour.
+- **All** / **None** selects or clears the plans currently listed.
+- **Connected to** narrows the list to plans linked to one chosen plan through task ancestry. It does not change which plans are checked. Choose **All plans** to clear it. While a focus is active, **Clear hidden** appears when checked plans are hidden by the focus, and unchecks only those. Saved views remember the focus.
+
+![Connected to](img/menu_plan_connected.png)
+
+Which teams appear in the Sidebar depends on the plans selected here (see [Sidebar](sidebar.md)).
+
+## Scope menu
+
+![Scope menu](img/menu_scope.png)
+
+Scope adds related work to the board around the selected (base) plans:
+
+- **Ancestors** (↑): parents and further ancestors of base tasks, even if they belong to plans that are not selected.
+- **Descendant work** (↓): children and further descendants.
+- **Dependencies** (↔): tasks linked by dependency relations.
+- **Other work by participating teams** (●): other tasks allocated to the teams that work on the selected plans.
+
+The number next to each option shows how many displayable tasks enabling it would add (or disabling it would remove). Tasks shared by several options are counted once.
+
+## Board information
+
+![Board information](img/board_information.png)
+
+Click **N on board** to see how the number of cards is reached: tasks counted in the selected plans, shared tasks counted once, tasks added by Scope, tasks excluded from the current scope, then the tasks removed by each Sidebar filter and by team focus. The last line is the number of cards on the board. Hover a row for an explanation. The footer shows how many teams are in scope.
+
+## Tools menu
+
+![Tools menu](img/menu_tools.png)
+
+Each entry shows a status dot and version. Click a tool to activate it, and again to deactivate it. Which tools are available is configured by your administrator in [Admin - Plugins](admin_plugins.md).
+
+## Using views
+
+- A view captures the selected plans, Plan menu focus, scope, filters, team selection and View menu options.
+- Loading a view applies its selections immediately.
+- Most View menu options, board zoom and search also have a [keyboard shortcut](keyboard_shortcuts.md). Plain letters work outside text fields, menus and dialogs. Disable them with **Configuration > Letter shortcuts**, then **Save**.

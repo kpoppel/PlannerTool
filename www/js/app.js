@@ -111,6 +111,10 @@ async function init() {
     // Populate the app state from the backend through the store-backed bootstrap.
     const { dataService } = await import('./services/dataService.js');
     await dataService.init();
+    const { showReleaseNotes } = await import('./components/ReleaseNotes.lit.js');
+    hideModal();
+    await showReleaseNotes(`${window.APP_BASE_URL}/api`);
+    showModal();
     const topMenu = document.querySelector('top-menu-bar');
     topMenu.baseUrl = window.APP_BASE_URL;
     await topMenu.loadPermissions();

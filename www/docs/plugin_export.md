@@ -2,13 +2,21 @@
 
 PlannerTool includes an export tool to produce a portable representation of the current timeline for sharing or offline review.
 
+![Export Timeline panel](img/tool_export.png)
+
 ## What you can export
-- SVG: vector representation of the timeline and visible annotations. Best when you need high-quality scalable output.
-- PNG: raster snapshot suitable for embedding in slides or documents.
-- Copy to clipboard: copies an image representation for quick pasting into chat or email.
+
+Image Export:
+- **Export SVG**: downloads a vector image of the timeline. Best for high-quality, scalable output.
+- **Copy PNG**: copies a raster image to the clipboard for pasting into slides, chat or email.
+- **Include**: toggle **Annotations** and **Dependencies** to include them in the image.
+
+Data Export:
+- **Export JSON**: downloads `timeline-export.json` with plans, teams, the daily plan and team capacity series, the tasks and view settings.
+- **Export CSV**: downloads `timeline-export.csv` with one row per date and one column per plan, holding that plan's daily allocated capacity (%).
 
 ## Where to find the export tool
-- Open the Top Menu → Tools → Export Timeline (if the Export plugin is enabled).
+- Open the Top Menu → Tools → Export Timeline. Close the panel with ×.
 
 ## Usage notes
 - The export captures the visible timeline viewport and applied filters. Pan/zoom to the desired view before exporting.
@@ -20,7 +28,7 @@ PlannerTool includes an export tool to produce a portable representation of the 
 - Large timelines may produce very large PNG files — consider exporting a cropped view or a smaller viewport.
 
 ## Limitations
-Since there is no native bowser support to export browser DOMs the tool renders the board content independently as SVG.
-This SVG is eith erexported directly, or rasterised to PNG format.
-SVGs can render all tasks loaded in the tool. PNG rasterisation is limited by a PNG height threshold of 32768 lines. If you have a very large amount of featurecards to export to PNG this may fail for that reason.
-Because of the internal rendering of the DOM as SVG there may be differences in how cards look on screen and ax exported files.
+Browsers cannot export their own page content directly, so the tool renders the board independently as SVG.
+This SVG is either exported directly or rasterised to PNG.
+SVGs can render all loaded tasks. PNG rasterisation is limited to a height of 32768 pixels, so copying a very large board as PNG may fail.
+Because of the separate rendering, exported cards may look slightly different from the screen.

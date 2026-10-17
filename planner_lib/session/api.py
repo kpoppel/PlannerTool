@@ -11,6 +11,32 @@ from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.accounts.config import CredentialValidationError
 
 router = APIRouter()
+CURRENT_RELEASE = 'v5.0.0'
+
+
+class ReleaseAcknowledgement(BaseModel):
+    releaseId: str
+
+
+@router.get('/auth/release-notes')
+async def release_notes_status(request: Request, response: Response):
+    account_id = get_session_context_from_request(request)['account_id']
+    storage = resolve_service(request, 'storage')
+    response.headers['Cache-Control'] = 'no-store'
+    acknowledged = False
+    if storage.exists('release_acknowledgements', account_id):
+        acknowledged = storage.load('release_acknowledgements', account_id) == CURRENT_RELEASE
+    return {'releaseId': CURRENT_RELEASE, 'acknowledged': acknowledged}
+
+
+@router.post('/auth/release-notes')
+async def acknowledge_release(payload: ReleaseAcknowledgement, request: Request, response: Response):
+    account_id = get_session_context_from_request(request)['account_id']
+    if payload.releaseId != CURRENT_RELEASE:
+        raise HTTPException(status_code=400, detail='Unknown release')
+    resolve_service(request, 'storage').save('release_acknowledgements', account_id, CURRENT_RELEASE)
+    response.headers['Cache-Control'] = 'no-store'
+    return {'releaseId': CURRENT_RELEASE, 'acknowledged': True}
 
 
 class EnrollmentEmail(BaseModel):

@@ -54,6 +54,28 @@ the normal enrollment dialog, receives their own device and account key, and
 retains the permissions assigned by the administrator. Creating an account
 does not sign the administrator into it or issue another user's credentials.
 
+## Release acknowledgement and public help
+
+The permanent illustrated release page is served at
+`/static/docs/releases/v5.0.0/index.html`; enrollment help remains at
+`/static/docs/account-access/index.html`, including before authentication.
+Neither page contains credentials or changes acknowledgement state.
+
+`GET /api/auth/release-notes` returns `{releaseId, acknowledged}` for the
+authenticated account. `POST /api/auth/release-notes` accepts `{releaseId}` for
+the published release only. Ownership comes from the session account ID, never
+the request body. Both responses are non-cacheable; these account self-service
+routes remain available without a working ADO PAT. The separate
+`release_acknowledgements` namespace stores the last acknowledged release by
+account ID and is cleared with account deletion. Missing records mean unread;
+no authentication schema upgrade is required. Full filesystem backups include
+the record; selective logical account exports do not promise to preserve read state.
+
+Planner and administration startup show an unread release before application
+data loads. Explicit Continue records it across browsers; failed saves keep the
+reader open for retry. Help retains a link to the permanent page, and the
+Enrollment and save-key screens retain a contextual enrollment-help link.
+
 ## Azure DevOps credentials
 
 PATs are required only when the live Azure DevOps backend is selected. Enrollment

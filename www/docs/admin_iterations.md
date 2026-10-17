@@ -1,23 +1,24 @@
 # Admin - Iterations
 
-Iterations lets you group Azure DevOps iterations (sprints) into named "iteration sets" that projects can reference for iteration-aware planning (see [Iterations (timeboxes)](iterations.md) for how this looks to end users).
+The **Iterations** section (`#iterations`, heading "Iterations Configuration") manages iteration sets: named collections of Azure DevOps iterations that plans offer as schedule presets (see [Iterations (timeboxes)](iterations.md)). It requires the `manage_iterations` permission.
 
-## Managing iteration sets
+![Iterations configuration](img/admin_iterations.png)
 
-The left panel lists existing sets and lets you manage them:
+## Browse Iterations (left)
 
-- Click "Add Set" to create a new set, giving it an id, a display name, the Azure DevOps project it is sourced from, and an optional root path to scope which iterations are browsable for it.
-- Click an existing set to edit its fields.
-- Save persists a set; Delete removes it (with confirmation). Deleting a set that is still referenced by a project should be followed by updating that project in [Admin - Projects](admin_projects.md).
-- "Unassociate All" clears every project link from a set without deleting the set itself.
+1. Choose an Azure project in **Select Azure project**. Its iterations load automatically.
+2. Use **Filter iteration paths** to narrow the list. Each iteration shows its start and end dates.
+3. Tick one or more paths and click **Make Set from Selection**. The new set contains the selected roots and their descendants and is named after the selection, for example "Iterations (Release 3)".
 
-## Browsing Azure iterations
+## Configuration (right)
 
-The right panel browses live iterations from Azure DevOps for a selected project:
+- **Configured Iteration Sets** lists each set with inline fields: set name, source Azure project, root path (optional) and set ID, plus the number of values and when they were cached.
+- Click **Save Configuration** to store new or edited sets.
+- **Delete** removes a set on the server immediately. If plans still use the set, you are asked whether to unassociate them all and delete.
+- **Raw JSON** / **Form Mode** switches between a JSON editor and the form.
 
-- Choose an Azure project, optionally filter by name, and select iterations to add to the currently active set.
-- The selection count shows how many iterations are currently chosen.
+Assign a set to a plan with the **Iteration set** field when creating or editing the plan in [Admin - Plans](admin_plans.md).
 
 ## Notes
 
-A raw JSON editor is available for bulk changes across many iteration sets at once. Browsing requires a valid Personal Access Token with access to the relevant Azure DevOps project.
+Browsing requires a valid Personal Access Token with access to the Azure DevOps project. Only iterations with complete start and end dates are offered as presets.

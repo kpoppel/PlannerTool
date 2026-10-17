@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { fulfillAccountApi } from './helpers.js';
 
 test('Global display settings reorder processes and tiers with explicit saving', async ({ page }, testInfo) => {
   const states = [{ name: 'New', category: 'Proposed', order: 1 },
@@ -16,9 +17,9 @@ test('Global display settings reorder processes and tiers with explicit saving',
   const saves = [];
   let rejectSave = true;
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.route('**/api/**', (route) => route.fulfill({ json: {
+  await page.route('**/api/**', (route) => fulfillAccountApi(route, {
     email: 'delegate@example.test', permissions: ['manage_projects'],
-  } }));
+  }));
   await page.route('**/admin/check', (route) => route.fulfill({ json: {
     ok: true, permissions: ['manage_projects'],
   } }));
@@ -65,7 +66,7 @@ test('Global display settings reorder processes and tiers with explicit saving',
 
 test('Empty process catalogue points to plan setup without a bulk refresh', async ({ page }, testInfo) => {
   const refreshes = [];
-  await page.route('**/api/**', route => route.fulfill({ json: { projects: [] } }));
+  await page.route('**/api/**', route => fulfillAccountApi(route, { projects: [] }));
   await page.route('**/admin/check', route => route.fulfill({ json: {
     ok: true, permissions: ['manage_projects'],
   } }));
@@ -107,9 +108,9 @@ test('Delegated process catalogue imports types and keeps validation errors visi
   let rejectSave = true;
   let reloads = 0;
   page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/api/**', route => route.fulfill({ json: {
+  await page.route('**/api/**', route => fulfillAccountApi(route, {
     email: 'delegate@example.test', permissions: ['manage_projects'],
-  } }));
+  }));
   await page.route('**/admin/check', route => route.fulfill({ json: {
     ok: true, permissions: ['manage_projects'],
   } }));
@@ -302,9 +303,9 @@ test('Admin entrypoint mounts canonical Workforce without legacy requests', asyn
       legacyRequests.push(request.url());
     }
   });
-  await page.route('**/api/**', (route) => route.fulfill({ json: {
+  await page.route('**/api/**', (route) => fulfillAccountApi(route, {
     email: 'workforce-fixture@example.test',
-  } }));
+  }));
   await page.route('**/admin/check', (route) => route.fulfill({ json: {
     ok: true, permissions: ['admin'],
   } }));
@@ -335,7 +336,7 @@ test('Admin entrypoint mounts canonical Workforce without legacy requests', asyn
 
 test('Denied administration startup redirects without mounting configuration controls', async ({ page }) => {
   const configRequests = [];
-  await page.route('**/api/**', route => route.fulfill({ json: { email: 'member@example.com' } }));
+  await page.route('**/api/**', route => fulfillAccountApi(route, { email: 'member@example.com' }));
   await page.route('**/admin/check', route => route.fulfill({ status: 403, json: { detail: 'Forbidden' } }));
   await page.route('**/admin/v1/**', route => {
     configRequests.push(route.request().url());
@@ -370,7 +371,7 @@ for (const [permission, sections] of [
           archived: false,
         }] }] },
     };
-    await page.route('**/api/**', route => route.fulfill({ json: { projects: [] } }));
+    await page.route('**/api/**', route => fulfillAccountApi(route, { projects: [] }));
     await page.route('**/admin/check', route => route.fulfill({ json: {
       ok: true, permissions: [permission],
     } }));
@@ -497,7 +498,7 @@ test('Administrator grants independent permissions from User Management', async 
   const accounts = [{ id: 'admin-id', email: 'admin@example.com', permissions: ['admin'] },
     { id: 'delegate-id', email: 'delegate@example.com', permissions: ['manage_projects'] }];
   const writes = [];
-  await page.route('**/api/**', route => route.fulfill({ json: { email: 'admin@example.com' } }));
+  await page.route('**/api/**', route => fulfillAccountApi(route, { email: 'admin@example.com' }));
   await page.route('**/admin/check', route => route.fulfill({ json: {
     ok: true, permissions: ['admin'],
   } }));

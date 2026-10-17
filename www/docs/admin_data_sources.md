@@ -1,31 +1,37 @@
 # Admin - Data Sources
 
-Data Sources is the central place to choose where each type of data comes from, and how long it is cached before being re-fetched.
+The **Data Sources** section (`#data-sources`, full administrators only) selects where PlannerTool reads its data from and how long cached data is kept.
+
+![Data sources](img/admin_data_sources.png)
 
 ## Layout
 
-A table lists every data domain as a row:
+A table with the columns **Domain**, **Backend** and **Cache TTL**:
 
-- Read-only rows (always backed by PlannerTool's own storage): Scenarios, Views, People, Teams.
-- Configurable rows: Work Items, History, Iterations, Markers, Plans/Boards, Tasks, Events, Groups.
+| Domain | Backend | Default TTL (minutes) |
+| --- | --- | --- |
+| Work Items | Selectable (see below) | 30 |
+| Work Item History | Same as Work Items | 1440 |
+| Delivery Plans & Iterations | Same as Work Items | Plans 240, Iterations 480, Markers 120 |
+| Scenarios, Views | Local database | — |
+| Workforce | Local database | — |
+| Projects & Teams | Local database | 240 |
+| Plan Events | Local database (PlannerTool) or Azure DevOps Wiki page | — |
+| Groups | Local database (PlannerTool) | — |
 
-For each configurable row you choose a backend and a cache time-to-live (TTL) in minutes.
+Cache lifetimes are whole minutes from 1 to 10080 (one week).
 
-## Backend types
+## Work item backends
 
-- ADO Live: fetch real data from your Azure DevOps organisation. Requires an organisation URL and a Personal Access Token.
-- ADO Mock Fixture: serve fixed sample data from a fixture file — useful for demos or testing without touching a real Azure DevOps organisation.
-- ADO Mock Generator: generate synthetic sample data on the fly.
-- Static: serve a static, manually curated backend configuration.
+- **Live Azure DevOps REST API**: reads and writes your Azure DevOps organization. Field: **Organization Name** (for example `MyCompany`). Each user supplies their own Personal Access Token in Configuration.
+- **Fixture Mock (pre-recorded)**: serves recorded data from **Fixture Data Directory** (default `data/azure_mock`); **Persist Fixture Mutations** keeps published changes.
+- **Synthetic Generator Mock**: generates a consistent demo dataset for the configured plans, with iterations and revision history. No Azure connection or PAT is needed. Fields: **Random Seed**, **Number of Plans**, **Items per Area Path**, **Number of PIs**, **Sprints per PI**, **Revisions Min/Max**, and **Persist Generated Data** with a **Persist Directory**. New installations start with this backend; the screenshots in this manual use it.
+- **Static File (read-only)**: reads tasks from a YAML or JSON file mapping area paths to tasks (**Static Data File Path**).
 
-Selecting a backend reveals the matching sub-form (for example the Organisation URL and PAT fields for ADO Live).
+## Plan Events backend
 
-## Saving changes
+Plan events are stored in PlannerTool by default. Alternatively they can be kept on an **Azure DevOps Wiki page**: set **Organization Name**, **ADO Project**, **Wiki** and **Page Path** (default `/PlannerTool/Events`).
 
-- Click Save to persist the configuration for a domain.
-- Some changes require a restart of the server process to fully take effect — a warning banner appears when that is the case.
+## Saving
 
-## Notes
-
-- Changing the backend for Work Items, History or Iterations effectively switches your whole installation between a live Azure DevOps connection and a mock/demo dataset — do this deliberately, not by accident.
-- After changing a backend or TTL, consider using [Admin - Cache Invalidation](admin_cache_invalidation.md) to force a clean re-fetch rather than waiting for the previous cache entry to expire.
+Click **Save** to store all changes. When a backend changes, a banner explains that a server restart is required, because backend selections are read at startup. After switching backends, consider **Invalidate All Caches** in [Admin - Utilities](admin_utilities.md).

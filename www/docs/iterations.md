@@ -1,20 +1,19 @@
-# Iterations — Configuration and Usage
+# Iterations (timeboxes)
 
-PlannerTool can fetch Azure DevOps iterations (timeboxes) for use when setting task dates.
+Iterations from Azure DevOps can be used as schedule presets to set a task's start and end dates in one step.
 
-Key points
-- Iterations come from server-side configuration: the application reads an iterations configuration that lists one or more iteration root paths.
-- The iterations endpoint requires a valid Personal Access Token (PAT) in your session; if no PAT is present you will be prompted to configure one.
-- Admins manage iteration roots in the Admin → Iterations section (server configuration). See your administrator if iterations are missing.
+## How to use
 
-Behavior details
-- The server normalizes iteration paths by stripping any redundant 'Iteration'/'Iterations' path segments before returning them to the UI.
-- The server filters out iterations without dates and excludes iterations entirely in the past (older than the current year) to keep the list concise.
+1. Activate an editable scenario.
+2. Open a card's [Details Panel](details.md).
+3. In **Scheduling**, open the **Schedule preset** list and choose an iteration. Both dates are set to the iteration's start and end.
 
-How to use
-1. Ensure your account is configured with a PAT (Configuration → Personal Access Token).
-2. Open a card's Details panel and use the Iterations dropdown to pick a named timebox; selecting an iteration updates Start/Target dates.
+The list shows "No date presets available" when no iteration set is configured for the task's plan.
 
-Admin notes
-- Iteration root paths are configured on the server (see `example-iterations.yml` in the repository for the expected format).
-- If you are an admin and need to add or browse iterations, open the Admin UI → Iterations and use the Browse action to preview available iterations for a project.
+## Where iterations come from
+
+- Administrators create iteration sets from Azure DevOps iteration paths in [Admin - Iterations](admin_iterations.md) and assign a set to each plan in [Admin - Plans](admin_plans.md) (the plan's **Iteration set** field).
+- Only iterations with complete start and end dates are offered.
+- Reading iterations from Azure DevOps requires a valid Personal Access Token; see [Getting Started](getting_started.md).
+
+Choosing a preset is an explicit action. PlannerTool never infers task dates from the iteration path recorded on a work item.

@@ -1,25 +1,31 @@
 # Tool - Plan Events
 
-Plan Events lets you place your own custom milestone markers on the timeline, such as "Sprint End", "Launch Window" or "Review Date".
-These events are independent of Azure DevOps Delivery Plans (see [Tool - Plan Markers](plugin_markers.md) for those) — they are your own annotations tied to a plan.
+Plan Events places your own milestones and events on the timeline, such as "Sprint review", "Launch window" or "Steering committee". Events belong to a plan and are independent of Azure DevOps Delivery Plans (see [Plan Markers](plugin_markers.md) for those).
+
+![Plan Events](img/tool_events.png)
 
 ## Opening the tool
 
-Open the Top Menu → Tools → "Plan Events". A floating "Plan Events" panel appears, listing every plan currently selected and any events already defined for it.
+Open **Tools → Plan Events**. A floating "Plan Events" panel opens with an **Event Categories** section, a **Global events** section for events that are not tied to a plan, and one section per selected plan. Each section lists its events (newest first) with a count.
 
 ## Adding and editing events
 
-- Expand a plan in the panel and use the "+" control to add a new event.
-- Fill in a date (and optionally an end date for multi-day events), a title, and a category to help group related events.
-- Confirm with the save control, or discard with cancel.
-- Existing events can be opened for editing, or removed, from the same list.
+1. Click **+** (Add event) next to a plan, or next to Global events.
+2. Enter a start date, an optional end date for multi-day events, a title and a category.
+3. Click **Add** (or press Enter in the title field).
+
+Use ✎ to edit an event (including moving it to another plan) and ✕ to delete it.
+
+## Categories
+
+- Add a category with the **New category…** field and **Add**; rename it with ✎ and delete it with ✕.
+- Click a category name to hide or show its events on the timeline and in the panel.
+- Click ★ to mark a category as special; its events are drawn with a black border.
 
 ## On the timeline
 
-- Events appear as tagged markers on the timeline at their scheduled date, coloured by the owning plan.
-- Use the refresh control in the panel if events do not appear to be up to date after an edit made elsewhere.
+Events appear as labelled markers in a strip above the board, with a dashed line down the timeline at their date. Multi-day events span their date range.
 
-## Scope and persistence
+## Storage
 
-- Events are stored per scenario, so different scenarios can carry a different set of milestones.
-- Events are local to PlannerTool — they are not written back to Azure DevOps.
+Events are shared: everyone sees the same events for a plan, independent of the active scenario. Depending on the server configuration they are stored in PlannerTool's database or on an Azure DevOps wiki page (see [Admin - Data Sources](admin_data_sources.md)). Events are not work items.

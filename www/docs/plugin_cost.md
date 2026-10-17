@@ -2,7 +2,9 @@
 
 ## Overview
 
-The cost analysis provides month-by-month reporting of Internal and External cost and hours across projects, tasks, and teams. The interface highlights allocation discrepancies and enables quick inspection at project, task, and team levels.
+The cost analysis provides month-by-month reporting of Internal and External cost and hours across plans, tasks, and teams, and shows the workforce cost basis. Open it with **Tools → Cost Analysis**; it replaces the board area until you click **Close**. The toolbar has the tabs **Plan View**, **Task View**, **Team View** and **Workforce**.
+
+![Cost Analysis - Plan View](img/tool_cost_plan.png)
 
 ## Purpose of this guide
 
@@ -13,8 +15,8 @@ This user guide explains what each view displays and how to interpret the figure
 - Plans: select projects from Top menu → Plan. Only selected projects are reported.
 - Context: the top-bar Scope controls which parent, child, dependency, and other-allocation work is included with the selected plans.
 - Teams: Team Drill-down in the Sidebar chooses which rows appear in Team view. It does not remove allocations from Project or Task report calculations.
-- Date range: choose From and To to set the displayed months.
-- View mode: toggle between Cost and Hours to change the displayed units where relevant.
+- Date range: choose From and To to set the displayed months (not shown on the Workforce tab).
+- View mode: the Cost/Hours toggle appears in Team View, and in Plan View once a plan's team or task breakdown is open.
 - Task types are selectable in the sidebar. The default task type selection is all types selected.
 - Unplanned tasks: hidden by default. Making them visible does not give them a dated allocation or create a cost estimate.
 
@@ -35,7 +37,7 @@ Forward-planning accuracy depends on complete, correct and current input data. R
 - Allocations that span multiple teams are shown per team according to the allocation data.
 - Parent and child allocations use hierarchy-aware per-team rollups. Children replace a parent's allocation only for teams they cover; uncovered parent-team allocations remain. Root rollups are summed once to prevent double counting.
 
-## Project view
+## Plan view
 
 What it shows
 - One table per selected plan in the top menu is displayed. The table displays summary data with a monthly breakdown of internal and external cost, and by site.  Both hours and moneytary cost are shown.
@@ -46,6 +48,8 @@ When to use
 
 ## Task view
 
+![Cost Analysis - Task View](img/tool_cost_task.png)
+
 What it shows
 - A list of tasks for each selected plan inthe top menu and the cost per task along with planned dates andparticipating teams.
 
@@ -54,12 +58,25 @@ When to use
 
 ## Team view
 
+![Cost Analysis - Team View](img/tool_cost_team.png)
+
 What it shows
 - A list of tasks for each team selected in Sidebar Team Drill-down
 - Sums per month and per task is calculated to determine both tem burn, but also total cost for a single team on some task.
 
 When to use
 - To review which features a team is working on and the monthly cost or hours impact.
+
+## Workforce view
+
+![Cost Analysis - Workforce](img/tool_cost_workforce.png)
+
+What it shows
+- One row per workforce team or group with Internal and External FTE, monthly hours and monthly cost.
+- Expand a row to see its staffing: team, supplier, profile, Internal/External account, FTE, hourly rate, monthly hours and monthly cost.
+
+When to use
+- To check the cost basis behind the other views. The data is maintained by administrators in [Admin - Workforce](admin_workforce.md).
 
 ## Empty states and errors
 

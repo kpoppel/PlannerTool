@@ -1,11 +1,19 @@
 # Tool - Graph Viewer
 
-Graph Viewer opens the capacity allocation graph in a large, full-screen view. It is the same team and project graph described in [Graph Area](graph.md), just presented at full size for a closer look, screen sharing or printing.
+Graph Viewer opens the capacity allocation graph as a large "Mountain View" chart. It shows the same data as the [Graph Area](graph.md), at full size for a closer look, presentations or export.
+
+![Graph Viewer](img/tool_graph_viewer.png)
 
 ## Opening the tool
 
-Open the Top Menu → Tools → "Graph Viewer". The view replaces the timeline board full-screen; close it (or select it again in the Tools menu) to return to the timeline.
+Open **Tools → Graph Viewer**. The board area is replaced by the chart. Select the tool again in the Tools menu to return to the timeline.
+
+## Controls
+
+- **Date Range**: choose a start and end date and click **Apply** to change the displayed period.
+- **Export SVG** / **Export PNG**: download the chart as an image.
+- Hover the chart to see the date, the allocation per plan or team and the total for that day.
 
 ## Usage
 
-Everything described in [Graph Area](graph.md) — Team graph vs Project graph, how team selection affects organisational weight, and how unparented allocations are handled — applies here as well. Use Graph Viewer when you want a bigger canvas than the embedded graph area, for example when presenting capacity results to stakeholders.
+Everything described in [Graph Area](graph.md) — plan levels, team lines at the lowest level, organisational weighting at higher levels — applies here as well. The graph type follows **View → Graph Type**.

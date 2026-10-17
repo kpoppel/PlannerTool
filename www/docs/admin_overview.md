@@ -1,41 +1,47 @@
 # Admin Overview
 
-PlannerTool has a separate administration interface, used to configure the server-side data every planning user relies on: projects, teams, people, cost rates, iterations, plugins and users.
+The administration area configures what everyone sees in PlannerTool: plans, workforce, data sources, users and server settings.
 
-## Accessing the Admin UI
+![Administration area](img/admin_plans.png)
 
-- Open the Admin UI at the `/admin` path of your PlannerTool installation.
-- The first time an installation is used, no admin account exists yet: the login page shows a "First-time setup" notice and asks for an email address and a Personal Access Token (PAT) to register the first administrator.
-- On later visits, sign in with your email address only; your session is remembered in a browser cookie.
-- If you sign in with an account that does not have admin permission, you are sent back to the login page with an error and cannot open any admin screen.
+## Accessing the admin area
 
-## Permission model
+- Open it from the planner's gear (Settings) menu: the **Administration** group links directly to each section you may manage. The admin area itself has a **← Planner** link back.
+- The admin area uses the same enrolled browser session as the planner (see [Account Access](account_access.md)). Without a session, the login page offers **Open planner** to enroll or add this browser. An account without any administration permission sees "This account has no administration permissions."
+- The first account enrolled on a new installation becomes the administrator.
+- Each section has its own address, for example `/admin/#workforce`, so links and bookmarks open the right section.
 
-- Access to the Admin UI is gated by a single `admin` permission — there is currently no per-screen role split. Any admin account can view and edit every screen described below.
-- Manage who has this permission from [Admin - Users](admin_users.md).
+## Permissions
 
-## What you can configure
+Full administrators (`admin`) see every section. Administrators can also delegate parts of the work to other users in [Admin - Users](admin_users.md):
 
-- [Admin - Projects](admin_projects.md): map Azure DevOps area paths to plans PlannerTool users can select.
-- [Admin - Teams](admin_teams.md): define your team structure.
-- [Admin - People](admin_people.md): maintain the people/resource database used for capacity and cost.
-- [Admin - Cost Configuration](admin_cost_config.md): rates and parameters used by the Cost Analysis tool.
-- [Admin - Global Project Settings](admin_global_settings.md): the task type hierarchy and state display sequence shared by all projects.
-- [Admin - Area Mappings](admin_area_mappings.md): which delivery plans apply to which area paths.
-- [Admin - Iterations](admin_iterations.md): named sets of Azure DevOps iterations available to projects.
-- [Admin - Data Sources](admin_data_sources.md): where each type of data is fetched from, and cache lifetimes.
-- [Admin - Plugins](admin_plugins.md): enable, disable, order and configure tools.
-- [Admin - Users](admin_users.md): manage accounts and admin permission.
-- [Admin - System](admin_system.md): general server settings and feature flags.
-- [Admin - Utilities](admin_utilities.md): backup/restore, cache cleanup and configuration reload.
-- [Admin - Cache Invalidation](admin_cache_invalidation.md): force a fresh fetch of Azure DevOps data.
-- [Admin - Backup Snapshots](admin_backup_snapshots.md): browse and restore timestamped configuration backups (if enabled).
+| Delegated permission | Label in Users | Sections |
+| --- | --- | --- |
+| `manage_projects` | Projects | Plans, Azure DevOps Processes, Global Project Settings |
+| `manage_workforce_teams` | Workforce teams & staffing | Workforce (groups, teams, staffing) |
+| `manage_workforce_costs` | Workforce costs & suppliers | Workforce (suppliers, profiles) |
+| `manage_iterations` | Iteration mappings | Iterations |
+
+All other sections are for full administrators only.
+
+## Sections
+
+- [Server](admin_server.md): server name, log level and feature flags.
+- [Data Sources](admin_data_sources.md): where work items, history, plans and events come from, and cache lifetimes.
+- [Users](admin_users.md): accounts, administrators, delegated permissions and access resets.
+- [Plugins](admin_plugins.md): which tools are available, their order and configuration.
+- [Plans](admin_plans.md): plans (area paths), plan levels and default workforce per level.
+- [Azure DevOps Processes](admin_ado_processes.md): which work item types are imported from each process.
+- [Global Project Settings](admin_global_settings.md): process order and work item type tiers.
+- [Workforce](admin_workforce.md): groups, teams, suppliers, profiles and staffing — the basis for allocations and cost.
+- [Area Mappings](admin_area_mappings.md): Azure DevOps Delivery Plans used for [Plan Markers](plugin_markers.md).
+- [Iterations](admin_iterations.md): iteration sets used as schedule presets.
+- [Utilities](admin_utilities.md): backup and restore, workforce transfer, cache cleanup and invalidation, configuration reload.
+- [Backup Snapshots](admin_backup_snapshots.md): automatic per-save backups (only when enabled on the Server page).
 
 ## Common conventions
 
-Most configuration screens follow the same pattern:
-
-- A Save button persists your edits; a Reload button discards local edits and re-fetches the current server value.
-- Screens with structured data offer both a friendly form and a raw JSON editor — use whichever is more convenient, they edit the same underlying value.
-- Status messages after Save briefly show success or a validation error and then clear automatically.
-- Changes made in the Admin UI apply immediately server-side; users of the main application see them after their next data refresh or browser reload.
+- Most sections save with an explicit **Save** button; Plans and Users save each change immediately.
+- **Reload** discards unsaved edits and re-reads the server's current values.
+- Server, Plans (full administrators), Area Mappings and Iterations also offer a raw JSON mode for bulk edits.
+- Changes take effect for users when they reload the planner.

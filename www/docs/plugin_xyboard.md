@@ -1,25 +1,28 @@
 # Tool - XY Board
 
-XY Board plots features in a 2D matrix using any two fields you choose, for example State against Priority, or Team against Severity. Each cell holds the features matching that combination, which makes it easy to spot distribution and clusters that are hard to see on a timeline.
+XY Board places tasks in a matrix built from any two fields, for example State against Priority, or Area Path against Type. Each cell holds the tasks matching that combination, which makes distribution and clusters easy to see.
+
+![XY Board](img/tool_xyboard.png)
 
 ## Opening the tool
 
-Open the Top Menu → Tools → "XY Board". The view replaces the timeline board full-screen; close it (or select it again in the Tools menu) to return to the timeline.
+Open **Tools → XY Board**. The board area is replaced by the matrix; the top menu and Sidebar stay available. Select the tool again in the Tools menu to return to the timeline.
 
 ## Controls
 
-- X Axis / Y Axis: choose which field defines the columns and rows — options include State, Type, Iteration, Priority, Severity, Product Type, Tags and Area Path, plus any custom fields present on your features.
-- Task Types: filter which work item types are included.
-- Card Details: choose which extra fields are shown as badges on each card (for example Priority or Tags).
+- **Task types**: which work item types are included.
+- **X axis** / **Y axis**: the fields defining columns and rows. Options are State, Type, Iteration, Priority, Severity, Product Type, Tags and Area Path, plus custom fields present on the tasks.
+- **Card details**: extra fields shown as badges on each card (for example Priority or Tags).
 
-Column and row headers stay pinned (sticky) while you scroll so you always know which axis value you are looking at.
+Column and row headers stay visible while you scroll.
 
 ## Working with cards
 
 - Click a card to select it and open the [Details Panel](details.md).
-- A feature with a multi-valued field (such as Tags) appears once per matching value, so it can show up in more than one cell.
-- Cards cannot be dragged on this board — use the timeline or Details Panel to change dates or fields.
+- A task with a multi-valued field (such as Tags) appears once per value, so it can show up in several cells.
+- Cards cannot be dragged on this board; use the timeline or the Details Panel to change fields.
+- "No features match the current filter." means no task passes the current selection.
 
 ## Persistence
 
-Your axis choices, task type filter and detail field selection are remembered per view, so reopening XY Board restores your last configuration.
+Axis choices, task type filter and card details are remembered, so reopening XY Board restores your last configuration.

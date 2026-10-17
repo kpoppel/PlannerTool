@@ -1,30 +1,36 @@
 # Quick Usage
 
-Here is a quick overview of the application.
+This page gives a short tour of the screen and the most common tasks.
 
-![Splash](img/intro_splash.png)
+![The main screen](img/app_overview.png)
 
+## Screen layout
 
-## User Configuration
+- **Top menu** (top): the View, Scenario, Plan and Scope menus, the Reconciliation menu, Tools, the board information counter, Settings (gear) and Help (?). See [Top Menu & View Options](topmenu.md).
+- **Sidebar** (left): Team Drill-down, Task view, Task hierarchy and Task Filters. See [Sidebar](sidebar.md).
+- **Graph area** (below the top menu): allocated capacity over time for the selected plans. See [Graph Area](graph.md).
+- **Board** (centre): one band per selected plan with task cards on a timeline. The red line marks today. See [Timeline & Board](timeline.md).
+- **Details panel** (right, when a card is selected): all fields of the selected task, editable in a scenario. See [Details Panel](details.md).
+- **Footer** (bottom of the sidebar): application version, server status, uptime and the number of loaded tasks.
 
-Click the Gear button in the upper right corner to (re-)configure the user on this browser.
-The **Letter shortcuts** checkbox enables or disables board letter keys; choose
-**Save** to remember the choice in this browser.
+![Top menu](img/topmenu.png)
 
-## Getting Help
+## Settings and help
 
-Click the Help (?) button in the top bar or sidebar to open this modal. Use the search box to filter pages by title or tag.
+The gear button opens the Settings menu. **Configuration** opens your personal settings (see [Getting Started](getting_started.md)); administrators also see links to each section of the administration area.
 
-## Interface overview
+![Settings menu](img/settings_menu.png)
 
-In the middle is the board area. This is where tasks are displayed, and most of the work happens. Left of the board is the sidebar containing filters and ways to alter the display of data. Above the board area is a graph displaying capacity assigned to the various team and project plan tasks. Above the graph area is a menu bar with options for creating saved views, scenarios and selecting plans and teams.  When clicking a task card the right side of the board opens a detail panel for the selected card.
+The ? button opens this Help. Use the search box to filter pages by title or tag. The Help window also links to the release notes of the current version.
+
+![Help](img/help_modal.png)
 
 ## Common tasks
 
-- Find a task: press `f` on the board to search.
-- Switch Plan overview / Team focus with `v`, or toggle relationship highlighting with `h`.
-- See [Keyboard Shortcuts](keyboard_shortcuts.md) for display keys, zoom and typing behavior.
-- Create, rename or delete views  from the View menu.
-- Create, rename or delete scenarios from the Scenario menu.
-- Select plans and teams by using the top menu.
-- Use the left sidebar to drill down through the tasks selected.
+- Find a task: press `f` on the board and type part of the title or ID.
+- Choose which plans to show: open the **Plan** menu.
+- Pull in related work such as parents, children and dependencies: open the **Scope** menu.
+- Focus on teams: select teams in the Sidebar's Team Drill-down and switch Task view to **Team focus** (`v`).
+- Change dates or allocations: create a scenario with **Scenario → Copy Scenario**, then drag cards or edit them in the Details panel.
+- Save a favourite setup: **View → Save Settings as View**.
+- See [Keyboard Shortcuts](keyboard_shortcuts.md) for display keys, zoom and typing behaviour.

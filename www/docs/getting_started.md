@@ -8,14 +8,19 @@ reset instructions.
 
 ## Configuration
 
-Open the Configuration modal (Gear) to set your Azure access token and autosave
-preferences. Server and project settings are managed by your administrator.
+Open the gear (Settings) menu and choose **Configuration** to set your Azure access token and personal preferences. Server, plan and team settings are managed by your administrator.
+
+![Configuration dialog](img/config_modal.png)
 
 Fields
 - Account email: the signed-in account identity, displayed as non-editable text.
-- Personal Access Token (PAT): paste a PAT from Azure DevOps with Work Items (Read/Write/Manage) scope, and Wiki permission (read/write).
-- Server settings: server or organization settings may be provided by your PlannerTool installation; confirm correct project visibility.
-- Autosave: enable to persist scenario edits automatically in browser storage.
+- Personal Access Token (PAT): paste a PAT from Azure DevOps with Work Items (Read/Write/Manage) scope, and Wiki permission (read/write). Installations using a demo or static data source may not need one.
+- Remembered browsers: lists the browsers that remember your account; use **Refresh device list** to update it. See [Account Access](account_access.md) to revoke a browser.
+- Autosave interval (minutes, 0=off): stored as a browser preference. Scenario changes are currently saved explicitly with the Save action in the Scenario menu (see [Scenarios & Saving](scenarios.md)).
+- Allocation unit: enter allocations in Percent (default) or Man-days. This is a browser-local preference.
+- Letter shortcuts: enables or disables the plain-letter board shortcuts in this browser.
+
+Buttons: **Sign out**, **Delete account** (see [Account Access](account_access.md)), **Save** and **Close**.
 
 If you don't know how to get a PAT, see below.
 

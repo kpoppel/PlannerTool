@@ -2,6 +2,10 @@
 
 The Sidebar no longer hosts view options, plan/project selection, scenarios or plugin controls — those now live in the Top Menu (see [Top Menu & View Options](topmenu.md)). The Sidebar itself has two focused sections: a context-sensitive list of teams involved in the plans you've selected, and the task filters that narrow down what is displayed on the board.
 
+![Sidebar](img/sidebar.png)
+
+While the [Reconciliation](plugin_reconciliation.md) review is open, it temporarily takes the Sidebar's place.
+
 ## Team Drill-down
 
 - Lists only teams explicitly allocated to tasks in the selected plans and enabled Scope. The list updates as plan selection or Scope changes.

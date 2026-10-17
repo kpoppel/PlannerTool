@@ -38,6 +38,9 @@ export class AuthDialog extends LitElement {
       box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
     }
     h2 { margin: 0 0 20px; font-size: 22px; }
+    .help { float: right; display: grid; place-items: center; width: 28px; height: 28px;
+      border: 1px solid #97adae; border-radius: 50%; color: #095d59;
+      text-decoration: none; font-weight: bold; }
     label { display: block; margin: 16px 0 6px; font-weight: 600; font-size: 14px; }
     input {
       width: 100%;
@@ -82,8 +85,12 @@ export class AuthDialog extends LitElement {
   }
 
   render() {
+    const root = this.apiBase === undefined ? window.APP_BASE_URL : this.apiBase.replace(/\/api$/, '');
+    const help = html`<a class="help" href=${`${root}/static/docs/account-access/index.html`}
+      target="_blank" rel="noopener" title="Enrollment help" aria-label="Enrollment help">?</a>`;
     if (this.accountKey) {
       return html`<section role="dialog" aria-modal="true" aria-labelledby="authTitle">
+        ${help}
         <h2 id="authTitle">Save your account key</h2>
         ${this.accountEmail ? html`<p>${this.accountEmail}</p>` : ''}
         <code>${this.accountKey}</code>
@@ -93,6 +100,7 @@ export class AuthDialog extends LitElement {
       </section>`;
     }
     return html`<section role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      ${help}
       <h2 id="authTitle">${this.deleting ? 'Delete account' : 'Enrollment'}</h2>
       <form @submit=${this._submit}>
         <label for="email">Email address</label>

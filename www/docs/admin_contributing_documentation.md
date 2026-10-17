@@ -31,6 +31,18 @@ Place images and other resources alongside markdown files. They will be served a
 2. Add an entry to `index.json` with a `title`, `file` and optional `tags`.
 3. The Help modal will pick up the new doc and render it automatically.
 
+## Permanent release pages
+
+Release pages live in `www/docs/releases/<version>/index.html`, with their images in an adjacent `images/` directory. They use `releases/release.css` and are served publicly under `/static/docs/releases/<version>/index.html`. Keep older release directories so existing links remain usable. Use synthetic data in screenshots and never capture credentials.
+
+For a future release, create its directory, update `CURRENT_RELEASE` in `planner_lib/session/api.py`, and update the permanent release link in `HelpModal.lit.js`. Both application startups ask the authenticated release-status endpoint before loading application data. Only the reader's Continue action saves acknowledgement; opening a permanent page never changes it. Release acknowledgements are account-wide, independent of browser preferences and the local onboarding tour.
+
+Enrollment help is not versioned: maintain `www/docs/account-access/index.html` as the permanent guide linked by the Enrollment dialog. The normal build copies all documentation and screenshots into production assets.
+
+## Regenerating screenshots
+
+The Help screenshots in `www/docs/img/` are produced by the specs in `tests/docs-capture/`. They run against an isolated server using the synthetic generator data source with a fixed demo organisation, so no real data or credentials are captured. Run `npm run build` first, then `npx playwright test --config=tests/playwright.docs.config.js`. The specs overwrite the images in place; add a capture there when documenting a new screen.
+
 ## Examples
 
 Here are concrete examples you can copy into a markdown file under `www/docs/` to verify rendering in the Help modal.

@@ -102,6 +102,8 @@ export class HelpModal extends LitElement {
     .modal-footer {
       display: flex;
       justify-content: flex-end;
+      align-items: center;
+      gap: 12px;
     }
     .empty {
       color: #666;
@@ -406,6 +408,8 @@ export class HelpModal extends LitElement {
           <div class="help-panel" .innerHTML=${this.content}></div>
         </div>
         <div slot="footer" class="modal-footer">
+          <a href=${`${window.APP_BASE_URL}/static/docs/releases/v5.0.0/index.html`}
+            target="_blank" rel="noopener">What's New in v5.0.0</a>
           <button class="btn secondary" @click=${() => this._showOnboarding()}>
             Show Onboarding
           </button>

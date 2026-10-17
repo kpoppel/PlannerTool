@@ -1,0 +1,38 @@
+:root { color-scheme: light; --ink: #233b36; --muted: #50675f; --green: #087461;
+  --line: #d6e3de; --paper: #fff; --accent: #bd493a; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { margin: 0; color: var(--ink); background: var(--paper);
+  font: 16px/1.65 'Segoe UI', sans-serif; letter-spacing: 0; }
+a { color: var(--green); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.masthead { border-bottom: 1px solid var(--line); padding: 14px 32px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { font-weight: 700; text-decoration: none; color: var(--ink); }
+nav { display: flex; flex-wrap: wrap; gap: 20px; }
+main { max-width: 1080px; margin: 0 auto; padding: 0 32px 60px; }
+.intro { padding: 44px 0 30px; border-bottom: 3px solid var(--green); }
+.eyebrow { margin: 0 0 8px; color: var(--green); font-weight: 700; font-size: 13px;
+  text-transform: uppercase; }
+h1 { font: 700 44px/1.12 Georgia, serif; margin: 0 0 18px; letter-spacing: 0; }
+.lead { font-size: 20px; max-width: 800px; margin: 0 0 18px; }
+h2 { font: 700 30px/1.25 Georgia, serif; margin: 0 0 16px; }
+h3 { font-size: 20px; line-height: 1.35; margin: 24px 0 8px; }
+p { margin: 0 0 16px; }
+section { padding: 32px 0; border-bottom: 1px solid var(--line); }
+.notice { padding: 16px 20px; background: #edf7f2; border-left: 4px solid var(--green); }
+.warning { background: #fff2ee; border-color: var(--accent); }
+.columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
+.columns h3:first-child { margin-top: 0; }
+figure { margin: 24px 0 8px; }
+figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 8px; }
+.compact { max-width: 760px; }
+.compact figure { max-width: 540px; }
+li { padding-left: 5px; margin: 8px 0; }
+ol, ul { padding-left: 24px; }
+footer { padding: 24px 32px; border-top: 1px solid var(--line); color: var(--muted);
+  max-width: 1080px; margin: 0 auto; font-size: 14px; }
+code { background: #eef2f0; padding: 2px 5px; border-radius: 3px; }
+@media print { nav, .masthead { display: none; } main { max-width: none; padding: 0; }
+  section, figure { break-inside: avoid; } }

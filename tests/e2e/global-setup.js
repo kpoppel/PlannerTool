@@ -90,20 +90,29 @@ async function bootstrapTestData(page, testDataDir) {
       team_id: team.id, supplier_id: supplier.id, profile_id: profile.id, fte: 2,
     });
 
+    const process = (await post('/admin/v1/ado-processes/resolve', {
+      project: 'TestProject',
+    })).content;
+    const planTypes = ['Epic', 'Feature', 'User Story'];
+    const importedTypes = process.types.filter((type) => planTypes.includes(type.name));
+
+    const planId = crypto.randomUUID();
     await post('/admin/v1/projects', {
+      process_imports: {
+        [process.id]: importedTypes.map((type) => type.reference_name),
+      },
       content: {
         schema_version: 4,
         container_types: ['project', 'team'],
         allocation_defaults: { project: [team.id], team: [team.id] },
         project_map: [
           {
-            id: crypto.randomUUID(),
+            id: planId,
             name: 'Synthetic Team A',
-            area_path: 'SyntheticProject\\TeamA',
+            area_path: 'TestProject\\TestTeam',
             type: 'team',
-            task_types: ['Epic', 'Feature', 'User Story', 'Task'],
-            include_states: ['New', 'Defined', 'Active', 'Resolved', 'Closed'],
-            display_states: ['New', 'Defined', 'Active', 'Resolved', 'Closed'],
+            task_types: planTypes,
+            closed_history_days: 0,
           },
         ],
       },
@@ -111,30 +120,29 @@ async function bootstrapTestData(page, testDataDir) {
 
     await post('/admin/v1/global-settings', {
       content: {
-        task_type_hierarchy: [
-          { level: 1, types: ['Epic'] },
-          { level: 2, types: ['Feature'] },
-          { level: 3, types: ['User Story'] },
-          { level: 4, types: ['Task'] },
-        ],
-        state_display_sequence: [
-          { types: ['New'] },
-          { types: ['Defined'] },
-          { types: ['Active'] },
-          { types: ['Resolved'] },
-          { types: ['Closed'] },
-        ],
+        schema_version: 2,
+        process_order: [process.id],
+        type_tiers: { [process.id]: planTypes.map((name) => [name]) },
       },
     });
 
     await post('/admin/v1/reload-config', {});
     await post('/api/session', {});
-    await get('/api/tasks');
-    await get('/api/projects');
+    const tasks = await get('/api/tasks');
+    const projects = await get('/api/projects');
+    if (!projects.some((project) => project.id === planId)) {
+      throw new Error('E2E bootstrap did not expose the configured plan');
+    }
+    if (!tasks.some((task) => task.project === planId)) {
+      throw new Error('E2E bootstrap did not load tasks owned by the configured plan');
+    }
+    const release = await get('/api/auth/release-notes');
+    await post('/api/auth/release-notes', { releaseId: release.releaseId });
 
     return {
       needsSetup: Boolean(setupStatus.needs_setup),
       adminEmail,
+      taskCount: tasks.length,
     };
   }, testDataDir);
 

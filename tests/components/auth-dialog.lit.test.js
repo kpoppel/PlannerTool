@@ -13,6 +13,18 @@ afterEach(() => {
 });
 
 describe('account enrollment dialog', () => {
+  it('links enrollment and key-saving to public help under the application root', async () => {
+    showAuthDialog('/prefix/api');
+    const dialog = document.querySelector('auth-dialog');
+    await dialog.updateComplete;
+    const help = dialog.renderRoot.querySelector('a[aria-label="Enrollment help"]');
+    expect(help.getAttribute('href')).toBe('/prefix/static/docs/account-access/index.html');
+    expect(help.target).toBe('_blank');
+    dialog.accountKey = 'test-only-key';
+    await dialog.updateComplete;
+    expect(dialog.renderRoot.querySelector('a[aria-label="Enrollment help"]')).not.toBeNull();
+  });
+
   it('saves a masked PAT through the shared repair screen', async () => {
     const { showSetPat } = await import('../../www/js/components/SetPat.lit.js');
     const fetch = vi.fn()

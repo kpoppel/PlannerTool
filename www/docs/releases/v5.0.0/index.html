@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlannerTool v5.0.0 - Release Notes</title>
+  <link rel="stylesheet" href="../release.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="#overview">PlannerTool / Release Notes</a>
+    <nav aria-label="Release sections"><a href="#getting-started">Start Here</a>
+      <a href="#planners">For Planners</a><a href="#administrators">For Administrators</a></nav>
+  </header>
+  <main>
+    <div class="intro" id="overview">
+      <p class="eyebrow">A major update to planning and administration</p>
+      <h1>PlannerTool v5.0.0</h1>
+      <p class="lead">See the bigger picture. Follow the work into the details. Plan with clearer effort,
+        capacity and cost, and give administrators the controls to keep it all connected.</p>
+      <p>Version 5 brings richer cross-plan context, more precise allocation editing, a unified Workforce
+        workspace and a redesigned Plans setup. It also introduces browser enrollment: read the short
+        access guide below before you begin.</p>
+    </div>
+    <section id="getting-started">
+      <p class="eyebrow">For everyone</p>
+      <h2>A new way to access your account</h2>
+      <div class="notice"><strong>First visit after the upgrade?</strong> Enroll this browser using your
+        existing work email. Existing account permissions and saved data are retained. Save the account
+        key shown after enrollment before continuing.</div>
+      <ol>
+        <li>Enter your own work email. First enrollment asks for your real name; an already enrolled
+          account asks for its current account key.</li>
+        <li>If requested, enter your Azure DevOps personal access token (PAT). Your PAT and your
+          PlannerTool account key are different credentials.</li>
+        <li>Save the newly displayed account key in a password manager, confirm it is saved, and continue.</li>
+      </ol>
+      <p>Enrollment remembers this browser. Enrolling another browser consumes your current account key
+        and issues a replacement, without revoking other enrolled browsers. Always keep the latest key.</p>
+      <p><a href="../../account-access/index.html" target="_blank" rel="noopener">Read the permanent enrollment and account-access guide</a>.
+        The <strong>?</strong> in Enrollment opens the same guide whenever you need it.</p>
+    </section>
+    <section id="planners">
+      <p class="eyebrow">For planners, product owners and project managers</p>
+      <h2>Keep context. Find focus.</h2>
+      <p>Work does not stop at the edge of a plan. V5 connects eligible ancestors and related work across
+        plans, making the surrounding hierarchy visible without turning every context item into part of
+        your plan's financial scope.</p>
+      <figure><img src="images/planning-board.png" width="1366" height="900"
+        alt="PlannerTool timeline with hierarchical work cards, team filters and the capacity graph">
+        <figcaption>The timeline brings hierarchy, scheduling and organizational capacity into one planning view.
+          All screenshots use synthetic demonstration data.</figcaption></figure>
+      <div class="columns">
+        <div><h3>The whole plan, or your team's work</h3>
+          <p>Plan overview keeps the scoped tree together. Team focus follows selected-team allocations,
+            their connecting ancestors and relevant unallocated descendants. Empty swimlanes get out of the way.</p>
+          <h3>Counts you can follow</h3>
+          <p>The board information menu explains how plan totals, shared work, scope and display filters
+            lead to the cards you see. Plan and team menus use hierarchy-ordered counts for quicker scanning.</p></div>
+        <div><h3>Faster ways through the board</h3>
+          <p>One-level hierarchy controls, mnemonic keyboard shortcuts and clearer filter cycles make
+            repeated navigation lighter. Shortcuts can be disabled in browser preferences.</p>
+          <h3>Inspection stays inspection</h3>
+          <p>Read-only scenarios keep task details and navigation available while protecting task,
+            group and plugin edits. Make an editable copy when you want to explore changes.</p></div>
+      </div>
+      <h3>Plan effort in the units that make sense</h3>
+      <p>Choose percentages or whole man-days for allocation editing. Fractional percentages remain precise
+        behind the display, and scheduling edits preserve effort where applicable. Resizes that would
+        exceed 100% are rejected with an explanation, without losing allocations or changing dates.</p>
+      <figure><img src="images/allocation-editor.png" width="1366" height="900"
+        alt="Task details showing date and team allocation controls in man-days">
+        <figcaption>Team-specific allocation editing keeps effort, dates and capacity connected.</figcaption></figure>
+      <h3>Capacity and cost tell the same story</h3>
+      <p>For dated work, the lowest-level allocation takes precedence for each team, aligning capacity
+        and cost calculations. Unplanned work adds no scheduled load or cost. Cost reports keep allocating
+        hidden levels as context, respect report date ranges and expose missing pricing inputs rather
+        than pretending a forecast is complete.</p>
+      <h3>Less waiting. Fewer interruptions.</h3>
+      <p>Complete shared task snapshots appear immediately while refresh runs in the background. Refresh
+        does not discard a complete snapshot first. Failures and refresh feedback go to the notification
+        log, keeping the board available for inspection.</p>
+    </section>
+    <section id="administrators">
+      <p class="eyebrow">For administrators and delegated maintainers</p>
+      <h2>One workforce. Explicit plans.</h2>
+      <p>Administration now shares the planner header and offers permission-aware navigation. Delegate
+        Plans, workforce teams and staffing, supplier and cost maintenance, or iterations independently;
+        the server enforces those write boundaries.</p>
+      <figure><img src="images/workforce.png" width="1366" height="900"
+        alt="Workforce administration with team groups and anonymous staffing composition">
+        <figcaption>Workforce brings teams, staffing, suppliers and pricing profiles into a canonical workspace.</figcaption></figure>
+      <div class="columns">
+        <div><h3>Workforce, brought together</h3>
+          <p>Maintain anonymous staffing composition, fractional FTEs, suppliers and pricing profiles
+            without switching between the old Teams, People and Cost screens. Review impacted staffing
+            when changing supplier/profile definitions.</p>
+          <h3>Safer lifecycle management</h3>
+          <p>Archive and restore plans or teams. When deletion is appropriate, team impact review and
+            confirmed staffing deletion make the consequences explicit. Revision checks reject stale edits.</p></div>
+        <div><h3>Plans setup, redesigned</h3>
+          <p>Create and edit plans in dedicated drawers. Browse ADO project areas, select eligible work
+            types, choose a closed-work history window and load the plan's data, with retry when needed.</p>
+          <h3>Process-aware display configuration</h3>
+          <p>The ADO process catalogue replaces scattered type/state settings. Used types are protected;
+            process-qualified display tiers keep different ADO processes distinct.</p></div>
+      </div>
+      <figure><img src="images/plans-setup.png" width="1366" height="900"
+        alt="Plans setup drawer with Azure DevOps project and area selection">
+        <figcaption>Dedicated plan setup keeps discovery, selection and loading in a single workflow.</figcaption></figure>
+      <h3>Portable workforce data and clearer access management</h3>
+      <p>Export workforce YAML and review additive imports with explicit conflict decisions. Full logical
+        backups include paired canonical workforce data and validate schema compatibility before restore.
+        Users can inspect and revoke remembered browsers; administrators can reset account access.</p>
+      <div class="notice warning"><strong>Upgrade checklist:</strong> Stop old writers and keep an independent
+        full filesystem backup with the matching encryption key. Database upgrades run before HTTP startup.
+        After upgrading older plan configurations, open each plan to resolve its process, review/import
+        eligible types, review display tiers, and save/load its data. Logical JSON backups are not a
+        substitute for older-binary recovery. Backups containing PATs must be kept private.</div>
+    </section>
+    <section>
+      <h2>Keep this page close</h2>
+      <p>Release notes remain available from Help. Continuing from the first-update reader records v5.0.0
+        as read on your account, across enrolled browsers. It does not remove this documentation or the
+        enrollment help.</p>
+    </section>
+  </main>
+  <footer>PlannerTool v5.0.0 release notes. Screenshots show demonstration data, not live account information.</footer>
+</body>
+</html>

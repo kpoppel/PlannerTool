@@ -1,6 +1,12 @@
 import { test as base, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
+export function fulfillAccountApi(route, body) {
+  const path = new URL(route.request().url()).pathname;
+  return route.fulfill({ json: path.endsWith('/auth/release-notes')
+    ? { releaseId: 'v5.0.0', acknowledged: true } : body });
+}
+
 export const test = base.extend({
   activeScenario: async ({ page }, use) => {
     const response = await page.request.get('/api/tasks');

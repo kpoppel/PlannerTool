@@ -291,6 +291,8 @@ class AccountManager:
                         self._storage.delete(namespace, key)
             if self._storage.exists('account_auth', account_id):
                 self._storage.delete('account_auth', account_id)
+            if self._storage.exists('release_acknowledgements', account_id):
+                self._storage.delete('release_acknowledgements', account_id)
             self._storage.delete(self.DEFAULT_NS, email)
         logger.info('Deleted account %s', email)
 

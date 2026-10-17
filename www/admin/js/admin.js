@@ -28,6 +28,8 @@ async function mountAdminApp() {
     const res = await adminProvider.checkAccess();
     if (res.ok) {
       const access = res.data;
+      const { showReleaseNotes } = await import('/static/js/components/ReleaseNotes.lit.js');
+      await showReleaseNotes(`${window.APP_BASE_URL}/api`);
       mount(access.permissions);
       return;
     }

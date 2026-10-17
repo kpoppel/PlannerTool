@@ -14,7 +14,7 @@ Keep changes here short and machine-friendly — agents will rely on these rules
   to stop it.
 - Independent focused targets can run concurrently; start each with `wait=false` and track each `run_id`.
 - Use `framework="build"` for `npm run build`. For docs capture, use `framework="playwright"`,
-  `playwright_config="tests/playwright.docs.config.js"`, and `targets=["probe"]`.
+  `playwright_config="tests/playwright.docs.config.js"`, and `targets=["tests/docs-capture"]` (run `framework="build"` first).
 
 - Install JS deps: `npm install` (uses package.json)
 - Run unit tests (fast, jsdom): `npm test` or `npx vitest`

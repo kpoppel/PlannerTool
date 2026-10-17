@@ -1,6 +1,8 @@
 # Admin - Utilities
 
-Utilities collects maintenance actions for keeping a PlannerTool installation healthy: backups, cache cleanup and configuration reload. For clearing Azure DevOps data caches specifically, see [Admin - Cache Invalidation](admin_cache_invalidation.md).
+Utilities (`#utilities`, full administrators only) collects maintenance actions for keeping a PlannerTool installation healthy: backups, workforce transfer, cache cleanup, configuration reload and cache invalidation.
+
+![Utilities](img/admin_utilities.png)
 
 **Backup & Restore** has matching **System** and **Workforce** rows. Each has
 **Backup** and **Restore** buttons. **Restore** opens the appropriate file picker;
@@ -80,7 +82,7 @@ storage schema is identical. Compatibility is checked through the read-only
 on the server immediately before restore. Selective restore retains the backup's
 schema revision; removing categories does not bypass this requirement.
 
-**User accounts** is optional. Leave it unchecked to preserve current accounts,
+All categories, including **User accounts**, are checked by default. Uncheck **User accounts** to preserve current accounts,
 PATs, keys, permissions, and remembered-browser credentials. Accounts and their
 authentication are restored together. All successful restores clear active
 sessions; a valid remembered browser can renew access automatically.
@@ -95,13 +97,17 @@ the installation operator to reset access. Retained backups can undo deletion.
 
 ## Cache Cleanup
 
-"Clean Up Orphaned Entries" removes leftover cache index entries that no longer point at real cache data, for example after area paths were changed or cache files were deleted manually outside the application. This does not clear valid cache data, only stale index entries.
+**Clean Up Orphaned Entries** removes leftover cache index entries that no longer point at real cache data, for example after area paths were changed or cache files were deleted manually outside the application. This does not clear valid cache data, only stale index entries.
 
 ## Reload Configuration
 
-"Reload Config" asks the server to reload its configuration artifacts and invalidate related runtime caches. Use this after editing configuration files directly on the server outside the Admin UI.
+**Reload Configuration** asks the server to reload its configuration artifacts and invalidate related runtime caches. Use this after editing configuration files directly on the server outside the Admin UI.
+
+## Cache Invalidation
+
+**Invalidate All Caches** clears all cached data from Azure DevOps (work items, teams, plans, markers and iterations). The next request in the planner fetches fresh data, which can take noticeably longer for large installations. Use it after changing Data Sources, when Azure DevOps data looks stale, or when troubleshooting. Saving workforce definitions only invalidates the cost cache.
 
 ## Notes
 
-- Destructive actions (Restore, Reload, cache invalidation) all require confirmation before running.
+- Restore, Reload Configuration and cache invalidation require confirmation before running; Cache Cleanup runs immediately.
 - Status messages report how many items were affected once an action completes.

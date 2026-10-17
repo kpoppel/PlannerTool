@@ -1,37 +1,35 @@
 # PlannerTool Introduction
 
-Welcome to PlannerTool.
-This is a tool developed by Kim Poulsen starting 2025 to work around planning shortcomings in Azure Devops and eliminating Excel as a planning tool. The tool is context specific in that it specifically addresses a need to balance task load on a number of development teams across projects and features.  The tool is however not dependent on having balancing data to be useful. Specifying projects alone will give a graphically pleasing way to see flow of work including their dependencies if specified.
+Welcome to PlannerTool. Kim Poulsen started developing it in 2025 to work around planning shortcomings in Azure DevOps and to replace Excel as a planning tool. It is built to balance the workload of several development teams across projects and features, but it is useful even without capacity data: selecting plans alone gives a clear picture of how work flows over time, including hierarchy and dependencies.
 
-![Splash](img/intro_splash.png)
+![PlannerTool with four plans selected](img/app_overview.png)
+
+The screenshots in this manual use a synthetic demo organisation ("Contoso") with four plans and four teams. Your own plans, teams and numbers will differ.
 
 # Features
-The tool has several useful features:
 
-- Ability to create and save scenarios for experimentation and review
-- Ability to create and save favorite views for plans, teams and filters
-- Ability to drill down to selected projects and teams using powerful dimensional filtering
-- Ability to interpret team capacity allocations from loaded tasks from Azure
-- Different modes to show cards and details
-- Grouping of tasks with virtual nested groups not consuming tasks as buckets
-- A graph area to quickly determine team allocation and organisational allocation surplus or deficit.
-- Ability to write adjusted dates to back Azure
-- Serverside configuration of projects and teams with an admin frontend interface
+- Plans selected from Azure DevOps area paths, organised in configurable plan levels (for example project and team).
+- A timeline board with Normal, Compact and Packed card modes, hierarchy folding and virtual groups.
+- Team allocations on tasks, with a capacity graph showing team load and organisational allocation over time.
+- Scenarios for safe experimentation, with a review step before selected changes are published to Azure DevOps.
+- Saved views for your favourite combination of plans, scope, filters and display options.
+- Reconciliation review of schedule conflicts and plan quality issues.
+- Tools such as Portfolio Board, XY Board, Cost Analysis, Task History, Plan Events, Annotations and Export.
+- A server-side administration area for plans, workforce (teams, suppliers, staffing and cost) and data sources.
 
-The tool is opinionated in how it works, and may not be a fit for all organisations. Check out the [Best Practices](best_practices.md) for explanations and guidance on states, hierarchy, area-path conventions and more.
+The tool is opinionated in how it works and may not fit every organisation. See [Best Practices](best_practices.md) for guidance on states, hierarchy, area paths and capacity.
 
+## Where to go next
 
-For detailed, topic-specific instructions see the manual pages in this Help index:
-
-- Sidebar (filters & options): [Sidebar (Filters & Options)](sidebar.md)
-- Timeline & Board: [Timeline & Board](timeline.md)
-- Details panel and editing: [Details Panel](details.md)
-- Scenarios & saving: [Scenarios & Saving](scenarios.md)
-- Configuration and PAT setup: [Getting Started](getting_started.md)
-- Review modal: [Review Modal (Publish scenario)](review_modal.md)
-- Tools (plugins) available in the Tools menu: [Tools Overview](tools_overview.md)
-- Administering the server (projects, teams, people, cost, users): [Admin Overview](admin_overview.md)
-- Keyboard shortcuts: [Keyboard Shortcuts](keyboard_shortcuts.md)
-- Worked examples for Product Owners and Project Managers: [Example - Product Owner Workflow](example_po_workflow.md), [Example - Project Manager Workflow](example_pm_workflow.md)
-
-The sections above cover how to prepare datasets, adjust allocations, and save or push changes. For advanced topics, see the Best Practices page.
+- First visit and account access: [Getting Started](getting_started.md) and [Account Access](account_access.md)
+- A tour of the screen: [Quick Usage](usage.md)
+- Menus: [Top Menu & View Options](topmenu.md)
+- Sidebar: [Sidebar (Filters & Options)](sidebar.md)
+- The board: [Timeline & Board](timeline.md), [Card Anatomy & Workflows](card_workflows.md), [Groups](groups.md)
+- Editing: [Details Panel](details.md), [Scenarios & Saving](scenarios.md), [Review Modal](review_modal.md)
+- Capacity: [Graph Area](graph.md)
+- Plan quality: [Reconciliation](plugin_reconciliation.md)
+- Tools: [Tools Overview](tools_overview.md)
+- Keyboard: [Keyboard Shortcuts](keyboard_shortcuts.md)
+- Worked examples: [Product Owner Workflow](example_po_workflow.md), [Project Manager Workflow](example_pm_workflow.md)
+- Administration: [Admin Overview](admin_overview.md)

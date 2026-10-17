@@ -1,20 +1,21 @@
 # Admin - Area Mappings
 
-Area Mappings shows, for each Azure DevOps area path, which delivery plans are associated with it, and lets you choose which of those plans should be considered by PlannerTool (for example for [Plan Markers](plugin_markers.md) and iteration-aware planning).
+Area Mappings (`#area-mappings`, full administrators only) shows which Azure DevOps Delivery Plans are associated with each plan's area path, and which of them are enabled for the [Plan Markers](plugin_markers.md) overlay.
+
+![Area mappings](img/admin_area_mappings.png)
 
 ## Layout
 
-- Mappings are grouped by Azure project, with one card per area path.
-- Each card shows the area path, when it was last refreshed, how many iterations and plans were found, and a checkbox list of the plans available for that area.
+- One card per plan. The card shows the PlannerTool plan name, the area path, "N plans • M enabled", a 🔄 refresh button and one checkbox per Delivery Plan (name and ID).
+- A "Last updated" line shows when the mappings were last refreshed. "No area mappings found" is shown until a refresh has found Delivery Plans.
 
-## Refreshing
+## Actions
 
-- Click the refresh control on a single card to re-fetch that area path's plans and iterations from Azure DevOps.
-- Use "Refresh All" to re-sync every area path at once.
-- Toggle individual plan checkboxes to include or exclude a plan for that area path, then Save.
+- 🔄 on a card re-fetches the Delivery Plans for that area path; **🔄 Refresh All** refreshes every card.
+- Ticking or clearing a plan checkbox saves immediately.
+- **📝 Raw JSON** switches to a JSON editor with **💾 Save** and **🔄 Reload**; **📋 Card View** switches back.
 
 ## Notes
 
-- Refreshing requires a valid Personal Access Token with access to the relevant Azure DevOps projects.
-- A raw JSON view is available for bulk review or editing of the underlying mapping data.
-- If plans appear missing or out of date, refresh the relevant area first before assuming a configuration problem elsewhere.
+- Refreshing reads Azure DevOps with your Personal Access Token, which needs access to the Delivery Plans of the relevant projects.
+- Data sources without Delivery Plans (such as the synthetic demo source) show plans without markers.

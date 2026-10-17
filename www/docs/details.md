@@ -1,91 +1,67 @@
 # Details Panel
 
-The Details panel displays full metadata for a selected card and provides edit controls.
+Click a card to open the Details panel on the right. It shows all fields of the selected task. In Baseline the panel is read-only; in an editable scenario the state, dates, allocations and tags can be changed. Close it with ✕.
 
+![Details panel open next to the board](img/details_scenario.png)
 
-## Top part of the details panel
-![detail panel top](img/detail_panel_top.png)
+In Baseline, fields are shown as plain values:
 
-Header
-- Title and type indicator.
+![Read-only details panel in Baseline](img/details_baseline.png)
 
-ID
-- Link to open the item in Azure DevOps when available.
+![Details panel in an editable scenario](img/details_panel.png)
 
-Status
-- The status of the task. Click the status to change it as part of a scenario.
+## Header
 
-Assignee
-- The name of the person assigned to, if any.
+- **Title** with the work item type icon.
+- **ID**: opens the work item in Azure DevOps in a new tab.
+- **Status**: the current state. In a scenario, click it to choose another state. A changed state shows the original value as "(was …)".
+- **Plan**: the plan that owns the task.
+- **Assignee**: the person assigned in Azure DevOps, if any.
 
-Scheduling
-- Every work item type needs its own start and end (Target) dates to be planned. Dates are not implicitly inferred from hierarchy, state, dependencies or other factors; items without both dates remain unplanned and display as unplanned. See [Planning principles](best_practices.md#planning-principles).
-- Setting start/end date of the task using 'iterations'.
-- Editable Start and Target date fields. Changes are reflected on the timeline immediately.
-- Context sensitive buttons to move start date, both start and end dates, or end date of a task with descendents to match dates of these.
-- Clear dates button to remove dates and make the task effectively unplanned.
+## Scheduling
 
-Choosing an iteration or using a date-alignment button is an explicit action that sets dates, not implicit date resolution.
+Every work item needs its own start and end dates to be planned. Dates are not inferred from hierarchy, state, dependencies or other factors; items without both dates stay unplanned. See [Planning principles](best_practices.md#planning-principles).
 
-Allocated capacity
-- Choose Percent (default) or Man-days in Configuration. This browser-local setting changes the entry unit, not the estimate's accuracy or confidence.
-- Add allocation: choose a team and enter a whole percentage or whole man-days in the selected unit. The mouse wheel adjusts percentages in 10% steps and man-days in single-day steps.
-- Both units display whole numbers rounded upward. Stored percentages retain fractional precision; leaving a rounded value unchanged does not overwrite the underlying allocation.
-- Allocations are saved into the scenario and can be written back to Azure DevOps via the review modal.
-- Man-days are team-specific and are not comparable between teams as measures of output, productivity or cost. Allocations support forward resource planning, reservation and budgeting; they are not automatically up-front delivery commitments. See [Capacity and allocations](best_practices.md#capacity-and-allocations).
+- **Schedule preset**: choose a named iteration (timebox) to set both dates at once. The list comes from the iteration sets configured for the plan (see [Iterations](iterations.md)); it shows "No date presets available" when none are configured.
+- **Start → End**: date fields. Changes show immediately on the board.
+- For tasks with children, extra buttons align the dates with the children: **Snap start to earliest child** (⇤), **Shrink to children** (fits the task to the span of its children) and **Snap end to latest child**. Hover a button for its name.
+- **✕ Clear dates** removes both dates so the task becomes unplanned.
 
-Description
-- Free-text area for description. Description field is currently not editable from the tool.
+Choosing a preset or an alignment button is an explicit action that sets dates; it is not implicit date resolution.
 
-## Bottom part of the details panel
-![detail panel bottom](img/detail_panel_bottom.png)
+## Allocated Capacity
 
-Links:
-- Lists ancestors and descendents, and related tasks
-- Displays the task type linked and the state of the task using the same colors as the state field.
-- Links are active and will display title if the linked task is loaded into the tool, otherwise the task ID.
+- One row per allocated team with a bar and a value field. Bars are always percentages.
+- Choose **Percent** (default) or **Man-days** as entry unit in Configuration. The heading then reads "Allocated Capacity (man-days)". This browser-local setting changes the entry unit, not the estimate's accuracy.
+- Enter whole numbers. The mouse wheel over a field changes percentages in 10% steps and man-days in single-day steps. Values display rounded up; leaving a rounded value unchanged keeps the stored precision.
+- **+ Add Team** opens a small form: choose the team, enter a value and click **Add**.
+- **Total Capacity Overview** shows the task's organisation load and the number of teams.
+- Man-days are team-specific and not comparable between teams as measures of output, productivity or cost. Allocations support forward resource planning; they are not automatically delivery commitments. See [Capacity and allocations](best_practices.md#capacity-and-allocations).
 
-Modified box
-- If fields are modified on a task this box will display. Revert all changes made by clicking the revert button, our doubleclick the task in the board.
+## Tags
 
-# Good to know
+Existing tags are shown as chips. In a scenario remove a tag with its ✕, or type a new tag and click **Add**.
 
-Behavior
-- Edits affect the active scenario; if autosave is off, use Save to persist locally.
-- Pushing to Azure DevOps is explicit and reversible via the review step.
+## Description
 
-Step-by-step example: change dates and team allocations
+The work item description from Azure DevOps (read-only). PlannerTool's allocation block is hidden.
 
-1. Open the Details panel
-	- Click a card on the timeline. The panel title shows the item `Title` and type (e.g., "Feature").
+## Links
 
-2. Edit Dates
-	- Locate the `Start` and `Target` fields under the "Dates" heading.
-	- Click the `Start` value and pick a new date from the date picker.
-	- Click the `Target` value or drag the card on the timeline to change the end date.
-	- Confirm the updated dates are shown in the panel.
+Parents, children, dependencies and related tasks, grouped by link type. Each entry shows the type icon, ID and title (the title only when the task is loaded). Click the link to open the item in Azure DevOps, or the icon to centre the task on the board.
 
-3. Edit Team Allocations
-	- Find the "Team allocations" section.
-	- To add a new allocation, click the `Add allocation` button.
-	- In the new allocation row select a `Team` from the dropdown and enter a whole value in your configured unit (e.g., `40` percent or `10` man-days).
-	- Use the mouse wheel over the allocation field for 10% steps in Percent mode or single-day steps in Man-days mode.
-	- Existing allocations show team names and allocation fields, with a delete/trash control to remove them. Bars remain percent-based in either mode.
+## Modified locally
 
-4. Add notes (not implemented)
-	- Edit the `Description` or `Notes` field to add context for the change.
+When a task has changes in the active scenario, a box lists the changed fields. Click ↺ to revert them, or double-click the card on the board.
 
-5. Save changes locally
-	- Click `Save` in the Scenario Menu to persist the edits to the active scenario (stored on the server or autosave depending on settings).
+## Step-by-step: change dates and allocations
 
-6. Push selected changes to Azure DevOps (optional)
-	- Click `Publish scenario` button on a scenario to open the Review modal.
-	- In the Review modal inspect the listed changes, uncheck any you do not want to push, then click `Confirm` (or `Push`) to write selected updates to Azure DevOps.
-	- The modal reports success or displays inline errors for failed updates.
+1. Make sure an editable scenario is active (Scenario → Copy Scenario creates one).
+2. Click the card. The panel opens with the task's details.
+3. Change **Start** and **End**, or choose a **Schedule preset**.
+4. Change an allocation value, or use **+ Add Team** to add a team.
+5. Save the scenario with 💾 in the Scenario menu.
+6. To write the changes to Azure DevOps, click ☁️ (Publish scenario) and confirm in the [Review Modal](review_modal.md).
+7. To undo, click ↺ in the Modified box or double-click the card.
 
-7. Cancel or revert
-	- If you decide not to keep edits, click `Revert` button in the detail panel or double click the card.
-
-Notes
- - The panel updates the timeline directly when dates or allocations are edited.
- - Allocations are stored using the PlannerTool format in the item (so they can be round-tripped back to Azure DevOps).
+Allocations are stored in a PlannerTool block in the work item description, so they round-trip to Azure DevOps.

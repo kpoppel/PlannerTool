@@ -24,7 +24,7 @@ and IDs persist across MCP server and one-shot CLI invocations; logs and JUnit r
   (`-k` name filter, `-x` bail, `-c` playwright config).
 - Build and docs-probe MCP calls:
     `run_tests(framework="build")`
-    `run_tests(framework="playwright", playwright_config="tests/playwright.docs.config.js", targets=["probe"])`
+    `run_tests(framework="playwright", playwright_config="tests/playwright.docs.config.js", targets=["tests/docs-capture"])`
 
 ## Ownership and test types
 

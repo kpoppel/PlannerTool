@@ -1,22 +1,35 @@
 # Admin - Users
 
-The Users screen manages every account that can sign in to the main application, and which of them have admin permission to reach the Admin UI itself.
+The **Users** section (`#users`, heading "User Management", full administrators only) manages every account that can sign in, who is an administrator, and which administration tasks are delegated to other users.
+
+![User management](img/admin_users.png)
 
 ## Layout
 
-Two lists side by side:
+Two lists side by side, each with a count badge:
 
-- Regular Users: everyday accounts without admin permission.
-- Administrators: accounts with admin permission, able to access every Admin UI screen.
-
-Each list shows a running count as a badge.
+- **Regular Users**: all accounts (the heading is historical). Administrators carry an "Admin" badge and your own account a "You" badge.
+- **Administrators**: accounts with the `admin` permission, which can use every administration section.
 
 ## Managing accounts
 
-- Add a new regular user or a new admin directly by entering an email address and clicking the matching Add button.
-- Promote a regular user to admin with "Make Admin".
-- Remove an account with the Remove button; you cannot remove the account you are currently signed in with.
-- Your own account is marked with a "You" badge so it is easy to identify in the list.
+- Add an account by entering an email address and clicking **Add User** or **Add Admin** (Enter also works). If the server requires it, a PAT field for the new account appears.
+- Promote a user with **Make Admin**; demote an administrator with **Demote**.
+- **Remove** deletes an account immediately, without a confirmation step. You cannot remove or demote your own account.
+- **Reload** re-reads the account lists.
+
+## Delegated administration
+
+Each user row has a **Delegated Administration** group with checkboxes. Each change is saved immediately. For administrators the boxes are checked and disabled.
+
+| Checkbox | Permission | Sections |
+| --- | --- | --- |
+| Projects | `manage_projects` | Plans, Azure DevOps Processes, Global Project Settings |
+| Workforce teams & staffing | `manage_workforce_teams` | Workforce: groups, teams, staffing |
+| Workforce costs & suppliers | `manage_workforce_costs` | Workforce: suppliers, profiles |
+| Iteration mappings | `manage_iterations` | Iterations |
+
+A delegated user sees only the matching sections in the gear menu and the administration area.
 
 Creating an account assigns its account ID and permissions immediately. The
 user then enrolls their browser with that email and their real name in the
@@ -54,5 +67,4 @@ offline drafts on other browsers are outside that deletion.
 ## Notes
 
 - Email addresses are validated on entry.
-- There is currently only one permission level beyond a plain account: `admin`. There is no finer-grained per-screen permission — any admin account can use every Admin UI screen described in this manual.
 - Status messages confirm success or report an error after each change, and clear automatically after a few seconds.

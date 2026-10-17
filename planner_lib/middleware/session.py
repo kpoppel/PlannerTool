@@ -194,6 +194,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         route_path = request.url.path.removeprefix(request.scope.get('root_path', ''))
         credential_routes = {
             '/api/config', '/api/session', '/api/auth/me', '/api/auth/logout',
+            '/api/auth/release-notes',
             '/api/auth/enroll', '/api/auth/enrollment-status', '/api/auth/delete-account',
         }
         protected_api = route_path.startswith(('/api/', '/admin/v1/')) or route_path == '/admin/check'

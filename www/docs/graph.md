@@ -2,6 +2,12 @@
 
 The graph area displays allocated capacity at the plan level chosen in the View menu. A "plan" is a collection of tasks from a single Azure DevOps area path. Selecting multiple plans adds data to the graph.
 
+![Graph at the lowest (team) level](img/graph_team.png)
+
+![Graph at a higher (project) level](img/graph_project.png)
+
+Periods where the total exceeds 100% are shaded, and a dotted line marks 100%. Hover the graph to see the date and the values per team or plan.
+
 ## What it is useful for
 The graph area provides a visual representation of the capacity allocation for tasks in Azure Devops. It is useful for planning purposes, as it provides a visual representation of the capacity allocation for tasks in Azure Devops.
 The graph very quickly gives a complete overview over over and under-utilisation of teams and how the distribution of work is across supported projects.  Using the graph in combination with scenarios is a very efficient way to test out rebalancing of work.

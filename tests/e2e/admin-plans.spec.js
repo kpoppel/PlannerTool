@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { fulfillAccountApi } from './helpers.js';
 
 async function setup(page) {
   const state = {
@@ -16,6 +17,7 @@ async function setup(page) {
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.route('**/api/**', (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/auth/release-notes')) return fulfillAccountApi(route, {});
     if (url.pathname.endsWith('/azure/projects')) return route.fulfill({ json: {
       projects: ['Platform', 'Second'],
     } });

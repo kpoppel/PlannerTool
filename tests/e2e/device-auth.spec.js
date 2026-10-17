@@ -45,6 +45,9 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.waitForURL('**/admin/');
   await expect(page).toHaveURL('http://127.0.0.1:8017/admin/');
+  await expect(page.locator('release-notes').getByRole('dialog')).toBeVisible();
+  await page.locator('release-notes').getByRole('button', { name: 'Continue to Planner' }).click();
+  await expect(page.locator('release-notes')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Users', exact: true })).toBeVisible();
   const cookies = await page.context().cookies();
   expect(cookies.find(cookie => cookie.name === 'plannerDevice').httpOnly).toBe(true);
@@ -285,6 +288,8 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
 
       const repairPage = await repairContext.newPage();
       await repairPage.goto('http://127.0.0.1:8017/');
+      await expect(repairPage.locator('release-notes').getByRole('dialog')).toBeVisible();
+      await repairPage.locator('release-notes').getByRole('button', { name: 'Continue to Planner' }).click();
       await expect(repairPage.getByRole('heading', { name: 'Set your Azure DevOps PAT' })).toBeVisible();
       await expect(repairPage.locator('set-pat')).toHaveCount(1);
       await repairPage.screenshot({ path: 'test-results/auth-desktop-planner-pat-required.png' });
