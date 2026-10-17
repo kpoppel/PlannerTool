@@ -14,13 +14,16 @@
   </header>
   <main>
     <div class="intro" id="overview">
-      <p class="eyebrow">A major update to planning and administration</p>
+      <p class="eyebrow">Less noise. More context. Clearer decisions.</p>
       <h1>PlannerTool v5.0.0</h1>
-      <p class="lead">See the bigger picture. Follow the work into the details. Plan with clearer effort,
-        capacity and cost, and give administrators the controls to keep it all connected.</p>
-      <p>Version 5 brings richer cross-plan context, more precise allocation editing, a unified Workforce
-        workspace and a redesigned Plans setup. It also introduces browser enrollment: read the short
-        access guide below before you begin.</p>
+      <p class="lead">Find your team's work without losing the bigger picture. Try a different schedule
+        without changing the baseline. Bring effort, capacity and cost into the same conversation.</p>
+      <p>Version 5 redesigns the planning experience around the work you are doing right now: a clearer
+        board, details alongside your plan, and faster ways to move between the overview and the task
+        that needs your attention. Behind it is a simpler administration workspace that is easier to share.</p>
+      <p><a href="#planners">Explore what's better for planners</a>,
+        <a href="#administrators">see what's new for administrators</a>, or read the short
+        browser-enrollment guide below before your first visit.</p>
     </div>
     <section id="getting-started">
       <p class="eyebrow">For everyone</p>
@@ -42,51 +45,95 @@
     </section>
     <section id="planners">
       <p class="eyebrow">For planners, product owners and project managers</p>
-      <h2>Keep context. Find focus.</h2>
-      <p>Work does not stop at the edge of a plan. V5 connects eligible ancestors and related work across
-        plans, making the surrounding hierarchy visible without turning every context item into part of
-        your plan's financial scope.</p>
+      <h2>Your work, with the bigger picture attached</h2>
+      <p>A plan rarely tells the whole story on its own. Extend its scope to see eligible ancestors and
+        related work across plans, then follow the connections without treating every context card as
+        another item in your plan's financial scope.</p>
       <figure><img src="images/planning-board.png" width="1366" height="900"
         alt="PlannerTool timeline with hierarchical work cards, team filters and the capacity graph">
         <figcaption>The timeline brings hierarchy, scheduling and organizational capacity into one planning view.
           All screenshots use synthetic demonstration data.</figcaption></figure>
       <div class="columns">
-        <div><h3>The whole plan, or your team's work</h3>
-          <p>Plan overview keeps the scoped tree together. Team focus follows selected-team allocations,
-            their connecting ancestors and relevant unallocated descendants. Empty swimlanes get out of the way.</p>
-          <h3>Counts you can follow</h3>
-          <p>The board information menu explains how plan totals, shared work, scope and display filters
-            lead to the cards you see. Plan and team menus use hierarchy-ordered counts for quicker scanning.</p></div>
-        <div><h3>Faster ways through the board</h3>
-          <p>One-level hierarchy controls, mnemonic keyboard shortcuts and clearer filter cycles make
-            repeated navigation lighter. Shortcuts can be disabled in browser preferences.</p>
-          <h3>Inspection stays inspection</h3>
-          <p>Read-only scenarios keep task details and navigation available while protecting task,
-            group and plugin edits. Make an editable copy when you want to explore changes.</p></div>
+        <div><h3>Focus on a team, not an isolated list</h3>
+          <p>Switch from the whole-plan overview to Team focus. See selected-team allocations with their
+            connecting ancestors and relevant unallocated descendants, so you can discuss the team's work
+            in context. Empty plan swimlanes get out of the way.</p>
+          <h3>Open the branch that matters</h3>
+          <p>Fold task hierarchies to reduce clutter, or open them one level at a time. Keep the surrounding
+            structure visible while you focus the discussion on a particular delivery.</p></div>
+        <div><h3>Follow connections across plans</h3>
+          <p>The Plan menu separates plan containers from connected-plan filtering. Use <strong>Connected
+            to</strong> to narrow its list to plans linked by task ancestry, without changing which plans
+            are checked. Find the related plans without scanning the whole list.</p>
+          <h3>Group the delivery without inventing a task</h3>
+          <p>Bring related tasks together in logical groups, including work from different plans. A release,
+            delivery or useful container no longer needs a made-up task in ADO. Create groups even with
+            several plans selected.</p></div>
       </div>
-      <h3>Plan effort in the units that make sense</h3>
-      <p>Choose percentages or whole man-days for allocation editing. Fractional percentages remain precise
-        behind the display, and scheduling edits preserve effort where applicable. Resizes that would
-        exceed 100% are rejected with an explanation, without losing allocations or changing dates.</p>
+      <h3>Stay with the board, even when you need the details</h3>
+      <p>The context-sensitive side panel brings task information and relevant controls alongside your
+        plan. Follow a relationship from the panel and its linked card is centered on the board, so
+        investigating a dependency does not mean starting your search again.</p>
+      <h3>Less menu hunting. More planning.</h3>
+      <ul>
+        <li><strong>One home for view controls.</strong> The View menu gathers view-related settings;
+          board zoom scales the work, not the whole interface.</li>
+        <li><strong>Quicker repeated actions.</strong> Keyboard shortcuts switch view modes, step through
+          hierarchy levels and cycle common filters. Turn them off in your browser preferences if you prefer.</li>
+        <li><strong>Menus that are easier to scan.</strong> Plan and team counts follow the configured
+          task hierarchy. Blank zero cells keep the Plan menu focused on what is actually there.</li>
+        <li><strong>Numbers you can investigate.</strong> Graph popovers reveal the values behind the
+          picture. The board information menu breaks down task totals, scope and filter exclusions,
+          explaining why the visible board differs from the loaded data.</li>
+        <li><strong>Help that matches the application.</strong> Updated articles and screenshots cover the
+          redesigned planner and administration workflows. These release notes remain available from Help.</li>
+      </ul>
+      <h3>Explore alternatives without changing the starting point</h3>
+      <p>The baseline is now genuinely read-only. Inspect tasks, follow relationships and adjust your
+        view without encountering edit controls that appear to work but cannot save. Make an editable
+        scenario copy when you want to change dates, allocations or groups.</p>
+      <p>The Scenario menu warns when one or more scenarios have unsaved changes. An optional,
+        browser-local autosave interval helps preserve editable scenarios without publishing anything
+        to Azure DevOps. Saving an alternative and publishing it remain separate decisions.</p>
+      <h3>Choose what a longer task should mean</h3>
+      <p>Two modes are available directly on the task's resize handle: keep the allocation level and let
+        effort grow or shrink with the duration, or keep effort constant and spread it over the new
+        duration. Make the scheduling decision at the point where you change the dates.</p>
+      <h3>Discuss effort in the units your team uses</h3>
+      <p>Choose percentages or whole man-days in your personal configuration, without changing anyone
+        else's view. Man-days are team-specific and a different way to express the estimate, not a claim
+        of greater accuracy. PlannerTool still uses abstract percentage allocations under the hood and
+        preserves fractional precision rather than rounding the stored estimate to whole days.</p>
+      <p>In either display unit, effort-preserving resizes that would require more than 100% allocation
+        are rejected with an explanation, leaving dates and allocations intact.</p>
       <figure><img src="images/allocation-editor.png" width="1366" height="900"
         alt="Task details showing date and team allocation controls in man-days">
         <figcaption>Team-specific allocation editing keeps effort, dates and capacity connected.</figcaption></figure>
       <h3>Capacity and cost tell the same story</h3>
-      <p>For dated work, the lowest-level allocation takes precedence for each team, aligning capacity
-        and cost calculations. Unplanned work adds no scheduled load or cost. Cost reports keep allocating
-        hidden levels as context, respect report date ranges and expose missing pricing inputs rather
-        than pretending a forecast is complete.</p>
+      <p>Stop reconciling two different answers to the same estimate. Capacity and cost now share one
+        allocation rule: for each team, the lowest-level estimate wins over estimates higher in the
+        hierarchy. Breaking work down no longer means counting both the detailed estimate and its parent.</p>
+      <p>Unplanned work adds no scheduled load or cost. Cost reports keep allocating hidden levels as
+        context, respect report date ranges and expose missing pricing inputs rather than pretending a
+        forecast is complete. That makes it easier to distinguish a real forecast from one that still
+        needs staffing or pricing data.</p>
       <h3>Less waiting. Fewer interruptions.</h3>
       <p>Complete shared task snapshots appear immediately while refresh runs in the background. Refresh
-        does not discard a complete snapshot first. Failures and refresh feedback go to the notification
-        log, keeping the board available for inspection.</p>
+        does not discard a complete snapshot first, and opening task details no longer repeats the same
+        hierarchy calculations for every card. Allocation wheel edits also stay responsive during rapid input.</p>
+      <p>The bell notification area keeps application messages, refresh status and failures available to
+        review without a screen-dimming interruption. You can keep inspecting the board while checking
+        what happened.</p>
     </section>
     <section id="administrators">
       <p class="eyebrow">For administrators and delegated maintainers</p>
-      <h2>One workforce. Explicit plans.</h2>
-      <p>Administration now shares the planner header and offers permission-aware navigation. Delegate
-        Plans, workforce teams and staffing, supplier and cost maintenance, or iterations independently;
-        the server enforces those write boundaries.</p>
+      <h2>Share the upkeep, not the full admin role</h2>
+      <p>Let the people closest to the data maintain it. Delegate Plans, workforce teams and staffing,
+        supplier and cost maintenance, or iteration mappings independently, without giving everyone
+        full administration rights. The server enforces those permission boundaries.</p>
+      <p>A new settings gear menu brings personal configuration and authorized administration screens
+        together. Administration shares the planner header, so moving between planning and maintenance
+        feels like staying in the same application.</p>
       <figure><img src="images/workforce.png" width="1366" height="900"
         alt="Workforce administration with team groups and anonymous staffing composition">
         <figcaption>Workforce brings teams, staffing, suppliers and pricing profiles into a canonical workspace.</figcaption></figure>
@@ -94,13 +141,15 @@
         <div><h3>Workforce, brought together</h3>
           <p>Maintain anonymous staffing composition, fractional FTEs, suppliers and pricing profiles
             without switching between the old Teams, People and Cost screens. Review impacted staffing
-            when changing supplier/profile definitions.</p>
+            when changing supplier/profile definitions. Teams are defined independently; the former
+            SuccessFactors Chrome-extension database import is retired.</p>
           <h3>Safer lifecycle management</h3>
           <p>Archive and restore plans or teams. When deletion is appropriate, team impact review and
             confirmed staffing deletion make the consequences explicit. Revision checks reject stale edits.</p></div>
         <div><h3>Plans setup, redesigned</h3>
-          <p>Create and edit plans in dedicated drawers. Browse ADO project areas, select eligible work
-            types, choose a closed-work history window and load the plan's data, with retry when needed.</p>
+          <p>The revised ADO integration brings workflow discovery and project setup together. Create and
+            edit plans in dedicated drawers, browse ADO project areas, select eligible work types, choose
+            a closed-work history window and load the plan's data, with retry when needed.</p>
           <h3>Process-aware display configuration</h3>
           <p>The ADO process catalogue replaces scattered type/state settings. Used types are protected;
             process-qualified display tiers keep different ADO processes distinct.</p></div>
@@ -109,14 +158,42 @@
         alt="Plans setup drawer with Azure DevOps project and area selection">
         <figcaption>Dedicated plan setup keeps discovery, selection and loading in a single workflow.</figcaption></figure>
       <h3>Portable workforce data and clearer access management</h3>
-      <p>Export workforce YAML and review additive imports with explicit conflict decisions. Full logical
-        backups include paired canonical workforce data and validate schema compatibility before restore.
-        Users can inspect and revoke remembered browsers; administrators can reset account access.</p>
+      <p>A team rename or reorganization should not create a new allocation identity. Stable, unique team
+        ADO keys separate that identity from the team's display name. The PlannerTool allocation data in
+        ADO descriptions is now machine-readable metadata, not a human-editable team-name list.</p>
+      <p>Move workforce definitions between instances with YAML export and reviewed additive import,
+        preserving identities and allocation tokens with explicit conflict decisions. Full logical backups
+        include the workforce data and validate schema compatibility before restore. This improves portability
+        without treating unrelated teams with matching names as the same team.</p>
+      <h3>Let iteration mappings cross organizational boundaries</h3>
+      <p>A plan can use iteration sets from multiple ADO projects. Teams working across project boundaries
+        can plan against the iterations they actually use, rather than forcing the organization into a
+        single-project calendar.</p>
+      <h3>A clearer route into the application</h3>
+      <p>The new enrollment and onboarding flow separates your PlannerTool account key from your ADO PAT,
+        with contextual access guidance when it is needed. Existing-account browser enrollment does not
+        depend on validating a PAT; manage the PAT through account settings. Users can inspect and revoke
+        remembered browsers, and administrators can reset account access.</p>
       <div class="notice warning"><strong>Upgrade checklist:</strong> Stop old writers and keep an independent
         full filesystem backup with the matching encryption key. Database upgrades run before HTTP startup.
         After upgrading older plan configurations, open each plan to resolve its process, review/import
         eligible types, review display tiers, and save/load its data. Logical JSON backups are not a
         substitute for older-binary recovery. Backups containing PATs must be kept private.</div>
+    </section>
+    <section id="behind-the-scenes">
+      <p class="eyebrow">Behind the scenes</p>
+      <h2>A substantial rebuild, with a practical purpose</h2>
+      <p>The backend has been extensively reorganized, API endpoints have been added and retired, and
+        frontend state and plugin handling have been consolidated. The payoff is shared calculation rules,
+        clearer ownership of edits and permissions, and fewer competing paths for the same operation.</p>
+      <p>Remote ADO cache data is now separate from authoritative configuration, accounts and scenarios.
+        Previously fetched data can remain available when ADO is temporarily unreachable, rather than
+        disappearing just because a cache entry reached its refresh time.</p>
+      <p><strong>The scale of the update:</strong> compared with v4.2.2, the development snapshot on
+        17 October 2026 touched 992 files, with 86,730 lines added and 58,788 removed. Within the application
+        paths alone, 388 text files changed, with 35,502 lines added and 27,815 removed. These are Git diff
+        counts, not net-new features or a count of executable code; the overall totals also include tests,
+        documentation, assets and tooling. Counts were taken before this release-note expansion.</p>
     </section>
     <section>
       <h2>Keep this page close</h2>
