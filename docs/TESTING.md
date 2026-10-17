@@ -3,7 +3,7 @@
 ## Agent test runner (MCP)
 
 `scripts/mcp_test_runner.py` is an MCP stdio server (`mcp` SDK from `requirements-dev.txt`) that runs pytest, vitest,
-playwright and the fixed `npm run build` check and returns compact summaries (counts, failing test ids, short error excerpts). Run history
+playwright and the fixed `npm run build` check and returns compact summaries (counts, failing test ids, one-line diagnostics). Use `get_failures` or `get_log` for more context. Run history
 and IDs persist across MCP server and one-shot CLI invocations; logs and JUnit reports are written to
 `.test-runs/<framework>-<run-id>.{log,xml}`.
 

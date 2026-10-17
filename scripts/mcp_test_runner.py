@@ -464,7 +464,7 @@ class Runner:
 
     # ---- formatting -----------------------------------------------------------
 
-    def format(self, result: RunResult, max_failures: int = 5, excerpt_lines: int = 8,
+    def format(self, result: RunResult, max_failures: int = 5, excerpt_lines: int = 1,
                log_lines: int = 25) -> str:
         fw = result.framework
         if result.status in ('RUNNING', 'CANCELLING'):
@@ -482,10 +482,16 @@ class Runner:
         if result.note:
             out.append(f'note: {result.note}')
         for failure in result.failures[:max_failures]:
-            out.append(f'✗ {failure.test_id}')
-            out += [f'  {ln}' for ln in excerpt(failure, fw, excerpt_lines)]
+            details = excerpt(failure, fw, excerpt_lines)
+            diagnostic = details[0].strip() if details else ''
+            if len(diagnostic) > 200:
+                diagnostic = diagnostic[:197] + '...'
+            summary = f'✗ {failure.test_id}'
+            out.append(f'{summary}: {diagnostic}' if diagnostic else summary)
         if len(result.failures) > max_failures:
             out.append(f'… +{len(result.failures) - max_failures} more failures (get_failures)')
+        if result.failures:
+            out.append(f'details: get_failures(framework="{fw}", run_id={result.run_id})')
         if result.status in ('ERROR', 'TIMEOUT') or (fw == 'build' and result.status == 'FAILED'):
             log_path = self.log_path(fw, result.run_id)
             out.append(f'--- log tail ({log_path.relative_to(self.root)}) ---')

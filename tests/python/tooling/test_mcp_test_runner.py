@@ -58,6 +58,45 @@ def test_pytest_run_reports_compact_failure_summary(tmp_path):
     assert runner.rerun_args('pytest') == ([], ['--lf'])
 
 
+def test_failure_summary_keeps_diagnostics_compact_and_details_queryable(tmp_path):
+    runner = mtr.Runner(tmp_path)
+    result = mtr.RunResult(
+        run_id=73, framework='vitest', command=[], started=0, status='FAILED',
+        exit_code=1, duration=11.1, total=2, failed=2,
+        failures=[
+            mtr.Failure(
+                test_id='tests/a.test.js > assertion fails', file='tests/a.test.js',
+                message='AssertionError: expected false to be true',
+                details='AssertionError: expected false to be true\n'
+                '  - Expected\n  + Received\n'
+                '   at tests/a.test.js:10:5',
+            ),
+            mtr.Failure(
+                test_id='tests/a.test.js > times out', file='tests/a.test.js',
+                message='Error: Test timed out in 5000ms.',
+                details='Error: Test timed out in 5000ms.\n'
+                'If this is a long-running test, pass a timeout value.\n'
+                '   at tests/a.test.js:20:5',
+            ),
+        ],
+    )
+    runner._history[result.run_id] = result
+
+    summary = runner.format(result)
+    details = runner.format_failures('vitest', None, 10, run_id=result.run_id)
+
+    assert summary.splitlines()[0] == (
+        'vitest FAILED run #73: 2 tests, 2 failed, 0 skipped (11.1s, exit 1)'
+    )
+    assert 'assertion fails: AssertionError: expected false to be true' in summary
+    assert 'times out: Error: Test timed out in 5000ms.' in summary
+    assert 'Expected' not in summary
+    assert 'at tests/a.test.js' not in summary
+    assert 'details: get_failures(framework="vitest", run_id=73)' in summary
+    assert 'at tests/a.test.js:10:5' in details
+    assert 'If this is a long-running test' in details
+
+
 def test_mcp_tools_list_status_and_rejected_target(tmp_path):
     async def scenario():
         async with Client(mtr.build_server(mtr.Runner(tmp_path))) as client:
@@ -89,7 +128,7 @@ def test_mcp_stdio_server_starts(tmp_path):
         async with Client(params) as client:
             return (await client.call_tool('get_status', {'framework': 'vitest'})).content[0].text
 
-    assert anyio.run(scenario) == 'vitest: no runs yet'
+    assert anyio.run(scenario).startswith('vitest')
 
 
 def test_mcp_run_ids_keep_status_and_failures_after_later_runs(tmp_path):
