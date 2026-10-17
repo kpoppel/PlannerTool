@@ -229,7 +229,7 @@ def test_run_details_go_to_server_log_not_mcp_summary(tmp_path, caplog):
     assert 'test_sample.py' not in summary
 
 
-def test_server_logging_uses_file_handler(tmp_path):
+def test_server_logging_uses_file_handler(tmp_path, capsys):
     logger = mtr.LOGGER
     original_handlers = logger.handlers[:]
     original_propagate = logger.propagate
@@ -244,8 +244,10 @@ def test_server_logging_uses_file_handler(tmp_path):
             handler.flush()
 
         assert log_path.read_text().endswith('Server lifecycle event\n')
-        assert len(logger.handlers) == 1
-        assert isinstance(logger.handlers[0], logging.FileHandler)
+        assert len(logger.handlers) == 2
+        assert any(isinstance(handler, logging.FileHandler) for handler in logger.handlers)
+        assert any(type(handler) is logging.StreamHandler for handler in logger.handlers)
+        assert 'Server lifecycle event' in capsys.readouterr().err
     finally:
         for handler in logger.handlers[:]:
             logger.removeHandler(handler)

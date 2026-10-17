@@ -46,16 +46,16 @@ LOGGER = logging.getLogger('planner_test_runner')
 
 def configure_logging(log_file: Path | None = None) -> None:
     if not LOGGER.handlers:
-        if log_file is None:
-            handler = logging.StreamHandler(sys.stderr)
-        else:
+        handlers = [logging.StreamHandler(sys.stderr)]
+        if log_file is not None:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            handler = logging.FileHandler(log_file)
-        handler.setFormatter(logging.Formatter(
-            '%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S',
-        ))
-        LOGGER.addHandler(handler)
+            handlers.append(logging.FileHandler(log_file))
+        for handler in handlers:
+            handler.setFormatter(logging.Formatter(
+                '%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S',
+            ))
+            LOGGER.addHandler(handler)
     LOGGER.setLevel(logging.INFO)
     LOGGER.propagate = False
 

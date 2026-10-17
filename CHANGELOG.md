@@ -15,8 +15,11 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Show v5.0.0 release notes as an embedded Help sidebar page and resolve Help docs correctly on the Vite server.
+- Keep existing-account browser enrollment independent of PAT validation; configure PATs through account settings.
 - Refresh the Help documentation against the current UI with screenshots regenerated from the synthetic generator (`tests/playwright.docs.config.js`), new Plans, Workforce, Azure DevOps Processes, Server and Reconciliation pages, and removal of retired Plan Health, Teams, People, Cost and Cache Invalidation pages.
 - Persist MCP check history, add the fixed npm build check, support parallel targeted runs with isolated Playwright servers, and log run scope/lifecycle to `.test-runs/mcp-server.log` while keeping tool responses minimal.
+- Mirror test-runner lifecycle messages to MCP stderr so they appear in the server console as well as `.test-runs/mcp-server.log`.
 - Register the test runner in portable workspace `.mcp.json` and migrate the installer away from deprecated `.vscode/mcp.json`.
 - Add illustrated permanent v5 release notes, account-wide first-update acknowledgement and public contextual enrollment help.
 - Replace the broken Node "Launch Program" debug config with a debugpy uvicorn server launch that loads the secret key via a pre-launch task.
