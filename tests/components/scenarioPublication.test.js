@@ -52,4 +52,15 @@ describe('Scenario publication projection', () => {
       overrides: { missing: { state: 'Done' } }, selected: new Set(['missing:state']) }))
       .toThrow('Source task missing is unavailable');
   });
+
+  it('omits reconciliation assessment and impact when disabled without changing task writes', () => {
+    const review = projectPublication({ ...context, source: [task('b', 'other')],
+      referencePlanIds: ['own'], overrides: { b: { state: 'Done', note: 'Local draft' } },
+      selected: new Set(['b:state']), includeReconciliation: false });
+    expect(review.writes).toHaveLength(1);
+    expect(review.resulting[0].state).toBe('Done');
+    expect(review.localOnly).toEqual([{ id: 'b', fields: ['note'] }]);
+    expect(review.crossPlan).toEqual([]);
+    expect(review.findings).toEqual([]);
+  });
 });

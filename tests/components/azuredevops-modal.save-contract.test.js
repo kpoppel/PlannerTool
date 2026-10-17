@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { displayFixture } from '../helpers/workItemDisplay.js';
+
+vi.mock('../../www/js/plugins/reconciliation/runtime.js', () => ({
+  reconciliation: { snapshot: { status: 'ready' } },
+}));
 
 const mockCmd = vi.hoisted(() => ({
   feature: {
@@ -19,6 +24,8 @@ vi.mock('../../www/js/application/imports.js', () => ({
 }));
 
 import { PublishScenarioModal } from '../../www/js/components/PublishScenarioModal.lit.js';
+import { reconciliation } from '../../www/js/plugins/reconciliation/runtime.js';
+import { store } from '../../www/js/application/store.js';
 
 describe('PublishScenarioModal feature seam', () => {
   it('does not revert or confirm publishing after edit access is lost', () => {
@@ -79,5 +86,105 @@ describe('PublishScenarioModal feature seam', () => {
     modal.addEventListener('modal-close', closed);
     modal._onCancel();
     expect(closed).toHaveBeenCalledOnce();
+  });
+
+  it('hides reconciliation-only summaries when the plugin is disabled', async () => {
+    const modal = new PublishScenarioModal();
+    const source = [{ id: 'foreign', title: 'Foreign task', state: 'Active',
+      process_id: 'process', project: 'other', type: 'Feature', parentId: null,
+      start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [] }];
+    const projects = [{ id: 'other', name: 'Other plan', container_order: 0,
+      work_item_display: displayFixture(undefined, { Active: 'InProgress', Done: 'Completed' }) }];
+    modal.state = { baselineFeatures: source, teams: [], projects,
+      getFeatureTitleById: (id) => id };
+    modal.publicationContext = { source, referencePlanIds: [], projects,
+      hierarchy: [{ types: ['Feature'] }], today: '2026-10-17' };
+    modal.overrides = { foreign: { state: 'Done', note: 'Local draft' } };
+    modal._selected = new Set(['foreign:state']);
+    modal.decisions = [{ taskTitle: 'Foreign task', planName: 'Other plan',
+      findingTitle: 'Invalid dates', status: 'active', saveStatus: 'saved', reason: 'Agreed' }];
+    reconciliation.snapshot.status = 'inactive';
+    document.body.appendChild(modal);
+    try {
+      await modal.updateComplete;
+      expect(modal.shadowRoot.querySelector('[aria-label="Cross-plan impact"]')).toBeNull();
+      expect(modal.shadowRoot.querySelector('[aria-label="Unresolved findings"]')).toBeNull();
+      expect(modal.shadowRoot.querySelector('[aria-label="Scenario exception decisions"]')).toBeNull();
+      expect(modal.shadowRoot.textContent).toContain('Local-only changes');
+      expect(modal.shadowRoot.textContent).toContain('Task and group writes');
+      reconciliation.snapshot.status = 'ready';
+      modal.requestUpdate();
+      await modal.updateComplete;
+      expect(modal.shadowRoot.querySelector('[aria-label="Cross-plan impact"]')).not.toBeNull();
+      expect(modal.shadowRoot.querySelector('[aria-label="Scenario exception decisions"]')).not.toBeNull();
+    } finally {
+      reconciliation.snapshot.status = 'ready';
+      modal.remove();
+    }
+  });
+
+  it('reviews retained overrides for unavailable tasks without publishing them', async () => {
+    const modal = new PublishScenarioModal();
+    const source = [{ id: 'available', title: 'Available task', state: 'Active',
+      process_id: 'process', project: 'own', type: 'Feature', parentId: null,
+      start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [] }];
+    const projects = [{ id: 'own', name: 'Own plan', container_order: 0,
+      work_item_display: displayFixture(undefined, { Active: 'InProgress', Done: 'Completed' }) }];
+    modal.state = { baselineFeatures: source, teams: [], projects,
+      getFeatureTitleById: (id) => id };
+    modal.publicationContext = { source, referencePlanIds: ['own'], projects,
+      hierarchy: [{ types: ['Feature'] }],
+      today: '2026-10-17' };
+    modal.overrides = { available: { state: 'Done' }, '551519': { state: 'Done' } };
+    const published = vi.fn();
+    modal.addEventListener('scenario-publish', published);
+    document.body.appendChild(modal);
+    try {
+      await modal.updateComplete;
+      const unavailable = modal.shadowRoot.querySelector('[aria-label="Unavailable tasks"]');
+      expect(unavailable.textContent).toContain('551519');
+      const toggle = [...modal.shadowRoot.querySelectorAll('button')]
+        .find((button) => button.textContent.includes('Toggle All'));
+      toggle.click();
+      await modal.updateComplete;
+      expect([...modal._selected]).toEqual(['available:state']);
+      modal._onSave();
+      expect(published.mock.calls[0][0].detail.features).toEqual([
+        { id: 'available', state: 'Done' },
+      ]);
+    } finally { modal.remove(); }
+  });
+
+  it('allows unavailable overrides to be explicitly reverted', async () => {
+    const modal = new PublishScenarioModal();
+    const previousState = store.getState();
+    const scenario = { id: 'revert-test', overrides: { '551519': { state: 'Done' } } };
+    store.setState({ ...previousState,
+      scenarios: { ...previousState.scenarios, activeId: scenario.id, items: [scenario] } });
+    mockCmd.feature.revertFeature.mockImplementationOnce((id) => {
+      store.setState((state) => ({ ...state, scenarios: { ...state.scenarios,
+        items: state.scenarios.items.map((item) => ({ ...item,
+          overrides: Object.fromEntries(Object.entries(item.overrides)
+            .filter(([taskId]) => taskId !== id)) })),
+      } }));
+      return true;
+    });
+    modal.state = { baselineFeatures: [], teams: [], projects: [] };
+    modal.overrides = scenario.overrides;
+    document.body.appendChild(modal);
+    try {
+      await modal.updateComplete;
+      modal.shadowRoot.querySelector('[aria-label="Unavailable tasks"] button').click();
+      await modal.updateComplete;
+      expect(mockCmd.feature.revertFeature).toHaveBeenCalledWith('551519');
+      expect(store.getState().scenarios.items[0].overrides).toEqual({});
+      expect(modal.overrides).toEqual({});
+      expect(modal.shadowRoot.querySelector('[aria-label="Unavailable tasks"]')).toBeNull();
+      expect(modal.shadowRoot.textContent).toContain('No changes to publish');
+      expect(scenario.overrides).toEqual({ '551519': { state: 'Done' } });
+    } finally {
+      modal.remove();
+      store.setState(previousState);
+    }
   });
 });

@@ -64,6 +64,8 @@ Note, this is a major update. Backup the physical data directory.  JSON backups 
 
 ### Fixed
 - Preserve task allocations and dates when a resize exceeds the 100% man-day limit, and explain why the resize cannot proceed.
+- Keep scenario publication review usable when retained overrides reference unavailable tasks; show those overrides separately, preserve them unless reverted, refresh the review immediately after reverting, and exclude them from task writes.
+- Honor disabled Reconciliation in scenario publication review by omitting its cross-plan impact, findings, and exception summaries while retaining task and group writes.
 - Repair legacy plan references in all saved scenarios and views during startup so previously saved scenario groups display under their current plans.
 - Treat an empty selected-plan set as authoritative, so deselecting all plans shows an empty board instead of matching tasks from other filters.
 - Keep read-only task details open on an ordinary click without requiring pointer movement; opening Cost also closes the details panel so it cannot obscure the report.

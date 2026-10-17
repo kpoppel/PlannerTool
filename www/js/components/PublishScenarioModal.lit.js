@@ -3,6 +3,7 @@ import './Modal.lit.js';
 import { cmd, sel } from '../application/imports.js';
 import { projectPublication } from './scenarioPublication.js';
 import { store } from '../application/store.js';
+import { reconciliation } from '../plugins/reconciliation/runtime.js';
 
 /** Field names supported in feature-override rows, in display order. */
 const FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath', 'tags'];
@@ -389,7 +390,11 @@ export class PublishScenarioModal extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (next, previous) => {
-      if (next.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) this._onCancel();
+      if (next.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) {
+        this._onCancel();
+        return;
+      }
+      this.overrides = next.items.find((scenario) => scenario.id === next.activeId).overrides;
     });
   }
 
@@ -399,8 +404,9 @@ export class PublishScenarioModal extends LitElement {
   }
 
   _renderPublicationSummary() {
+    const includeReconciliation = reconciliation.snapshot.status !== 'inactive';
     const impact = projectPublication({ ...this.publicationContext,
-      overrides: this.overrides, selected: this._selected });
+      overrides: this.overrides, selected: this._selected, includeReconciliation });
     const planName = (id) => {
       const plan = this.publicationContext.projects.find((entry) => String(entry.id) === id);
       return plan === undefined ? id : plan.name;
@@ -420,7 +426,7 @@ export class PublishScenarioModal extends LitElement {
         <h4>Unresolved findings</h4>
         ${impact.findings.map((finding) => html`<p>${finding.title}: ${finding.description}</p>`)}
       </section>` : ''}
-      ${this.decisions.length > 0 ? html`<section aria-label="Scenario exception decisions">
+      ${includeReconciliation && this.decisions.length > 0 ? html`<section aria-label="Scenario exception decisions">
         <h4>Scenario exception decisions</h4>
         ${this.decisions.map((decision) => html`<p><strong>${decision.taskTitle}</strong>
           (${decision.planName}): ${decision.findingTitle}.
@@ -436,7 +442,7 @@ export class PublishScenarioModal extends LitElement {
 
   /**
    * Compute per-row change metadata from raw override entries.
-   * Invalid (non-object) entries are silently filtered out.
+    * Retained overrides without a loaded source task are marked unavailable.
    * @param {Array<[string, object]>} entries - [id, override] pairs
    * @returns {Array<object>} rows with change flags and display data
    */
@@ -450,7 +456,8 @@ export class PublishScenarioModal extends LitElement {
     return entries
       .map(([id, ov]) => {
         const base = baselineById.get(id);
-        if (base === undefined) throw new Error(`Source task ${id} is unavailable`);
+        // Saved scenarios can outlive the tasks included in the current source snapshot.
+        if (base === undefined) return { id, ov, unavailable: true };
         const origStart = base.start;
         const origEnd = base.end;
         const origCapacity = base.capacity;
@@ -700,9 +707,11 @@ export class PublishScenarioModal extends LitElement {
   render() {
     if (!sel.scenario.isActiveScenarioMutable()) return html``;
     const groupOps = this.pendingGroupChanges;
+    const hasDecisions = reconciliation.snapshot.status !== 'inactive' && this.decisions.length > 0;
 
     // Compute feature-field rows.
     const allRows = this._computeRows(Object.entries(this.overrides));
+    const unavailableRows = allRows.filter((row) => row.unavailable);
     const featureRows = allRows.filter((r) =>
       r.startChanged || r.endChanged || r.capacityChanged || r.stateChanged || r.iterationChanged || r.tagsChanged
     );
@@ -844,7 +853,18 @@ export class PublishScenarioModal extends LitElement {
             }
           </style>
           ${this._renderPublicationSummary()}
-          ${!hasAny && this.decisions.length === 0 ?
+          ${unavailableRows.length > 0 ? html`
+            <section aria-label="Unavailable tasks">
+              <h4>Unavailable tasks</h4>
+              <p>These tasks are not in the loaded source data. Their overrides remain in this
+                scenario and will not be published.</p>
+              ${unavailableRows.map((row) => html`<p>
+                <strong>${row.id}</strong>: ${Object.keys(row.ov).join(', ')}
+                <button type="button" class="revert-btn"
+                  @click=${() => this._onRevertFeature(row.id)}>Revert</button>
+              </p>`)}
+            </section>` : ''}
+          ${!hasAny && !hasDecisions ?
             html`<p style="color:#888;">No changes to publish.</p>`
           : !hasAny ? ''
           : html`

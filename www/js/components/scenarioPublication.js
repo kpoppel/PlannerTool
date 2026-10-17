@@ -9,7 +9,7 @@ import { reconciliation } from '../plugins/reconciliation/runtime.js';
 export const PUBLISH_FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath', 'tags'];
 
 export function projectPublication({ source, overrides, selected, referencePlanIds,
-  projects, hierarchy, today }) {
+  projects, hierarchy, today, includeReconciliation = true }) {
   const sourceById = new Map(source.map((task) => [String(task.id), task]));
   const referencePlans = new Set(referencePlanIds.map(String));
   const writes = [];
@@ -31,6 +31,9 @@ export function projectPublication({ source, overrides, selected, referencePlanI
     return write === undefined ? task : { ...task,
       ...Object.fromEntries(write.fields.map((entry) => [entry.field, entry.after])) };
   });
+  if (!includeReconciliation) {
+    return { writes, localOnly, crossPlan: [], findings: [], resulting };
+  }
   const findings = assessReconciliation({ features: resulting, sourceFeatures: source,
     scopeIds: new Set(sourceById.keys()), projects, hierarchy, today })
     .filter((finding) => finding.path.some((id) => writesById.has(id)));
