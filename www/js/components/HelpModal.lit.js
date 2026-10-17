@@ -163,7 +163,9 @@ export class HelpModal extends LitElement {
     }
     // ensure component updates then open inner modal so content is visible
     await this.updateComplete;
-    const inner = this.renderRoot.querySelector('modal-lit');
+    const inner = /** @type {import('./Modal.lit.js').ModalLit} */ (
+      /** @type {ShadowRoot} */ (this.shadowRoot).querySelector('modal-lit')
+    );
     if (inner) {
       inner.open = true;
     }
@@ -177,7 +179,7 @@ export class HelpModal extends LitElement {
       const src = this._escapeHtml(getDocsUrl(doc.file)).replace(/"/g, '&quot;');
       this.content = `<iframe title="${title}" src="${src}"></iframe>`;
       this.requestUpdate();
-      const panel = this.renderRoot.querySelector('.help-panel');
+      const panel = /** @type {ShadowRoot} */ (this.shadowRoot).querySelector('.help-panel');
       if (panel) panel.scrollTop = 0;
       return;
     }
@@ -194,7 +196,7 @@ export class HelpModal extends LitElement {
     }
     this.requestUpdate();
     // scroll to top of panel
-    const panel = this.renderRoot.querySelector('.help-panel');
+    const panel = /** @type {ShadowRoot} */ (this.shadowRoot).querySelector('.help-panel');
     if (panel) panel.scrollTop = 0;
   }
 
@@ -355,10 +357,11 @@ export class HelpModal extends LitElement {
   firstUpdated() {
     this.addEventListener('modal-close', this._onModalClose);
     // delegated click handler for internal doc links inside rendered markdown
-    const panel = this.renderRoot.querySelector('.help-panel');
+    const panel = /** @type {ShadowRoot} */ (this.shadowRoot).querySelector('.help-panel');
     if (panel) {
       panel.addEventListener('click', (e) => {
-        const a = e.target.closest && e.target.closest('a[data-internal]');
+        if (!(e.target instanceof Element)) return;
+        const a = e.target.closest('a[data-internal]');
         if (!a) return;
         e.preventDefault();
         const file = a.getAttribute('data-internal');
@@ -378,6 +381,7 @@ export class HelpModal extends LitElement {
     }
   }
 
+  /** @returns {any} The vendored Lit bundle does not expose its template result type. */
   render() {
     const list = this._filteredIndex();
     return html`
@@ -413,7 +417,9 @@ export class HelpModal extends LitElement {
           <button
             class="btn"
             @click=${() => {
-              const m = this.renderRoot.querySelector('modal-lit');
+              const m = /** @type {import('./Modal.lit.js').ModalLit} */ (
+                /** @type {ShadowRoot} */ (this.shadowRoot).querySelector('modal-lit')
+              );
               try {
                 if (m) m.close();
               } catch (e) {
