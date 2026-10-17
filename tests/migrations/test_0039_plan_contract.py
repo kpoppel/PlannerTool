@@ -39,14 +39,15 @@ def test_upgrade_39_preserves_plan_fields_order_and_other_configuration():
         'schema_version': 2, 'process_order': [], 'type_tiers': {},
     }
     assert storage.load('config', 'unrelated') == {'keep': True}
-    assert TARGET_REVISION == 41
     validate_registry(revisions.REGISTRY)
-    assert revisions.REGISTRY[-3].predecessor == 38
-    assert revisions.REGISTRY[-2].predecessor == 39
-    assert revisions.REGISTRY[-1].predecessor == 40
+    transitions = {migration.revision: migration.predecessor for migration in revisions.REGISTRY}
+    assert transitions[39] == 38
+    assert transitions[40] == 39
+    assert transitions[41] == 40
+    assert transitions[42] == 41
 
 
-def test_fresh_revision_41_initializes_catalogue_and_display_contract():
+def test_fresh_revision_initializes_catalogue_and_display_contract():
     storage = MemoryStorage()
 
     revisions.initialize(storage)
@@ -56,7 +57,9 @@ def test_fresh_revision_41_initializes_catalogue_and_display_contract():
         'schema_version': 2, 'process_order': [], 'type_tiers': {},
     }
     assert storage.load('system', 'schema_state') == {
-        'schema_revision': 41, 'last_applied_migration': None, 'initialized_at_revision': 41,
+        'schema_revision': TARGET_REVISION,
+        'last_applied_migration': None,
+        'initialized_at_revision': TARGET_REVISION,
     }
 
 

@@ -529,6 +529,36 @@ def upgrade_41(storage):
         storage.save('config', 'projects', {**projects, 'project_map': plans})
 
 
+def _remap_saved_plan_references(value, aliases):
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            if key in {'plan_id', 'planId', 'project', 'projectId', 'focusedPlanId'} and isinstance(item, str):
+                project_ids = aliases.get(item, [item])
+                if len(project_ids) != 1:
+                    raise SchemaError(f'Ambiguous saved group/task plan reference: {item}')
+                result[key] = project_ids[0]
+            else:
+                result[key] = _remap_saved_plan_references(item, aliases)
+        return result
+    if isinstance(value, list):
+        return [_remap_saved_plan_references(item, aliases) for item in value]
+    return value
+
+
+def upgrade_42(storage):
+    with storage.transaction():
+        projects = storage.load('config', 'projects')['project_map']
+        aliases = {}
+        for project in projects:
+            aliases.setdefault(_legacy_project_id(project['name']), []).append(project['id'])
+        for namespace in ('views', 'scenarios'):
+            for key, payload in _payloads(storage, namespace):
+                migrated = _remap_selected_project_ids(payload, aliases)
+                migrated = _remap_saved_plan_references(migrated, aliases)
+                storage.save(namespace, key, migrated)
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -537,7 +567,7 @@ REGISTRY = tuple(
         (32, 31, upgrade_32), (33, 32, upgrade_33), (34, 33, upgrade_34),
         (35, 34, upgrade_35), (36, 35, upgrade_36), (37, 36, upgrade_37),
         (38, 37, upgrade_38), (39, 38, upgrade_39), (40, 39, upgrade_40),
-        (41, 40, upgrade_41),
+        (41, 40, upgrade_41), (42, 41, upgrade_42),
     )
 )
 
