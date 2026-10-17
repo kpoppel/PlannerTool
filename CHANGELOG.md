@@ -15,6 +15,7 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Persist MCP check history, add the fixed npm build check, support parallel targeted runs with isolated Playwright servers, and log run scope/lifecycle to `.test-runs/mcp-server.log` while keeping tool responses minimal.
 - Register the test runner in portable workspace `.mcp.json` and migrate the installer away from deprecated `.vscode/mcp.json`.
 - Add illustrated permanent v5 release notes, account-wide first-update acknowledgement and public contextual enrollment help.
 - Replace the broken Node "Launch Program" debug config with a debugpy uvicorn server launch that loads the secret key via a pre-launch task.

@@ -5,6 +5,17 @@ Keep changes here short and machine-friendly — agents will rely on these rules
 
 1. Build / lint / test commands
 
+- For agent-run checks, prefer the registered `plannertool-tests` MCP server. It runs pytest, Vitest,
+  Playwright and the fixed `npm run build` check with compact summaries and per-run status; use
+  command-line execution only when MCP is unavailable or a required option is unsupported.
+- Start focused runs with `run_tests` (`framework`, optional `targets` and `test_name`). For long runs,
+  set `wait=false`, then poll `get_status` with the returned `run_id`; use `list_runs` if the ID is lost.
+  Use `get_failures` or `get_log` with that ID for details, `rerun_failed` to retry, and `cancel_run`
+  to stop it.
+- Independent focused targets can run concurrently; start each with `wait=false` and track each `run_id`.
+- Use `framework="build"` for `npm run build`. For docs capture, use `framework="playwright"`,
+  `playwright_config="tests/playwright.docs.config.js"`, and `targets=["probe"]`.
+
 - Install JS deps: `npm install` (uses package.json)
 - Run unit tests (fast, jsdom): `npm test` or `npx vitest`
 - Run a single Vitest test file: `npx vitest tests/path/to/file.test.js`

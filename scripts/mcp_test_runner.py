@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Token-lean local test runner exposed as an MCP stdio server.
 
-Runs pytest, vitest and playwright with JUnit reporters and returns compact
-summaries: counts, failing test ids and trimmed error excerpts. Full logs and
-reports are kept under .test-runs/ for on-demand inspection.
+Runs pytest, vitest and playwright with JUnit reporters, plus the fixed npm build
+check. Returns compact summaries and keeps logs/reports under .test-runs/.
 
 MCP server:  .venv/bin/python scripts/mcp_test_runner.py
 CLI:         .venv/bin/python scripts/mcp_test_runner.py --cli vitest tests/core/foo.test.js
@@ -11,11 +10,16 @@ CLI:         .venv/bin/python scripts/mcp_test_runner.py --cli vitest tests/core
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
+import json
+import logging
 import os
 import re
 import shlex
 import shutil
 import signal
+import sqlite3
+import socket
 import subprocess
 import sys
 import threading
@@ -30,12 +34,30 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 ROOT = Path(__file__).resolve().parent.parent
-FRAMEWORKS = ('pytest', 'vitest', 'playwright')
-DEFAULT_TIMEOUTS = {'pytest': 900, 'vitest': 900, 'playwright': 1800}
+FRAMEWORKS = ('pytest', 'vitest', 'playwright', 'build')
+DEFAULT_TIMEOUTS = {'pytest': 900, 'vitest': 900, 'playwright': 1800, 'build': 600}
 DEFAULT_PLAYWRIGHT_CONFIG = 'tests/playwright.config.js'
 ANSI_RE = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
 NOISE_RE = re.compile(r'node_modules|site-packages|<frozen |node:internal')
 MAX_WAIT_SECONDS = 1800
+MAX_RUN_LIST = 20
+LOGGER = logging.getLogger('planner_test_runner')
+
+
+def configure_logging(log_file: Path | None = None) -> None:
+    if not LOGGER.handlers:
+        if log_file is None:
+            handler = logging.StreamHandler(sys.stderr)
+        else:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            handler = logging.FileHandler(log_file)
+        handler.setFormatter(logging.Formatter(
+            '%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        ))
+        LOGGER.addHandler(handler)
+    LOGGER.setLevel(logging.INFO)
+    LOGGER.propagate = False
 
 
 @dataclass
@@ -112,11 +134,112 @@ class Runner:
     def __init__(self, root: Path = ROOT):
         self.root = root.resolve()
         self.out_dir = self.root / '.test-runs'
-        self._lock = threading.Lock()
+        self.history_path = self.out_dir / 'history.sqlite3'
+        self.legacy_history_path = self.out_dir / 'history.json'
+        self._lock = threading.RLock()
         self._seq = 0
         self._results: dict[str, RunResult] = {}
-        self._threads: dict[str, threading.Thread] = {}
-        self._procs: dict[str, subprocess.Popen] = {}
+        self._history: dict[int, RunResult] = {}
+        self._threads: dict[int, threading.Thread] = {}
+        self._threads_by_run: dict[int, threading.Thread] = {}
+        self._procs: dict[int, subprocess.Popen] = {}
+        self._port_reservations: dict[int, socket.socket] = {}
+        self._load_history()
+
+    def _load_history(self) -> None:
+        with closing(self._connect_history()) as connection:
+            connection.execute(
+                'CREATE TABLE IF NOT EXISTS runs (run_id INTEGER PRIMARY KEY, payload TEXT NOT NULL)'
+            )
+            connection.execute(
+                'CREATE TABLE IF NOT EXISTS runner_sequence '
+                '(id INTEGER PRIMARY KEY CHECK (id = 1), value INTEGER NOT NULL)'
+            )
+            connection.execute('INSERT OR IGNORE INTO runner_sequence (id, value) VALUES (1, 0)')
+            count = connection.execute('SELECT COUNT(*) FROM runs').fetchone()[0]
+            if count == 0 and self.legacy_history_path.exists():
+                payload = json.loads(self.legacy_history_path.read_text())
+                if payload['version'] != 1:
+                    raise ValueError(f'Unsupported test-run history version: {payload["version"]}')
+                for entry in payload['runs']:
+                    connection.execute(
+                        'INSERT OR IGNORE INTO runs (run_id, payload) VALUES (?, ?)',
+                        (entry['run_id'], json.dumps(entry, separators=(',', ':'))),
+                    )
+            maximum = connection.execute('SELECT COALESCE(MAX(run_id), 0) FROM runs').fetchone()[0]
+            connection.execute(
+                'UPDATE runner_sequence SET value=MAX(value, ?) WHERE id=1', (maximum,)
+            )
+            connection.commit()
+        self._refresh_history(mark_abandoned=True)
+
+    def _connect_history(self) -> sqlite3.Connection:
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        return sqlite3.connect(self.history_path, timeout=30)
+
+    @staticmethod
+    def _serialize_result(result: RunResult) -> str:
+        payload = {
+            'run_id': result.run_id,
+            'framework': result.framework,
+            'command': result.command,
+            'started': result.started,
+            'status': result.status,
+            'exit_code': result.exit_code,
+            'duration': result.duration,
+            'total': result.total,
+            'failed': result.failed,
+            'skipped': result.skipped,
+            'failures': [failure.__dict__ for failure in result.failures],
+            'note': result.note,
+        }
+        return json.dumps(payload, separators=(',', ':'))
+
+    @staticmethod
+    def _deserialize_result(payload: str) -> RunResult:
+        values = json.loads(payload)
+        values['failures'] = [Failure(**failure) for failure in values['failures']]
+        return RunResult(**values)
+
+    def _refresh_history(self, mark_abandoned: bool = False) -> None:
+        abandoned = []
+        with self._lock:
+            with closing(self._connect_history()) as connection:
+                rows = connection.execute('SELECT run_id, payload FROM runs ORDER BY run_id').fetchall()
+            for run_id, payload in rows:
+                thread = self._threads_by_run.get(run_id)
+                if thread is not None and thread.is_alive():
+                    continue
+                result = self._deserialize_result(payload)
+                if mark_abandoned and result.status in ('RUNNING', 'CANCELLING'):
+                    result.status = 'ERROR'
+                    result.note = 'Runner process ended before it recorded a final status.'
+                    abandoned.append(result)
+                self._history[run_id] = result
+            self._results = {}
+            for result in self._history.values():
+                latest = self._results.get(result.framework)
+                if latest is None or result.run_id > latest.run_id:
+                    self._results[result.framework] = result
+            self._seq = max(self._seq, max(self._history, default=0))
+            for result in abandoned:
+                self._save_history(result)
+
+    def _allocate_run_id(self) -> int:
+        with closing(self._connect_history()) as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            connection.execute('UPDATE runner_sequence SET value=value+1 WHERE id=1')
+            run_id = connection.execute('SELECT value FROM runner_sequence WHERE id=1').fetchone()[0]
+            connection.commit()
+            return run_id
+
+    def _save_history(self, result: RunResult) -> None:
+        with closing(self._connect_history()) as connection:
+            connection.execute(
+                'INSERT OR REPLACE INTO runs (run_id, payload) VALUES (?, ?)',
+                (result.run_id, self._serialize_result(result)),
+            )
+            connection.commit()
 
     # ---- command construction -------------------------------------------------
 
@@ -137,17 +260,37 @@ class Runner:
             raise ValueError('npx not found on PATH')
         return npx
 
+    def _npm(self) -> str:
+        npm = shutil.which('npm')
+        if npm is None:
+            raise ValueError('npm not found on PATH')
+        return npm
+
+    def _reserve_playwright_port(self, run_id: int | None) -> int:
+        if run_id is None:
+            raise ValueError('Playwright runs require a run ID')
+        reservation = socket.socket()
+        reservation.bind(('127.0.0.1', 0))
+        port = reservation.getsockname()[1]
+        self._port_reservations[run_id] = reservation
+        return port
+
     def build_command(self, framework: str, targets: list[str], test_name: str | None,
-                      bail: bool, playwright_config: str | None) -> tuple[list[str], dict[str, str]]:
+                      bail: bool, playwright_config: str | None,
+                      run_id: int | None = None) -> tuple[list[str], dict[str, str]]:
         if framework not in FRAMEWORKS:
             raise ValueError(f'Unknown framework {framework!r}; expected one of {FRAMEWORKS}')
         for target in targets:
             self._validate_target(target)
         if test_name is not None and (not test_name or test_name.startswith('-')):
             raise ValueError(f'Invalid test_name {test_name!r}')
-        junit = str(self.out_dir / f'{framework}.xml')
+        junit = str(self.report_path(framework, run_id))
         env: dict[str, str] = {}
-        if framework == 'pytest':
+        if framework == 'build':
+            if targets or test_name is not None or bail or playwright_config is not None:
+                raise ValueError('The build check always runs `npm run build` and takes no test filters')
+            cmd = [self._npm(), 'run', 'build']
+        elif framework == 'pytest':
             cmd = [sys.executable, '-m', 'pytest', *targets, '--tb=short',
                    '-o', 'junit_family=xunit1', f'--junitxml={junit}']
             if test_name:
@@ -166,12 +309,18 @@ class Runner:
             config = DEFAULT_PLAYWRIGHT_CONFIG if playwright_config is None else playwright_config
             if config not in self.playwright_configs():
                 raise ValueError(f'Unknown playwright config {config!r}; available: {self.playwright_configs()}')
-            cmd = [self._npx(), 'playwright', 'test', '-c', config, *targets, '--reporter=line,junit']
+            port = self._reserve_playwright_port(run_id)
+            output_dir = self.out_dir / f'playwright-output-{run_id}'
+            cmd = [self._npx(), 'playwright', 'test', '-c', config, *targets,
+                   '--reporter=line,junit', '--output', str(output_dir)]
             if test_name:
                 cmd += ['-g', test_name]
             if bail:
                 cmd.append('-x')
-            env = {'PLAYWRIGHT_JUNIT_OUTPUT_NAME': junit}
+            env = {
+                'PLAYWRIGHT_JUNIT_OUTPUT_NAME': junit,
+                'PLANNER_PLAYWRIGHT_PORT': str(port),
+            }
         return cmd, env
 
     # ---- execution ------------------------------------------------------------
@@ -179,38 +328,44 @@ class Runner:
     def start(self, framework: str, targets: list[str] | None = None, test_name: str | None = None,
               bail: bool = False, playwright_config: str | None = None, timeout: int | None = None,
               extra_args: list[str] | None = None) -> RunResult:
-        cmd, env = self.build_command(framework, list(targets) if targets else [], test_name, bail,
-                                      playwright_config)
-        if extra_args:
-            cmd += extra_args
         with self._lock:
-            if framework in self._threads and self._threads[framework].is_alive():
-                raise ValueError(f'{framework} run #{self._results[framework].run_id} is still running; '
-                                 'use get_status(wait_seconds=...) or cancel_run')
-            self._seq += 1
-            result = RunResult(self._seq, framework, cmd, time.time())
+            self._refresh_history()
+            run_id = self._allocate_run_id()
+            self._seq = max(self._seq, run_id)
+            cmd, env = self.build_command(framework, list(targets) if targets else [], test_name, bail,
+                                          playwright_config, run_id)
+            if extra_args:
+                cmd += extra_args
+            result = RunResult(run_id, framework, cmd, time.time())
             self._results[framework] = result
+            self._history[run_id] = result
+            LOGGER.info('Starting %s run #%d: %s', framework, run_id, self.describe_selection(result))
+            self._save_history(result)
             thread = threading.Thread(
                 target=self._execute,
                 args=(result, env, DEFAULT_TIMEOUTS[framework] if timeout is None else timeout),
                 daemon=True,
             )
-            self._threads[framework] = thread
+            self._threads[run_id] = thread
+            self._threads_by_run[run_id] = thread
             thread.start()
         return result
 
     def _execute(self, result: RunResult, extra_env: dict[str, str], timeout: int) -> None:
         self.out_dir.mkdir(exist_ok=True)
-        junit = self.out_dir / f'{result.framework}.xml'
+        junit = self.report_path(result.framework, result.run_id)
         junit.unlink(missing_ok=True)
         env = {**os.environ, **extra_env, 'FORCE_COLOR': '0', 'NO_COLOR': '1'}
-        with self.log_path(result.framework).open('w') as log:
+        with self.log_path(result.framework, result.run_id).open('w') as log:
             log.write(f'$ {shlex.join(result.command)}\n')
             log.flush()
             # stdin must not inherit the MCP protocol channel.
+            reservation = self._port_reservations.pop(result.run_id, None)
+            if reservation is not None:
+                reservation.close()
             proc = subprocess.Popen(result.command, cwd=self.root, env=env, stdin=subprocess.DEVNULL,
                                     stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-            self._procs[result.framework] = proc
+            self._procs[result.run_id] = proc
             try:
                 result.exit_code = proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
@@ -230,34 +385,75 @@ class Runner:
             result.status = 'CANCELLED'
         elif result.exit_code == 0:
             result.status = 'PASSED'
-        elif result.failures:
+        elif result.failures or result.framework == 'build':
             result.status = 'FAILED'
         else:
             result.status = 'ERROR'
+        with self._lock:
+            self._save_history(result)
+        log_path = self.log_path(result.framework, result.run_id).relative_to(self.root)
+        if result.framework == 'build':
+            LOGGER.info(
+                'Finished build run #%d: %s (%.1fs, exit %s); log=%s',
+                result.run_id, result.status, result.duration, result.exit_code, log_path,
+            )
+        else:
+            LOGGER.info(
+                'Finished %s run #%d: %s, %d tests, %d failed, %d skipped (%.1fs); log=%s',
+                result.framework, result.run_id, result.status, result.total, result.failed,
+                result.skipped, result.duration, log_path,
+            )
 
-    def cancel(self, framework: str) -> str:
-        thread = self._threads.get(framework)
+    def cancel(self, framework: str, run_id: int | None = None) -> str:
+        result = self.result(framework, run_id)
+        if result is None:
+            return f'{framework}: no runs yet' if run_id is None else f'run #{run_id}: not found'
+        thread = self._threads_by_run.get(result.run_id)
         if thread is None or not thread.is_alive():
-            return f'{framework}: nothing running'
-        self._results[framework].status = 'CANCELLING'
-        os.killpg(self._procs[framework].pid, signal.SIGTERM)
+            return f'{framework}: nothing running' if run_id is None else f'run #{run_id}: nothing running'
+        proc = self._procs.get(result.run_id)
+        if proc is None:
+            return f'run #{result.run_id} is still starting; retry cancellation'
+        result.status = 'CANCELLING'
+        os.killpg(proc.pid, signal.SIGTERM)
         thread.join(30)
-        return f'{framework} run #{self._results[framework].run_id} cancelled'
+        return f'{framework} run #{result.run_id} cancelled'
 
-    def wait(self, framework: str, seconds: float) -> None:
-        thread = self._threads.get(framework)
+    def wait(self, framework: str, seconds: float, run_id: int | None = None) -> None:
+        result = self.result(framework, run_id)
+        thread = None if result is None else self._threads_by_run.get(result.run_id)
         if thread is not None:
             thread.join(min(seconds, MAX_WAIT_SECONDS))
 
-    def result(self, framework: str) -> RunResult | None:
-        return self._results.get(framework)
+    def result(self, framework: str | None = None, run_id: int | None = None) -> RunResult | None:
+        self._refresh_history()
+        if run_id is None:
+            if framework is None:
+                raise ValueError('framework or run_id is required')
+            return self._results.get(framework)
+        result = self._history.get(run_id)
+        if result is not None and framework is not None and framework != result.framework:
+            raise ValueError(f'run #{run_id} belongs to {result.framework}, not {framework}')
+        return result
 
-    def log_path(self, framework: str) -> Path:
-        return self.out_dir / f'{framework}.log'
+    def runs(self, framework: str | None = None, limit: int = MAX_RUN_LIST) -> list[RunResult]:
+        self._refresh_history()
+        history = sorted(self._history.values(), key=lambda result: result.run_id, reverse=True)
+        if framework is not None:
+            history = [result for result in history if result.framework == framework]
+        return history[:limit]
 
-    def rerun_args(self, framework: str) -> tuple[list[str], list[str]]:
+    def log_path(self, framework: str, run_id: int | None = None) -> Path:
+        run_suffix = '' if run_id is None else f'-{run_id}'
+        return self.out_dir / f'{framework}{run_suffix}.log'
+
+    def report_path(self, framework: str, run_id: int | None = None) -> Path:
+        run_suffix = '' if run_id is None else f'-{run_id}'
+        return self.out_dir / f'{framework}{run_suffix}.xml'
+
+    def rerun_args(self, framework: str, run_id: int | None = None) -> tuple[list[str], list[str]]:
         """Return (targets, extra_args) that re-run the last failures."""
-        last = self._results.get(framework)
+        last = self.result(framework, run_id)
         if last is None or not last.failures:
             raise ValueError(f'{framework}: no recorded failures to re-run')
         if framework == 'pytest':
@@ -272,12 +468,17 @@ class Runner:
                log_lines: int = 25) -> str:
         fw = result.framework
         if result.status in ('RUNNING', 'CANCELLING'):
-            last = tail(self.log_path(fw), 1)
+            last = tail(self.log_path(fw, result.run_id), 1)
             progress = f'\nlast log line: {last[0][:200]}' if last else ''
-            return (f'{fw} RUNNING run #{result.run_id} ({time.time() - result.started:.0f}s elapsed)'
+            return (f'{fw} RUNNING run #{result.run_id} '
+                    f'({time.time() - result.started:.0f}s elapsed)'
                     f'{progress}')
-        out = [f'{fw} {result.status} run #{result.run_id}: {result.total} tests, {result.failed} failed, '
-               f'{result.skipped} skipped ({result.duration:.1f}s, exit {result.exit_code})']
+        if fw == 'build':
+            out = [f'build {result.status} run #{result.run_id} '
+                   f'({result.duration:.1f}s, exit {result.exit_code})']
+        else:
+            out = [f'{fw} {result.status} run #{result.run_id}: {result.total} tests, {result.failed} failed, '
+                   f'{result.skipped} skipped ({result.duration:.1f}s, exit {result.exit_code})']
         if result.note:
             out.append(f'note: {result.note}')
         for failure in result.failures[:max_failures]:
@@ -285,13 +486,47 @@ class Runner:
             out += [f'  {ln}' for ln in excerpt(failure, fw, excerpt_lines)]
         if len(result.failures) > max_failures:
             out.append(f'… +{len(result.failures) - max_failures} more failures (get_failures)')
-        if result.status in ('ERROR', 'TIMEOUT'):
-            out.append(f'--- log tail ({self.log_path(fw).relative_to(self.root)}) ---')
-            out += tail(self.log_path(fw), log_lines)
+        if result.status in ('ERROR', 'TIMEOUT') or (fw == 'build' and result.status == 'FAILED'):
+            log_path = self.log_path(fw, result.run_id)
+            out.append(f'--- log tail ({log_path.relative_to(self.root)}) ---')
+            out += tail(log_path, min(log_lines, 8) if fw == 'build' else log_lines)
         return '\n'.join(out)
 
-    def format_failures(self, framework: str, match: str | None, lines: int, limit: int = 10) -> str:
-        result = self._results.get(framework)
+    def describe_selection(self, result: RunResult) -> str:
+        command = result.command
+        if result.framework == 'build':
+            return 'npm run build'
+        if result.framework == 'pytest':
+            start = command.index('pytest') + 1
+            name_flag = '-k'
+        elif result.framework == 'vitest':
+            start = command.index('run') + 1
+            name_flag = '-t'
+        else:
+            start = command.index('-c') + 2
+            name_flag = '-g'
+        end = start
+        while end < len(command) and not command[end].startswith('-'):
+            end += 1
+        targets = command[start:end]
+        if targets:
+            shown_targets = targets[:2]
+            selection = ', '.join(shown_targets)
+            if len(targets) > len(shown_targets):
+                selection += f', +{len(targets) - len(shown_targets)} more'
+        else:
+            selection = 'full suite'
+        if name_flag in command:
+            name = command[command.index(name_flag) + 1]
+            selection += f' matching {name!r}'
+        if result.framework == 'playwright':
+            config = command[command.index('-c') + 1]
+            selection += f' ({config})'
+        return selection
+
+    def format_failures(self, framework: str, match: str | None, lines: int, limit: int = 10,
+                        run_id: int | None = None) -> str:
+        result = self.result(framework, run_id)
         if result is None:
             return f'{framework}: no runs yet'
         selected = [f for f in result.failures if match is None or match.lower() in f.test_id.lower()]
@@ -308,15 +543,19 @@ class Runner:
 
 # ---- MCP server --------------------------------------------------------------------
 
-Framework = Literal['pytest', 'vitest', 'playwright']
+Framework = Literal['pytest', 'vitest', 'playwright', 'build']
 
 
 def build_server(runner: Runner) -> MCPServer:
     # Sync tools run in worker threads, so blocking runs don't stall pings or status queries.
     # structured_output=False: plain text only, avoiding a duplicated JSON copy of each result.
     mcp = MCPServer('plannertool-tests', instructions=(
-        'Run project tests with compact output. Prefer narrow targets during TDD; use get_failures/get_log '
-        'only when the summary is insufficient. Full logs: .test-runs/<framework>.log'))
+        'Prefer this MCP runner over command-line test execution so results stay compact. It runs pytest, '
+        'Vitest, Playwright, and the fixed npm run build check. Run narrow targets '
+        'during TDD; launch independent targets concurrently with wait=false and poll each run_id. Use '
+        'list_runs to recover recent IDs, get_failures/get_log for details, rerun_failed for retries, and '
+        'cancel_run to stop a run. CLI is for MCP-unavailable cases or unsupported options. '
+        'Artifacts: .test-runs/<framework>-<run-id>.{log,xml}'))
 
     def checked(call):
         try:
@@ -326,8 +565,8 @@ def build_server(runner: Runner) -> MCPServer:
 
     def finish(result: RunResult, wait: bool, max_failures: int = 5) -> str:
         if not wait:
-            return f'{result.framework} run #{result.run_id} started; poll with get_status'
-        runner.wait(result.framework, MAX_WAIT_SECONDS)
+            return f'{result.framework} run #{result.run_id} started; poll with get_status(run_id={result.run_id})'
+        runner.wait(result.framework, MAX_WAIT_SECONDS, result.run_id)
         return runner.format(result, max_failures=max_failures)
 
     @mcp.tool(structured_output=False)
@@ -341,34 +580,42 @@ def build_server(runner: Runner) -> MCPServer:
         playwright_config: Annotated[str | None, Field(
             description=f'Playwright config path (default {DEFAULT_PLAYWRIGHT_CONFIG}).')] = None,
         wait: Annotated[bool, Field(
-            description='Block until finished. false = run in background; poll with get_status.')] = True,
+            description='Block until finished. Set false for background or parallel runs; poll by run_id.')]
+            = True,
         timeout_seconds: Annotated[int | None, Field(ge=1)] = None,
         max_failures: Annotated[int, Field(ge=0, description='Failures to show.')] = 5,
     ) -> str:
-        """Run pytest, vitest or playwright. Returns counts, failing test ids and short error excerpts
-        (log tail only on crashes)."""
+        """Run pytest, Vitest, Playwright, or the fixed npm run build check with compact results."""
         result = checked(lambda: runner.start(framework, targets, test_name, bail, playwright_config,
                                               timeout_seconds))
         return finish(result, wait, max_failures)
 
     @mcp.tool(structured_output=False)
-    def rerun_failed(framework: Framework, wait: bool = True) -> str:
-        """Re-run only the tests that failed in the last run of a framework."""
+    def rerun_failed(framework: Framework, run_id: int | None = None, wait: bool = True) -> str:
+        """Re-run only the tests that failed in a selected or latest run."""
         def start() -> RunResult:
-            targets, extra = runner.rerun_args(framework)
+            previous = runner.result(framework, run_id)
+            targets, extra = runner.rerun_args(framework, None if previous is None else previous.run_id)
             config = None
             if framework == 'playwright':
-                previous = runner.result(framework).command
-                config = previous[previous.index('-c') + 1]
+                config = previous.command[previous.command.index('-c') + 1]
             return runner.start(framework, targets, None, False, config, None, extra)
         return finish(checked(start), wait)
 
     @mcp.tool(structured_output=False)
     def get_status(
-        framework: Annotated[Framework | None, Field(description='Omit for one line per framework.')] = None,
+        framework: Annotated[Framework | None, Field(
+            description='Filter by framework; omit for the all-framework latest view.')] = None,
+        run_id: Annotated[int | None, Field(description='Query a specific run instead of the latest.')] = None,
         wait_seconds: Annotated[float, Field(ge=0, description='Block until the run finishes or this elapses.')] = 0,
     ) -> str:
-        """Status of the latest run: one line per framework, or the full summary for one framework."""
+        """Get one run by ID, the latest run for one framework, or latest statuses for all frameworks."""
+        if run_id is not None:
+            result = checked(lambda: runner.result(framework, run_id))
+            if result is None:
+                return f'run #{run_id}: not found'
+            runner.wait(result.framework, wait_seconds, run_id)
+            return runner.format(result)
         if framework is not None:
             runner.wait(framework, wait_seconds)
             result = runner.result(framework)
@@ -381,28 +628,44 @@ def build_server(runner: Runner) -> MCPServer:
         return '\n'.join(lines)
 
     @mcp.tool(structured_output=False)
+    def list_runs(
+        framework: Annotated[Framework | None, Field(description='Omit to include every framework.')] = None,
+        limit: Annotated[int, Field(ge=1, le=MAX_RUN_LIST, description='Most recent runs to return.')] = 10,
+    ) -> str:
+        """List recent run IDs and compact outcomes, newest first."""
+        results = runner.runs(framework, limit)
+        if not results:
+            return 'no test runs yet' if framework is None else f'{framework}: no runs yet'
+        return '\n'.join(runner.format(result, max_failures=0).splitlines()[0] for result in results)
+
+    @mcp.tool(structured_output=False)
     def get_failures(
         framework: Framework,
+        run_id: Annotated[int | None, Field(description='Query a specific run instead of the latest.')] = None,
         filter: Annotated[str | None, Field(description='Substring of the test id.')] = None,
         lines: Annotated[int, Field(ge=1, description='Lines per failure.')] = 30,
     ) -> str:
-        """Longer error excerpts for failures of the latest run."""
-        return runner.format_failures(framework, filter, lines)
+        """Get longer error excerpts for a selected or latest run."""
+        return checked(lambda: runner.format_failures(framework, filter, lines, run_id=run_id))
 
     @mcp.tool(structured_output=False)
     def get_log(
         framework: Framework,
+        run_id: Annotated[int | None, Field(description='Query a specific run instead of the latest.')] = None,
         lines: Annotated[int, Field(ge=1)] = 40,
         grep: Annotated[str | None, Field(description='Case-insensitive regex filter.')] = None,
     ) -> str:
-        """Tail of the raw log of the latest run."""
-        found = tail(runner.log_path(framework), lines, grep)
+        """Tail the raw log of a selected or latest run."""
+        result = checked(lambda: runner.result(framework, run_id))
+        if result is None:
+            return f'{framework}: no runs yet' if run_id is None else f'run #{run_id}: not found'
+        found = tail(runner.log_path(framework, result.run_id), lines, grep)
         return '\n'.join(found) if found else f'{framework}: no log output'
 
     @mcp.tool(structured_output=False)
-    def cancel_run(framework: Framework) -> str:
-        """Stop a running test process."""
-        return runner.cancel(framework)
+    def cancel_run(framework: Framework, run_id: int | None = None) -> str:
+        """Stop the selected run, or the latest run for a framework."""
+        return checked(lambda: runner.cancel(framework, run_id))
 
     return mcp
 
@@ -416,7 +679,10 @@ def main() -> int:
     parser.add_argument('-x', '--bail', action='store_true')
     parser.add_argument('-c', '--playwright-config')
     args = parser.parse_args()
+    server_log = None if args.cli is not None else ROOT / '.test-runs' / 'mcp-server.log'
+    configure_logging(server_log)
     runner = Runner()
+    LOGGER.info('Test runner ready: frameworks=%s', ', '.join(FRAMEWORKS))
     if args.cli is None:
         build_server(runner).run('stdio')
         return 0

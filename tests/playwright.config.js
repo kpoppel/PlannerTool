@@ -7,11 +7,14 @@ import { dirname, join, resolve } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRootPath = resolve(__dirname, '..');
+const playwrightPort = process.env.PLANNER_PLAYWRIGHT_PORT === undefined
+  ? 8010
+  : Number(process.env.PLANNER_PLAYWRIGHT_PORT);
 if (process.env.PLANNER_E2E_RUN_DATA_DIR === undefined) {
   process.env.PLANNER_E2E_RUN_DATA_DIR = mkdtempSync(join(tmpdir(), 'planner-e2e-'));
 }
 const isolatedDataDirPath = process.env.PLANNER_E2E_RUN_DATA_DIR;
-const e2eBaseUrl = 'http://127.0.0.1:8010';
+const e2eBaseUrl = `http://127.0.0.1:${playwrightPort}`;
 
 // Resolve paths relative to this config file so moving files into /tests works
 const testDirPath = resolve(__dirname, 'e2e');
@@ -45,7 +48,7 @@ export default {
   ],
   webServer: {
     command:
-      `cd ${repoRootPath} && python3 -m uvicorn tests.e2e.playwright_test_app:make_app --factory --port 8010`,
+      `cd ${repoRootPath} && .venv/bin/python -m uvicorn tests.e2e.playwright_test_app:make_app --factory --port ${playwrightPort}`,
     env: {
       PLANNER_SECRET_KEY: 'playwright-e2e-secret-key',
       PLANNER_E2E_TEST_DATA_DIR: isolatedDataDirPath,

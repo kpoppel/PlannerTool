@@ -2,16 +2,29 @@
 
 ## Agent test runner (MCP)
 
-`scripts/mcp_test_runner.py` is an MCP stdio server (`mcp` SDK from `requirements-dev.txt`) that runs pytest, vitest and
-playwright and returns compact summaries (counts, failing test ids, short error excerpts). Full logs
-and JUnit reports are written to `.test-runs/<framework>.{log,xml}`.
+`scripts/mcp_test_runner.py` is an MCP stdio server (`mcp` SDK from `requirements-dev.txt`) that runs pytest, vitest,
+playwright and the fixed `npm run build` check and returns compact summaries (counts, failing test ids, short error excerpts). Run history
+and IDs persist across MCP server and one-shot CLI invocations; logs and JUnit reports are written to
+`.test-runs/<framework>-<run-id>.{log,xml}`.
 
-- Tools: `run_tests`, `rerun_failed`, `get_status`, `get_failures`, `get_log`, `cancel_run`.
+- Agents should prefer these MCP tools for routine tests and builds, using focused targets during TDD. Use the
+    CLI only when MCP is unavailable or a needed test-runner option is not exposed.
+- Tools: `run_tests`, `get_status`, `list_runs`, `get_failures`, `get_log`, `rerun_failed`, `cancel_run`.
+- For long runs, call `run_tests` with `wait=false`; poll `get_status` with the returned `run_id` and
+    `wait_seconds` as needed. If the ID is lost, `list_runs` returns recent outcomes. Status, failures,
+    logs, reruns and cancellation can target a specific run; omitting the ID selects the latest run for
+    that framework.
+- Independent focused targets may be launched concurrently with `wait=false`; each run has its own ID,
+    log, JUnit report, Playwright output directory and isolated server port. MCP responses stay compact;
+    MCP lifecycle diagnostics go to `.test-runs/mcp-server.log`; test-process output stays in each per-run log.
 - Portable workspace MCP registration is in the repository-root `.mcp.json` (`mcpServers` format),
     shared with Copilot harness sessions and compatible tools. `.vscode/mcp.json` is deprecated;
     VS Code may forward eligible entries from it for compatibility.
 - CLI equivalent: `.venv/bin/python scripts/mcp_test_runner.py --cli vitest tests/core/foo.test.js`
   (`-k` name filter, `-x` bail, `-c` playwright config).
+- Build and docs-probe MCP calls:
+    `run_tests(framework="build")`
+    `run_tests(framework="playwright", playwright_config="tests/playwright.docs.config.js", targets=["probe"])`
 
 ## Ownership and test types
 
