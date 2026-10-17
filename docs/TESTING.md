@@ -7,8 +7,9 @@ playwright and returns compact summaries (counts, failing test ids, short error 
 and JUnit reports are written to `.test-runs/<framework>.{log,xml}`.
 
 - Tools: `run_tests`, `rerun_failed`, `get_status`, `get_failures`, `get_log`, `cancel_run`.
-- VS Code registration (`.vscode/mcp.json`):
-  `{"servers": {"plannertool-tests": {"type": "stdio", "command": "${workspaceFolder}/.venv/bin/python", "args": ["${workspaceFolder}/scripts/mcp_test_runner.py"]}}}`
+- Portable workspace MCP registration is in the repository-root `.mcp.json` (`mcpServers` format),
+    shared with Copilot harness sessions and compatible tools. `.vscode/mcp.json` is deprecated;
+    VS Code may forward eligible entries from it for compatibility.
 - CLI equivalent: `.venv/bin/python scripts/mcp_test_runner.py --cli vitest tests/core/foo.test.js`
   (`-k` name filter, `-x` bail, `-c` playwright config).
 

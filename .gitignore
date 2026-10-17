@@ -17,6 +17,7 @@ ENV/
 .vscode/
 .github/
 .copilot-phase.yml
+.mcp.json
 
 # Node.js
 node_modules/
@@ -45,6 +46,7 @@ instances.yml
 
 # Test output
 test-results/
+.test-runs/
 tests/e2e/storageState.json
 tests/e2e/.tmp-data/
 coverage/

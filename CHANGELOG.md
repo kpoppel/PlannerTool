@@ -15,6 +15,8 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Register the test runner in portable workspace `.mcp.json` and migrate the installer away from deprecated `.vscode/mcp.json`.
+- Add illustrated permanent v5 release notes, account-wide first-update acknowledgement and public contextual enrollment help.
 - Replace the broken Node "Launch Program" debug config with a debugpy uvicorn server launch that loads the secret key via a pre-launch task.
 - Add re-entrant `scripts/setup-dev.sh` that prepares a fresh clone (including gitignored `.vscode/` and `.github/` config from `scripts/dev-config/`) and re-applies only changed steps; drop the stale `eslint-plugin-local` dependency that broke `npm install`.
 - Add an MCP test runner (`scripts/mcp_test_runner.py`, `mcp` dev dependency) returning compact pytest, vitest and playwright summaries for agent TDD loops.

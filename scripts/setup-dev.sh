@@ -90,7 +90,7 @@ else
   bash scripts/setup-git-hooks.sh
 fi
 
-step "Editor and agent config (scripts/dev-config -> .vscode/, .github/)"
+step "Workspace, editor and agent config (scripts/dev-config -> .mcp.json, .vscode/, .github/)"
 # These directories are gitignored. Files are installed or updated from the tracked templates,
 # but a file edited locally since the last install is kept and reported instead.
 file_hash() { sha256sum "$1" | cut -d' ' -f1; }
@@ -112,7 +112,18 @@ while IFS= read -r template; do
     continue
   fi
   mark_done "$stamp" "$(file_hash "$target")"
-done < <(find scripts/dev-config -type f | sort)
+done < <(find scripts/dev-config -type f ! -name '*.new' | sort)
+
+legacy_mcp=".vscode/mcp.json"
+legacy_mcp_stamp="$STAMPS/config-vscode_mcp.json"
+if [[ -f "$legacy_mcp" ]]; then
+  if [[ -f "$legacy_mcp_stamp" && "$(cat "$legacy_mcp_stamp")" == "$(file_hash "$legacy_mcp")" ]]; then
+    rm "$legacy_mcp" "$legacy_mcp_stamp"
+    echo "    removed installer-managed legacy $legacy_mcp"
+  else
+    echo "    kept $legacy_mcp because it may contain local edits; remove it after reviewing the new .mcp.json"
+  fi
+fi
 
 step "Done"
 echo "    Activate the venv with: source .venv/bin/activate"
