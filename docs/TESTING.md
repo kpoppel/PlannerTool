@@ -71,6 +71,36 @@ Lower counts are acceptable; losing a unique contract is not. Public-boundary
 mock calls are valid assertions when delegation, isolation or avoiding remote
 I/O is the requirement; incidental internal helper-call order is not.
 
+### ADO publication wire contracts
+
+Run the focused publishing boundary suite with:
+
+```bash
+pytest tests/python/azure/test_publication_wire_contract.py
+```
+
+These contracts exercise the real Azure backend, native client, capacity service,
+team-token mapping and installed Azure DevOps SDK. HTTP cases start at
+`POST /api/tasks` and use the real canonical task repository. Source-task reads
+use a fixed forest; SDK discovery uses fixed resource metadata. Every outgoing
+`requests.Session.send` is intercepted before network access, including unexpected
+requests. No live credentials, active storage or ADO writes are used.
+
+Assertions pin the prepared PATCH method, organization URL, task ID, API version,
+JSON Patch content type and complete ordered JSON payload. Cases cover setting,
+omitting and clearing dates; iteration reset; state and tags; allocation HTML,
+fractional precision and retained unknown source rows; relation additions; distinct
+IDs in a batch; empty/anonymous requests; validation before any ADO request; and
+partial/total ADO rejection. Unexpected extra requests or fields fail the tests.
+
+Treat these expected documents as publishing contracts, not snapshots to regenerate.
+When publishing fails, reproduce the failing request here, establish the intended
+ADO payload, then correct the writer. Change an expectation only when the intended
+ADO contract changes. These tests do not certify live ADO permissions/process rules,
+SDK discovery, browser interaction or cache behavior. Field writes remain separate
+requests, not an atomic ADO transaction; the partial-failure contracts preserve
+that distinction in the result returned to the caller.
+
 ### Cleanup decisions
 
 - Split architecture catch-alls into protocols, admin reload, cache coordinator,
