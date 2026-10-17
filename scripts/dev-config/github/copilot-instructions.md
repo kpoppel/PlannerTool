@@ -21,6 +21,8 @@ applyTo: "**"
 	frontend build checks; use CLI execution only when MCP is unavailable or a required option is unsupported. Start with narrow
 	targets, launch independent checks concurrently with `wait=false`, poll each by `run_id`, and request
 	failure/log details only when the summary is insufficient.
+	For Playwright MCP runs, set `project` to a configured project such as `chromium`; it maps to `--project`.
+	Test process output stays in `.test-runs/` logs.
 - Prefer small, focused edits and create a PR with a clear description.
 - Create comments in the code when making non-obvious changes or when the reasoning may not be clear to future maintainers.
 - Do not remove comments without understanding their purpose; if a comment is outdated, update it rather than deleting it.

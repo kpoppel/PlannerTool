@@ -39,6 +39,13 @@ def test_build_command_rejects_options_and_paths_outside_workspace(tmp_path, tar
         mtr.Runner(tmp_path).build_command('pytest', [target], None, False, None)
 
 
+def test_build_command_rejects_project_for_non_playwright_framework(tmp_path):
+    with pytest.raises(ValueError, match='only supported for Playwright'):
+        mtr.Runner(tmp_path).build_command(
+            'pytest', [], None, False, None, project='chromium',
+        )
+
+
 def test_pytest_run_reports_compact_failure_summary(tmp_path):
     (tmp_path / 'test_sample.py').write_text(
         'def test_ok():\n    assert True\n\n'
@@ -113,6 +120,7 @@ def test_mcp_tools_list_status_and_rejected_target(tmp_path):
     assert tools['run_tests'].input_schema['properties']['framework']['enum'] == [
         'pytest', 'vitest', 'playwright', 'build',
     ]
+    assert 'project' in tools['run_tests'].input_schema['properties']
     assert status.content[0].text.splitlines()[0] == 'pytest: no runs yet'
     assert status.structured_content is None
     assert rejected.is_error is True
@@ -251,6 +259,24 @@ def test_playwright_runs_receive_distinct_server_ports_and_output_dirs(tmp_path)
     assert str(tmp_path / '.test-runs' / 'playwright-output-2') in second_command
     for reservation in runner._port_reservations.values():
         reservation.close()
+
+
+def test_playwright_project_is_applied_to_command_and_selection(tmp_path):
+    config_dir = tmp_path / 'tests'
+    config_dir.mkdir()
+    (config_dir / 'playwright.config.js').touch()
+    runner = mtr.Runner(tmp_path)
+
+    command, _ = runner.build_command(
+        'playwright', ['tests/e2e/release-notes.spec.js'], 'release and enrollment guides',
+        False, 'tests/playwright.config.js', 1, project='chromium',
+    )
+    result = mtr.RunResult(
+        run_id=1, framework='playwright', command=command, started=0,
+    )
+
+    assert command[command.index('--project') + 1] == 'chromium'
+    assert 'project chromium' in runner.describe_selection(result)
 
 
 def test_run_details_go_to_server_log_not_mcp_summary(tmp_path, caplog):

@@ -277,9 +277,14 @@ class Runner:
 
     def build_command(self, framework: str, targets: list[str], test_name: str | None,
                       bail: bool, playwright_config: str | None,
-                      run_id: int | None = None) -> tuple[list[str], dict[str, str]]:
+                      run_id: int | None = None,
+                      project: str | None = None) -> tuple[list[str], dict[str, str]]:
         if framework not in FRAMEWORKS:
             raise ValueError(f'Unknown framework {framework!r}; expected one of {FRAMEWORKS}')
+        if project is not None and framework != 'playwright':
+            raise ValueError('project is only supported for Playwright runs')
+        if project is not None and (not project or project.startswith('-')):
+            raise ValueError(f'Invalid project {project!r}')
         for target in targets:
             self._validate_target(target)
         if test_name is not None and (not test_name or test_name.startswith('-')):
@@ -313,6 +318,8 @@ class Runner:
             output_dir = self.out_dir / f'playwright-output-{run_id}'
             cmd = [self._npx(), 'playwright', 'test', '-c', config, *targets,
                    '--reporter=line,junit', '--output', str(output_dir)]
+            if project:
+                cmd += ['--project', project]
             if test_name:
                 cmd += ['-g', test_name]
             if bail:
@@ -327,13 +334,13 @@ class Runner:
 
     def start(self, framework: str, targets: list[str] | None = None, test_name: str | None = None,
               bail: bool = False, playwright_config: str | None = None, timeout: int | None = None,
-              extra_args: list[str] | None = None) -> RunResult:
+              extra_args: list[str] | None = None, project: str | None = None) -> RunResult:
         with self._lock:
             self._refresh_history()
             run_id = self._allocate_run_id()
             self._seq = max(self._seq, run_id)
             cmd, env = self.build_command(framework, list(targets) if targets else [], test_name, bail,
-                                          playwright_config, run_id)
+                                          playwright_config, run_id, project)
             if extra_args:
                 cmd += extra_args
             result = RunResult(run_id, framework, cmd, time.time())
@@ -528,6 +535,8 @@ class Runner:
         if result.framework == 'playwright':
             config = command[command.index('-c') + 1]
             selection += f' ({config})'
+            if '--project' in command:
+                selection += f' project {command[command.index("--project") + 1]}'
         return selection
 
     def format_failures(self, framework: str, match: str | None, lines: int, limit: int = 10,
@@ -557,7 +566,8 @@ def build_server(runner: Runner) -> MCPServer:
     # structured_output=False: plain text only, avoiding a duplicated JSON copy of each result.
     mcp = MCPServer('plannertool-tests', instructions=(
         'Prefer this MCP runner over command-line test execution so results stay compact. It runs pytest, '
-        'Vitest, Playwright, and the fixed npm run build check. Run narrow targets '
+        'Vitest, Playwright, and the fixed npm run build check. For Playwright, use project to select '
+        'a configured project (for example chromium). Run narrow targets '
         'during TDD; launch independent targets concurrently with wait=false and poll each run_id. Use '
         'list_runs to recover recent IDs, get_failures/get_log for details, rerun_failed for retries, and '
         'cancel_run to stop a run. CLI is for MCP-unavailable cases or unsupported options. '
@@ -590,10 +600,12 @@ def build_server(runner: Runner) -> MCPServer:
             = True,
         timeout_seconds: Annotated[int | None, Field(ge=1)] = None,
         max_failures: Annotated[int, Field(ge=0, description='Failures to show.')] = 5,
+        project: Annotated[str | None, Field(
+            description='Playwright project name passed as --project, such as chromium.')] = None,
     ) -> str:
         """Run pytest, Vitest, Playwright, or the fixed npm run build check with compact results."""
         result = checked(lambda: runner.start(framework, targets, test_name, bail, playwright_config,
-                                              timeout_seconds))
+                                              timeout_seconds, project=project))
         return finish(result, wait, max_failures)
 
     @mcp.tool(structured_output=False)
@@ -603,9 +615,12 @@ def build_server(runner: Runner) -> MCPServer:
             previous = runner.result(framework, run_id)
             targets, extra = runner.rerun_args(framework, None if previous is None else previous.run_id)
             config = None
+            project = None
             if framework == 'playwright':
                 config = previous.command[previous.command.index('-c') + 1]
-            return runner.start(framework, targets, None, False, config, None, extra)
+                if '--project' in previous.command:
+                    project = previous.command[previous.command.index('--project') + 1]
+            return runner.start(framework, targets, None, False, config, None, extra, project)
         return finish(checked(start), wait)
 
     @mcp.tool(structured_output=False)

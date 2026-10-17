@@ -22,6 +22,8 @@ and IDs persist across MCP server and one-shot CLI invocations; logs and JUnit r
     VS Code may forward eligible entries from it for compatibility.
 - CLI equivalent: `.venv/bin/python scripts/mcp_test_runner.py --cli vitest tests/core/foo.test.js`
   (`-k` name filter, `-x` bail, `-c` playwright config).
+- Playwright MCP filters map `test_name` to `-g` and `project` to `--project`. Example:
+    `run_tests(framework="playwright", targets=["tests/e2e/release-notes.spec.js"], test_name="release and enrollment guides", project="chromium")`.
 - Build and docs-probe MCP calls:
     `run_tests(framework="build")`
     `run_tests(framework="playwright", playwright_config="tests/playwright.docs.config.js", targets=["tests/docs-capture"])`

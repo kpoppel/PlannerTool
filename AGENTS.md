@@ -8,7 +8,8 @@ Keep changes here short and machine-friendly — agents will rely on these rules
 - For agent-run checks, prefer the registered `plannertool-tests` MCP server. It runs pytest, Vitest,
   Playwright and the fixed `npm run build` check with compact summaries and per-run status; use
   command-line execution only when MCP is unavailable or a required option is unsupported.
-- Start focused runs with `run_tests` (`framework`, optional `targets` and `test_name`). For long runs,
+- Start focused runs with `run_tests` (`framework`, optional `targets` and `test_name`). For Playwright,
+  set `project` to a configured project such as `chromium`; it maps to `--project`. For long runs,
   set `wait=false`, then poll `get_status` with the returned `run_id`; use `list_runs` if the ID is lost.
   Use `get_failures` or `get_log` with that ID for details, `rerun_failed` to retry, and `cancel_run`
   to stop it.
