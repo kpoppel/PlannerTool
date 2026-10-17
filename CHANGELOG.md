@@ -15,235 +15,66 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
-- Expand the illustrated v5 release notes with planner and administrator benefits, scenario and resize workflows, portability guidance and Git change statistics.
-- Add a two-color task resize handle to keep allocation or effort constant in either display unit, with delayed explanations and full-handle drag confirmation.
-- Allow group creation from the plan swimlane under the cursor when multiple plans are selected.
-- Bump plugin versions to reflect the v5 feature, compatibility, and calculation changes.
-- Remove the obsolete Show Onboarding action from the Help modal.
-- Give embedded enrollment guides a compact reading layout while retaining their full standalone pages.
-- Allow MCP Playwright runs to select a configured project, such as Chromium.
-- Keep MCP test summaries to one diagnostic line per failure and point to on-demand detail tools.
-- Show v5.0.0 release notes as an embedded Help sidebar page and resolve Help docs correctly on the Vite server.
-- Keep existing-account browser enrollment independent of PAT validation; configure PATs through account settings.
-- Refresh the Help documentation against the current UI with screenshots regenerated from the synthetic generator (`tests/playwright.docs.config.js`), new Plans, Workforce, Azure DevOps Processes, Server and Reconciliation pages, and removal of retired Plan Health, Teams, People, Cost and Cache Invalidation pages.
-- Persist MCP check history, add the fixed npm build check, support parallel targeted runs with isolated Playwright servers, and log run scope/lifecycle to `.test-runs/mcp-server.log` while keeping tool responses minimal.
-- Mirror test-runner lifecycle messages to MCP stderr so they appear in the server console as well as `.test-runs/mcp-server.log`.
-- Register the test runner in portable workspace `.mcp.json` and migrate the installer away from deprecated `.vscode/mcp.json`.
-- Add illustrated permanent v5 release notes, account-wide first-update acknowledgement and public contextual enrollment help.
-- Replace the broken Node "Launch Program" debug config with a debugpy uvicorn server launch that loads the secret key via a pre-launch task.
-- Add re-entrant `scripts/setup-dev.sh` that prepares a fresh clone (including gitignored `.vscode/` and `.github/` config from `scripts/dev-config/`) and re-applies only changed steps; drop the stale `eslint-plugin-local` dependency that broke `npm install`.
-- Add an MCP test runner (`scripts/mcp_test_runner.py`, `mcp` dev dependency) returning compact pytest, vitest and playwright summaries for agent TDD loops.
-- Align isolated E2E bootstrap with catalogue-backed plan imports, eligible task types and process-qualified display settings.
-- Remove the delay on first task click by deriving the parent/child map once per state instead of once per card.
-- Keep read-only task details open on a normal click without requiring pointer movement.
-- Make read-only scenarios inspection-only across task, group and plugin tools, enforce protected saves/deletes server-side, and cancel stale edits while preserving editable copies and view preferences.
-- Keep allocation wheel input responsive in both units by coalescing rapid ticks before expensive recalculation, with immediate Enter and blur commits.
-- Automatically save dirty editable scenarios at the configured browser-local interval without publishing to Azure DevOps.
-- Reject man-day resizes above 100% without losing task allocations or changing dates, and explain the scheduling limit.
-- Keep ADO process names in the ADO catalogue rather than runtime display payloads, task-type models or XY controls.
-- Hide ADO process names from the sidebar task-type filters.
-- Show plan drag handles, dragged-row feedback and precise insertion markers when reordering plans.
-- Fix team deletion review rejecting valid saved-view team selection maps while preserving retained views and scenarios.
-- Remove legacy task-level type selections from existing plans while preserving eligible types.
-- Import plan-selected ADO types before plan validation so first-use plans save atomically.
-- Migrate retired `completed_retention_months` values out of configured plans before enforcing the current plan contract.
-- Preserve flattened validation details from plan and process configuration save requests.
-- Render Azure DevOps project names in the new plan area-path selector and expand its scroll region to fill the available drawer height.
-- Remove legacy Plans metadata APIs, caches and the unmounted ADO editor; document catalogue-backed types, per-plan history windows and complete snapshot access guarantees (Plans admin redesign Phase 7).
-- Replace inline Projects administration with delegated Plans setup, isolated edit drawers, process-backed type imports, immediate data loading and retry, level ordering and grouped workforce defaults (Plans admin redesign Phase 6).
-- Use process-qualified display models throughout planner filters, state categories and adjacent-tier folding, and replace Global settings with a process/tier editor (Plans admin redesign Phase 5).
-- Migrate plans to catalogue-backed types and day-window discovery, atomic plan/import saves, process-aware display data and non-destructive complete snapshot rebuilds (Plans admin redesign Phase 4).
-- Resolve ADO process metadata per project, automatically import and lock plan-used types, retain editable discovery imports and remove unused processes on reload (Plans admin redesign Phase 3a).
-- Add the ADO process catalogue, delegated import administration, protected plan-used types and transactional display-tier synchronization (Plans admin redesign Phase 3).
-- Require validated per-account PATs only for live ADO, add shared enrollment and repair flows with user-scoped refresh failures, and default fresh installs to the generator demo (Plans admin redesign Phase 2).
-- Escape all WIQL type, state and area-path literals to prevent query injection (Plans admin redesign Phase 1).
-- Restore development admin access by proxying permission checks and resolving API/login roots independently of static asset URLs.
-- Replace the standalone Administration link with a chevron gear menu listing authorized admin screens and opening them directly.
-- Update authentication and browser bootstrap fixtures to canonical project/workforce contracts and target the system backup upload explicitly.
-- Share the planner top bar with administration, add permission-aware application switching, and expose configuration and administration through the settings gear.
-- Add independently delegated project, workforce team/staffing, workforce cost/supplier and iteration administration with permission-aware navigation and server-enforced write boundaries.
-- Serve complete shared task snapshots immediately while refreshing in the background, with cache freshness in the notification log and non-destructive menu refresh.
-- Assign persistent UUIDs to projects and migrate saved selections, plan mappings, and derived cache entries.
-- Replace name-derived project and team handles with unique IDs, keep ADO team allocation tokens separate, and reset wiki-backed events to the global local store.
-- Harmonise migrated team IDs with the opaque workforce ID format and remap saved team references and project allocation overrides.
-- Integrate reconciliation and scenario-publication work, update obsolete tests, support transactional memory fixtures, initialize Workforce metadata and enable Cost task navigation.
-- Preserve dormant scenario overrides for unavailable backend tasks without blocking workforce group changes; retain conflict checks on present tasks.
-- Fix workforce group reassignment rejecting matching task revisions with complementary retained context enrichment.
-- Remove legacy People, Cost and Teams admin screens, APIs, services, storage readers and transitional tests; preserve canonical Workforce configuration during mock generation.
-- Restore admin reload failure coverage using the current service boundary instead of a removed cost-config module.
-- Wire the canonical Workforce admin and runtime with revision-35 anonymous staffing migration, validated plan availability, strict publication and separate group/member accounting.
-- Activate and verify revision-35 Workforce cutover with preserved identities, saved records and pricing bases, including idempotent live restart.
-- Preserve unresolved ADO allocation entries during reads and known-team edits, with token-only canonical repository ports and clarified local-ID migration rules.
+Note, this is a major update. Backup the physical data directory.  JSON backups do not transfer.
+
 ### Added
-- Make full logical backups and restores round-trip paired canonical workforce data with globally unique object IDs.
-- Add standalone workforce YAML export and reviewed additive import under Admin Utilities Backup & Restore, preserving identities and tokens with explicit conflict choices and atomic validation.
-- Clarify allocation planning intent, estimate uncertainty, team-specific man-days and the input-data requirements for complete cost forecasts in the user documentation.
-- Add browser-local whole-man-day allocation editing with precise fractional-percentage persistence, ceiling displays, effort-preserving scheduling, removal notices, child-boundary feedback and existing scenario revert.
-- Added reversible, auto-saved project archiving in administration, excluding archived projects from user project choices, task loading, and explicit area refreshes while preserving active-project API enrichment.
-- Added confirmed deletion of individual staffing rows from the canonical Workforce editor.
-- Added anonymous workforce candidate conversion with archived incomplete review items, explicit admin review completion and measured per-team/accounting parity.
-- Added shared canonical allocation availability, group-aware precedence/capacity, retained-scenario membership validation and anonymous pricing with explicit missing-basis completeness; live cutover remains gated by migration preflight.
-- Added confirmed canonical team deletion with authenticated impact review, fresh-review receipts, atomic staffing/availability cleanup and an archive alternative while preserving retained task/scenario/view references.
-- Added server-owned `last_updated` metrics and canonical supplier/profile editing with affected-staffing review, inherited monthly costs and draft-preserving profile navigation.
-- Added the stage 3b canonical team/group catalogue contract with persisted identity, archive-aware lookup and strict configuration validation; runtime integration remains pending.
-- Added the anonymous workforce-v2 domain contract with supplier profiles, fractional-FTE bases, separate accounting/group rollups and archive-reference validation; runtime integration remains pending.
-- Added atomic canonical workforce editing with server-issued timestamp/entropy identities, immutable tokens, protected saves, stale-edit rejection and complete workforce backup coverage; live API integration remains pending.
-- Added authenticated canonical Workforce read/save/create APIs with migration gating, legacy-save bypass protection, structured errors and explicit post-commit cache warnings; UI and migration activation remain pending.
-- Added the canonical grouped Workforce composition editor and provider operations with revision-aware team/group/staffing edits, server-issued creation and visible save warnings; live cutover and supplier/profile editing remain pending.
-- Specified the stage 3b merged Teams/People/Cost administration, archive and warned team deletion, immutable allocation identity, workforce and application-wide allocation contract design.
-- Added the first Workforce admin UI with anonymous staffing summaries, archive/restore, warned deletion and archive-inclusive ADO token and cost identity resolution.
-- Consolidated Workforce team totals and expandable anonymous composition into one view, with a separate legacy site inventory and visible unconfigured staffing.
-- Reconciliation Slice 5 frontend review adds backend-neutral scenario publication, selected-write cross-plan impact, scenario-only exception summaries, toolbox save/publish entry and stale-source rejection; the server live-register gate remains open.
-- DetailsPanel exposes a plugin-independent `focusSchedulingEditor()` API for opening the existing date editor from reconciliation.
-- Reconciliation Slice 4 stages reasoned scenario exceptions with pending/saved check-shield markers, an accepted-decisions view, task-evidence revocation and save-race protection; live publication remains Slice 5.
-- Reconciliation Slice 3 adds configured-state corrections, impact-reviewed date and recorded-dependency actions, read-only guards, and retained quality/scheduling warnings and selection through scenario edits and revert.
-- Reconciliation Slice 2 documents isolated temporary board context, reports incomplete relationship data, and explains each finding's constraint, owning/affected plans, drift, scenario status, and navigation impact.
-- Added `scripts/enroll_account.py` to reuse a valid CLI session, re-enroll only after expiry, rotate the private account key file, and report session status with `--check`.
-- Route REST, publish, session, hydration, export, and uncaught failures into the bell notification log instead of screen-dimming message overlays.
-- Normalize ADO scheduling paths consistently, verify relative request paths against live ADO, and expose generic date presets with backend-owned atomic schedule clearing.
-- Excluded ADO Removed-category work from planning calculations, honored admin display states, and scoped sidebar state/type choices to presentable content.
-- Load bounded ADO ancestor paths across unseeded plans and show labeled featureboard context cards without importing sibling branches or partial-plan costs.
-- Added a tested ADO Child-traversal client helper with batched reads and per-project TaskCategory boundaries.
-- Added backend-owned ADO forest enrichment with source ownership, shared provenance, presentation metadata, and context-cache write-through tests.
-- Enabled canonical hierarchy loading with provenance-based plan selection, configured-type board presentation, and category-bounded hidden-context capacity/cost accounting.
-- Added historical anchor card presentations for completed ADO items without a schedule or iteration, keeping schedule dates unset and treating anchors as planned display placements.
-- Prune ADO hierarchy trees whose accessible members are all completed more than six calendar months ago, while retaining active and recently completed trees whole.
-- Grouped reconciliation review findings into collapsible issue-type sections with instance counts and focused task details.
-- Added a Reconciliation menu toggle to show or hide feature-card markers without changing issue detection.
-- Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`, ESLint guard rule `eslint-rules/no-runtime-state-violations.js`, inert `USE_STATE_STORE` flag in `config.js`); removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
-- Phase 1 migration scaffold landed: added Zustand vendor bundling (`src/vendor-entry-zustand.js` -> `www/js/vendor/zustand.js`), introduced `www/js/application/` + `core/StoreController.js` with initial command/selector seam, and removed dead `core/Container.js`/`core/ServiceRegistry.js` wiring.
-- Phase 3 completed: finalized strict-Result hydration commands (`hydrateBaseline`, `hydrateScenarioData`) and command coverage, added blocking legacy-parity integration coverage (`tests/application/hydrateBaseline.shadowParity.integration.test.js`), retired the temporary shadow harness (`SHADOW_HYDRATE_STORE`, `application/legacyBridge.js`, app shadow wiring), and confirmed regressions green (`npm test`, `npm run test:coverage`, `pytest`, Playwright smoke).
-- Server configuration snapshots: the admin interface can capture a versioned backup of the full server
-  configuration. Disabled by default; existing installations may already have snapshots in storage —
-  enable, review and clean up, then disable if not needed.
-- Iteration-sets: a configured project can now be associated with iterations from multiple ADO projects,
-  enabling cross-project planning where teams span organisational ADO boundaries. Associations are managed
-  from the admin iterations page and are respected at runtime when resolving iteration data.
-- Migration `0026_migrate_ttl_cache.py`: moves any leftover remote-backend cache entries from `data/cache`
-  into the new `data/remote_cache` store for existing installations (applied during server startup).
+- Add a non-modal Reconciliation toolbox with category totals, collapsible issue classes, task-first navigation, retained review state, and hide/restore controls.
+- Add actionable finding details that explain constraints, owning and affected plans, schedule drift, scenario status, incomplete relationship data, and the effects of navigating to related work in temporary board context.
+- Add scenario-based Reconciliation actions for configured-state corrections, impact-reviewed date changes, and recorded dependencies; quality and schedule warnings remain visible through scenario edits and reverts.
+- Add reasoned scenario exceptions with pending/saved indicators and an accepted-decisions view. Revoke an accepted decision when the task evidence that supported it changes.
+- Add a Reconciliation marker toggle that shows or hides card markers without changing issue detection; warning markers can open the selected task's expanded findings and actions.
+- Add browser-local whole-man-day allocation editing. The editor displays whole man-days while persisting precise fractional percentages, preserves effort when scheduling changes, indicates child-boundary constraints and removed allocations, supports reverting scenario edits, and keeps wheel input responsive in either unit with Enter/blur commits.
+- Add two-color task resize handles to preserve either allocation or effort in either display unit, with delayed explanations of the selected behavior and confirmation by dragging the full handle.
+- Add creation of a group in the plan swimlane under the pointer when multiple plans are selected.
+- Add a consolidated Workforce editor for canonical teams, groups, staffing, and supplier costs, with team totals, expandable anonymous staffing composition, a separate site inventory, and clear unconfigured-staffing status.
+- Add conversion and review of anonymous staffing candidates. Incomplete candidates can be archived for later review, and administrators can explicitly complete the review.
+- Add group-aware allocation availability, precedence, and capacity, including retained-scenario membership checks and explicit cost completeness when a pricing basis is missing.
+- Add staffing-row deletion and supplier/profile editing, including review of affected staffing, inherited monthly costs, and visible update timestamps.
+- Add reviewed team deletion with an authenticated impact check and atomic cleanup of staffing and availability, while retaining referenced tasks, scenarios, and saved views; archiving remains an alternative.
+- Add reversible project archiving that excludes archived projects from planner choices, task loading, and explicit area refreshes, with an option to restore them.
+- Add full system backup and restore for paired canonical Workforce data, preserving globally unique identities and allocation tokens. Workforce YAML export and reviewed additive import support explicit conflict choices and validate the import atomically.
+- Add iteration associations that let one configured project resolve iterations from multiple Azure DevOps projects for cross-project planning.
+- Add bounded Azure DevOps hierarchy context across unseeded plans. Related ancestors appear as labeled cards, provenance selects the owning plan, sibling branches are not imported, and hidden context is excluded from capacity and cost.
+- Add historical anchor cards for completed Azure DevOps items without a schedule or iteration, leaving their schedule dates unset; prune trees containing only items completed more than six months ago while retaining active and recently completed trees.
+- Add a hierarchy-ordered Sidebar count for the two largest teams, expandable to all task types and suppressing empty columns.
+- Add an on-board information menu that reports loaded data and filter exclusions against plan totals without double counting.
+- Add browser enrollment and account repair flows. Existing-account enrollment does not require a PAT; live Azure DevOps access uses a validated per-account PAT configured in account settings, and fresh installs use the generator demo by default. The `scripts/enroll_account.py` utility can check session status and renew an expired session without consuming the account key.
+- Add generic date presets and atomic schedule clearing for Azure DevOps work items, with normalized scheduling paths for relative requests.
+- Add a bell notification log for REST, session, publish, hydration, export, and uncaught errors instead of obscuring the board with message overlays.
+- Add an optional versioned server-configuration backup in administration.
+- Add contextual enrollment help, an account-wide first-update acknowledgement, dedicated Help pages for Plans, Workforce, Azure DevOps Processes, Server, and Reconciliation, and in-app v5 release notes embedded in Help.
 
 ### Changed
-- Place Team Drill-down All/None and Counts controls in the task-type icon row, left-aligned with the other Sidebar controls.
-- Scale shortcut pills to their adjacent header with smaller text and compact padding in the View menu and Sidebar.
-- Add one-level +/- hierarchy shortcuts and disabled-aware P/A/I/R filter cycles, with consistent View-menu-style sidebar hints including Task view and Task hierarchy.
-- Replace Ctrl+Shift display/search bindings with mnemonic board letters, add task-view and relationship-highlight shortcuts, and provide a browser-local opt-out with updated user documentation.
-- Prepare plain-character shortcuts with shared typing, menu, dialog, composition and modifier checks while preserving existing bindings.
-- Task warning markers now scroll the reconciliation toolbox to the selected task's expanded details and actions, including repeated selection and hidden review.
-- Align System and Workforce Backup/Restore controls and validate system backup schema compatibility before offering restore options and before writing, with detailed server rejection messages.
-- Reconciliation groups labelled Sidebar-style controls and issue actions into two blue sections, re-highlights tasks on repeated clicks, and shows only class-specific multiple-finding counts.
-- Reconciliation adopts Sidebar-styled issue-class accordions, inline task actions, clearer local/cross-plan labels, a top marker toggle, and automatic task location with temporary board context.
-- Reconciliation now toggles directly from its active top-bar button, keeps an independent status footer visible, and separates category controls, issue classes, and selected-task details without an internal close button.
-- Reconciliation Slice 1 adds separate category task counts and a non-modal Sidebar toolbox with retained review state, task-first navigation, and hide/restore controls.
-- Clarified online planning guidance for explicit task dates, available project hours, and transparent planning without implicit buffers across role and admin guides.
-- Updated the architecture reference to describe current runtime boundaries, ownership, data flows, and verified failure semantics.
-- Cost task reports preserve sidebar choices, retain allocating hidden levels as context, show selected tasks without allocations, and compare original per-team estimates against resolved breakdowns without changing charged totals.
-- Hide dated task rows wholly outside the selected cost report dates in both hierarchical views, with inclusive day-level overlap and unchanged allocation inputs.
-- Preserve closed allocation-free trees within existing retention and enable Cost's state, planned/unplanned, and allocated/unallocated sidebar filters without changing financial totals.
-- Unified capacity and cost under lowest-level-wins allocations for dated work; unplanned work contributes no load, cost, or precedence; added unknown-team diagnostics and removed obsolete precedence and budget-deviation paths.
-- Plan overview now shows the full scoped tree; Team focus retains selected-team allocations, connecting ancestors and unallocated descendants without changing allocation counts or capacity/cost calculations.
-- Replaced top-bar metrics and the Scope footer with an on-board information menu starting from exact Plan-menu totals, reconciling scope and sidebar-named filter exclusions without double counting; clarified loaded-dataset counts.
-- Fixed asymmetric Ancestors scope previews by evaluating ancestor-only card eligibility against the proposed scope selection.
-- Team focus now hides empty selected-plan swimlanes so the board shows only lanes holding the focused team's work.
-- Improved PlanMenu with half-width color selectors, compact boxed count columns, blank zero cells, content-sized aligned plan names, quieter tabular counts, and a sticky type header.
-- Clarified that sidebar team counts cover explicit allocations across loaded data rather than tasks in the current display or selected scope.
-- Added permanent hierarchy-ordered top-two sidebar team counts expandable to all types, with empty-column suppression and PlanMenu-style rows.
-- Preserve configured task-type order within hierarchy levels in PlanMenu and other task-type count columns.
-- Give ancestor context swimlanes and details-panel plan labels backend-provided source names, using the final ADO area-path segment for readable origin labels.
-- Indexed scope relationships and cached graph membership and counts to eliminate repeated per-task hierarchy and dependency scans.
-- Restored ownership-anchored board scope and eligible-card addition counts independent of Team Drill-down; dependency overlays attach when the board becomes available after plugin startup.
-- Clicking a relation icon in the details panel centers its linked card on the board.
-- Made task repository reads and writes backend-neutral, with backend-owned plan settings and private persisted task metadata.
-- Consolidated cost calculation in the current calculator, moving shared month helpers and retiring unused v1 allocations and tests.
-- Replaced passive Plan Health with modular live Reconciliation detection, category-count menu summaries linking to focused issue review, and nonblocking baseline/scenario schedule warnings.
-- Generalized plan hierarchy, capacity graphs, cost ordering, admin validation, and generated plans to configured container types; lowest-level graphs use raw allocation lines.
-- Modularized DetailsPanel and Sidebar with managed controllers and explicit section contracts, removed Sidebar-owned workflow state, and persisted packed-mode Unplanned preferences through revision 34.
-- Modularized DetailsPanel rendering with explicit section models and actions, pure capacity/relation/scheduling projections, and an unchanged extracted stylesheet.
-- The Plan Menu shows the selected plan's name instead of a count when exactly one plan is selected.
-- Completed legacy runtime/test cleanup with explicit REST Results, store-owned groups, failure-aware publishing, feature-only cost recalculation, and isolated real-cookie test fixtures.
-- Removed legacy per-plan group loading, duplicate group mutation/projection APIs, and obsolete session storage and credential helpers.
-- Reduced repeated account loads by reusing encryption setup, resolving PATs only for credential-bearing requests, and batching browser-local group loads with account-change and stale-response invalidation.
-- Phase 6 first-step cleanup: replaced store-path string events in selection/filter/view flows with Symbol registry events, moved Sidebar filter reactions to selector-derived state (event-as-notification), and removed remaining `filter:changed` string emission in view restore handling.
-- Phase 2 shared data-access migration completed: both `ProviderREST` and `AdminProviderREST` now share `RestProviderBase` + `result.js` Result helpers, provider/admin endpoint methods return normalized Result contracts, `dataService`/admin call sites were updated for compatibility handling, and provider/admin regression suites were rewritten to assert the new contract.
-- Phase 2 follow-up completed: removed admin constructor-time Result wrappers, moved app/admin endpoint execution onto the shared `RestProviderBase` JSON/result path, and normalized failure envelopes to `{ ok: false, error: { message, ... } }` across both providers.
-- Phase 4 started: aligned the Selection/Filter/View migration plan to the current consumer audit, introduced a `sel.view` seam in `application/imports.js` (legacy + store-backed selectors), and migrated `PluginDependenciesComponent` plus its component tests away from direct view-service state reads.
-- Phase 4 progress: added `selection` command/selector groups to `application/imports.js` (legacy + store-backed branches), migrated `Timeline.lit.js` and `board-utils.js` to `sel.view`, and migrated `TeamMenu.lit.js`/`PlanMenu.lit.js` selection mutations to `cmd.selection` with focused component and application seam tests.
-- Phase 4 guardrail and migration follow-up: fixed selection parity for expansion-aware effective projects, honored `suppressEvents` in store-backed selection commands, added direct selector contract coverage for `viewSelectors.js`, removed stale imports from touched files, and migrated `EmptyBoardModal`, `FeatureCard`, `MainGraph`, `TimelineExportRenderer`, `PluginExportTimelineComponent`, `PluginGraphComponent`, and `PluginPortfolioComponent` to in-scope `cmd/sel` seams with focused seam-mocked tests.
-- Phase 4 continued: added `filter` and `view` command groups (legacy + store-backed) to the imports seam, migrated `PluginCostComponent` command/selector usage and `PluginCostV1Component` filter-state reads to `cmd/sel`, and added focused command and plugin seam tests.
-- Phase 4 continued: migrated `FeatureBoard` in-scope selection/filter/view reads to selector seams, expanded view selector contracts for packed/sort/unassigned options, and added focused FeatureBoard seam tests.
-- Phase 4 continued: migrated `Sidebar` in-scope selection/filter/view interactions to `cmd/sel` (task-type visibility, state toggles, expansion and taskboard options), expanded view command contracts accordingly, and validated with focused seam tests; `DetailsPanel` was audited and required no in-scope seam changes.
-- Phase 4 review follow-up: completed remaining View/Filter seam parity by routing `PluginDependencies` show-dependency toggles through `cmd.view`, adding `setShowDependencies` to view commands, moving remaining `availableFeatureStates` reads in `Sidebar`/`DetailsPanel` to `sel.filter`, and fixing store-mode `setAllStatesSelected(true)` to derive unique states from baseline features when no explicit filter list exists.
-- Phase 5 progress: migrated remaining feature read consumers (`Timeline`, `EmptyBoardModal`, `SearchTool`, `Sidebar`, `PluginDependencies`, `PluginGraph`, `PluginCost`, `PluginCostV1`, `PluginPlanHealth`, `PluginXYBoard`, `TimelineExportRenderer`) from direct state effective-feature reads to `sel.feature` seams, with compatibility fallbacks for seam-mocked tests.
-- Phase 5 progress: added `cmd.group`/`sel.group` seam surfaces (`groupCommands.js`, `groupSelectors.js`), wired them in `application/imports.js`, migrated `GroupContextMenu` group lifecycle/member operations to command/selector seams, and moved `ScenarioMenu` pending-group reads/create-confirm wiring onto the same seam.
-- Phase 5 progress: completed migration away from direct `GroupService.getEffectiveGroups` reads in runtime code by switching `FeatureBoard` and legacy group selector paths to `sel.group`-based effective-group derivation.
-- Phase 5 completed: finalized Scenario/Feature/Group/Plugin-state/View-restore seam rollout across runtime consumers (`cmd.*` / `sel.*`), split `DetailsPanel` into section render modules, and validated the end-to-end gate matrix (`npm test`, `npm run test:coverage`, `pytest`, Playwright chromium).
-- Closed Phase 5 store-mode parity gaps: view restore now applies full saved payloads (including plugin state), scenario/feature mutations emit legacy-equivalent capacity side effects, plugin clear preserves subscriber lifecycle, and group lookup is scenario-override aware.
-- Phase 6 started (dev-only): flipped `USE_STATE_STORE` default on, removed migrated-concern selector/state fallback reads to avoid masked regressions, and added an explicit flag-on Vitest variant (`test:state-store`) for repeatable cutover validation.
-- Phase 6 continued: migrated remaining packed-board/empty-board/sidebar/dependency/portfolio/plan-health/cost test seams to `cmd.*`/`sel.*` (removing legacy `state`-service coupling in updated suites) and validated under `test:state-store`.
-- Phase 6 stabilization: fixed a `DetailsPanel` selector shadowing bug in iteration loading, completed missing Phase 4 selector-seam mocks (FeatureBoard/FeatureCard/Portfolio tests), and hardened `findInBoard` for DOM-less teardown paths to eliminate full-suite unhandled rejections.
-- Phase 6 validation evidence completed in `dev`: flag-on regression gates (`npm test`, `npm run test:state-store`, `npm run test:coverage`, `pytest`, Playwright smoke + chromium suite) are green, and OFF-vs-ON performance measurements were recorded in `backup/architecture_v5/plan/phase6-performance-results.json`.
-- Phase 6 follow-up hardening: scenario consumers in Sidebar/TopMenu/FeatureBoard-init/ScenarioMenu now read via `sel.scenario` to prevent store-mode drift, and store-mode scenario commands mirror scenario list/active-id into legacy state as a temporary safety bridge until Phase 7 decommissioning.
-- Legacy state removal readiness: migrated app bootstrap sync path, ScenarioMenu actions, Sidebar task-filter/expansion reads, Plan/Team counters, board/group selected-plan flows, MainGraph, and cost/graph/history/markers plugin surfaces to `cmd.*`/`sel.*` seams, removing direct runtime `state` access in those Phase-7 blocker files.
-- Main graph parity fix: normalized project/team selection id matching so store selectors returning string ids still render capacity lines/bars when source project/team ids are numeric, preventing blank graph output after seam migration.
-- Phase 6 seam cleanup: removed remaining direct `State.js` runtime imports/usages in TopMenu/ViewSaveModal/ColorPopover/groupBandLayout/events-export-xy/portfolio renderers and unused imports in SearchTool/Timeline/ViewMenu/Dependencies; color updates now flow through `cmd.selection` and selector-backed data snapshots.
-- Phase 6 follow-up: migrated `dragManager` and `EventsPanel` fully to `sel/cmd`, retired `plugin-cost-v1` registration/config loading paths, and restored baseline/edit parity by falling back to legacy feature mutations when no mutable scenario is active so details-panel capacity/date edits and drag-resize propagate refresh + capacity events.
-- Filter-event stabilization: fixed a `FilterEvents.CHANGED` recursion path by honoring `suppressEvents` through `setSelectedTaskTypes` legacy bridging, and treated retired `plugin-cost-v1` runtime entries as deprecated so plugin config merge no longer logs noisy unknown-id warnings.
-- View/scenario menu parity: store-mode view restore now delegates to legacy view management and syncs selectors from legacy state, restoring responsive View selection clicks and scenario/menu population when store slices are temporarily empty.
-- Store-mode selection color parity: bootstrap now hydrates baseline plan/team entities from color-initialized working copies, and `sel.selection` now treats store baseline as canonical (with matching-id legacy metadata merge) so plan/team toggles no longer drop color dots.
-- State-store seam hardening: `application/imports.js` now wires `sel.*` and command factories without legacy-state injection (including corrected `viewRestore`/`scenario` arguments), and store selectors (`selection`/`filter`/`view`/`feature`/`capacity`) no longer read legacy `state` fallbacks when `USE_STATE_STORE` is enabled.
-- State-store startup path no longer bootstraps through `state.initState()`: app init now uses `cmd.data.bootstrapFromDataService()` plus store-backed view restore commands, and data bootstrap initializes baseline/scenarios/selection/task-type/state filters/colors directly from store + data service contracts.
-- Scenario activation hardening: fixed state-store scenario sync to avoid assigning getter-only legacy `state.scenarios` properties, preventing click-time `TypeError` crashes when selecting a scenario from the menu.
-- Main graph update parity: feature mutation commands now sync legacy scenario snapshots before capacity recomputation and normalize changed-id types for incremental recompute, restoring graph refresh on drag/resize and details-panel capacity edits.
-- Drag/resize persistence fix: feature-command fallback paths now sync legacy scenario changes back into store state, preventing cards from snapping back when edits occur in readonly/baseline scenario contexts.
-- Baseline parity fix: store feature selectors now apply overrides for the active baseline entry, so baseline card rendering stays in sync with drag/resize overrides and no longer snaps back.
-- Plugin development unified: all plugins now share a common base class, eliminating three generations of
-  incompatible plugin APIs. New plugins require significantly less boilerplate.
-- Plugins are now categorised as either toolbox-mounted or full-screen; each category has a purpose-built
-  base class that handles the corresponding lifecycle automatically.
-- Removed two obsolete feature flags that guarded transitions now complete; the Lit component system and
-  plugin system are unconditionally active.
-- Removed legacy iteration fallback logic; iteration resolution is now fully driven by project
-  iteration-set associations, making behaviour explicit and eliminating a hidden code path.
-- Removed completed migrations from the codebase; they have been applied on all supported installations
-  and no longer need to ship with the server.
-- Server configuration is now fully stored in diskcache; the `server_config.yaml` file is no longer read
-  or required at runtime.
-- Consolidated to a single storage instance for all server data. Previously separate storage setups for
-  different domains have been unified now that a single diskcache covers all namespaces.
-- The remote-backend cache (ADO task data, history, teams, plans, markers, iterations) now lives in a
-  dedicated `data/remote_cache` directory, isolated from authoritative server data. The cache directory
-  can be safely deleted to force a full ADO refresh without any risk to configuration, accounts,
-  sessions, or user scenarios.
-- All cached backend data domains now use a soft-freshness sidecar rather than a hard storage TTL. This
-  prevents a cache expiry from silently deleting data at the exact moment the ADO backend is unreachable
-  — stale data is served instead of an error.
-- Admin UI source merged into the main Vite build: a single `npm run build` now produces both the main
-  app and admin assets, sharing vendor chunks and requiring no separate build step or static file mount.
-- Removed the separate production-mode app factory; the single `make_app()` entry point now serves the
-  built frontend by default, eliminating a source of configuration drift between development and production.
-- Static assets are served at their natural paths so the browser's preload scanner can resolve them
-  without waiting for JavaScript, improving load time especially on first visit.
+- Replace passive Plan Health checks with live Reconciliation findings, category counts, focused task review, and non-blocking baseline/scenario schedule warnings. Warning markers open the matching issue details and actions, including when the review toolbox was hidden.
+- Make plan task types process-aware and catalogue-backed. Types already used by a plan are imported before plan validation and protected from accidental removal; discovery imports remain editable, task display tiers are configured by process, and per-plan history windows replace the retired `completed_retention_months` setting, which is migrated out of existing plans.
+- Apply configured task-type hierarchy consistently in filters, plan and team views, capacity graphs, cost ordering, admin validation, and generated plans. ADO process names remain catalogue metadata rather than planner task types or sidebar filters.
+- Exclude Azure DevOps work in the Removed category from planning calculations, honor administrator-configured display states, and limit Sidebar state/type choices to presentable work.
+- Calculate dated capacity and cost using the lowest-level allocation when parent and child allocations overlap. Unplanned work contributes no capacity load, cost, or precedence; lowest-level graphs use raw allocation lines.
+- Keep cost reports consistent with sidebar filters and the selected date window: hide dated rows wholly outside the window, preserve allocating hidden levels as context, and show selected tasks even without allocations. These display filters do not change allocation inputs or charged totals.
+- Make protected scenarios inspection-only across task, group, and plugin tools; the server also rejects protected saves and deletes. Editable scenarios preserve their own changes and view preferences, auto-save locally on the configured interval, and do not publish to Azure DevOps automatically.
+- Serve shared task snapshots immediately while refreshing in the background. Cache freshness is soft, so expired ADO data remains available during an outage; remote-backend cache is isolated under `data/remote_cache`, and migration `0026` moves leftover entries from `data/cache` at startup. The remote cache can be deleted to force a refresh without deleting authoritative configuration or user scenarios.
+- Store server configuration in diskcache; `server_config.yaml` is no longer read at runtime. The administration interface remains the place to manage these settings.
+- Consolidate Workforce administration around canonical team, group, staffing, and supplier data, replacing the separate People, Cost, and Teams screens. The v5 cutover preserves existing identities, saved records, and pricing bases. Team totals and expandable anonymous staffing composition are shown together, with a separate site inventory and clear unconfigured-staffing status.
+- Bring administration into shared application navigation with permission-aware switching between the planner and authorized configuration/admin screens.
+- Replace Ctrl+Shift display/search shortcuts with mnemonic board-letter shortcuts, add task-view and relationship-highlighting shortcuts, and provide a browser-local opt-out.
+- Standardize plugin lifecycle around shared base classes, with distinct lifecycle handling for toolbox-mounted and full-screen plugins.
+- Use persistent project and team identities instead of name-derived handles; saved selections, plan mappings, and cache references are migrated, while Azure DevOps allocation tokens remain distinct from local team IDs.
+- Update help and planning guidance to explain explicit task dates, available project hours, estimate uncertainty, team-specific man-days, and the input data needed for complete cost forecasts.
 
 ### Fixed
-- Restored the reconciliation review's missing `findingExplanation` and `categoryCounts` presentation exports.
-- Plan Health checks now use configured container order, independent of container names.
-- Opening the cost plugin closes an open details panel so the cost view is not hidden behind it.
-- FeatureBoard plan-filter parity: when all plans are deselected, card filtering now treats the empty selected-plan set as authoritative and renders an empty board instead of falling back to team-only matches.
-- Hardened Phase 3 hydration strictness: `hydrateBaseline`/`hydrateScenarioData` now reject invalid `ok` payload shapes with explicit `HYDRATION_FAILED` errors and no state mutation, and `application/imports.js` no longer exposes state-store data commands when `USE_STATE_STORE` is false.
-- Fixed admin config screens that were reading provider Result envelopes as raw payloads; groups/system/iterations/users/people/cost/area-mappings now consume `.data` correctly and display returned records, and Azure project browsing now reuses the saved ADO organization URL when calling `/api/azure/projects`.
-- Admin follow-up hardening for Phase 2 Result envelopes: utilities backup/restore and cache status flows now consume `result.data` and `error.message` correctly, plan-events datasource handles object-shaped errors safely, and admin global/plugins/iterations/base-config paths now use normalized Result unwrapping; added targeted component tests for these failure/success boundaries.
-- Eliminated a redundant JSON parse/stringify round-trip when cloning internal state; `structuredClone`
-  is faster and avoids unnecessary serialisation overhead.
-- Playwright e2e runs now start an isolated server with a test-only `PLANNER_SECRET_KEY`, bootstrap required admin/mock config via REST, and use dedicated `tests/e2e/.tmp-data` storage, preventing accidental writes to the repository `data/` directory.
-- Playwright setup now runs in explicit baseline-only mode to avoid hidden inactive-scenario dependencies, search-tool e2e verifies typed input plus activation behavior, and timeline panning coverage is split between user interaction and programmatic scroll behavior for clearer failure signals.
-- Admin UI now persists default field values (including feature flags) when saving configuration;
-  previously, fields that were never explicitly changed were silently omitted from the saved payload.
-- Stale cached data is now served when the ADO backend is unreachable at the moment of cache expiry for
-  history, teams, plans, markers, and iterations — matching the resilience already present for tasks.
-  Previously, a TTL lapse during an outage caused a hard failure for these domains.
-- Plugins now load correctly in production Docker bundles where Vite produces content-hashed asset
-  filenames; previously, mounted plugins failed silently at runtime because hashed chunk names were not
-  resolvable.
-- Fixed a stale import in the cost plugin that prevented the Docker frontend build from completing.
+- Preserve task allocations and dates when a resize exceeds the 100% man-day limit, and explain why the resize cannot proceed.
+- Treat an empty selected-plan set as authoritative, so deselecting all plans shows an empty board instead of matching tasks from other filters.
+- Keep read-only task details open on an ordinary click without requiring pointer movement; opening Cost also closes the details panel so it cannot obscure the report.
+- Preserve cached task, history, team, plan, marker, and iteration data when Azure DevOps is unavailable at cache expiry, rather than failing or discarding the cached snapshot.
+- Correct admin configuration screens to display API-returned records, browse Azure projects using the saved organization URL, and retain default fields and feature flags when saving unchanged configuration.
+- Accept valid saved-view team-selection maps during team-deletion impact review, preserving retained views and scenarios.
+- Preserve unresolved Azure DevOps allocation entries during reads and known-team edits, and allow workforce group changes when a task revision matches despite complementary retained context.
+- Load plugins correctly from content-hashed production Docker assets and restore successful frontend builds.
+
+## [v4.2.2] - 2026-10-06
+
+### Fixed
+- Azure DevOps refreshes now isolate connection state per worker thread so concurrent refreshes cannot disconnect each other and leave task data stale.
 
 ## [v4.2.1] - 2026-07-19
 

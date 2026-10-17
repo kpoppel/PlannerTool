@@ -53,7 +53,7 @@ General
 - Boolean `||` expressions are allowed when they are true boolean evaluations (for example conditions and boolean flags).
 - Fallback-style `||` defaults are restricted (for example `value || ''`, `value || []`, `value || null`) unless explicitly asked by the user or truly necessary.
 - If one of the restricted constructions above is truly necessary, confirm the reason with the user first, then proceed only after explicit confirmation.
-- Update the `CHANGELOG.md` file with a single line high level description of the change.  Do not change the template section. If there is a section `[vX.Y.Z] - unreleased` update this section. If no such section. _copy_ the template first to create a new varsioned but unlreleased section.
+- Update `CHANGELOG.md` for release-relevant additions, changes, or fixes; do not add an entry automatically for every code change. Describe the intent and outcome relative to the previous release, not implementation steps, intermediate phases, test results, or unrelated development fixes. Add concise entries under the appropriate Added, Changed, or Fixed heading in the current unreleased section. Do not change the template section. If there is no unreleased section for the target release, copy the template to create one.
 - This application has no mobile interactions. Never add CSS, create or run tests which test a mobile view.
 
 Git hook enforcement (required)
