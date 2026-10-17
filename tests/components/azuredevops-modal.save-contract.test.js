@@ -7,6 +7,7 @@ const mockCmd = vi.hoisted(() => ({
 }));
 
 const mockSel = vi.hoisted(() => ({
+  scenario: { isActiveScenarioMutable: vi.fn(() => true) },
   group: {
     getBaselineGroupById: vi.fn(),
   },
@@ -20,6 +21,20 @@ vi.mock('../../www/js/application/imports.js', () => ({
 import { PublishScenarioModal } from '../../www/js/components/PublishScenarioModal.lit.js';
 
 describe('PublishScenarioModal feature seam', () => {
+  it('does not revert or confirm publishing after edit access is lost', () => {
+    const modal = new PublishScenarioModal();
+    const published = vi.fn();
+    modal.addEventListener('scenario-publish', published);
+    mockSel.scenario.isActiveScenarioMutable.mockReturnValue(false);
+    const previousCalls = mockCmd.feature.revertFeature.mock.calls.length;
+    try {
+      modal._onRevertFeature('locked');
+      modal._onSave();
+      expect(mockCmd.feature.revertFeature.mock.calls.length).toBe(previousCalls);
+      expect(published).not.toHaveBeenCalled();
+    } finally { mockSel.scenario.isActiveScenarioMutable.mockReturnValue(true); }
+  });
+
   it('registers the backend-neutral publication component', () => {
     expect(customElements.get('publish-scenario-modal')).toBe(PublishScenarioModal);
   });

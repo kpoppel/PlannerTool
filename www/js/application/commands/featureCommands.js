@@ -11,6 +11,7 @@ import {
   getActiveScenario,
   getActiveScenarioId,
   getScenarioItems,
+  getScenarioAccess,
   withActiveScenario,
 } from '../shared/scenarioMutations.js';
 
@@ -107,6 +108,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null, noti
       if (!safeUpdates.length) return [];
 
       const snapshot = store.getState();
+      if (!getScenarioAccess(snapshot, getActiveScenarioId(snapshot)).canEdit) return [];
       const baselineById = getBaselineFeatureMap(snapshot);
       const childrenByParent = buildChildrenByParentMap(snapshot.baseline.features);
       const changedIds = new Set();
@@ -349,6 +351,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null, noti
       if (!id || !field) return null;
 
       const snapshot = store.getState();
+      if (!getScenarioAccess(snapshot, getActiveScenarioId(snapshot)).canEdit) return null;
       const mutation = withActiveScenario(snapshot, (scenario) =>
         withFeatureOverride(scenario, id, (current) => ({
           ...current,
@@ -385,6 +388,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null, noti
       if (!featureId) return null;
 
       const snapshot = store.getState();
+      if (!getScenarioAccess(snapshot, getActiveScenarioId(snapshot)).canEdit) return null;
       const mutation = withActiveScenario(snapshot, (scenario) =>
         withFeatureOverride(scenario, featureId, (current) => ({
           ...current,

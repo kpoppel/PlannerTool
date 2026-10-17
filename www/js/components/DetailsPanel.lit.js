@@ -478,7 +478,7 @@ export class DetailsPanelLit extends LitElement {
     const changedBanner =
       changedSet.size ?
         html`<div class="details-change-banner">
-          ${html`<button
+          ${model.header.readonly ? '' : html`<button
             class="details-revert"
             title="Revert changes"
             @click=${(ev) => {
@@ -507,7 +507,7 @@ export class DetailsPanelLit extends LitElement {
           ${this._renderField('Assignee', 'assignee', feature.assignee)}
           ${renderDetailsPanelScheduling({
             model: model.scheduling,
-            actions: this._controller.bindActions({
+            actions: this._controller.bindMutationActions({
               selectPreset: (id) => this._onSchedulePresetChange(id),
               changeStart: (value) => this._onStartDateChange(value),
               changeEnd: (value) => this._onEndDateChange(value),
@@ -520,7 +520,7 @@ export class DetailsPanelLit extends LitElement {
 
           ${renderDetailsPanelCapacity({
             model: model.capacity,
-            actions: this._controller.bindActions({
+            actions: this._controller.bindMutationActions({
               changeCapacity: (teamId, value) => this._saveCapacityEdit(teamId, value),
               removeTeam: (teamId) => this._handleDeleteCapacity(teamId),
               toggleAddTeam: () => this._handleAddTeamClick(),
@@ -535,7 +535,7 @@ export class DetailsPanelLit extends LitElement {
 
           ${renderDetailsPanelTags({
             model: model.tags,
-            actions: this._controller.bindActions({
+            actions: this._controller.bindMutationActions({
               changeDraft: (value) => this._onTagInput(value),
               addTag: () => this._addTag(),
               removeTag: (tag) => this._removeTag(tag),

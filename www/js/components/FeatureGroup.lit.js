@@ -29,6 +29,8 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { addDays, formatDate, parseDate } from './util.js';
+import { sel } from '../application/imports.js';
+import { store } from '../application/store.js';
 
 export class FeatureGroup extends LitElement {
   static properties = {
@@ -288,6 +290,7 @@ export class FeatureGroup extends LitElement {
   _onContextMenu(e) {
     e.preventDefault();
     e.stopPropagation();
+    if (!sel.scenario.isActiveScenarioMutable()) return;
     this.dispatchEvent(new CustomEvent('group-context-menu', {
       detail: { group: this.group, clientX: e.clientX, clientY: e.clientY },
       bubbles: true,
@@ -297,6 +300,10 @@ export class FeatureGroup extends LitElement {
 
   _onPointerDown(e) {
     if (e.button !== 0) return;
+    if (!sel.scenario.isActiveScenarioMutable()) {
+      this._onToggle(e);
+      return;
+    }
     e.preventDefault();
     this._dragStart = { x: e.clientX, y: e.clientY };
     this._dragging = false;
@@ -311,6 +318,7 @@ export class FeatureGroup extends LitElement {
   }
 
   _onPointerMove(e) {
+    if (!sel.scenario.isActiveScenarioMutable()) { this._onPointerCancel(); return; }
     if (!this._dragStart) return;
     if (this._activePointerId !== null && e.pointerId !== this._activePointerId) return;
     const dx = e.clientX - this._dragStart.x;
@@ -343,6 +351,7 @@ export class FeatureGroup extends LitElement {
   }
 
   _onPointerUp(e) {
+    if (!sel.scenario.isActiveScenarioMutable()) { this._onPointerCancel(); return; }
     if (!this._dragStart) return;
     if (this._activePointerId !== null && e.pointerId !== this._activePointerId) return;
 
@@ -399,6 +408,20 @@ export class FeatureGroup extends LitElement {
   // Render
   // ---------------------------------------------------------------------------
 
+  connectedCallback() {
+    super.connectedCallback();
+    this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (next, previous) => {
+      if (next.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) this._onPointerCancel();
+      this.requestUpdate();
+    });
+  }
+
+  disconnectedCallback() {
+    this._unsubscribeScenario();
+    this._onPointerCancel();
+    super.disconnectedCallback();
+  }
+
   render() {
     if (!this.group) return html``;
 
@@ -421,7 +444,7 @@ export class FeatureGroup extends LitElement {
       <div
         class="group-card"
         part="group-card"
-        style="background:${bg}; border:${border}; font-size:${depth > 0 ? '0.72rem' : '0.78rem'}; --drag-dx:${this._dragDx}px; --drag-dy:${this._dragDy}px;"
+        style="background:${bg}; border:${border}; font-size:${depth > 0 ? '0.72rem' : '0.78rem'}; --drag-dx:${this._dragDx}px; --drag-dy:${this._dragDy}px; cursor:${sel.scenario.isActiveScenarioMutable() ? 'grab' : 'pointer'};"
         @pointerdown=${this._onPointerDown}
         @pointermove=${this._onPointerMove}
         @pointerup=${this._onPointerUp}

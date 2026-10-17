@@ -13,6 +13,7 @@ import {
 } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { cmd, sel } from '../application/imports.js';
+import { store } from '../application/store.js';
 import { featureTypeKey } from '../application/shared/workItemDisplay.js';
 import { getIconTemplate } from '../services/IconService.js';
 import {
@@ -126,6 +127,13 @@ export class PluginPortfolioComponent extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (next, previous) => {
+      if (next.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) {
+        this._resetDragState();
+        this._cleanupPointerTracking();
+      }
+      this.requestUpdate();
+    });
 
     bus.on(AppEvents.READY, this._boundRefresh);
     bus.on(ProjectEvents.CHANGED, this._boundRefresh);
@@ -143,6 +151,7 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   disconnectedCallback() {
+    this._unsubscribeScenario();
     super.disconnectedCallback();
 
     bus.off(AppEvents.READY, this._boundRefresh);
@@ -453,6 +462,7 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _handleDragStart(event, feature, teamId) {
+    if (!sel.scenario.isActiveScenarioMutable()) { event.preventDefault(); return; }
     if (!feature) return;
     const fromState = String(feature.state || '');
     const featureId = String(feature.id);
@@ -482,7 +492,7 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _handleDragOver(event, stateName, teamId) {
-    if (!this._dragState?.active) return;
+    if (!sel.scenario.isActiveScenarioMutable() || !this._dragState.active) return;
     void stateName;
     const targetTeamId = teamId == null ? null : String(teamId);
     const sameRow =
@@ -508,7 +518,7 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _handleDrop(event, stateName, teamId) {
-    if (!this._dragState?.active) return;
+    if (!sel.scenario.isActiveScenarioMutable() || !this._dragState.active) return;
     event.preventDefault();
 
     const nextState = String(stateName || '');
@@ -677,7 +687,7 @@ export class PluginPortfolioComponent extends LitElement {
       <div
         class="pcard ${depthClass} ${selected ? 'selected' : ''} ${feature?.dirty ? 'dirty' : ''} ${dragging ? 'dragging' : ''}"
         style="border-left-color:${this._projectColorForFeature(feature)}"
-        draggable="true"
+        draggable=${sel.scenario.isActiveScenarioMutable() ? 'true' : 'false'}
         @pointerdown="${(event) => this._handleCardPointerDown(event, feature)}"
         @dragstart="${(event) => this._handleDragStart(event, feature, teamId)}"
         @dragend="${this._handleDragEnd}"

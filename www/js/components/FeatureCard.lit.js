@@ -10,6 +10,8 @@ import { getIconTemplate } from '../services/IconService.js';
 import { getBoardZoom, findInBoard } from './board-utils.js';
 import { hasTimelinePlacement, isAnchorPresentation } from '../application/shared/featurePresentation.js';
 import { ceilAllocation } from '../application/shared/teamAllocation.js';
+import { StoreController } from '../core/StoreController.js';
+import { store } from '../application/store.js';
 
 // Minimum visible gap (px) required to the left of a card, within the
 // scroll container's viewport, before its ghost title flips to the right.
@@ -565,6 +567,8 @@ export class FeatureCardLit extends LitElement {
 
   constructor() {
     super();
+    this._scenarioAccess = new StoreController(this, () => sel.scenario.isActiveScenarioMutable());
+    this._cancelGesture = null;
     this.feature = {};
     this.bus = null;
     this.teams = [];
@@ -677,6 +681,11 @@ export class FeatureCardLit extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (scenarios, previous) => {
+      if (scenarios.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) {
+        this._cancelEditingGesture();
+      }
+    });
     // Suppress clicks after drag ends
     this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
       if (p && String(p.featureId) === String(this.feature.id)) {
@@ -764,6 +773,8 @@ export class FeatureCardLit extends LitElement {
   }
 
   disconnectedCallback() {
+    this._cancelEditingGesture();
+    this._unsubscribeScenario();
     FeatureCardLit._pendingCards.delete(this);
     this._unsubDragEnd();
     this.removeEventListener('mousedown', this._onMouseDown);
@@ -855,6 +866,10 @@ export class FeatureCardLit extends LitElement {
   }
 
   _handleMouseDown(e) {
+    if (!sel.scenario.isActiveScenarioMutable()) {
+      e.stopPropagation();
+      return;
+    }
     const rootCard = this._rootCard ? this._rootCard : this.shadowRoot.querySelector('.feature-card');
     if (rootCard.classList.contains('small-feature')) return;
 
@@ -863,7 +878,7 @@ export class FeatureCardLit extends LitElement {
     if (path.includes(rh)) {
       e.stopPropagation();
       const datesEl = this.shadowRoot.querySelector('.feature-dates');
-      startResize(
+      this._cancelGesture = startResize(
         e,
         this.feature,
         this,
@@ -881,7 +896,7 @@ export class FeatureCardLit extends LitElement {
     const onPreMove = (ev) => {
       if (Math.abs(ev.clientX - startX) > 5) {
         cleanup();
-        startDragMove(
+        this._cancelGesture = startDragMove(
           e,
           self.feature,
           self,
@@ -906,6 +921,23 @@ export class FeatureCardLit extends LitElement {
     window.addEventListener('pointermove', onPreMove);
     window.addEventListener('mouseup', onPreUp);
     window.addEventListener('pointerup', onPreUp);
+  }
+
+  _cancelEditingGesture() {
+    if (this._cancelGesture !== null) {
+      this._cancelGesture();
+      this._cancelGesture = null;
+    }
+    if (this._boundOnPreMove) {
+      window.removeEventListener('mousemove', this._boundOnPreMove);
+      window.removeEventListener('pointermove', this._boundOnPreMove);
+    }
+    if (this._boundOnPreUp) {
+      window.removeEventListener('mouseup', this._boundOnPreUp);
+      window.removeEventListener('pointerup', this._boundOnPreUp);
+    }
+    this._boundOnPreMove = null;
+    this._boundOnPreUp = null;
   }
 
   _handleClick(e) {
@@ -940,6 +972,7 @@ export class FeatureCardLit extends LitElement {
   }
 
   _handleDoubleClick(e) {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
     const path = e.composedPath();
     if (path.includes(this.shadowRoot.querySelector('.drag-handle'))) return;
     cmd.feature.revertFeature(this.feature.id);
@@ -1105,7 +1138,7 @@ export class FeatureCardLit extends LitElement {
             </div>
           `
         : ''}
-        <div class="drag-handle" data-drag-handle part="drag-handle"></div>
+        ${sel.scenario.isActiveScenarioMutable() ? html`<div class="drag-handle" data-drag-handle part="drag-handle"></div>` : ''}
       </div>
       <reconciliation-task-marker .featureId=${this.feature.id}></reconciliation-task-marker>
       <div

@@ -28,13 +28,13 @@ export function renderDetailsPanelTags({ model, actions }) {
             tags.map((tag) => html`
               <span class="tag-chip">
                 <span>${tag}</span>
-                <button type="button" title="Remove tag ${tag}" @click=${() => actions.removeTag(tag)}>✕</button>
+                ${model.readonly ? '' : html`<button type="button" title="Remove tag ${tag}" @click=${() => actions.removeTag(tag)}>✕</button>`}
               </span>
             `)
           : html`<span>—</span>`}
           ${changed ? html`<span class="original-date">(was ${originalTags ? originalTags : '—'})</span>` : ''}
         </div>
-        <div class="tag-editor-row">
+        ${model.readonly ? '' : html`<div class="tag-editor-row">
           <input
             type="text"
             class="tag-input"
@@ -49,7 +49,7 @@ export function renderDetailsPanelTags({ model, actions }) {
             }}
           />
           <button type="button" class="tag-add-btn" @click=${actions.addTag}>Add</button>
-        </div>
+        </div>`}
       </div>
     </div>
   `;

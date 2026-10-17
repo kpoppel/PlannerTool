@@ -4,8 +4,12 @@ import asyncio
 from types import SimpleNamespace
 from pathlib import Path
 import pytest
+from contextlib import contextmanager
+from copy import deepcopy
 
 from planner_lib.scenarios import scenario_store as ss
+from planner_lib.storage.memory_backend import MemoryStorage
+from planner_lib.domain.scenarios import scenario_access
 
 
 SCENARIO_DEFAULTS = {
@@ -18,7 +22,56 @@ SCENARIO_DEFAULTS = {
 }
 
 
+def test_scenario_ownership_never_grants_nonowner_editing():
+    assert scenario_access('reader', 'owner', 'shared', False) == {
+        'canEdit': False, 'reason': 'not-owner',
+    }
+    assert scenario_access('admin', 'owner', 'shared', False)['canEdit'] is False
+    assert scenario_access('owner', 'owner', 'shared', False)['canEdit'] is True
+    assert scenario_access('owner', 'owner', 'shared', True)['canEdit'] is False
+
+
+def test_stored_readonly_cannot_be_overwritten_or_deleted(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    storage = MemoryStorage()
+    protected = {'id': 'locked', 'name': 'Locked', 'readonly': True, **SCENARIO_DEFAULTS}
+    storage.save('scenarios', 'owner_locked', protected)
+    for supplied in [{}, {'readonly': False}, {'access': {'canEdit': True, 'reason': None}}]:
+        with pytest.raises(PermissionError):
+            ss.save_user_scenario(storage, 'owner', 'locked', {'name': 'Changed', **supplied})
+        assert storage.load('scenarios', 'owner_locked') == protected
+    with pytest.raises(PermissionError):
+        ss.delete_user_scenario(storage, 'owner', 'locked')
+
+
+def test_baseline_is_reserved_and_access_metadata_is_not_persisted(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    storage = MemoryStorage()
+    with pytest.raises(PermissionError):
+        ss.save_user_scenario(storage, 'owner', 'baseline', {'name': 'No'})
+    with pytest.raises(PermissionError):
+        ss.delete_user_scenario(storage, 'owner', 'baseline')
+    meta = ss.save_user_scenario(storage, 'owner', 'editable', {
+        'name': 'Owned', 'access': {'canEdit': False}, 'user': 'intruder',
+    })
+    assert meta['access'] == {'canEdit': True, 'reason': None}
+    assert meta['user'] == 'owner'
+    raw = storage.load('scenarios', 'owner_editable')
+    assert 'access' not in raw and 'user' not in raw
+    assert ss.load_user_scenario(storage, 'owner', 'editable')['access'] == meta['access']
+    assert ss.list_user_scenarios(storage, 'owner')[0]['access'] == meta['access']
+
+
 class InMemoryBackend:
+    @contextmanager
+    def transaction(self):
+        before = deepcopy(self.store)
+        try:
+            yield
+        except Exception:
+            self.store = before
+            raise
+
     def __init__(self):
         self.store = {}
         self.backendsaved = []
@@ -77,7 +130,8 @@ def test_load_user_scenario_reads_value():
     b = InMemoryBackend()
     b.save(ss.SCENARIO_NS, 'u_1', {'a': 1})
     got = ss.load_user_scenario(b, 'u', '1')
-    assert got == {'a': 1, '_meta': {'id': '1'}, **SCENARIO_DEFAULTS}
+    assert got == {'a': 1, '_meta': {'id': '1'},
+                   'access': {'canEdit': True, 'reason': None}, **SCENARIO_DEFAULTS}
 
 
 def test_save_user_scenario_overrides_null_id(tmp_path, monkeypatch):

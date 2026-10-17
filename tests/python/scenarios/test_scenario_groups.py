@@ -108,3 +108,12 @@ def test_scenario_rejects_blank_name_and_empty_group_metadata(client):
         'name': 'Bad metadata', 'overrides': {},
         'groupOverrides': [], 'scenarioGroups': {'bad': 'shape'},
     }).status_code == 400
+
+
+@pytest.mark.parametrize('operation', ['save', 'delete'])
+def test_baseline_cannot_be_mutated_through_http(client, operation):
+    response = client.post('/api/scenario', json={
+        'op': operation, 'data': {'id': 'baseline', 'name': 'Forbidden', 'readonly': False},
+    })
+    assert response.status_code == 403
+    assert response.json()['error'] == 'scenario_read_only'

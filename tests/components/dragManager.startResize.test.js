@@ -1,7 +1,30 @@
 import { expect } from '@open-wc/testing';
 import { startResize } from '../../www/js/components/dragManager.js';
+import { store } from '../../www/js/application/store.js';
+import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 
 describe('startResize interactive', () => {
+  it('cancels an active resize on scenario change without committing into the next scenario', () => {
+    const previous = store.getState();
+    const state = createInitialAppState();
+    state.scenarios.items.push({ id: 'draft', readonly: false, overrides: {} });
+    state.scenarios.activeId = 'draft';
+    store.setState(state, true);
+    const updates = [];
+    const card = { style: { width: '200px' }, setLiveDates() {}, clearLiveDates() {} };
+    try {
+      startResize({ clientX: 100 }, { id: 'task', start: '2026-10-05', end: '2026-10-16' },
+        card, null, (value) => updates.push(value));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 170 }));
+      store.setState((current) => ({ ...current, scenarios: { ...current.scenarios, activeId: 'baseline' } }));
+      window.dispatchEvent(new MouseEvent('mouseup'));
+      expect(updates).to.deep.equal([]);
+      expect(card.style.width).to.equal('200px');
+    } finally {
+      store.setState(previous, true);
+    }
+  });
+
   it('startResize updates feature end on mousemove+mouseup', (done) => {
     // Create a fake feature and card
     const feature = {

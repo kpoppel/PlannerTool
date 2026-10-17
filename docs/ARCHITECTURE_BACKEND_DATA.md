@@ -69,6 +69,16 @@ planner_lib/
 | `DiskCacheStorage` | Implements the `StorageBackend` abstraction over diskcache/SQLite. |
 | `ReloadOrchestrator` | Applies admin configuration changes, rebuilds affected services, and invalidates remote data when required. |
 
+Scenario access is computed from authenticated account identity, persisted
+ownership and intrinsic read-only protection. Scenario list/get/save responses
+carry response-only `access` metadata; the durable scenario payload excludes
+submitted access and owner fields. Scenario store save/delete operations check
+the existing protected record and write inside one storage transaction.
+`baseline` is a reserved read-only identity. Frontend commands and presentation
+share one target-aware access resolver, including inactive scenario plugin data.
+Personal/view preferences remain independent of scenario-content edit access.
+No sharing discovery or persisted schema change is introduced by this contract.
+
 The focused protocol inventory is:
 
 | Protocol | Owner | Main operations |

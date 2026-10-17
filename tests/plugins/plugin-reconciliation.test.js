@@ -348,16 +348,14 @@ describe('Reconciliation detection menu', () => {
     expect(element.selectedId).toBe('past-unfinished:task');
   });
 
-  it('offers every configured definition state for future work and disables read-only fixes', async () => {
+  it('omits all field-changing reconciliation controls in read-only scenarios', async () => {
     const { element } = await openMenu();
     seedActions({ future: true, readonly: true });
     await element.updateComplete;
     element.shadowRoot.querySelector('[data-task-id="future-active:task"]').click();
     await element.updateComplete;
-    const choice = element.shadowRoot.querySelector('[data-state-choice]');
-    expect([...choice.options].map((option) => option.value)).toEqual(['', 'Draft', 'Ready']);
-    expect(choice.disabled).toBe(true);
-    expect(element.shadowRoot.querySelector('[data-action="apply-state"]').disabled).toBe(true);
+    expect(element.shadowRoot.querySelector('[data-state-choice]')).toBeNull();
+    expect(element.shadowRoot.querySelectorAll('[data-action="apply-state"], [data-action="edit-dates"], [data-action="accept-exception"], [data-action="save-scenario"], [data-action="publish-scenario"]')).toHaveLength(0);
     expect(element.shadowRoot.textContent).toContain('Read-only scenario');
     expect(() => element._onApplyState(element.snapshot.issues.find((issue) => issue.type === 'future-active')))
       .toThrow('read-only');
@@ -901,7 +899,7 @@ describe('Reconciliation detection menu', () => {
     expect(finding.textContent).not.toContain('days early');
     expect([...finding.querySelectorAll('button')].some((button) =>
       button.textContent.includes('Open related task'))).toBe(false);
-    expect(finding.querySelector('[data-action="edit-dependency"]').disabled).toBe(true);
+    expect(finding.querySelector('[data-action="edit-dependency"]')).toBeNull();
     expect(element.shadowRoot.querySelector('[data-action="open-task"]').title)
       .toContain('Delivery plan');
   });

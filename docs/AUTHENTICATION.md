@@ -18,6 +18,20 @@ user data, or backend credentials. Deleted accounts' data cannot be inherited
 by signing up again with the same email. Orphaned legacy data receives an
 unclaimed UUID rather than being assigned to a future account.
 
+Scenario ownership uses this account UUID, never an email or administrator role.
+Scenario reads expose computed `access: {canEdit, reason}` metadata. It is not
+persisted and client-supplied capabilities or owner fields cannot grant access.
+Stored read-only protection is checked transactionally for save and delete;
+omitting or changing the submitted `readonly` flag does not remove that lock.
+The synthetic `baseline` identity cannot be saved or deleted through the API.
+Denied protected writes return HTTP 403 with `error: scenario_read_only`.
+
+Sharing is not enabled yet. Future shared reads must retain the original owner
+and grant editing only to that owner, without an administrator override. Before
+sharing ships, publication must also authorize an explicit source-scenario
+identity on the server; current generic task/group write endpoints do not carry
+that context and frontend permission checks alone cannot provide that guarantee.
+
 An unrecognized browser sees enrollment on startup. Enter an email and real name,
 then save the account key and confirm it was saved. The first enrollment for
 each account is trusted: this intentionally accepts the small intranet rollout

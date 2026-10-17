@@ -1,5 +1,6 @@
 import { CapacityEvents, FeatureEvents, GroupEvents, ScenarioEvents } from '../../core/EventRegistry.js';
 import { dataService } from '../../services/dataService.js';
+import { getScenarioAccess } from '../shared/scenarioMutations.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -205,7 +206,7 @@ export function createScenarioCommands(store, bus, deps = {}) {
     },
 
     renameScenario(id, newName) {
-      if (id === 'baseline') return null;
+      if (!getScenarioAccess(store.getState(), id).canEdit) return null;
       if (typeof newName !== 'string' || !newName.trim()) return null;
 
       const snapshot = store.getState();
@@ -242,7 +243,7 @@ export function createScenarioCommands(store, bus, deps = {}) {
     },
 
     deleteScenario(id) {
-      if (id === 'baseline') return;
+      if (!getScenarioAccess(store.getState(), id).canEdit) return;
       const snapshot = store.getState();
       const existingScenarios = toScenarioItems(snapshot);
       const exists = existingScenarios.some((scenario) => scenario.id === id);
@@ -276,6 +277,7 @@ export function createScenarioCommands(store, bus, deps = {}) {
 
     markActiveScenarioChanged() {
       const snapshot = store.getState();
+      if (!getScenarioAccess(snapshot, snapshot.scenarios.activeId).canEdit) return false;
       const activeId = snapshot?.scenarios?.activeId ?? 'baseline';
       if (!activeId || activeId === 'baseline') return false;
 
@@ -306,8 +308,9 @@ export function createScenarioCommands(store, bus, deps = {}) {
 
     async saveScenario(id) {
       const scenario = getScenarioById(id);
-      if (!scenario || scenario.id === 'baseline') {
-        return { ok: true, data: scenario };
+      const targetId = id === undefined ? store.getState().scenarios.activeId : id;
+      if (!getScenarioAccess(store.getState(), targetId).canEdit) {
+        return { ok: false, error: { code: 'scenario_read_only', message: 'Scenario is read-only' } };
       }
 
       const result = await dataService.saveScenario(scenario);

@@ -1,6 +1,7 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
+import '../../www/js/components/FeatureCard.lit.js';
 import {
   buildDetailsPanelSchedulingModel,
   getDetailsPanelChildDateBounds,
@@ -12,6 +13,43 @@ import { FeatureEvents, ProjectEvents } from '../../www/js/core/EventRegistry.js
 import { store } from '../../www/js/application/store.js';
 
 describe('DetailsPanel editing and scheduling commands', () => {
+  it('keeps baseline details open after a stationary card click on the board', async () => {
+    store.setState((state) => ({ ...state, scenarios: { ...state.scenarios, activeId: 'baseline' } }));
+    const feature = { id: 'readonly-click', title: 'Read-only task', type: 'Feature', state: 'New',
+      start: '2026-10-05', end: '2026-10-16', capacity: [], orgLoad: '0%', relations: [], changedFields: [] };
+    sinon.stub(sel.feature, 'getSelectedFeature').returns(feature);
+    sinon.stub(sel.feature, 'getEffectiveFeatureById').returns(feature);
+    const board = await fixture(html`<div id="board-area"><feature-card-lit .feature=${feature} .bus=${bus}></feature-card-lit></div>`);
+    const panel = await fixture(html`<details-panel></details-panel>`);
+    const card = board.querySelector('feature-card-lit');
+    await card.updateComplete;
+    const target = card.shadowRoot.querySelector('.feature-card');
+    for (const type of ['mousedown', 'mouseup', 'click']) {
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, composed: true,
+        clientX: 100, clientY: 120, detail: 1 }));
+    }
+    await panel.updateComplete;
+    expect(panel.open).to.be.true;
+    expect(panel.feature.id).to.equal('readonly-click');
+    expect(panel.shadowRoot.querySelector('.capacity-bar-input')).to.equal(null);
+  });
+
+  it('renders read-only scenarios as values without field-changing controls', async () => {
+    store.setState((state) => ({ ...state, scenarios: { ...state.scenarios, activeId: 'baseline' } }));
+    const el = await fixture(html`<details-panel></details-panel>`);
+    sinon.stub(sel.selection, 'getTeams').returns([{ id: 't1', name: 'Team', color: '#ffffff' }]);
+    el.feature = { id: 'readonly-task', title: 'Inspection', state: 'New', type: 'Feature',
+      start: '2026-10-05', end: '2026-10-16', tags: 'Keep', capacity: [{ team: 't1', capacity: 20 }],
+      orgLoad: '20%', relations: [], changedFields: [] };
+    el.open = true;
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelectorAll('input, select, .state-chip, .capacity-bar-delete, .add-team-btn, .tag-chip button, .date-tool-btn, .clear-dates-btn, .details-revert').length).to.equal(0);
+    expect(el.shadowRoot.textContent).to.include('Keep');
+    expect(el.shadowRoot.textContent).to.include('20%');
+    expect(el.shadowRoot.textContent).to.include('2026-10-05');
+    expect(el.shadowRoot.querySelector('.details-close')).to.exist;
+  });
+
   it('applies a generic date preset by exact opaque id without changing native fields', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'preset-task' };
@@ -34,6 +72,10 @@ describe('DetailsPanel editing and scheduling commands', () => {
   let initialStoreState;
   beforeEach(async () => {
     initialStoreState = store.getState();
+    store.setState((state) => ({ ...state, scenarios: { ...state.scenarios,
+      activeId: 'editing-test', items: [...state.scenarios.items, { id: 'editing-test',
+        name: 'Editable', readonly: false, overrides: {}, groupOverrides: {}, scenarioGroups: [], pluginData: {} }],
+    } }));
     await customElements.whenDefined('details-panel');
   });
 
@@ -133,6 +175,47 @@ describe('DetailsPanel editing and scheduling commands', () => {
     expect(update.called).to.be.false;
     expect(el.feature.state).to.equal('Active');
     expect(el.editingState).to.be.false;
+  });
+
+  it('cancels queued wheel commits when the active scenario becomes read-only', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    sinon.stub(sel.selection, 'getTeams').returns([{ id: 't1', name: 'Team', color: '#ffffff' }]);
+    const feature = { id: 'first', state: 'New', capacity: [{ team: 't1', capacity: 20 }],
+      start: '2026-10-05', end: '2026-10-16', orgLoad: '20%', relations: [] };
+    el.feature = feature;
+    el.open = true;
+    sinon.stub(sel.feature, 'getEffectiveFeatureById').returns(feature);
+    await el.updateComplete;
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    const clock = sinon.useFakeTimers();
+    el.shadowRoot.querySelector('.capacity-bar-input')
+      .dispatchEvent(new WheelEvent('wheel', { deltaY: -1, cancelable: true }));
+    store.setState((state) => ({ ...state, scenarios: { ...state.scenarios,
+      items: state.scenarios.items.map((item) => item.id === 'editing-test' ? { ...item, readonly: true } : item),
+    } }));
+    await el.updateComplete;
+    clock.tick(100);
+    expect(update.called).to.be.false;
+    expect(el.shadowRoot.querySelector('.capacity-bar-input')).to.equal(null);
+  });
+
+  it('restores an abandoned wheel draft after switching away and back before render', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    sinon.stub(sel.selection, 'getTeams').returns([{ id: 't1', name: 'Team', color: '#ffffff' }]);
+    const feature = { id: 'first', state: 'New', capacity: [{ team: 't1', capacity: 20 }],
+      orgLoad: '20%', relations: [] };
+    el.feature = feature;
+    el.open = true;
+    sinon.stub(sel.feature, 'getEffectiveFeatureById').returns(feature);
+    await el.updateComplete;
+    const clock = sinon.useFakeTimers();
+    const input = el.shadowRoot.querySelector('.capacity-bar-input');
+    input.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, cancelable: true }));
+    store.setState((state) => ({ ...state, scenarios: { ...state.scenarios, activeId: 'baseline' } }));
+    store.setState((state) => ({ ...state, scenarios: { ...state.scenarios, activeId: 'editing-test' } }));
+    await el.updateComplete;
+    clock.tick(100);
+    expect(input.value).to.equal('20');
   });
 
   it('ignores an allocation blur from a previously rendered feature', async () => {

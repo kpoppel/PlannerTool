@@ -3,10 +3,26 @@ import {
   getActiveScenario,
   getActiveScenarioId,
   getScenarioItems,
+  getScenarioAccess,
   withActiveScenario,
 } from '../../../www/js/application/shared/scenarioMutations.js';
 
 describe('application/shared/scenarioMutations', () => {
+  it('resolves access for baseline, locked, editable and missing targets', () => {
+    const state = { scenarios: { activeId: 'owned', items: [
+      { id: 'baseline', readonly: false }, { id: 'locked', readonly: true },
+      { id: 'owned', readonly: false },
+      { id: 'shared', readonly: false, access: { canEdit: false, reason: 'not-owner' } },
+    ] } };
+    expect(getScenarioAccess(state, 'baseline')).toEqual({ canEdit: false, reason: 'baseline' });
+    expect(getScenarioAccess(state, 'locked')).toEqual({ canEdit: false, reason: 'read-only' });
+    expect(getScenarioAccess(state, 'owned')).toEqual({ canEdit: true, reason: null });
+    expect(getScenarioAccess(state, 'missing')).toEqual({ canEdit: false, reason: 'missing' });
+    expect(getScenarioAccess(state, 'shared')).toEqual({ canEdit: false, reason: 'not-owner' });
+    state.scenarios.activeId = 'baseline';
+    expect(withActiveScenario(state, () => { throw new Error('Must not edit baseline'); })).toBeNull();
+  });
+
   it('applies updater only to active mutable scenario', () => {
     const state = {
       scenarios: {

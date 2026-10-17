@@ -349,7 +349,9 @@ describe('DetailsPanel capacity section contract', () => {
 });
 
 describe('DetailsPanel behavior', () => {
+  afterEach(() => sinon.restore());
   beforeEach(async () => {
+    sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(true);
     await customElements.whenDefined('details-panel');
   });
 

@@ -212,6 +212,7 @@ export class ScenarioMenuLit extends LitElement {
         throw new Error('ScenarioMenu expected a valid scenario list from the store');
       }
 
+      if (!sel.scenario.getScenarioAccess(scenario.id).canEdit) return;
       await cmd.scenario.saveScenario(scenario.id);
       this.requestUpdate();
       console.log('[ScenarioMenu] Saved scenario:', scenario.name, sel.scenario.getChangedScenarioIds());
@@ -246,6 +247,7 @@ export class ScenarioMenuLit extends LitElement {
 
   async _onRenameScenario(e, scenario) {
     e.stopPropagation();
+    if (!sel.scenario.getScenarioAccess(scenario.id).canEdit) return;
     try {
       const { openScenarioRenameModal } = await import('./modalHelpers.js');
       await openScenarioRenameModal({ id: scenario.id, name: scenario.name });
@@ -256,6 +258,7 @@ export class ScenarioMenuLit extends LitElement {
 
   async _onDeleteScenario(e, scenario) {
     e.stopPropagation();
+    if (!sel.scenario.getScenarioAccess(scenario.id).canEdit) return;
     try {
       const { openScenarioDeleteModal } = await import('./modalHelpers.js');
       await openScenarioDeleteModal({ id: scenario.id, name: scenario.name });
@@ -266,6 +269,7 @@ export class ScenarioMenuLit extends LitElement {
 
   async _onRefreshBaseline(e, scenario) {
     e.stopPropagation();
+    if (scenario.id !== 'baseline') return;
     try {
       const result = await cmd.scenario.requestBaselineRefresh();
       if (!result.ok) throw new Error(result.error.message);
@@ -345,7 +349,7 @@ export class ScenarioMenuLit extends LitElement {
                 ${hasUnsavedChanges ?
                   html` <span class="scenario-warning" title="Unsaved changes">⚠️</span> `
                 : ''}
-                ${s.id === 'baseline' || s.readonly ?
+                ${s.id === 'baseline' ?
                   html`
                     <span class="scenario-actions">
                       <button
@@ -358,8 +362,8 @@ export class ScenarioMenuLit extends LitElement {
                       </button>
                     </span>
                   `
-                : html`
-                    <span class="scenario-actions">
+                : !sel.scenario.getScenarioAccess(s.id).canEdit ? '' : html`
+                  <span class="scenario-actions">
                       <button
                         type="button"
                         class="action-btn"

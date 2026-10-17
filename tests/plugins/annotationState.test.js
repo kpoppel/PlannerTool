@@ -88,10 +88,11 @@ describe('AnnotationState scenario integration', () => {
     expect(state.annotations).toEqual([{ id: 'ann_s2' }]);
   });
 
-  it('persists baseline annotations without special-casing storage in the plugin', () => {
+  it('preserves baseline annotations without allowing local or persisted mutations', () => {
     store.setState(
       withScenarios(
-        [{ id: 'baseline', name: 'Baseline', readonly: true, overrides: {}, groupOverrides: {}, scenarioGroups: [], pluginData: {} }],
+        [{ id: 'baseline', name: 'Baseline', readonly: true, overrides: {}, groupOverrides: {}, scenarioGroups: [],
+          pluginData: { 'plugin-annotations': [{ id: 'ann_baseline', type: 'note', text: 'Keep' }] } }],
         'baseline'
       ),
       true,
@@ -99,14 +100,13 @@ describe('AnnotationState scenario integration', () => {
     );
     state.reload();
 
-    state.add({ id: 'ann_baseline', type: 'note' });
-
-    const baseline = store.getState().scenarios.items.find((s) => s.id === 'baseline');
-    expect(baseline.pluginData['plugin-annotations']).toEqual([{ id: 'ann_baseline', type: 'note' }]);
-    // The scenario layer's local fallback store persisted it too, so a fresh
-    // load of the initial state picks the annotation back up.
-    expect(createInitialAppState().scenarios.items[0].pluginData['plugin-annotations']).toEqual([
-      { id: 'ann_baseline', type: 'note' },
-    ]);
+    const before = store.getState();
+    expect(state.add({ id: 'new', type: 'note' })).toBeNull();
+    expect(state.update('ann_baseline', { text: 'No' })).toBeNull();
+    expect(state.remove('ann_baseline')).toBeNull();
+    state.clear();
+    expect(state.annotations).toEqual([{ id: 'ann_baseline', type: 'note', text: 'Keep' }]);
+    expect(store.getState()).toBe(before);
+    expect(localStorage.length).toBe(0);
   });
 });

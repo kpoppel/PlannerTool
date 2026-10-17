@@ -125,6 +125,7 @@ export class TimelineBoard extends LitElement {
       // correct way to detect that an inner handler already claimed this event.
       if (e.defaultPrevented) return;
       e.preventDefault();
+      if (!sel.scenario.isActiveScenarioMutable()) return;
       const selectedPlans = sel.selection.getSelectedProjects();
       const planId = selectedPlans.length === 1 ? selectedPlans[0].id : null;
       const board = this.shadowRoot.querySelector('feature-board');

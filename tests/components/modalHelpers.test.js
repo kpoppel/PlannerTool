@@ -1,4 +1,6 @@
 import { expect, fixture } from '@open-wc/testing';
+import { store } from '../../www/js/application/store.js';
+import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 
 import {
   openConfigModal,
@@ -10,10 +12,18 @@ import {
 } from '../../www/js/components/modalHelpers.js';
 
 describe('modalHelpers', () => {
+  let previous;
   beforeEach(() => {
+    previous = store.getState();
+    const state = createInitialAppState();
+    state.scenarios.activeId = 'r';
+    state.scenarios.items.push(...['r', 'd'].map((id) => ({ id, name: id, readonly: false,
+      overrides: {}, groupOverrides: {}, scenarioGroups: [], pluginData: {} })));
+    store.setState(state, true);
     // Ensure document body is clean before each test
     document.body.innerHTML = '';
   });
+  afterEach(() => { document.body.replaceChildren(); store.setState(previous, true); });
 
   // Make customElements.define idempotent to avoid NotSupportedError when
   // the real component modules register the same tags during dynamic import.

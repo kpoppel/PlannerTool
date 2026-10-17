@@ -10,6 +10,7 @@ import './linkeditor/LinkEditorOverlay.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { findInBoard } from '../components/board-utils.js';
 import { pluginManager } from '../core/PluginManager.js';
+import { sel } from '../application/imports.js';
 
 export class PluginLinkEditorComponent extends LitElement {
   static properties = {
@@ -220,6 +221,9 @@ export class PluginLinkEditorComponent extends LitElement {
   }
 
   render() {
+    if (!sel.scenario.isActiveScenarioMutable()) return html`<div class="floating-toolbar">
+      <button class="close-btn" @click=${this._handleClose} title="Close">×</button>
+      <div class="toolbar-title">Link Editor</div></div>`;
     return html`
       <div class="floating-toolbar">
         <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>

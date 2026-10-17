@@ -1,4 +1,4 @@
-import { isMutableScenario } from '../shared/scenarioMutations.js';
+import { getScenarioAccess } from '../shared/scenarioMutations.js';
 
 function getScenarioItems(state) {
   return state.scenarios.items;
@@ -50,11 +50,11 @@ export function createScenarioSelectors(store) {
 
     /** False for the baseline and any read-only scenario — group edits are blocked there. */
     isActiveScenarioMutable() {
-      const state = store.getState();
-      if (getScenarioActiveId(state) === 'baseline') return false;
-      const scenario = selectors.getActiveScenario();
-      if (scenario === null) return false;
-      return isMutableScenario(scenario);
+      return selectors.getScenarioAccess(selectors.getActiveScenarioId()).canEdit;
+    },
+
+    getScenarioAccess(id) {
+      return getScenarioAccess(store.getState(), id);
     },
   };
 

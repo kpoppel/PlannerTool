@@ -1,4 +1,5 @@
 import { cmd, sel } from '../application/imports.js';
+import { store } from '../application/store.js';
 import { dataService } from '../services/dataService.js';
 import { groupService } from '../services/GroupService.js';
 import { assessReconciliation } from '../plugins/reconciliation/assessment.js';
@@ -82,6 +83,21 @@ function publicationContext() {
 
 
 export async function publishScenario(scenario) {
+  if (!sel.scenario.getScenarioAccess(scenario.id).canEdit) {
+    return { ok: false, error: { code: 'scenario_read_only', message: 'Scenario is read-only' } };
+  }
+  if (sel.scenario.getActiveScenarioId() !== scenario.id) {
+    return { ok: false, error: { code: 'scenario_changed', message: 'Activate the scenario before publishing' } };
+  }
+  let invalidated = false;
+  const unsubscribe = store.subscribe((state) => state.scenarios, (next) => {
+    if (next.activeId !== scenario.id || !sel.scenario.getScenarioAccess(scenario.id).canEdit) invalidated = true;
+  });
+  const assertCurrent = () => {
+    if (invalidated || !sel.scenario.getScenarioAccess(scenario.id).canEdit) {
+      throw new Error('Publication stopped because the scenario or edit access changed. Review again before publishing.');
+    }
+  };
   try {
     const fullScenarios = sel.scenario.getScenarios();
     const fullScenario = fullScenarios.find((s) => s.id === scenario.id);
@@ -99,6 +115,7 @@ export async function publishScenario(scenario) {
     }
 
     const { openPublishScenarioModal } = await import('./modalHelpers.js');
+    assertCurrent();
     const result = await openPublishScenarioModal({
       overrides,
       pendingGroupChanges,
@@ -106,6 +123,7 @@ export async function publishScenario(scenario) {
       decisions,
       publicationContext: context,
     });
+    assertCurrent();
     if (result === null) return { ok: true, data: { cancelled: true } };
 
     const { features = [], groupChanges = [] } = result;
@@ -113,6 +131,7 @@ export async function publishScenario(scenario) {
       return { ok: true, data: { cancelled: true } };
     }
     await cmd.scenario.invalidateAndRefreshBaseline();
+    assertCurrent();
     if (canonicalEvidence(publicationContext()) !== reviewedSource) {
       throw new Error('Source data changed since review. Review the scenario again before publishing.');
     }
@@ -127,6 +146,7 @@ export async function publishScenario(scenario) {
     const realIdByTempId = new Map();
     try {
       for (const op of groupChanges) {
+        assertCurrent();
         if (op.type === 'create' && op.group) {
           // op.group.members is the selected list produced by the publishing modal.
           const committedMembers = new Set(op.group.members.map(String));
@@ -149,6 +169,7 @@ export async function publishScenario(scenario) {
             members: [...committedMembers],
           };
           const created = await dataService.createGroup(payload);
+          assertCurrent();
           if (!created.ok) throw new Error(created.error.message);
           const realId = String(created.data.id);
           realIdByTempId.set(String(op.group.id), realId);
@@ -172,6 +193,7 @@ export async function publishScenario(scenario) {
           }
 
           const updated = await dataService.updateGroup(op.groupId, updatePayload);
+          assertCurrent();
           if (!updated.ok) throw new Error(updated.error.message);
 
           // Drop only committed deltas; other pending edits stay.
@@ -181,11 +203,13 @@ export async function publishScenario(scenario) {
         } else if (op.type === 'delete' && op.groupId) {
           const group = sel.group.getBaselineGroupById(op.groupId);
           const deleted = await dataService.deleteGroup(op.groupId);
+          assertCurrent();
           if (!deleted.ok) throw new Error(deleted.error.message);
           affectedPlanIds.add(String(group.plan_id));
           cmd.group.clearGroupOverride(op.groupId, null);
         }
         const saved = await cmd.scenario.saveScenario(scenario.id);
+        assertCurrent();
         if (!saved.ok) throw new Error(saved.error.message);
       }
     } finally {
@@ -199,7 +223,9 @@ export async function publishScenario(scenario) {
 
     // 2. Persist accepted feature overrides.
     if (features.length > 0) {
+      assertCurrent();
       const published = await dataService.publishBaseline(features);
+      assertCurrent();
       if (!published.ok) throw new Error(published.error.message);
       if (published.data.errors.length > 0) {
         if (published.data.updated > 0) await cmd.scenario.refreshBaseline();
@@ -213,7 +239,9 @@ export async function publishScenario(scenario) {
     //    This prevents stale temp IDs, already-deleted groups, and already-
     //    committed overrides from reappearing after a page reload.
     if (features.length > 0) {
+      assertCurrent();
       const saved = await cmd.scenario.saveScenario(scenario.id);
+      assertCurrent();
       if (!saved.ok) throw new Error(saved.error.message);
     }
 
@@ -230,5 +258,7 @@ export async function publishScenario(scenario) {
   } catch (err) {
     console.error('[ScenarioMenu] Failed to save:', err);
     return { ok: false, error: { message: err.message } };
+  } finally {
+    unsubscribe();
   }
 }

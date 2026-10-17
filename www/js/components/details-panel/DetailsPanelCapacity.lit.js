@@ -106,8 +106,17 @@ function commitCapacityInput(event, row, model, actions) {
 }
 
 function cancelCapacityWheel(input) {
-  clearTimeout(capacityWheelTimers.get(input));
+  const pending = capacityWheelTimers.get(input);
+  if (pending !== undefined) clearTimeout(pending.timer);
   capacityWheelTimers.delete(input);
+}
+
+export function cancelCapacityWheelEdits(root) {
+  for (const input of root.querySelectorAll('.capacity-bar-input')) {
+    const pending = capacityWheelTimers.get(input);
+    cancelCapacityWheel(input);
+    if (pending !== undefined) input.value = pending.previousValue;
+  }
 }
 
 function queueCapacityWheel(event, row, model, actions) {
@@ -115,12 +124,13 @@ function queueCapacityWheel(event, row, model, actions) {
   stepCapacityInput(event, model.manDays);
   if (input.disabled) return;
   cancelCapacityWheel(input);
-  capacityWheelTimers.set(input, setTimeout(() => {
+  const timer = setTimeout(() => {
     capacityWheelTimers.delete(input);
     // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (!input.isConnected) return;
     commitCapacityInput({ target: input }, row, model, actions);
-  }, WHEEL_COMMIT_DELAY));
+  }, WHEEL_COMMIT_DELAY);
+  capacityWheelTimers.set(input, { timer, previousValue: row.inputValue });
 }
 
 /** Render a capacity model using value-based actions, without a panel host. */
@@ -133,13 +143,14 @@ export function renderDetailsPanelCapacity({ model, actions }) {
           <div class="capacity-bar-row">
             <div class="capacity-bar-header">
               <span class="capacity-bar-name">${row.name}</span>
-              <span class="capacity-bar-delete" @click=${(event) => {
+              ${model.readonly ? '' : html`<span class="capacity-bar-delete" @click=${(event) => {
                 event.stopPropagation();
                 actions.removeTeam(row.teamId);
-              }}>✕</span>
+              }}>✕</span>`}
             </div>
             <div class="capacity-bar-container">
               <div class="capacity-bar-bg" @click=${(event) => {
+                if (model.readonly) return;
                 event.stopPropagation();
                 const input = event.currentTarget.parentElement.querySelector('.capacity-bar-input');
                 input.focus();
@@ -151,7 +162,8 @@ export function renderDetailsPanelCapacity({ model, actions }) {
                 </div>
               </div>
               <div class="capacity-bar-input-container" title=${row.reason}>
-                <input type="number" class="capacity-bar-input" min="0" max=${row.max}
+                ${model.readonly ? html`<span class="capacity-value">${row.inputValue}${model.manDays ? ' MD' : '%'}</span>`
+                : html`<input type="number" class="capacity-bar-input" min="0" max=${row.max}
                   step="1" ?required=${model.manDays}
                   aria-label=${`${row.name} allocation ${model.manDays ? 'man-days' : 'percent'}`}
                   ?disabled=${row.reason !== ''}
@@ -169,14 +181,14 @@ export function renderDetailsPanelCapacity({ model, actions }) {
                   @blur=${(event) => commitCapacityInput(event, row, model, actions)}
                   @focus=${(event) => event.target.select()}
                   @wheel=${(event) => queueCapacityWheel(event, row, model, actions)}
-                />
+                />`}
               </div>
             </div>
             ${row.reason !== '' ? html`<div class="allocation-reason">${row.reason}</div>` : ''}
           </div>
         `)}
       </div>
-      <div class="add-team-row">
+      ${model.readonly ? '' : html`<div class="add-team-row">
         ${model.showAddTeamPopover ? html`
           <form class="add-team-form" @submit=${(event) => {
             event.preventDefault();
@@ -216,7 +228,7 @@ export function renderDetailsPanelCapacity({ model, actions }) {
             actions.toggleAddTeam();
           }}>+ Add Team</div>
         `}
-      </div>
+      </div>`}
       ${model.summary.visible ? html`
         <div class="total-allocation-box">
           <div class="total-allocation-header">

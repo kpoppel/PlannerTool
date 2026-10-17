@@ -61,6 +61,24 @@ describe('application/commands/featureCommands', () => {
     store.setState(buildState(), true, 'test.resetStore');
   });
 
+  it('rejects every field mutation on readonly scenarios without recalculation or events', () => {
+    for (const id of ['baseline', 's1']) {
+      const state = buildState();
+      state.scenarios.activeId = id;
+      state.scenarios.items[0] = { ...state.scenarios.items[0], id, readonly: true };
+      store.setState(state, true);
+      const recompute = vi.fn();
+      const events = { emit: vi.fn() };
+      const commands = createFeatureCommands(store, events, recompute);
+      expect(commands.updateFeatureDates([{ id: 'f1', end: '2026-02-01' }])).toEqual([]);
+      expect(commands.updateFeatureField('f1', 'state', 'Blocked')).toBeNull();
+      expect(commands.setScenarioOverride('f1', '2026-01-01', '2026-02-01')).toBeNull();
+      expect(store.getState()).toBe(state);
+      expect(events.emit).not.toHaveBeenCalled();
+      expect(recompute).not.toHaveBeenCalled();
+    }
+  });
+
   it('updateFeatureDates writes overrides for each feature id', () => {
     const bus = { emit: vi.fn() };
     const recomputeCapacity = vi.fn();

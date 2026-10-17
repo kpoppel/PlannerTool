@@ -8,13 +8,11 @@
  *                                so different scenarios can carry different plugin data)
  *
  * The scenario model stores this as an opaque `scenario.pluginData[key]` bag —
- * it never interprets what any plugin key means. Baseline has no server-side
- * scenario record, so its bag is transparently persisted to a local fallback
- * store (`localScenarioPluginData.js`) instead of via Save Scenario.
+ * it never interprets what any plugin key means. Read-only scenario bags remain
+ * available for inspection but cannot be changed by plugins.
  */
 import { ScenarioEvents } from '../../core/EventRegistry.js';
-import { getActiveScenarioId, getScenarioItems } from '../shared/scenarioMutations.js';
-import { saveLocalPluginData } from '../shared/localScenarioPluginData.js';
+import { getActiveScenarioId, getScenarioItems, getScenarioAccess } from '../shared/scenarioMutations.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -46,10 +44,7 @@ export function createPluginScenarioDataCommands(store, bus) {
 
     set(scenarioId, key, value) {
       const snapshot = store.getState();
-      const exists = getScenarioItems(snapshot).some((candidate) => candidate.id === scenarioId);
-      if (!exists) return null;
-
-      let nextBagForLocalPersist = null;
+      if (!getScenarioAccess(snapshot, scenarioId).canEdit) return null;
 
       store.setState(
         (state) => ({
@@ -60,7 +55,6 @@ export function createPluginScenarioDataCommands(store, bus) {
             items: getScenarioItems(state).map((scenario) => {
               if (scenario.id !== scenarioId) return scenario;
               const nextBag = { ...scenario.pluginData, [key]: value };
-              if (scenarioId === 'baseline') nextBagForLocalPersist = nextBag;
               return { ...scenario, pluginData: nextBag };
             }),
           },
@@ -68,12 +62,6 @@ export function createPluginScenarioDataCommands(store, bus) {
         false,
         'pluginScenarioData.set'
       );
-
-      // Baseline has no server-side scenario record, so its pluginData bag is
-      // persisted to the local fallback store instead of via Save Scenario.
-      if (scenarioId === 'baseline' && nextBagForLocalPersist) {
-        saveLocalPluginData('baseline', nextBagForLocalPersist);
-      }
 
       bus.emit(ScenarioEvents.UPDATED);
       return value;

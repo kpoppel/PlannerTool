@@ -4,6 +4,9 @@
  * Provides centralized state management for link editing operations
  */
 
+import { cmd, sel } from '../../application/imports.js';
+import { store } from '../../application/store.js';
+
 // Link types available for editing
 export const LINK_TYPES = {
   PREDECESSOR: 'Predecessor',
@@ -34,6 +37,14 @@ class LinkEditorState {
     // Track edited relations per feature (stored as scenario overrides)
     // This is not persisted here but rather synced with the active scenario
     this.relationEdits = new Map();
+    store.subscribe((state) => state.scenarios, (next, previous) => {
+      if (next.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) {
+        this.enabled = false;
+        this.pendingAction = null;
+        this.hoveredCardId = null;
+        this.notify();
+      }
+    });
   }
 
   /**
@@ -63,6 +74,7 @@ class LinkEditorState {
    * Enable link editing mode
    */
   enable() {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
     if (this.enabled) return;
     this.enabled = true;
     this.pendingAction = null;
@@ -86,6 +98,7 @@ class LinkEditorState {
    * @param {string} fromId - source feature ID
    */
   startAction(action, fromId) {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
     this.pendingAction = { action, fromId };
     this.notify();
   }
@@ -104,6 +117,7 @@ class LinkEditorState {
    * @returns {boolean} true if action was completed
    */
   completeAction(targetId) {
+    if (!sel.scenario.isActiveScenarioMutable()) { this.cancelAction(); return false; }
     if (!this.pendingAction) return false;
 
     const { action, fromId } = this.pendingAction;
@@ -115,10 +129,10 @@ class LinkEditorState {
     }
 
     // Create or update the relation
-    this._applyRelationChange(action, fromId, targetId);
+    const changed = this._applyRelationChange(action, fromId, targetId);
 
     this.cancelAction();
-    return true;
+    return changed;
   }
 
   /**
@@ -136,83 +150,16 @@ class LinkEditorState {
    * @private
    */
   _applyRelationChange(action, fromId, targetId) {
-    // Use the store-backed selector surface for scenario and feature lookup so
-    // link edits stay aligned with the same effective data the rest of the app renders.
-    import('../../application/imports.js').then(({ sel }) => {
-      try {
-        const seam = /** @type {any} */ (sel);
-        const scenario = /** @type {any} */ (seam.scenario.getActiveScenario());
-        if (!scenario) {
-          console.warn('[LinkEditorState] No active scenario');
-          return;
-        }
-
-        const baselineFeature = /** @type {any} */ (seam.feature.getBaselineFeatureById(fromId));
-        if (!baselineFeature) {
-          console.warn('[LinkEditorState] Feature not found:', fromId);
-          return;
-        }
-
-        // Start from the active scenario override when present; otherwise fall back
-        // to the baseline feature's relations and apply the requested change in place.
-        let relations = [];
-        if (
-          scenario.overrides &&
-          scenario.overrides[fromId] &&
-          scenario.overrides[fromId].relations
-        ) {
-          relations = [...scenario.overrides[fromId].relations];
-        } else if (baselineFeature.relations) {
-          relations = [...baselineFeature.relations];
-        }
-
-        // Apply the change based on the relation type.
-        if (action === ACTIONS.PARENT) {
-          // Parent links replace any existing Parent relation on the feature.
-          relations = relations.filter((r) => {
-            const relType = r.type || r.relationType || 'Related';
-            return relType !== 'Parent';
-          });
-          relations.push({ type: 'Parent', id: targetId });
-        } else {
-          // Predecessor / Successor / Related links are only added when missing.
-          const existingIndex = relations.findIndex((r) => {
-            const relType = r.type || r.relationType || 'Related';
-            const relId = String(r.id || r);
-            return relType === action && relId === String(targetId);
-          });
-
-          if (existingIndex === -1) {
-            relations.push({ type: action, id: targetId });
-          }
-        }
-
-        // Update scenario override
-        if (!scenario.overrides) scenario.overrides = {};
-        if (!scenario.overrides[fromId]) {
-          scenario.overrides[fromId] = {};
-        }
-        scenario.overrides[fromId].relations = relations;
-
-        // Trigger feature update event
-        import('../../core/EventBus.js').then(({ bus }) => {
-          import('../../core/EventRegistry.js').then(({ FeatureEvents }) => {
-            bus.emit(FeatureEvents.UPDATED, { id: fromId });
-            console.log(
-              '[LinkEditorState] Created link:',
-              action,
-              fromId,
-              '->',
-              targetId
-            );
-          });
-        });
-
-        this.notify();
-      } catch (err) {
-        console.error('[LinkEditorState] Error applying relation change:', err);
-      }
-    });
+    if (!sel.scenario.isActiveScenarioMutable()) return false;
+    const feature = sel.feature.getEffectiveFeatureById(fromId);
+    if (feature === null) return false;
+    const relations = action === ACTIONS.PARENT
+      ? feature.relations.filter((relation) => relation.type !== 'Parent')
+      : [...feature.relations];
+    if (!relations.some((relation) => relation.type === action && String(relation.id) === String(targetId))) {
+      relations.push({ type: action, id: targetId });
+    }
+    return cmd.feature.updateFeatureField(fromId, 'relations', relations) !== null;
   }
 
   /**

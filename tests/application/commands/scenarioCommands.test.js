@@ -43,6 +43,23 @@ describe('application/commands/scenarioCommands', () => {
     store.setState(withScenarioState(), true, 'test.resetStore');
   });
 
+  it('rejects readonly management and save, while allowing an editable copy', async () => {
+    const state = withScenarioState();
+    state.scenarios.items[0].readonly = true;
+    store.setState(state, true);
+    const events = { emit: vi.fn() };
+    const commands = createScenarioCommands(store, events, { recomputeCapacity: vi.fn() });
+    expect(commands.renameScenario('s1', 'No')).toBeNull();
+    commands.deleteScenario('s1');
+    expect(commands.markActiveScenarioChanged()).toBe(false);
+    expect(await commands.saveScenario('s1')).toMatchObject({ ok: false });
+    expect(store.getState()).toBe(state);
+    expect(events.emit).not.toHaveBeenCalled();
+    const copy = commands.cloneScenario('s1', 'Copy');
+    expect(copy.id).not.toBe('s1');
+    expect(copy.readonly).not.toBe(true);
+  });
+
   it('cloneScenario deep-clones mutable branches and emits updated/list', () => {
     const bus = { emit: vi.fn() };
     const commands = createScenarioCommands(store, bus, {

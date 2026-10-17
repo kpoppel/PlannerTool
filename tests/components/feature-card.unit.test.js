@@ -4,6 +4,15 @@ import '../../www/js/components/FeatureCard.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 
 describe('FeatureCardLit basic behaviors', () => {
+  it('omits resize handles and ignores revert gestures when scenario access denies editing', async () => {
+    sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(false);
+    const revert = sinon.stub(cmd.feature, 'revertFeature');
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    expect(el.shadowRoot.querySelector('.drag-handle')).to.be.null;
+    el._handleDoubleClick({ composedPath: () => [] });
+    expect(revert.called).to.be.false;
+  });
+
   afterEach(() => {
     sinon.restore();
   });
@@ -177,6 +186,7 @@ describe('FeatureCardLit basic behaviors', () => {
   });
 
   it('reverts the scenario override when the card is double-clicked', async () => {
+    sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(true);
     const revertFeature = sinon.stub(cmd.feature, 'revertFeature');
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = { id: 'f4', title: 'Reset me', start: '2025-02-01', end: '2025-02-05' };

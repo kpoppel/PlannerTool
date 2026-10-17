@@ -26,6 +26,7 @@
 
 import { LitElement, html } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
+import { store } from '../application/store.js';
 import { RANK_GAP } from '../application/shared/ordering.js';
 import { groupContextMenuStyles } from './GroupContextMenu.styles.js';
 import './Modal.lit.js';
@@ -122,6 +123,19 @@ class GroupContextMenu extends LitElement {
 
   _onOutsideClick() {
     this._close();
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (next, previous) => {
+      if (next.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) this._close();
+    });
+  }
+
+  disconnectedCallback() {
+    this._unsubscribeScenario();
+    this._close();
+    super.disconnectedCallback();
   }
 
   // ---------------------------------------------------------------------------

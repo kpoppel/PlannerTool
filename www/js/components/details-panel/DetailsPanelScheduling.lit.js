@@ -69,6 +69,10 @@ export function buildDetailsPanelSchedulingModel({ feature, presets, childrenByP
 
 /** Render scheduling controls with value-based actions, not host-private handlers. */
 export function renderDetailsPanelScheduling({ model, actions }) {
+  if (model.readonly) return html`
+    <div class="details-label" style="margin-top:8px;">Scheduling</div>
+    <div class="date-row"><span class="details-value">${model.start === '' ? '—' : model.start}</span>
+      <span class="date-sep">→</span><span class="details-value">${model.end === '' ? '—' : model.end}</span></div>`;
   const {
     start, end, startChanged, endChanged, startTitle, endTitle,
     hasChildren, hasAnyDate, typeLabel, selectedPresetId,

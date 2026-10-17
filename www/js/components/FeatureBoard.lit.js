@@ -387,6 +387,7 @@ class FeatureBoard extends LitElement {
   }
 
   _onGroupDragPreview(e) {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
     const detail = e.detail;
     const group = detail && detail.group;
     const groupId = group && group.id;
@@ -451,6 +452,7 @@ class FeatureBoard extends LitElement {
   }
 
   _shiftGroupContentsByDeltaX(groupObj, deltaX) {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
     const groupRow = this._fullRenderList.find(
       (item) => item.isGroup && String(item.id) === String(groupObj.id)
     );
@@ -529,6 +531,7 @@ class FeatureBoard extends LitElement {
   }
 
   _onGroupDragEnd(e) {
+    if (!sel.scenario.isActiveScenarioMutable()) { this.clearInsertionCaret(); return; }
     const detail = e.detail;
     const group = detail && detail.group;
     const groupId = group && group.id;

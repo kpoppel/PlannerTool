@@ -14,13 +14,23 @@ export function getActiveScenario(state) {
 }
 
 export function isMutableScenario(scenario) {
-  return scenario.readonly !== true;
+  return scenario !== null && scenario !== undefined
+    && scenario.id !== 'baseline' && scenario.readonly !== true
+    && (!Object.hasOwn(scenario, 'access') || scenario.access.canEdit === true);
 }
 
-export function withActiveScenario(state, updater, options = { allowBaseline: true }) {
+export function getScenarioAccess(state, scenarioId) {
+  const scenario = getScenarioItems(state).find((item) => item.id === scenarioId);
+  if (scenario === undefined) return { canEdit: false, reason: 'missing' };
+  if (scenario.id === 'baseline') return { canEdit: false, reason: 'baseline' };
+  if (Object.hasOwn(scenario, 'access') && !scenario.access.canEdit) return scenario.access;
+  if (!isMutableScenario(scenario)) return { canEdit: false, reason: 'read-only' };
+  return { canEdit: true, reason: null };
+}
+
+export function withActiveScenario(state, updater) {
   const activeId = getActiveScenarioId(state);
-  const allowBaseline = options.allowBaseline;
-  if (!allowBaseline && activeId === 'baseline') return null;
+  if (!getScenarioAccess(state, activeId).canEdit) return null;
 
   let changed = false;
   const nextItems = getScenarioItems(state).map((scenario) => {

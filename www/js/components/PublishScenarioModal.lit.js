@@ -2,6 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { cmd, sel } from '../application/imports.js';
 import { projectPublication } from './scenarioPublication.js';
+import { store } from '../application/store.js';
 
 /** Field names supported in feature-override rows, in display order. */
 const FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath', 'tags'];
@@ -57,6 +58,7 @@ export class PublishScenarioModal extends LitElement {
   }
 
   firstUpdated() {
+    if (!sel.scenario.isActiveScenarioMutable()) { this._onCancel(); return; }
     // All cells start deselected — the user selects what to persist via
     // cell clicks, column header clicks, or the Toggle All button.
     // Open the inner modal once rendered.
@@ -314,6 +316,7 @@ export class PublishScenarioModal extends LitElement {
    * @param {string} id  Feature / task id
    */
   _onRevertFeature(id) {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
     if (!id) return;
     // Remove any selected keys for this feature so the selection stays consistent.
     const next = new Set(this._selected);
@@ -328,6 +331,7 @@ export class PublishScenarioModal extends LitElement {
   }
 
   _onSave() {
+    if (!sel.scenario.isActiveScenarioMutable()) { this._onCancel(); return; }
     // Feature overrides: only selected fields.
     const featuresOut = [];
     for (const [id, ov] of Object.entries(this.overrides)) {
@@ -380,6 +384,18 @@ export class PublishScenarioModal extends LitElement {
   _onCancel() {
     this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
     this.remove();
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (next, previous) => {
+      if (next.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) this._onCancel();
+    });
+  }
+
+  disconnectedCallback() {
+    this._unsubscribeScenario();
+    super.disconnectedCallback();
   }
 
   _renderPublicationSummary() {
@@ -682,6 +698,7 @@ export class PublishScenarioModal extends LitElement {
   }
 
   render() {
+    if (!sel.scenario.isActiveScenarioMutable()) return html``;
     const groupOps = this.pendingGroupChanges;
 
     // Compute feature-field rows.

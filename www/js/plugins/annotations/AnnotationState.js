@@ -9,7 +9,7 @@ import { generateId } from './AnnotationStorage.js';
 import { store } from '../../application/store.js';
 import { bus } from '../../core/EventBus.js';
 import { ScenarioEvents } from '../../core/EventRegistry.js';
-import { cmd } from '../../application/imports.js';
+import { cmd, sel } from '../../application/imports.js';
 
 // ============================================================================
 // Scenario-scoped persistence
@@ -19,9 +19,7 @@ import { cmd } from '../../application/imports.js';
 // scenario's own annotation set. `cmd.pluginScenarioData` is the generic,
 // plugin-agnostic storage seam for this (see
 // application/commands/pluginScenarioDataCommands.js) which this plugin uses
-// for every scenario, including the synthetic 'baseline' scenario — the
-// scenario layer itself owns the fallback storage for scenarios with no
-// server-side record, so this plugin has no storage knowledge of its own.
+// for editable scenarios. Existing read-only annotation sets remain visible.
 const PLUGIN_DATA_KEY = 'plugin-annotations';
 
 function getActiveScenarioId() {
@@ -201,6 +199,19 @@ export class AnnotationState {
     this._listeners = new Set();
     this._enabled = false;
     this._activeScenarioId = getActiveScenarioId();
+    this._canEdit = sel.scenario.isActiveScenarioMutable();
+    store.subscribe((state) => state.scenarios, () => {
+      const canEdit = sel.scenario.isActiveScenarioMutable();
+      const id = getActiveScenarioId();
+      if (id !== this._activeScenarioId || canEdit !== this._canEdit) {
+        this._activeScenarioId = id;
+        this._canEdit = canEdit;
+        this._currentTool = TOOLS.SELECT;
+        this._selectedId = null;
+        this._annotations = readAnnotationsForActiveScenario();
+        this._notify();
+      }
+    });
 
     // Load persisted annotations for whichever scenario is currently active
     this._annotations = readAnnotationsForActiveScenario();
@@ -246,6 +257,9 @@ export class AnnotationState {
     return this._enabled;
   }
 
+  get canEdit() { return sel.scenario.isActiveScenarioMutable(); }
+  get scenarioId() { return getActiveScenarioId(); }
+
   get count() {
     return this._annotations.length;
   }
@@ -278,6 +292,7 @@ export class AnnotationState {
   // ---------------------------
 
   setTool(tool) {
+    if (!this.canEdit && tool !== TOOLS.SELECT) return;
     if (Object.values(TOOLS).includes(tool)) {
       this._currentTool = tool;
       this._notify();
@@ -309,6 +324,7 @@ export class AnnotationState {
   // ---------------------------
 
   add(annotation) {
+    if (!this.canEdit) return null;
     this._annotations.push(annotation);
     this._persist();
     this._notify();
@@ -316,6 +332,7 @@ export class AnnotationState {
   }
 
   update(id, updates) {
+    if (!this.canEdit) return null;
     const idx = this._annotations.findIndex((a) => a.id === id);
     if (idx !== -1) {
       this._annotations[idx] = { ...this._annotations[idx], ...updates };
@@ -327,6 +344,7 @@ export class AnnotationState {
   }
 
   remove(id) {
+    if (!this.canEdit) return null;
     const idx = this._annotations.findIndex((a) => a.id === id);
     if (idx !== -1) {
       const removed = this._annotations.splice(idx, 1)[0];
@@ -341,6 +359,7 @@ export class AnnotationState {
   }
 
   clear() {
+    if (!this.canEdit) return;
     this._annotations = [];
     this._selectedId = null;
     this._persist();

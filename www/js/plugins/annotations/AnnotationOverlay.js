@@ -42,6 +42,7 @@ export class AnnotationOverlay extends LitElement {
     this.annotations = [];
 
     this._state = getAnnotationState();
+    this._scenarioId = this._state.scenarioId;
     this._unsubscribe = null;
     this._dragState = null;
     this._drawState = null;
@@ -145,6 +146,14 @@ export class AnnotationOverlay extends LitElement {
 
     // Subscribe to state changes
     this._unsubscribe = this._state.subscribe(() => {
+      if (this._scenarioId !== this._state.scenarioId || !this._state.canEdit) {
+        this._scenarioId = this._state.scenarioId;
+        this._dragState = null;
+        this._drawState = null;
+        this._editingNote = null;
+        this._hideIconPicker();
+        this._removeGlobalPointerHandlers();
+      }
       this.annotations = this._state.annotations;
       this.currentTool = this._state.currentTool;
       this.selectedId = this._state.selectedId;
@@ -708,6 +717,7 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _addResizeHandle(g, ann, vx, vy) {
+    if (!this._state.canEdit) return;
     const handleSize = 8;
     const handle = this._createSvgElement('rect', {
       x: vx + ann.width - handleSize / 2,
@@ -818,6 +828,7 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _onMouseDown(e) {
+    if (!this._state.canEdit) return;
     // Ignore non-primary buttons so a right-click doesn't also open the icon
     // picker (right-click is reserved for the board/group context menu unless
     // claimed above by _onContextMenu).
@@ -1129,6 +1140,7 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _onAnnotationMouseDown(e, ann) {
+    if (!this._state.canEdit) return;
     e.stopPropagation();
 
     const ev = this._getEventCoords(e);
@@ -1197,6 +1209,7 @@ export class AnnotationOverlay extends LitElement {
    * Start editing a note's text
    */
   _startEditingNote(ann) {
+    if (!this._state.canEdit) return;
     this._editingNote = ann;
     this._dragState = null; // Cancel any drag
     this.requestUpdate();
@@ -1217,6 +1230,7 @@ export class AnnotationOverlay extends LitElement {
    * Handle double-click on a note annotation to edit text
    */
   _onAnnotationDblClick(e, ann) {
+    if (!this._state.canEdit) return;
     e.stopPropagation();
 
     if (ann.type === 'note') {
@@ -1225,6 +1239,7 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _onResizeStart(e, ann) {
+    if (!this._state.canEdit) return;
     e.stopPropagation();
 
     const ev = this._getEventCoords(e);
@@ -1245,6 +1260,7 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _onLineEndpointStart(e, ann, endpoint) {
+    if (!this._state.canEdit) return;
     e.stopPropagation();
 
     const ev = this._getEventCoords(e);
@@ -1283,6 +1299,7 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _onKeyDown(e) {
+    if (!this._state.canEdit) return;
     // Delete selected annotation
     const selectedId = this._state.selectedId;
     if (

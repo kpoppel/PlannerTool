@@ -4,6 +4,7 @@
 import { ProviderMock } from './providerMock.js';
 import { ProviderLocalStorage } from './providerLocalStorage.js';
 import { ProviderREST } from './providerREST.js';
+import { isMutableScenario } from '../application/shared/scenarioMutations.js';
 
 class DataService {
   constructor(providers) {
@@ -192,6 +193,9 @@ class DataService {
     return this.providers['rest'].deleteScenario(id);
   }
   async saveScenario(scenario) {
+    if (!isMutableScenario(scenario)) {
+      return { ok: false, error: { code: 'scenario_read_only', message: 'Scenario is read-only' } };
+    }
     const payload = {
       id: scenario.id,
       name: scenario.name,

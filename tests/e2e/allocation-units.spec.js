@@ -41,10 +41,12 @@ async function mountEditor(page, options = {}) {
     state.selection.projectIds = ['plan'];
     state.selection.teamIds = ['alpha', 'beta'];
     state.selection.featureStateNames = ['Active'];
-    state.scenarios.activeId = 'draft';
+    state.scenarios.activeId = fixture.scenarioId === undefined ? 'draft' : fixture.scenarioId;
     state.scenarios.items.push({ id: 'draft', name: 'Effort draft',
+      readonly: fixture.readonly === true,
       overrides: fixture.overrides === undefined ? {} : fixture.overrides,
       groupOverrides: {}, scenarioGroups: [], pluginData: {} });
+    if (fixture.access !== undefined) state.scenarios.items.at(-1).access = fixture.access;
     store.setState(state, true);
     await dataService.setLocalPref('user.email', 'editor@example.test');
     await cmd.data.initializeAllocationPreferences();
@@ -88,6 +90,79 @@ test.describe('Man-day allocation desktop', () => {
         beta: { internal: { fte: 2.5 }, external: { fte: 0 } },
       }, groups: {},
     } }));
+  });
+
+  for (const mode of ['baseline', 'readonly', 'shared-reader']) {
+    test(`${mode} is inspection-only and copying creates an editable scenario`, async ({ page }, testInfo) => {
+      const options = mode === 'baseline' ? { scenarioId: 'baseline' }
+        : mode === 'readonly' ? { readonly: true }
+        : { access: { canEdit: false, reason: 'not-owner' } };
+      await mountEditor(page, options);
+      const panel = page.locator('details-panel');
+      await page.evaluate(async () => {
+        const { bus } = await import('/js/core/EventBus.js');
+        document.querySelector('main').id = 'board-area';
+        document.querySelector('feature-card-lit').bus = bus;
+      });
+      await panel.locator('.details-close').click();
+      await page.locator('feature-card-lit').click();
+      await expect(panel.locator('.panel')).toBeVisible();
+      await expect(panel.locator('input, select, .state-chip, .capacity-bar-delete, .add-team-btn, .tag-chip button, .details-revert')).toHaveCount(0);
+      await expect(panel.locator('.capacity-value')).toHaveText('20%');
+      await expect(panel.locator('.date-row')).toContainText('2026-10-05');
+      await expect(page.locator('feature-card-lit .drag-handle')).toHaveCount(0);
+      await expect(panel.locator('.details-close')).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`${mode}-inspection-desktop.png`) });
+      const source = await page.evaluate(async () => {
+        const { cmd, sel } = await import('/js/application/imports.js');
+        const id = sel.scenario.getActiveScenarioId();
+        const copy = cmd.scenario.cloneScenario(id, 'Editable copy');
+        cmd.scenario.activateScenario(copy.id);
+        return id;
+      });
+      const input = panel.locator('.capacity-bar-input');
+      await expect(input).toHaveValue('20');
+      await expect(page.locator('feature-card-lit .drag-handle')).toHaveCount(1);
+      await input.fill('30');
+      await input.press('Tab');
+      const result = await page.evaluate(async (id) => {
+        const { sel } = await import('/js/application/imports.js');
+        return { source: sel.scenario.getScenarios().find((scenario) => scenario.id === id).overrides,
+          copy: sel.scenario.getActiveScenario().overrides };
+      }, source);
+      expect(result.source).toEqual({});
+      expect(result.copy.task.capacity).toEqual([{ team: 'alpha', capacity: 30 }]);
+    });
+  }
+
+  test('switching away and back cancels wheel drafts and an in-progress resize', async ({ page }) => {
+    await mountEditor(page);
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      const input = document.querySelector('details-panel').shadowRoot.querySelector('.capacity-bar-input');
+      input.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, cancelable: true }));
+      cmd.scenario.activateScenario('baseline');
+      cmd.scenario.activateScenario('draft');
+    });
+    const input = page.locator('details-panel .capacity-bar-input');
+    await expect(input).toHaveValue('20');
+    await input.focus();
+    await input.press('Tab');
+    expect(await overrides(page)).toEqual({});
+    await page.locator('details-panel .details-close').click();
+    const card = page.locator('feature-card-lit');
+    const handle = await card.locator('.drag-handle').boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + 80, handle.y, { steps: 8 });
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      cmd.scenario.activateScenario('baseline');
+      cmd.scenario.activateScenario('draft');
+    });
+    await page.mouse.up();
+    await expect(card).toHaveCSS('width', '200px');
+    expect(await overrides(page)).toEqual({});
   });
 
   test('whole-day entry, ceiling displays, save and reload retain fractional percentages', async ({ page }, testInfo) => {

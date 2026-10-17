@@ -6,6 +6,7 @@ import { RestProviderBase } from './RestProviderBase.js';
 import { ok, fail } from './result.js';
 import { store } from '../application/store.js';
 import { createUiCommands } from '../application/commands/uiCommands.js';
+import { isMutableScenario } from '../application/shared/scenarioMutations.js';
 
 const uiCommands = createUiCommands(store, bus);
 
@@ -237,7 +238,7 @@ export class ProviderREST extends RestProviderBase {
 
   async saveScenario(scenario) {
     // Client-side guard: Don't attempt to save readonly scenarios
-    if (scenario.readonly) {
+    if (!isMutableScenario(scenario)) {
       console.warn('[providerREST] Attempted to save readonly scenario:', scenario.id);
       return fail({ message: 'Cannot save readonly scenario' });
     }

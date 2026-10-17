@@ -53,16 +53,18 @@ describe('application/commands/pluginScenarioDataCommands', () => {
     expect(commands.get('s1', 'plugin-annotations')).toEqual([{ id: 'ann_1' }]);
   });
 
-  it('set() does not mark the baseline scenario as changed, and persists it locally', () => {
-    commands.set('baseline', 'plugin-annotations', [{ id: 'ann_3' }]);
-
-    expect(store.getState().scenarios.changedIds).not.toContain('baseline');
-    expect(commands.get('baseline', 'plugin-annotations')).toEqual([{ id: 'ann_3' }]);
-    // Baseline has no server-side scenario record, so a fresh initial state
-    // (as read at app startup) should pick the value back up locally.
-    expect(createInitialAppState().scenarios.items[0].pluginData['plugin-annotations']).toEqual([
-      { id: 'ann_3' },
-    ]);
+  it('set() rejects baseline and inactive read-only scenarios without persistence or events', () => {
+    const state = store.getState();
+    state.scenarios.items[2].readonly = true;
+    const events = { emit: vi.fn() };
+    const guarded = createPluginScenarioDataCommands(store, events);
+    for (const id of ['baseline', 's2']) {
+      expect(guarded.set(id, 'plugin-annotations', [{ id: 'ann_3' }])).toBeNull();
+    }
+    expect(store.getState()).toBe(state);
+    expect(commands.get('baseline')).toEqual({});
+    expect(localStorage.length).toBe(0);
+    expect(events.emit).not.toHaveBeenCalled();
   });
 
   it('set() is a no-op for an unknown scenario id', () => {

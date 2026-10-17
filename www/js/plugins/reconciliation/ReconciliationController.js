@@ -1,6 +1,7 @@
 import { assessReconciliation } from './assessment.js';
 import { bus } from '../../core/EventBus.js';
 import { ScenarioEvents } from '../../core/EventRegistry.js';
+import { getScenarioAccess } from '../../application/shared/scenarioMutations.js';
 import { EXCEPTIONS_KEY, canonicalEvidence, exceptionIdentity, exceptionEvidence,
   exceptionDecisions } from './exceptions.js';
 
@@ -35,7 +36,7 @@ export class ReconciliationController {
   _editableScenario() {
     const state = this.store.getState();
     const scenario = state.scenarios.items.find((item) => item.id === state.scenarios.activeId);
-    if (scenario === undefined || scenario.id === 'baseline' || scenario.readonly === true) {
+    if (!getScenarioAccess(state, state.scenarios.activeId).canEdit) {
       throw new Error('Accepting exceptions requires an editable scenario');
     }
     return scenario;
@@ -177,7 +178,7 @@ export class ReconciliationController {
           item, state.baseline.projects, hierarchy)
         ? { ...decision, status: 'revoked', revokedAt: this.clock().toISOString(),
           revocationReason: 'Task, relationship or assessment configuration changed' } : decision);
-      if (item.readonly !== true && checked.some((decision, index) => decision !== stored[index])) {
+      if (getScenarioAccess(state, item.id).canEdit && checked.some((decision, index) => decision !== stored[index])) {
         this.commands.pluginScenarioData.set(item.id, EXCEPTIONS_KEY, { version: 1, decisions: checked });
         return;
       }
@@ -223,7 +224,7 @@ export class ReconciliationController {
       visibleIds, featuresById, sourceById,
       projectsById: new Map(state.baseline.projects.map((project) => [String(project.id), project])) });
     if (validated.some((decision, index) => decision !== decisions[index])
-      && scenario.readonly !== true) {
+      && getScenarioAccess(state, scenario.id).canEdit) {
       this.commands.pluginScenarioData.set(scenario.id, EXCEPTIONS_KEY, { version: 1, decisions: validated });
     }
   }

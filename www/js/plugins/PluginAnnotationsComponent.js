@@ -173,6 +173,7 @@ export class PluginAnnotationsComponent extends LitElement {
     super.connectedCallback();
 
     this._unsubscribe = this._annotationState.subscribe(() => {
+      this.requestUpdate();
       this.currentTool = this._annotationState.currentTool;
       this.annotationCount = this._annotationState.count;
 
@@ -190,6 +191,9 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   render() {
+    if (!this._annotationState.canEdit) return html`<div class="floating-toolbar">
+      <button class="close-btn" @click=${this._handleClose} title="Close">×</button>
+      <div class="toolbar-title">Annotations</div></div>`;
     return html`
       <div class="floating-toolbar">
         <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>

@@ -24,7 +24,7 @@ export function renderDetailsPanelHeader({ model, actions }) {
       </div>
       <div class="details-label">
         Status:
-        ${editingState ?
+        ${model.readonly ? html`<span class=${stateCls}>${feature.state}${originalStateSpan}</span>` : editingState ?
           html`
             <div class="state-edit-row">
               <div class="state-current-wrapper ${stateCls}">

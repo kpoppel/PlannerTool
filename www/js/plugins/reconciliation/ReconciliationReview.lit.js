@@ -325,7 +325,11 @@ export class ReconciliationReview extends LitElement {
       this._publishing = false;
       await this.updateComplete;
       // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
-      if (this.isConnected) this.shadowRoot.querySelector('[data-action="publish-scenario"]').focus();
+      if (this.isConnected) {
+        const button = this.shadowRoot.querySelector('[data-action="publish-scenario"]');
+        // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+        if (button !== null) button.focus();
+      }
     }
   }
 
@@ -358,7 +362,7 @@ export class ReconciliationReview extends LitElement {
   }
 
   _requireEditable() {
-    if (sel.scenario.getActiveScenario().readonly === true) {
+    if (!sel.scenario.isActiveScenarioMutable()) {
       throw new Error('Cannot correct a read-only scenario');
     }
   }
@@ -466,6 +470,7 @@ export class ReconciliationReview extends LitElement {
   }
 
   _renderImpactReview(issue, readonly) {
+    if (readonly) return '';
     if (this._impactReview === null || this._impactReview.issueId !== issue.id) return '';
     const kind = this._impactReview.kind;
     const links = this._dependencyLinks(issue);
@@ -499,10 +504,11 @@ export class ReconciliationReview extends LitElement {
   }
 
   _renderFixActions(issue) {
+    if (!sel.scenario.isActiveScenarioMutable()) return html`<p class="muted">Read-only scenario</p>`;
     const states = this._stateOptions(issue);
     const feature = this.snapshot.featuresById.get(issue.featureId);
     const selected = this._stateChoices.get(issue.id);
-    const readonly = sel.scenario.getActiveScenario().readonly === true;
+    const readonly = !sel.scenario.isActiveScenarioMutable();
     const dates = ['invalid-dates', 'past-unfinished', 'future-active', 'unplanned-child',
       'containment', 'dependency-order', 'unavailable-containment-dates',
       'unavailable-dependency-dates'].includes(issue.type);
@@ -615,11 +621,11 @@ export class ReconciliationReview extends LitElement {
 
   _renderExceptionActions(issue) {
     if (issue.severity === 'info') return '';
-    const readonly = sel.scenario.getActiveScenario().readonly === true;
+    const readonly = !sel.scenario.isActiveScenarioMutable();
     const decision = issue.acceptance;
     const reason = this._exceptionReasons.get(issue.id);
     return html`<section class="exception-actions" aria-label="Exception decision">
-      ${decision === null ? html`
+      ${decision === null ? readonly ? '' : html`
         <label>Reason for exception
           <textarea data-exception-reason aria-label="Reason for exception" rows="2"
             ?disabled=${readonly} .value=${reason === undefined ? '' : reason}
@@ -634,8 +640,8 @@ export class ReconciliationReview extends LitElement {
           ? 'Acceptance not saved' : 'Saved in this scenario'}</p>
         <p>${decision.reason}</p>
         <p class="muted">${decision.actor} · ${decision.acceptedAt}</p>
-        <button data-action="undo-acceptance" ?disabled=${readonly}
-          @click=${() => reconciliation.revokeException(issue.id)}>Undo acceptance</button>`}
+        ${readonly ? '' : html`<button data-action="undo-acceptance"
+          @click=${() => reconciliation.revokeException(issue.id)}>Undo acceptance</button>`}`}
       ${readonly ? html`<p class="muted">Choose an editable scenario to accept exceptions.</p>` : ''}
       ${this.actionError !== '' ? html`<p role="alert">${this.actionError}</p>` : ''}
     </section>`;
@@ -667,9 +673,8 @@ export class ReconciliationReview extends LitElement {
               : 'Saved in this scenario'}</p>
           <p>${entry.reason}</p><p class="muted">${entry.actor} · ${entry.acceptedAt}</p>
           ${entry.status === 'revoked' ? html`<p class="muted">${entry.revokedAt}</p>` : ''}
-          ${entry.status === 'active' && (group === undefined || !group.issues.some((issue) => issue.id === entry.id))
+          ${sel.scenario.isActiveScenarioMutable() && entry.status === 'active' && (group === undefined || !group.issues.some((issue) => issue.id === entry.id))
             ? html`<button data-action="undo-acceptance"
-              ?disabled=${sel.scenario.getActiveScenario().readonly === true}
               @click=${() => reconciliation.revokeException(entry.id)}>Undo acceptance</button>` : ''}
           ${this.selectedId === groupId && this.selectedIssueId === entry.id && group !== undefined
             ? this._renderTaskDetails(group, entry.identity.rule, entry.id) : ''}
@@ -716,14 +721,14 @@ export class ReconciliationReview extends LitElement {
       <div class="filters expansion-section">
         <header><h2 class="section-title" id="review-heading"><span class="section-icon" aria-hidden="true">${'\u2699'}</span>Reconciliation</h2>
           <span class="scenario-name">${snapshot.scenarioName}</span></header>
-        <div class="actions">
+        ${sel.scenario.isActiveScenarioMutable() ? html`<div class="actions">
           <button data-action="save-scenario"
-            ?disabled=${sel.scenario.getActiveScenario().readonly === true || this._publishing}
+            ?disabled=${this._publishing}
             @click=${() => this._onSaveScenario()}>Save scenario</button>
           <button data-action="publish-scenario"
-            ?disabled=${sel.scenario.getActiveScenario().readonly === true || this._publishing}
+            ?disabled=${this._publishing}
             @click=${() => this._onPublishScenario()}>Publish scenario</button>
-        </div>
+        </div>` : ''}
         ${this.actionError !== '' ? html`<p role="alert">${this.actionError}</p>` : ''}
         <div role="group" aria-labelledby="marker-label">
           <div class="group-label" id="marker-label">Board warning markers</div>

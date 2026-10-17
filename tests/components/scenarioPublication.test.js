@@ -1,6 +1,7 @@
 import { displayFixture } from '../helpers/workItemDisplay.js';
-import { describe, expect, it } from 'vitest';
-import { projectPublication } from '../../www/js/components/scenarioPublication.js';
+import { describe, expect, it, vi } from 'vitest';
+import { projectPublication, publishScenario } from '../../www/js/components/scenarioPublication.js';
+import { sel } from '../../www/js/application/imports.js';
 
 const task = (id, project, values = {}) => ({ process_id: 'process', id, project, title: `Task ${id}`,
   type: 'Feature', state: 'Active', start: '2026-10-01', end: '2026-10-10',
@@ -10,6 +11,14 @@ const projects = ['own', 'other'].map((id) => ({ id, name: id, container_order: 
 const context = { projects, hierarchy: [{ types: ['Feature'] }], today: '2026-10-03' };
 
 describe('Scenario publication projection', () => {
+  it('rejects read-only publication before loading a review or making writes', async () => {
+    const access = vi.spyOn(sel.scenario, 'getScenarioAccess').mockReturnValue({ canEdit: false, reason: 'read-only' });
+    try {
+      expect(await publishScenario({ id: 'locked' })).toMatchObject({ ok: false,
+        error: { code: 'scenario_read_only' } });
+    } finally { access.mockRestore(); }
+  });
+
   it('distinguishes an indirect foreign-plan impact from an actual foreign write', () => {
     const source = [task('a', 'own'), task('b', 'other', { parentId: 'a' })];
     const review = projectPublication({ ...context, source, referencePlanIds: ['own'],

@@ -7,6 +7,7 @@ const {
   mockDeleteScenario,
   mockSaveScenarioRequest,
   mockDeleteRequest,
+  mockScenarioAccess,
 } = vi.hoisted(() => ({
   mockCloneScenario: vi.fn(),
   mockActivateScenario: vi.fn(),
@@ -14,9 +15,11 @@ const {
   mockDeleteScenario: vi.fn(),
   mockSaveScenarioRequest: vi.fn(),
   mockDeleteRequest: vi.fn(),
+  mockScenarioAccess: vi.fn(),
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
+  sel: { scenario: { getScenarioAccess: mockScenarioAccess } },
   cmd: {
     scenario: {
       cloneScenario: mockCloneScenario,
@@ -72,6 +75,28 @@ function wireModal(instance, refs) {
 describe('scenario modal command contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockScenarioAccess.mockReturnValue({ canEdit: true, reason: null });
+  });
+
+  it('does not submit rename or delete requests after access is revoked', async () => {
+    for (const Modal of [ScenarioRenameModal, ScenarioDeleteModal]) {
+      const button = makeElement();
+      const input = makeElement('input');
+      input.value = 'Changed';
+      const modal = new Modal();
+      modal.id = 'locked';
+      modal.remove = vi.fn();
+      wireModal(modal, { '#renameBtn': button, '#deleteBtn': button,
+        '#renameInput': input, '#renameStatus': makeElement('div'), '#deleteStatus': makeElement('div') });
+      mockScenarioAccess.mockReturnValue({ canEdit: true, reason: null });
+      modal.firstUpdated();
+      mockScenarioAccess.mockReturnValue({ canEdit: false, reason: 'not-owner' });
+      await button.click();
+    }
+    expect(mockRenameScenario).not.toHaveBeenCalled();
+    expect(mockDeleteScenario).not.toHaveBeenCalled();
+    expect(mockSaveScenarioRequest).not.toHaveBeenCalled();
+    expect(mockDeleteRequest).not.toHaveBeenCalled();
   });
 
   it('ScenarioCloneModal uses cmd.scenario clone + activate', async () => {

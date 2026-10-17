@@ -2,7 +2,7 @@ import { bus } from '../../core/EventBus.js';
 import { StoreController } from '../../core/StoreController.js';
 import { UIEvents, FeatureEvents, ProjectEvents, TeamEvents } from '../../core/EventRegistry.js';
 import { sel } from '../../application/imports.js';
-import { buildDetailsPanelCapacityModel } from './DetailsPanelCapacity.lit.js';
+import { buildDetailsPanelCapacityModel, cancelCapacityWheelEdits } from './DetailsPanelCapacity.lit.js';
 import { buildDetailsPanelRelationsModel } from './DetailsPanelRelations.lit.js';
 import {
 	buildDetailsPanelSchedulingModel, getDetailsPanelChildDateBounds,
@@ -106,6 +106,8 @@ export class DetailsPanelController {
 
 	resetEditors() {
 		this._generation += 1;
+		// Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+		if (this.host.shadowRoot !== null) cancelCapacityWheelEdits(this.host.shadowRoot);
 		for (const timer of this._timers) clearTimeout(timer);
 		this._timers.clear();
 		this.editor.editingState = false;
@@ -150,6 +152,15 @@ export class DetailsPanelController {
 		]));
 	}
 
+	bindMutationActions(actions) {
+		return this.bindActions(Object.fromEntries(Object.entries(actions).map(([name, action]) => [
+			name, (...args) => {
+				if (!sel.scenario.isActiveScenarioMutable()) return false;
+				return action(...args);
+			},
+		])));
+	}
+
 	getChildDateBounds() {
 		const ids = sel.feature.getChildrenByParentMap().get(String(this.host.feature.id));
 		const children = ids === undefined ? [] : ids.map((id) => sel.feature.getEffectiveFeatureById(id));
@@ -176,7 +187,7 @@ export class DetailsPanelController {
 								stateCategories.set(id, sel.filter.getFeatureStateCategory(linked));
 			}
 		}
-		return {
+		const model = {
 			header: {
 				feature, planName,
 				stateChanged: originalState !== undefined && feature.state !== originalState,
@@ -201,6 +212,9 @@ export class DetailsPanelController {
 				projects, linkedFeatures, stateColors, stateCategories,
 			}),
 		};
+		const readonly = !sel.scenario.isActiveScenarioMutable();
+		for (const section of ['header', 'scheduling', 'capacity', 'tags']) model[section].readonly = readonly;
+		return model;
 	}
 
 	async loadSchedulePresets() {

@@ -1,7 +1,8 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { dataService } from '../services/dataService.js';
-import { cmd } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
+import { store } from '../application/store.js';
 
 export class ScenarioRenameModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -14,6 +15,19 @@ export class ScenarioRenameModal extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (next, previous) => {
+      if (next.activeId !== previous.activeId || !sel.scenario.getScenarioAccess(this.id).canEdit) this._cancelDenied();
+    });
+  }
+
+  disconnectedCallback() {
+    this._unsubscribeScenario();
+    super.disconnectedCallback();
+  }
+
+  _cancelDenied() {
+    this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
+    this.remove();
   }
 
   _getInner() {
@@ -26,6 +40,7 @@ export class ScenarioRenameModal extends LitElement {
   }
 
   firstUpdated() {
+    if (!sel.scenario.getScenarioAccess(this.id).canEdit) { this._cancelDenied(); return; }
     // open after render
     const inner = this._getInner();
     if (inner) inner.open = true;
@@ -35,6 +50,7 @@ export class ScenarioRenameModal extends LitElement {
     const status = this._qs('#renameStatus');
     if (saveBtn)
       saveBtn.addEventListener('click', async () => {
+        if (!sel.scenario.getScenarioAccess(this.id).canEdit) { this._cancelDenied(); return; }
         const val = input.value.trim();
         this._disableButtons(true);
         try {
@@ -71,6 +87,7 @@ export class ScenarioRenameModal extends LitElement {
   }
 
   render() {
+    if (!sel.scenario.getScenarioAccess(this.id).canEdit) return html``;
     return html`
       <modal-lit wide>
         <div slot="header"><h3>Rename Scenario</h3></div>

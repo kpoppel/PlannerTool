@@ -3,6 +3,7 @@
  *   id: string|number,
  *   name?: string,
  *   readonly?: boolean,
+ *   access?: {canEdit: boolean, reason: string|null},
  *   overrides?: Record<string, any>,
  *   filters?: Record<string, any>,
  *   view?: Record<string, any>,

@@ -105,6 +105,11 @@ vi.mock('../../www/js/application/imports.js', () => ({
     },
     scenario: {
       getScenarios: mockScenarioGetScenarios,
+      getScenarioAccess: vi.fn((id) => {
+        const scenario = mockScenarioGetScenarios().find((item) => item.id === id);
+        return { canEdit: scenario !== undefined && id !== 'baseline' && scenario.readonly !== true,
+          reason: null };
+      }),
       getActiveScenarioId: mockScenarioGetActiveScenarioId,
       getChangedScenarioIds: mockGetChangedScenarioIds,
       getActiveScenario: vi.fn(() => ({ id: 'sc-1', scenarioGroups: [], groupOverrides: {} })),
@@ -144,10 +149,14 @@ function makeMenu(overrides = {}) {
   menu.scenarios = [];
   menu.activeScenarioId = null;
   Object.assign(menu, overrides);
+  if (menu.activeScenarioId === null && menu.scenarios.length > 0) {
+    menu.activeScenarioId = menu.scenarios[0].id;
+  }
   for (const scenario of menu.scenarios) {
     if (!('pluginData' in scenario)) scenario.pluginData = {};
   }
   mockScenarioGetScenarios.mockReturnValue(menu.scenarios);
+  mockScenarioGetActiveScenarioId.mockReturnValue(menu.activeScenarioId);
   return menu;
 }
 
@@ -160,6 +169,15 @@ function makeEvent() {
 // ---------------------------------------------------------------------------
 
 describe('ScenarioMenu._onPublishScenario', () => {
+  it('does not label an ordinary read-only scenario as a refreshable baseline', () => {
+    const menu = makeMenu({ scenarios: [{ id: 'shared', name: 'Shared', readonly: true }], activeScenarioId: 'shared' });
+    const rendered = menu.render();
+    expect(rendered).not.toContain('Refresh baseline data');
+    expect(rendered).not.toContain('Save scenario changes');
+    expect(rendered).not.toContain('Rename scenario');
+    expect(rendered).not.toContain('Delete scenario');
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockPublishBaseline.mockResolvedValue({ ok: true, data: { ok: true, updated: 2, errors: [] } });

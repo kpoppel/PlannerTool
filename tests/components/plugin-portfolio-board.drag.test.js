@@ -8,6 +8,7 @@ describe('plugin-portfolio-board drag and drop', () => {
   let getVisibleFeaturesStub;
 
   beforeEach(() => {
+    seamStubs.push(sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(true));
     seamStubs.push(sinon.stub(sel.selection, 'getProjects').returns([
       { id: 'p1', name: 'Project One', selected: true, color: '#0f766e' },
     ]));
@@ -29,6 +30,19 @@ describe('plugin-portfolio-board drag and drop', () => {
     seamStubs.push(sinon.stub(sel.view, 'isTypeVisible').returns(true));
     seamStubs.push(sinon.stub(sel.scenario, 'getActiveScenarioId').returns('baseline'));
     seamStubs.push(sinon.stub(sel.scenario, 'getActiveScenario').returns({ id: 'baseline', overrides: {} }));
+  });
+
+  it('does not expose or start drag editing in read-only scenarios', async () => {
+    sel.scenario.isActiveScenarioMutable.returns(false);
+    const feature = { process_id: 'process', id: 'locked', title: 'Locked', type: 'Feature',
+      state: 'New', project: 'p1', capacity: [{ team: 't1', capacity: 50 }] };
+    getVisibleFeaturesStub.returns([feature]);
+    const update = sinon.stub(cmd.feature, 'updateFeatureField');
+    const el = await fixture(html`<plugin-portfolio-board></plugin-portfolio-board>`);
+    el._handleDragStart({ preventDefault() {} }, feature, 't1');
+    el._handleDrop({ preventDefault() {} }, 'Doing', 't1');
+    expect(update.called).to.be.false;
+    expect(el.shadowRoot.querySelector('[draggable="true"]')).to.be.null;
   });
 
   afterEach(() => {

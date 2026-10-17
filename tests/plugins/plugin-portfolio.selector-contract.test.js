@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 
 const mockSel = vi.hoisted(() => ({
+  scenario: {
+    isActiveScenarioMutable: vi.fn(() => true),
+    getActiveScenarioId: vi.fn(() => 'draft'),
+    getActiveScenario: vi.fn(() => ({ id: 'draft', overrides: {} })),
+  },
   selection: {
     getProjects: vi.fn(() => [{ id: 'p1', name: 'Plan 1', selected: true }]),
     getTeams: vi.fn(() => [{ id: 't1', name: 'Team 1', selected: true }]),

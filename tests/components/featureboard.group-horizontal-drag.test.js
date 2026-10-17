@@ -6,6 +6,7 @@ const { mockCmd, mockSel } = vi.hoisted(() => ({
     group: { moveGroupInScenario: vi.fn() },
   },
   mockSel: {
+    scenario: { isActiveScenarioMutable: vi.fn(() => true) },
     group: { getEffectiveGroups: vi.fn(() => []) },
     feature: { getEffectiveFeatures: vi.fn(() => []) },
   },

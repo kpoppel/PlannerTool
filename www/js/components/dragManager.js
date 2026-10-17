@@ -1,12 +1,20 @@
 import { bus } from '../core/EventBus.js';
 import { DragEvents } from '../core/EventRegistry.js';
 import { cmd, sel } from '../application/imports.js';
+import { store } from '../application/store.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { featureFlags } from '../config.js';
 import { findInBoard } from './board-utils.js';
 
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
+
+function watchGestureScenario(cancel) {
+  const scenarioId = sel.scenario.getActiveScenarioId();
+  return store.subscribe((state) => state.scenarios, (scenarios) => {
+    if (scenarios.activeId !== scenarioId || !sel.scenario.isActiveScenarioMutable()) cancel();
+  });
+}
 
 /**
  * Get all features (across all plans) for parent/child tree operations.
@@ -123,6 +131,9 @@ export function startDragMove(
   }
 
   function onUp() {
+    if (finished) return;
+    finished = true;
+    unsubscribe();
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     const finalLeft = parseInt(card.style.left, 10);
@@ -156,8 +167,21 @@ export function startDragMove(
     }
     card.clearLiveDates();
   }
+  let finished = false;
+  const unsubscribe = watchGestureScenario(cancel);
+  function cancel() {
+    if (finished) return;
+    finished = true;
+    unsubscribe();
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    card.style.left = origLeft + 'px';
+    card.clearLiveDates();
+    bus.emit(DragEvents.END, { featureId: feature.id, start: feature.start, end: feature.end });
+  }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
+  return cancel;
 }
 
 export function startResize(
@@ -266,6 +290,9 @@ export function startResize(
   }
 
   function onUp() {
+    if (finished) return;
+    finished = true;
+    unsubscribe();
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     const finalWidth = parseInt(card.style.width, 10);
@@ -323,8 +350,21 @@ export function startResize(
     card.clearLiveDates();
   }
 
+  let finished = false;
+  const unsubscribe = watchGestureScenario(cancel);
+  function cancel() {
+    if (finished) return;
+    finished = true;
+    unsubscribe();
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    card.style.width = origWidth + 'px';
+    card.clearLiveDates();
+    bus.emit(DragEvents.END, { featureId: feature.id, end: feature.end });
+  }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
+  return cancel;
 }
 
 function clampParentEndAgainstChildren(parentItem, features, proposedEndStr) {

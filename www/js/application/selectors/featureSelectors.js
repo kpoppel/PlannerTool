@@ -82,6 +82,8 @@ function makeCountsMap(features, predicate) {
  * @returns {object}
  */
 export function createFeatureSelectors(store) {
+  // Every FeatureCard reads this per render; deriving it per call made board re-renders O(N²).
+  const childrenByParentCache = new WeakMap();
   const selectors = {
     getBaselineFeatures() {
       return store.getState().baseline.features;
@@ -109,7 +111,13 @@ export function createFeatureSelectors(store) {
     },
 
     getChildrenByParentMap() {
-      return buildChildrenByParentMap(selectors.getEffectiveFeatures());
+      const state = store.getState();
+      let map = childrenByParentCache.get(state);
+      if (map === undefined) {
+        map = buildChildrenByParentMap(deriveEffectiveFeatures(state));
+        childrenByParentCache.set(state, map);
+      }
+      return map;
     },
 
     getSchedulePresetsForProject(projectId) {

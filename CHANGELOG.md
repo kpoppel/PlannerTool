@@ -15,6 +15,9 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Remove the delay on first task click by deriving the parent/child map once per state instead of once per card.
+- Keep read-only task details open on a normal click without requiring pointer movement.
+- Make read-only scenarios inspection-only across task, group and plugin tools, enforce protected saves/deletes server-side, and cancel stale edits while preserving editable copies and view preferences.
 - Keep allocation wheel input responsive in both units by coalescing rapid ticks before expensive recalculation, with immediate Enter and blur commits.
 - Reject man-day resizes above 100% without losing task allocations or changing dates, and explain the scheduling limit.
 - Keep ADO process names in the ADO catalogue rather than runtime display payloads, task-type models or XY controls.

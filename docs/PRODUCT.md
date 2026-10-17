@@ -44,6 +44,18 @@ The application supports:
 - drag-based date and allocation adjustments
 - review before pushing changes back to Azure
 
+Read-only scenarios are inspection-only. The baseline is always read-only; other
+scenarios can also deny editing. Task fields, scheduling, allocations, tags,
+relations, groups, annotations and reconciliation decisions cannot be changed.
+Save, rename, delete and publication controls are absent, while navigation,
+filtering, sorting, folding, zoom and personal view preferences remain available.
+Copying a readable scenario creates a separate editable scenario. Switching
+scenarios or losing edit access cancels pending editors and gestures.
+
+Shared-scenario discovery and sharing controls are not implemented yet. When
+sharing is introduced, only the owner may edit a shared scenario, with no
+administrator override; an intrinsic read-only lock still applies to its owner.
+
 ### Allocation units
 
 Configuration offers a browser-local allocation unit: Percent (default) or Man-days. A project man-day is one person's average project working day, not a fixed eight-hour day. DetailsPanel uses allocation percent / 100 x internal/external FTE x inclusive Monday-Friday days, without holidays or leave. Monthly project hours cancel in this conversion. Groups use their existing aggregate FTE.

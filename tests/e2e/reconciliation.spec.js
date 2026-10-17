@@ -721,7 +721,7 @@ test('shows incomplete relationship assessment without drift or unloaded-task ed
   await expect(finding).toContainText('Affected plan unavailable');
   await expect(finding).not.toContainText('days early');
   await expect(finding.getByRole('button', { name: 'Open related task', exact: true })).toHaveCount(0);
-  await expect(finding.locator('[data-action="edit-dependency"]')).toBeDisabled();
+  await expect(finding.locator('[data-action="edit-dependency"]')).toHaveCount(0);
   await expect(page.locator('reconciliation-review')).not.toContainText('No issues found');
 });
 

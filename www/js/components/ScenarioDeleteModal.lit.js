@@ -1,6 +1,7 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { cmd } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
+import { store } from '../application/store.js';
 import { dataService } from '../services/dataService.js';
 
 export class ScenarioDeleteModal extends LitElement {
@@ -14,6 +15,19 @@ export class ScenarioDeleteModal extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (next, previous) => {
+      if (next.activeId !== previous.activeId || !sel.scenario.getScenarioAccess(this.id).canEdit) this._cancelDenied();
+    });
+  }
+
+  disconnectedCallback() {
+    this._unsubscribeScenario();
+    super.disconnectedCallback();
+  }
+
+  _cancelDenied() {
+    this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
+    this.remove();
   }
 
   _getInner() {
@@ -26,6 +40,7 @@ export class ScenarioDeleteModal extends LitElement {
   }
 
   firstUpdated() {
+    if (!sel.scenario.getScenarioAccess(this.id).canEdit) { this._cancelDenied(); return; }
     const inner = this._getInner();
     if (inner) inner.open = true;
     const delBtn = this._qs('#deleteBtn');
@@ -33,6 +48,7 @@ export class ScenarioDeleteModal extends LitElement {
     const status = this._qs('#deleteStatus');
     if (delBtn)
       delBtn.addEventListener('click', async () => {
+        if (!sel.scenario.getScenarioAccess(this.id).canEdit) { this._cancelDenied(); return; }
         delBtn.disabled = true;
         if (cancelBtn) cancelBtn.disabled = true;
         try {
@@ -49,6 +65,7 @@ export class ScenarioDeleteModal extends LitElement {
   }
 
   render() {
+    if (!sel.scenario.getScenarioAccess(this.id).canEdit) return html``;
     return html`
       <modal-lit>
         <div slot="header"><h3>Delete Scenario</h3></div>

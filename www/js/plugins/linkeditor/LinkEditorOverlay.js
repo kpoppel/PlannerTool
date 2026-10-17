@@ -4,6 +4,7 @@
 import { LitElement, html, css } from '../../vendor/lit.js';
 import { getLinkEditorState } from './LinkEditorState.js';
 import { findInBoard } from '../../components/board-utils.js';
+import { sel } from '../../application/imports.js';
 
 /**
  * LinkEditorOverlay
@@ -51,6 +52,7 @@ export class LinkEditorOverlay extends LitElement {
    * Enable the overlay
    */
   enable() {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
     console.log('[LinkEditorOverlay] Enabling overlay');
     this.active = true;
     this._injectStyles();
@@ -67,6 +69,19 @@ export class LinkEditorOverlay extends LitElement {
     this._detachEventHandlers();
     this._removeStyles();
     document.removeEventListener('keydown', this._boundOnKeyDown);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._unsubscribe = this._state.subscribe(() => {
+      if (this.active && (!this._state.enabled || !sel.scenario.isActiveScenarioMutable())) this.disable();
+    });
+  }
+
+  disconnectedCallback() {
+    this._unsubscribe();
+    this.disable();
+    super.disconnectedCallback();
   }
 
   /**

@@ -1,7 +1,26 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureGroup } from '../../www/js/components/FeatureGroup.lit.js';
+import { sel } from '../../www/js/application/imports.js';
 
 describe('FeatureGroup drag interactions', () => {
+  beforeEach(() => vi.spyOn(sel.scenario, 'isActiveScenarioMutable').mockReturnValue(true));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('allows collapsing but never dragging a read-only group', () => {
+    sel.scenario.isActiveScenarioMutable.mockReturnValue(false);
+    const el = new FeatureGroup();
+    el.group = { id: 'group', name: 'Group' };
+    const preview = vi.fn();
+    const toggle = vi.fn();
+    el.addEventListener('group-drag-preview', preview);
+    el.addEventListener('group-toggle', toggle);
+    el._onPointerDown(pointerEventLike());
+    el._onPointerMove(pointerEventLike({ clientX: 40 }));
+    el._onPointerUp(pointerEventLike({ clientX: 40 }));
+    expect(preview).not.toHaveBeenCalled();
+    expect(toggle).toHaveBeenCalledOnce();
+  });
+
   function pointerEventLike(overrides = {}) {
     const target = {
       setPointerCapture: () => {},

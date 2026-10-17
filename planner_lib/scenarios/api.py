@@ -101,7 +101,9 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
     try:
         if op == 'save':
             if isinstance(data, dict) and data.get('readonly'):
-                raise HTTPException(status_code=400, detail='Cannot save readonly scenario')
+                raise HTTPException(status_code=403, detail={
+                    'error': 'scenario_read_only', 'message': 'Cannot save read-only scenario',
+                })
             _validate_scenario_payload(data)
             scenario_id = _payload_item_id(data)
             return await asyncio.to_thread(scenario_repo.save_scenario, user_id, scenario_id, data)
@@ -109,17 +111,15 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
             scenario_id = _payload_item_id(data)
             if not scenario_id:
                 raise HTTPException(status_code=400, detail='Missing scenario id for delete')
-            try:
-                scenario = await asyncio.to_thread(scenario_repo.get_scenario, user_id, scenario_id)
-                if isinstance(scenario, dict) and scenario.get('readonly'):
-                    raise HTTPException(status_code=400, detail='Cannot delete readonly scenario')
-            except KeyError:
-                raise HTTPException(status_code=404, detail='Scenario not found')
             if not await asyncio.to_thread(scenario_repo.delete_scenario, user_id, scenario_id):
                 raise HTTPException(status_code=404, detail='Scenario not found')
             return {'ok': True, 'id': scenario_id}
         else:
             raise HTTPException(status_code=400, detail='Unsupported op')
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail={
+            'error': 'scenario_read_only', 'message': str(error),
+        }) from error
     except HTTPException:
         raise
     except Exception as e:
