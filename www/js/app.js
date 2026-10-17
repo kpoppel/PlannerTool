@@ -118,11 +118,21 @@ async function init() {
     const topMenu = document.querySelector('top-menu-bar');
     topMenu.baseUrl = window.APP_BASE_URL;
     await topMenu.loadPermissions();
-    const { cmd } = await import('./application/imports.js');
+    const { cmd, sel } = await import('./application/imports.js');
     await cmd.data.hydrateBaseline();
     await cmd.data.initializeAllocationPreferences();
     await cmd.data.hydrateScenarioData();
     await cmd.viewRestore.restoreLastView();
+    const { createAutosaveController } = await import('./application/autosaveController.js');
+    const autosaveController = createAutosaveController({
+      bus,
+      getChangedScenarioIds: () => sel.scenario.getChangedScenarioIds(),
+      getScenarioAccess: (id) => sel.scenario.getScenarioAccess(id),
+      saveScenario: (id) => cmd.scenario.saveScenario(id),
+      getLocalPref: (key) => dataService.getLocalPref(key),
+      notify: (notice) => cmd.ui.addNotification(notice),
+    });
+    await autosaveController.start();
     // View restore updates selection/filter slices; recompute capacity so graph data is fresh.
     cmd.data.recomputeCapacity();
 

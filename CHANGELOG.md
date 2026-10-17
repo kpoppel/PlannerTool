@@ -27,6 +27,7 @@ Template - do not change :
 - Keep read-only task details open on a normal click without requiring pointer movement.
 - Make read-only scenarios inspection-only across task, group and plugin tools, enforce protected saves/deletes server-side, and cancel stale edits while preserving editable copies and view preferences.
 - Keep allocation wheel input responsive in both units by coalescing rapid ticks before expensive recalculation, with immediate Enter and blur commits.
+- Automatically save dirty editable scenarios at the configured browser-local interval without publishing to Azure DevOps.
 - Reject man-day resizes above 100% without losing task allocations or changing dates, and explain the scheduling limit.
 - Keep ADO process names in the ADO catalogue rather than runtime display payloads, task-type models or XY controls.
 - Hide ADO process names from the sidebar task-type filters.

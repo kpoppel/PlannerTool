@@ -29,12 +29,12 @@ Your own scenarios have these buttons:
 
 1. Open **Scenario → 📋 Copy Scenario**, enter a name and click **Clone**. The new scenario becomes active.
 2. Make changes: drag cards, edit dates, states and allocations in the [Details Panel](details.md), or organise [groups](groups.md).
-3. Save with 💾. Unsaved scenarios show ⚠️.
+3. Save with 💾, or set an autosave interval in [Configuration](getting_started.md#configuration). Unsaved scenarios show ⚠️ until saved.
 4. Use ☁️ **Publish scenario** to choose which changes to write to Azure DevOps.
 
 The [Reconciliation](plugin_reconciliation.md) panel also has **Save scenario** and **Publish scenario** buttons.
 
 ## Safety notes
 
-- Only the changes you select in the Review Modal are written. Nothing is pushed automatically.
+- Autosave stores scenario changes in your account; it never publishes them to Azure DevOps. Only changes you select in the Review Modal are written to Azure DevOps.
 - Scenarios shared with you as read-only cannot be edited; copy them to make your own version.
