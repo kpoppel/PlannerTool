@@ -18,6 +18,7 @@ Template - do not change :
 Note, this is a major update. Backup the physical data directory.  JSON backups do not transfer.
 
 ### Added
+- Add allocation and date editing to the Portfolio task table, with one-unit scrollwheel allocation adjustments in the configured percent or man-day unit, compact adjacent team columns, and a team picker. The table follows Sidebar filters instead of showing only unallocated tasks; date edits follow shared scheduling and effort-preservation rules.
 - Add a non-modal Reconciliation toolbox with category totals, collapsible issue classes, task-first navigation, retained review state, and hide/restore controls.
 - Add actionable finding details that explain constraints, owning and affected plans, schedule drift, scenario status, incomplete relationship data, and the effects of navigating to related work in temporary board context.
 - Add scenario-based Reconciliation actions for configured-state corrections, impact-reviewed date changes, and recorded dependencies; quality and schedule warnings remain visible through scenario edits and reverts.

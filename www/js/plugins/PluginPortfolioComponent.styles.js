@@ -644,12 +644,73 @@ export function createPortfolioStyles(
     }
 
     .unalloc-scroll {
-      overflow-y: auto;
+      overflow: auto;
       flex: 1;
+    }
+
+    .allocation-heading {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .allocation-input,
+    .date-input {
+      box-sizing: border-box;
+      width: 84px;
+      padding: 4px 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      font: inherit;
+      text-align: right;
+      background: #fff;
+      color: #0f172a;
+    }
+
+    .date-input {
+      width: 128px;
+      text-align: left;
+    }
+
+    .allocation-input:focus,
+    .date-input:focus {
+      outline: 2px solid #0f766e;
+      outline-offset: 1px;
+    }
+
+    .allocation-input:disabled,
+    .date-input:disabled {
+      background: #f1f5f9;
+      color: #64748b;
+      cursor: not-allowed;
+    }
+
+    .allocation-team-picker summary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      font-size: 18px;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .allocation-team-picker {
+      position: relative;
+    }
+
+    .allocation-team-picker select {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 180px;
+      font: inherit;
+      padding: 4px;
     }
 
     table.ugrid {
       width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       font-size: 0.78rem;
     }
@@ -674,6 +735,15 @@ export function createPortfolioStyles(
       padding: 6px 12px;
       border-bottom: 1px solid #e2e8f0;
       vertical-align: middle;
+      overflow-wrap: anywhere;
+    }
+
+    table.ugrid .allocation-heading,
+    table.ugrid .allocation-cell,
+    table.ugrid .allocation-add,
+    table.ugrid .date-cell {
+      padding-left: 6px;
+      padding-right: 6px;
     }
 
     table.ugrid tbody tr:hover td {

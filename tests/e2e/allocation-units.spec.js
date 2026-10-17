@@ -92,6 +92,139 @@ test.describe('Man-day allocation desktop', () => {
     } }));
   });
 
+  async function openPortfolio(page) {
+    await page.evaluate(async () => {
+      await import('/js/plugins/PluginPortfolioComponent.lit.js');
+      document.querySelector('details-panel').remove();
+      const portfolio = document.createElement('plugin-portfolio-board');
+      document.body.appendChild(portfolio);
+      portfolio.open();
+      portfolio._boardOpen = false;
+      await portfolio.updateComplete;
+    });
+    return page.locator('plugin-portfolio-board .ugrid');
+  }
+
+  for (const unit of ['percent', 'man-days']) {
+    test(`portfolio task table edits ${unit} by keyboard and wheel and adds a team`, async ({ page }, testInfo) => {
+      await mountEditor(page);
+      const table = await openPortfolio(page);
+      const alpha = table.getByRole('spinbutton', { name: 'task Alpha allocation', exact: false });
+      await expect(alpha).toHaveValue('20');
+      await expect(table.getByRole('spinbutton')).toHaveCount(1);
+      if (unit === 'man-days') {
+        await page.evaluate(async () => {
+          const { cmd } = await import('/js/application/imports.js');
+          await cmd.data.setAllocationUnit('man-days');
+        });
+        await expect(alpha).toHaveValue('10');
+      }
+      await alpha.fill(unit === 'man-days' ? '12' : '40');
+      await alpha.press('Enter');
+      await expect.poll(async () => (await overrides(page)).task.capacity[0].capacity)
+        .toBe(unit === 'man-days' ? 24 : 40);
+      await alpha.hover();
+      await page.mouse.wheel(0, -100);
+      await expect(alpha).toHaveValue(unit === 'man-days' ? '13' : '41');
+      await expect.poll(async () => (await overrides(page)).task.capacity[0].capacity)
+        .toBe(unit === 'man-days' ? 26 : 41);
+      await table.getByLabel('Add allocation team column', { exact: true }).click();
+      await table.getByLabel('Add allocation team', { exact: true }).selectOption('beta');
+      const beta = table.getByRole('spinbutton', { name: 'task Beta allocation', exact: false });
+      await expect(beta).toHaveValue('0');
+      await beta.fill(unit === 'man-days' ? '5' : '30');
+      await beta.press('Tab');
+      await expect.poll(async () => (await overrides(page)).task.capacity)
+        .toEqual([{ team: 'alpha', capacity: unit === 'man-days' ? 26 : 41 },
+          { team: 'beta', capacity: unit === 'man-days' ? 20 : 30 }]);
+      const allocationBoxes = await table.locator('.allocation-heading').evaluateAll((headings) =>
+        headings.map((heading) => ({ left: heading.getBoundingClientRect().left,
+          width: heading.getBoundingClientRect().width })));
+      expect(allocationBoxes[0].width).toBe(96);
+      expect(allocationBoxes[1].left - allocationBoxes[0].left).toBe(96);
+      await expect(page.locator('details-panel')).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath(`portfolio-${unit}.png`) });
+      await alpha.fill('0');
+      await alpha.press('Enter');
+      await expect.poll(async () => (await overrides(page)).task.capacity)
+        .toEqual([{ team: 'beta', capacity: unit === 'man-days' ? 20 : 30 }]);
+      const baseline = await page.evaluate(async () => {
+        const { store } = await import('/js/application/store.js');
+        return store.getState().baseline.features[0].capacity;
+      });
+      expect(baseline).toEqual([{ team: 'alpha', capacity: 20 }]);
+    });
+  }
+
+  test('portfolio allocation cells respect protected scenarios and missing staffing', async ({ page }) => {
+    await mountEditor(page, { readonly: true });
+    const table = await openPortfolio(page);
+    await expect(table.getByRole('spinbutton')).toBeDisabled();
+    await expect(table.getByLabel('task start date', { exact: true })).toBeDisabled();
+    await expect(table.getByLabel('task end date', { exact: true })).toBeDisabled();
+    await expect(table.getByLabel('Add allocation team column')).toHaveCount(0);
+    await page.evaluate(async () => {
+      const { store } = await import('/js/application/store.js');
+      store.setState((state) => ({ ...state,
+        scenarios: { ...state.scenarios, items: state.scenarios.items.map((item) =>
+          item.id === 'draft' ? { ...item, readonly: false } : item) },
+        allocation: { unit: 'man-days', staffing: { status: 'ready', fteById: {} } },
+      }));
+    });
+    await expect(table.getByRole('spinbutton')).toBeDisabled();
+    await expect(table.locator('.allocation-cell')).toHaveAttribute('title', 'Team staffing is missing or zero');
+    expect(await overrides(page)).toEqual({});
+  });
+
+  for (const unit of ['percent', 'man-days']) {
+    test(`portfolio dates are editable and preserve ${unit === 'man-days' ? 'effort' : 'allocation'}`, async ({ page }) => {
+      await mountEditor(page);
+      const table = await openPortfolio(page);
+      if (unit === 'man-days') {
+        await page.evaluate(async () => {
+          const { cmd } = await import('/js/application/imports.js');
+          await cmd.data.setAllocationUnit('man-days');
+        });
+      }
+      const start = table.getByLabel('task start date', { exact: true });
+      const end = table.getByLabel('task end date', { exact: true });
+      await expect(start).toHaveValue('2026-10-05');
+      await expect(end).toHaveValue('2026-10-16');
+      await end.fill('2026-10-23');
+      await end.press('Tab');
+      await expect.poll(async () => (await overrides(page)).task.end).toBe('2026-10-23');
+      const effective = await page.evaluate(async () => {
+        const { sel } = await import('/js/application/imports.js');
+        return sel.feature.getEffectiveFeatureById('task');
+      });
+      expect(effective.capacity[0].capacity).toBeCloseTo(unit === 'man-days' ? 20 * 10 / 15 : 20);
+      await start.fill('2026-10-06');
+      await start.press('Tab');
+      await expect.poll(async () => (await overrides(page)).task.start).toBe('2026-10-06');
+      await expect(page.locator('details-panel')).toHaveCount(0);
+      const baseline = await page.evaluate(async () => {
+        const { store } = await import('/js/application/store.js');
+        return store.getState().baseline.features[0];
+      });
+      expect(baseline.start).toBe('2026-10-05');
+      expect(baseline.end).toBe('2026-10-16');
+    });
+  }
+
+  test('portfolio restores a rejected date when preserving effort would exceed capacity', async ({ page }) => {
+    await mountEditor(page, { capacity: [{ team: 'alpha', capacity: 100 }] });
+    const table = await openPortfolio(page);
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      await cmd.data.setAllocationUnit('man-days');
+    });
+    const end = table.getByLabel('task end date', { exact: true });
+    await end.fill('2026-10-09');
+    await end.press('Tab');
+    await expect(end).toHaveValue('2026-10-16');
+    expect(await overrides(page)).toEqual({});
+  });
+
   for (const mode of ['baseline', 'readonly', 'shared-reader']) {
     test(`${mode} is inspection-only and copying creates an editable scenario`, async ({ page }, testInfo) => {
       const options = mode === 'baseline' ? { scenarioId: 'baseline' }

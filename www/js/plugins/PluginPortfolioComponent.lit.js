@@ -15,6 +15,8 @@ import { pluginManager } from '../core/PluginManager.js';
 import { cmd, sel } from '../application/imports.js';
 import { store } from '../application/store.js';
 import { featureTypeKey } from '../application/shared/workItemDisplay.js';
+import { formatManDays, getAllocationBasis, manDaysToPercent, percentToManDays } from '../application/shared/allocationUnits.js';
+import { ceilAllocation } from '../application/shared/teamAllocation.js';
 import { getIconTemplate } from '../services/IconService.js';
 import {
   TIMELINE_HEADER_HEIGHT,
@@ -60,6 +62,8 @@ export class PluginPortfolioComponent extends LitElement {
     _rows: { type: Array, state: true },
     _planTeamSummaries: { type: Array, state: true },
     _unallocated: { type: Array, state: true },
+    _tableFeatures: { type: Array, state: true },
+    _addedTeamIds: { type: Array, state: true },
     _columnStates: { type: Array, state: true },
     _projectById: { type: Object, state: true },
     _unallocatedOpen: { type: Boolean, state: true },
@@ -85,6 +89,8 @@ export class PluginPortfolioComponent extends LitElement {
     this._rows = [];
     this._planTeamSummaries = [];
     this._unallocated = [];
+    this._tableFeatures = [];
+    this._addedTeamIds = [];
     this._columnStates = [];
     this._projectById = {};
     this._unallocatedOpen = true;
@@ -127,8 +133,11 @@ export class PluginPortfolioComponent extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._unsubscribeAllocation = store.subscribe((state) => state.allocation,
+      () => this.requestUpdate());
     this._unsubscribeScenario = store.subscribe((state) => state.scenarios, (next, previous) => {
       if (next.activeId !== previous.activeId || !sel.scenario.isActiveScenarioMutable()) {
+        this._addedTeamIds = [];
         this._resetDragState();
         this._cleanupPointerTracking();
       }
@@ -151,6 +160,7 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   disconnectedCallback() {
+    this._unsubscribeAllocation();
     this._unsubscribeScenario();
     super.disconnectedCallback();
 
@@ -202,8 +212,8 @@ export class PluginPortfolioComponent extends LitElement {
     }
     const deduped = Array.from(uniqueById.values());
 
-    const projects = selectionApi.getProjects() || [];
-    const teams = selectionApi.getTeams() || [];
+    const projects = selectionApi.getProjects();
+    const teams = selectionApi.getTeams();
     const visibleTeamIds = scopeApi.getTeamDrilldownIds();
     const selectedTeams = teams.filter((team) => visibleTeamIds.includes(String(team.id)));
     const selectedTeamIds = new Set(selectedTeams.map((t) => String(t.id)));
@@ -327,6 +337,11 @@ export class PluginPortfolioComponent extends LitElement {
         teamCount: rollup.teams.size,
       }));
 
+    this._tableFeatures = this._orderUnallocatedHierarchically(deduped.filter((feature) =>
+      stateMap.has(normalizeState(feature.state))
+      && sidebarVisibleTypes.has(featureTypeKey(feature))
+      && filterApi.featurePassesFilters(feature)
+    ));
     this._rows = rows;
     this._unallocated = unallocatedWithDepth;
     this._timelineLayout = buildPortfolioTimelineLayout(rows, unallocated, this._columnStates);
@@ -826,8 +841,30 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _renderUnallocated() {
+    const teams = sel.selection.getTeams();
+    const usedTeamIds = new Set();
+    for (const feature of this._tableFeatures) {
+      for (const entry of feature.capacity) {
+        if (entry.capacity > 0) usedTeamIds.add(entry.team);
+      }
+    }
+    for (const id of this._addedTeamIds) usedTeamIds.add(id);
+    const availableIds = new Set(this._tableFeatures.flatMap((feature) =>
+      sel.feature.getAllocationAvailability(feature).allowed_ids));
+    const teamById = new Map(teams.map((team) => [team.id, team]));
+    const allocationTeams = [...usedTeamIds].map((id) => teamById.has(id)
+      ? teamById.get(id) : { id, name: `Unknown allocation: ${id}` });
     return renderUnallocatedPanel({
-      unallocated: this._unallocated,
+      features: this._tableFeatures,
+      allocationTeams,
+      availableTeams: teams.filter((team) => availableIds.has(team.id) && !usedTeamIds.has(team.id)),
+      allocation: sel.capacity.getAllocationSettings(),
+      readonly: !sel.scenario.isActiveScenarioMutable(),
+      getAllocationCell: (feature, teamId) => this._getTableAllocationCell(feature, teamId),
+      onAddTeam: (teamId) => { this._addedTeamIds = [...this._addedTeamIds, teamId]; },
+      onAllocationChange: (feature, teamId, input) => this._commitTableAllocation(feature, teamId, input),
+      onAllocationWheel: (event, feature, teamId) => this._wheelTableAllocation(event, feature, teamId),
+      onDateChange: (feature, field, input) => this._commitTableDate(feature, field, input),
       isOpen: this._unallocatedOpen,
       isBoardCollapsed: !this._boardOpen,
       onToggle: () => this._toggleUnallocated(),
@@ -835,6 +872,87 @@ export class PluginPortfolioComponent extends LitElement {
       getProjectColor: (feature) => this._projectColorForFeature(feature),
       getProjectName: (feature) => this._projectNameForFeature(feature),
     });
+  }
+
+  _getTableAllocationCell(feature, teamId) {
+    const settings = sel.capacity.getAllocationSettings();
+    const entry = feature.capacity.find((item) => item.team === teamId);
+    const percent = entry === undefined ? 0 : entry.capacity;
+    const allowed = sel.feature.getAllocationAvailability(feature).allowed_ids.includes(teamId);
+    const reason = allowed ? '' : 'Team is not available for this task';
+    if (settings.unit === 'percent') {
+      return { value: ceilAllocation(percent), max: 100, reason };
+    }
+    const basis = getAllocationBasis(teamId, feature, settings.staffing.fteById);
+    const unavailable = settings.staffing.status !== 'ready' ? 'Staffing is unavailable'
+      : reason !== '' ? reason : basis.reason;
+    return { value: unavailable === ''
+      ? formatManDays(percentToManDays(percent, basis.fte, basis.days)) : '',
+    max: Math.floor(basis.max), reason: unavailable };
+  }
+
+  _commitTableAllocation(feature, teamId, input) {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
+    const current = sel.feature.getEffectiveFeatureById(feature.id);
+    if (current === null) return;
+    const cell = this._getTableAllocationCell(current, teamId);
+    const value = Number(input.value);
+    if (cell.reason !== '' || input.value.trim() === '' || !Number.isInteger(value)
+      || value < 0 || value > cell.max) {
+      input.setCustomValidity(cell.reason !== '' ? cell.reason
+        : `Enter a whole number between 0 and ${cell.max}`);
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity('');
+    if (value === Number(cell.value)) return;
+    const settings = sel.capacity.getAllocationSettings();
+    const basis = getAllocationBasis(teamId, current, settings.staffing.fteById);
+    const percent = settings.unit === 'man-days'
+      ? manDaysToPercent(value, basis.fte, basis.days) : value;
+    const capacity = current.capacity
+      .filter((entry) => entry.team !== teamId || percent > 0)
+      .map((entry) => entry.team === teamId ? { ...entry, capacity: percent } : entry);
+    if (percent > 0 && !current.capacity.some((entry) => entry.team === teamId)) {
+      capacity.push({ team: teamId, capacity: percent });
+    }
+    if (cmd.feature.updateFeatureField(current.id, 'capacity', capacity)) this._refresh();
+  }
+
+  _wheelTableAllocation(event, feature, teamId) {
+    if (event.currentTarget.disabled || !sel.scenario.isActiveScenarioMutable()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.deltaY === 0) return;
+    const input = event.currentTarget;
+    const current = sel.feature.getEffectiveFeatureById(feature.id);
+    if (current === null) return;
+    const cell = this._getTableAllocationCell(current, teamId);
+    if (cell.reason !== '') return;
+    input.value = String(Math.max(0, Math.min(cell.max,
+      Number(cell.value) + (event.deltaY < 0 ? 1 : -1))));
+    this._commitTableAllocation(current, teamId, input);
+  }
+
+  _commitTableDate(feature, field, input) {
+    if (!sel.scenario.isActiveScenarioMutable()) return;
+    if (!input.checkValidity()) {
+      input.reportValidity();
+      return;
+    }
+    const current = sel.feature.getEffectiveFeatureById(feature.id);
+    if (current === null) return;
+    const value = input.value === '' ? null : input.value;
+    if (current[field] === value) return;
+    cmd.feature.updateFeatureDates([{
+      id: current.id,
+      start: current.start ? current.start : null,
+      end: current.end ? current.end : null,
+      [field]: value,
+    }]);
+    const updated = sel.feature.getEffectiveFeatureById(feature.id);
+    if (updated !== null) input.value = updated[field] ? updated[field] : '';
+    this._refresh();
   }
 
   // @ts-expect-error Bundled lit typings expose an incompatible render() base signature.

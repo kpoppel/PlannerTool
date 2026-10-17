@@ -2,9 +2,9 @@ import { html } from '../vendor/lit.js';
 import { featureTags, toTitle } from './PortfolioPluginUtils.js';
 
 /**
- * Render the unallocated tasks panel with table
+ * Render sidebar-filtered tasks and their team allocation editors.
  * @param {object} options
- * @param {object[]} options.unallocated - Array of unallocated features
+ * @param {object[]} options.features - Sidebar-filtered features
  * @param {boolean} options.isOpen - Whether the panel is open
  * @param {boolean} options.isBoardCollapsed - Whether the board is collapsed
  * @param {function} options.onToggle - Callback when panel toggle is clicked
@@ -14,7 +14,16 @@ import { featureTags, toTitle } from './PortfolioPluginUtils.js';
  * @returns {TemplateResult}
  */
 export function renderUnallocatedPanel({
-  unallocated,
+  features,
+  allocationTeams,
+  availableTeams,
+  allocation,
+  readonly,
+  getAllocationCell,
+  onAddTeam,
+  onAllocationChange,
+  onAllocationWheel,
+  onDateChange,
   isOpen,
   isBoardCollapsed,
   onToggle,
@@ -22,16 +31,15 @@ export function renderUnallocatedPanel({
   getProjectColor,
   getProjectName,
 }) {
-  const subtitle = unallocated.length
-    ? `${unallocated.length} task${unallocated.length > 1 ? 's' : ''} need team assignment`
-    : '- all tasks allocated';
+  const subtitle = `${features.length} task${features.length === 1 ? '' : 's'}`;
+  const unit = allocation.unit === 'man-days' ? 'MD' : '%';
 
   const expandedClass = isBoardCollapsed ? 'expanded' : '';
 
   return html`
     <div class="unalloc-panel ${expandedClass}">
       <div class="panel-header" @click="${onToggle}">
-        <span class="panel-title">Unallocated Tasks</span>
+        <span class="panel-title">Tasks</span>
         <span class="panel-subtitle">${subtitle}</span>
         <span class="panel-toggle ${isOpen ? 'up' : ''}">▼</span>
       </div>
@@ -39,28 +47,91 @@ export function renderUnallocatedPanel({
       ${isOpen
         ? html`
             <div class="unalloc-scroll">
-              <table class="ugrid">
+              <table class="ugrid" style="min-width:${960 + allocationTeams.length * 96}px;">
+                <colgroup>
+                  <col style="width:68px;" />
+                  <col />
+                </colgroup>
+                <colgroup>
+                  ${allocationTeams.map(() => html`<col style="width:96px;" />`)}
+                  <col style="width:44px;" />
+                </colgroup>
+                <colgroup>
+                  <col style="width:120px;" />
+                  <col style="width:144px;" />
+                  <col style="width:144px;" />
+                  <col style="width:100px;" />
+                  <col style="width:120px;" />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th style="width:68px;">ID</th>
+                    <th>ID</th>
                     <th>Title</th>
-                    <th style="width:130px;">Project</th>
-                    <th style="width:110px;">Start</th>
-                    <th style="width:110px;">End</th>
-                    <th style="width:110px;">State</th>
+                    ${allocationTeams.map((team) => html`
+                      <th class="allocation-heading" title=${team.name}>${team.name} (${unit})</th>
+                    `)}
+                    <th class="allocation-add" @click=${(event) => event.stopPropagation()}>
+                      ${readonly || availableTeams.length === 0 ? '' : html`
+                        <details class="allocation-team-picker">
+                          <summary title="Add allocation team" aria-label="Add allocation team column">
+                            +
+                          </summary>
+                          <select aria-label="Add allocation team" @change=${(event) => {
+                            if (event.target.value === '') return;
+                            onAddTeam(event.target.value);
+                            event.target.value = '';
+                            event.target.closest('details').open = false;
+                          }}>
+                            <option value="">Select team</option>
+                            ${availableTeams.map((team) => html`
+                              <option value=${team.id}>${team.name}</option>
+                            `)}
+                          </select>
+                        </details>
+                      `}
+                    </th>
+                    <th>Project</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>State</th>
                     <th>Tags</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${unallocated.length === 0
-                    ? html`<tr class="empty-row"><td colspan="7">All tasks have team allocations</td></tr>`
-                    : unallocated.map((feature) => {
+                  ${features.length === 0
+                    ? html`<tr class="empty-row"><td colspan=${8 + allocationTeams.length}>No tasks match the sidebar filters</td></tr>`
+                    : features.map((feature) => {
                         const tags = featureTags(feature);
-                        const depthMargin = (feature.depth || 0) * 16;
+                        const depthMargin = feature.depth * 16;
                         return html`
                           <tr @click="${() => onSelectFeature(feature)}">
                             <td style="padding-left:${depthMargin + 12}px;"><strong>${feature.id}</strong></td>
                             <td>${toTitle(feature.title)}</td>
+                            ${allocationTeams.map((team) => {
+                              const cell = getAllocationCell(feature, team.id);
+                              return html`<td class="allocation-cell" title=${cell.reason}
+                                @click=${(event) => event.stopPropagation()}>
+                                <input class="allocation-input" type="number" min="0"
+                                  max=${cell.max} step="1" required
+                                  aria-label=${`${feature.id} ${team.name} allocation ${unit}`}
+                                  ?disabled=${readonly || cell.reason !== ''}
+                                  .value=${String(cell.value)}
+                                  @input=${(event) => event.target.setCustomValidity('')}
+                                  @change=${(event) => onAllocationChange(feature, team.id, event.target)}
+                                  @keydown=${(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      onAllocationChange(feature, team.id, event.target);
+                                    } else if (event.key === 'Escape') {
+                                      event.target.value = String(cell.value);
+                                      event.target.setCustomValidity('');
+                                    }
+                                  }}
+                                  @wheel=${(event) => onAllocationWheel(event, feature, team.id)}
+                                />
+                              </td>`;
+                            })}
+                            <td></td>
                             <td>
                               <span
                                 class="badge badge-proj"
@@ -69,12 +140,28 @@ export function renderUnallocatedPanel({
                                 ${getProjectName(feature)}
                               </span>
                             </td>
-                            <td>${feature?.start || '-'}</td>
-                            <td>${feature?.end || '-'}</td>
+                            ${['start', 'end'].map((field) => html`
+                              <td class="date-cell" @click=${(event) => event.stopPropagation()}>
+                                <input class="date-input" type="date"
+                                  aria-label=${`${feature.id} ${field} date`}
+                                  ?disabled=${readonly}
+                                  .value=${feature[field] ? feature[field] : ''}
+                                  @change=${(event) => onDateChange(feature, field, event.target)}
+                                  @keydown=${(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      onDateChange(feature, field, event.target);
+                                    } else if (event.key === 'Escape') {
+                                      event.target.value = feature[field] ? feature[field] : '';
+                                    }
+                                  }}
+                                />
+                              </td>
+                            `)}
                             <td>
                               <span class="state-cell">
                                 <span class="state-cell-dot"></span>
-                                ${feature?.state || '-'}
+                                ${feature.state}
                               </span>
                             </td>
                             <td>
