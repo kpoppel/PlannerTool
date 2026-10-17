@@ -1,2 +1,3 @@
 pytest
 pytest-cov
+mcp>=2.3,<3

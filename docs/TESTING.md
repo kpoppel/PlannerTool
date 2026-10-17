@@ -1,5 +1,17 @@
 # How to run tests
 
+## Agent test runner (MCP)
+
+`scripts/mcp_test_runner.py` is an MCP stdio server (`mcp` SDK from `requirements-dev.txt`) that runs pytest, vitest and
+playwright and returns compact summaries (counts, failing test ids, short error excerpts). Full logs
+and JUnit reports are written to `.test-runs/<framework>.{log,xml}`.
+
+- Tools: `run_tests`, `rerun_failed`, `get_status`, `get_failures`, `get_log`, `cancel_run`.
+- VS Code registration (`.vscode/mcp.json`):
+  `{"servers": {"plannertool-tests": {"type": "stdio", "command": "${workspaceFolder}/.venv/bin/python", "args": ["${workspaceFolder}/scripts/mcp_test_runner.py"]}}}`
+- CLI equivalent: `.venv/bin/python scripts/mcp_test_runner.py --cli vitest tests/core/foo.test.js`
+  (`-k` name filter, `-x` bail, `-c` playwright config).
+
 ## Ownership and test types
 
 Organize by the module or feature under test, not when coverage was added or an

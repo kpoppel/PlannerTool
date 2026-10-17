@@ -1,0 +1,14 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "write-debug-env",
+            "detail": "Expose .encryption_key as PLANNER_SECRET_KEY to the debugger (private, gitignored file)",
+            "type": "shell",
+            "command": "key=\"$(cat .encryption_key)\" && umask 077 && printf 'PLANNER_SECRET_KEY=%s\\n' \"$key\" > .vscode/debug.env",
+            "options": { "cwd": "${workspaceFolder}" },
+            "presentation": { "reveal": "silent", "close": true },
+            "problemMatcher": []
+        }
+    ]
+}

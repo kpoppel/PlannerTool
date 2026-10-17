@@ -1,6 +1,15 @@
 # Getting started - development
 
 - Clone this git repository `git clone https://github.com/kpoppel/PlannerTool.git`.
+- Install Python 3.13 or later (with venv support, e.g. `sudo apt install python3-venv`)
+- Install Node.js 20 or later, e.g. via nvm (see below)
+- Run `scripts/setup-dev.sh`. It creates `.venv`, installs Python and Node dependencies, the
+  Playwright browser and git hooks, and installs the gitignored `.vscode/` and `.github/` files
+  from `scripts/dev-config/` (local edits are kept and reported). Re-run it after pulling
+  changes: steps whose inputs are unchanged are skipped (`--force` re-runs everything).
+
+Manual setup, step by step:
+
 - Install Python 3.13 or later
 - Install nvm (node version manager)
   check out the latest release here: https://github.com/nvm-sh/nvm/releases

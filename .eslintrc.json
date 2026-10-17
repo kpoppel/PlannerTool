@@ -10,7 +10,7 @@
     "sourceType": "module"
   },
   "extends": ["prettier", "eslint:recommended", "plugin:lit/recommended"],
-  "plugins": ["lit", "local"],
+  "plugins": ["lit"],
   "rules": {
     "no-var": "error",
     "prefer-const": "warn",

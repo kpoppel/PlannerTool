@@ -15,6 +15,10 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Replace the broken Node "Launch Program" debug config with a debugpy uvicorn server launch that loads the secret key via a pre-launch task.
+- Add re-entrant `scripts/setup-dev.sh` that prepares a fresh clone (including gitignored `.vscode/` and `.github/` config from `scripts/dev-config/`) and re-applies only changed steps; drop the stale `eslint-plugin-local` dependency that broke `npm install`.
+- Add an MCP test runner (`scripts/mcp_test_runner.py`, `mcp` dev dependency) returning compact pytest, vitest and playwright summaries for agent TDD loops.
+- Align isolated E2E bootstrap with catalogue-backed plan imports, eligible task types and process-qualified display settings.
 - Remove the delay on first task click by deriving the parent/child map once per state instead of once per card.
 - Keep read-only task details open on a normal click without requiring pointer movement.
 - Make read-only scenarios inspection-only across task, group and plugin tools, enforce protected saves/deletes server-side, and cancel stale edits while preserving editable copies and view preferences.
