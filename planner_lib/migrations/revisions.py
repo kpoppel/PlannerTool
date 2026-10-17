@@ -474,6 +474,61 @@ def upgrade_38(storage):
                 storage.delete(namespace, key)
 
 
+def upgrade_39(storage):
+    with storage.transaction():
+        projects = storage.load('config', 'projects')
+        plans = []
+        for project in projects['project_map']:
+            plan = dict(project)
+            plan.pop('include_states', None)
+            plan.pop('display_states', None)
+            plan['closed_history_days'] = 0
+            plans.append(plan)
+        storage.save('config', 'projects', {**projects, 'project_map': plans})
+        storage.save('config', 'ado_processes', {'schema_version': 1, 'processes': []})
+        storage.save('config', 'global_settings', {
+            'schema_version': 2, 'process_order': [], 'type_tiers': {},
+        })
+
+
+def upgrade_40(storage):
+    with storage.transaction():
+        projects = storage.load('config', 'projects')
+        plans = []
+        for project in projects['project_map']:
+            plan = dict(project)
+            plan.pop('completed_retention_months', None)
+            plans.append(plan)
+        storage.save('config', 'projects', {**projects, 'project_map': plans})
+
+
+def upgrade_41(storage):
+    with storage.transaction():
+        projects = storage.load('config', 'projects')
+        catalogue = storage.load('config', 'ado_processes')
+        process_by_project = {
+            project.casefold(): process
+            for process in catalogue['processes'] for project in process['projects']
+        }
+        plans = []
+        for project in projects['project_map']:
+            plan = dict(project)
+            ado_project = plan['area_path'].replace('/', '\\').lstrip('\\').split('\\')[0].casefold()
+            process = process_by_project.get(ado_project)
+            if process is not None:
+                task_types = {item['name'].casefold() for item in process['types']
+                              if item['backlog_level'] == 'task'}
+                selected = [name for name in plan['task_types']
+                            if name.casefold() not in task_types]
+                if not selected:
+                    raise SchemaError(
+                        f"Plan {plan['name']} must select an eligible work item type before upgrading",
+                    )
+                plan['task_types'] = selected
+            plans.append(plan)
+        storage.save('config', 'projects', {**projects, 'project_map': plans})
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -481,7 +536,8 @@ REGISTRY = tuple(
         (29, 28, upgrade_29), (30, 29, upgrade_30), (31, 30, upgrade_31),
         (32, 31, upgrade_32), (33, 32, upgrade_33), (34, 33, upgrade_34),
         (35, 34, upgrade_35), (36, 35, upgrade_36), (37, 36, upgrade_37),
-        (38, 37, upgrade_38),
+        (38, 37, upgrade_38), (39, 38, upgrade_39), (40, 39, upgrade_40),
+        (41, 40, upgrade_41),
     )
 )
 
@@ -493,7 +549,10 @@ def initialize(storage):
                  'allocation_defaults': {'project': [], 'team': []}},
         'teams': {'schema_version': 3, 'teams': [], 'groups': []},
         'workforce': {'schema_version': 2, 'suppliers': [], 'staffing': []},
-        'ado_config': {'organization_url': '', 'feature_flags': {}},
+        'ado_config': {'organization_url': '',
+                   'feature_flags': {'use_azure_mock_generator': True}},
+        'ado_processes': {'schema_version': 1, 'processes': []},
+        'global_settings': {'schema_version': 2, 'process_order': [], 'type_tiers': {}},
         'plugin_runtime_config': {'schema_version': 2, 'plugins': []},
     }
     for key, value in defaults.items():
@@ -577,6 +636,35 @@ def validate_records(storage, revision, *, server_config=None):
                     r'[a-z2-7]{26}', team['id'],
                 ):
                     raise SchemaError('Invalid team ID format')
+        if revision >= 39:
+            from planner_lib.azure.catalogue import validate_display
+            catalogue = storage.load('config', 'ado_processes')
+            if catalogue['schema_version'] != 1 or not isinstance(catalogue['processes'], list):
+                raise SchemaError('Invalid process catalogue')
+            validate_display(catalogue, storage.load('config', 'global_settings'))
+            for project in projects['project_map']:
+                if ('include_states' in project or 'display_states' in project
+                        or type(project['closed_history_days']) is not int
+                        or project['closed_history_days'] < 0):
+                    raise SchemaError('Invalid revision 39 plan contract')
+        if revision >= 40:
+            for project in projects['project_map']:
+                if 'completed_retention_months' in project:
+                    raise SchemaError('Invalid revision 40 plan contract')
+        if revision >= 41:
+            catalogue = storage.load('config', 'ado_processes')
+            process_by_project = {
+                project.casefold(): process
+                for process in catalogue['processes'] for project in process['projects']
+            }
+            for project in projects['project_map']:
+                ado_project = project['area_path'].replace('/', '\\').lstrip('\\').split('\\')[0].casefold()
+                process = process_by_project.get(ado_project)
+                if process is not None:
+                    task_types = {item['name'].casefold() for item in process['types']
+                                  if item['backlog_level'] == 'task'}
+                    if any(name.casefold() in task_types for name in project['task_types']):
+                        raise SchemaError('Invalid revision 41 task-level plan selection')
         account_ids = set()
         for email in storage.list_keys('accounts'):
             account = storage.load('accounts', email)

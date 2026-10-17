@@ -13,6 +13,7 @@ import {
 } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { cmd, sel } from '../application/imports.js';
+import { featureTypeKey } from '../application/shared/workItemDisplay.js';
 import { getIconTemplate } from '../services/IconService.js';
 import {
   TIMELINE_HEADER_HEIGHT,
@@ -203,17 +204,7 @@ export class PluginPortfolioComponent extends LitElement {
     const sidebarStateFilterRaw = filterApi.getSelectedFeatureStateNames();
     const sidebarStateFilter = new Set(sidebarStateFilterRaw.map((s) => normalizeState(s)));
 
-    const allAvailableStates =
-      (filterApi.getAvailableFeatureStates() || []).length > 0 ?
-        [...filterApi.getAvailableFeatureStates()]
-      : Array.from(
-          new Set(deduped.map((f) => String(f.state || '').trim()).filter(Boolean))
-        ).sort((a, b) => {
-          if (typeof filterApi.compareFeatureStates === 'function') {
-            return filterApi.compareFeatureStates(a, b);
-          }
-          return a.localeCompare(b);
-        });
+    const allAvailableStates = filterApi.getAvailableFeatureStates();
 
     // Sidebar state selection is the source of truth for visible portfolio columns.
     this._columnStates = allAvailableStates.filter((s) =>
@@ -222,10 +213,7 @@ export class PluginPortfolioComponent extends LitElement {
 
     const stateMap = new Map(this._columnStates.map((s) => [normalizeState(s), s]));
 
-    const availableTypes =
-      (featureApi.getAvailableTaskTypes() || []).length > 0 ?
-        [...featureApi.getAvailableTaskTypes()]
-      : Array.from(new Set(deduped.map((f) => getFeatureType(f)).filter(Boolean))).sort();
+    const availableTypes = featureApi.getAvailableTaskTypesOrdered();
 
     const sidebarVisibleTypes = new Set(
       availableTypes.filter((t) => viewApi.isTypeVisible(t) !== false)
@@ -249,7 +237,7 @@ export class PluginPortfolioComponent extends LitElement {
       if (!stateMap.has(featureStateNorm)) return false;
       if (!sidebarStateFilter.has(featureStateNorm)) return false;
 
-      const featureType = getFeatureType(feature);
+      const featureType = featureTypeKey(feature);
       if (!sidebarVisibleTypes.has(featureType)) return false;
 
       if (!filterApi.featurePassesFilters(feature)) return false;

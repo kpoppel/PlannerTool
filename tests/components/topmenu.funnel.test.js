@@ -48,7 +48,7 @@ describe('TopMenu Data Funnel', () => {
     expect(menu.shadowRoot.querySelector('.settings-chevron')).to.exist;
     expect(menu.shadowRoot.querySelector('.application-link[aria-label="Open administration"]')).to.equal(null);
     expect([...settings.querySelectorAll('a')].map((link) => link.textContent.trim()))
-      .to.deep.equal(['Projects']);
+      .to.deep.equal(['Plans', 'Azure DevOps Processes', 'Global Project Settings']);
     expect(settings.querySelector('a').getAttribute('href')).to.equal('/admin/#projects');
     menu.permissions = ['manage_workforce_costs', 'manage_iterations'];
     await menu.updateComplete;

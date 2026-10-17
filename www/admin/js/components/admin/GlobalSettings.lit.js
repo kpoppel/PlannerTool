@@ -1,702 +1,175 @@
-import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import { html, css } from '/static/js/vendor/lit.js';
+import { BaseConfigComponent } from './BaseConfigComponent.lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
-/**
- * GlobalSettings - Admin panel for server-wide settings.
- *
- * Currently manages:
- *   • Task Type Hierarchy — ordered levels defining parent→child relationships
- *     between task types (e.g. Initiative → Epic → Feature → Bug/User Story → Sub-Task).
- *   • State Display Sequence — ordered levels defining how task states are
- *     shown across the user UI (Sidebar, Details panel, plugins).
- *
- * The settings are stored in data/config/global_settings.yml and served to the
- * user client via /api/projects so that every project carries the same hierarchy.
- *
- * Editor design:
- *   - Complete list of task types is sourced from the projects JSON schema enum.
- *   - A "Pool" row at the bottom shows all types not yet placed in any named level.
- *   - Click a named level row to activate it; pool chips then move types into that
- *     level when clicked.
- *   - Clicking × on a named level chip returns the type to the pool.
- *   - "+ Add Level" adds a level above the pool and activates it immediately.
- *   - Each type can only be in one level; moving removes it from any previous level.
- */
-export class AdminGlobalSettings extends LitElement {
+export class AdminGlobalSettings extends BaseConfigComponent {
   static properties = {
-    _hierarchy: { type: Array, state: true },
-    _allTypes: { type: Array, state: true },
-    _activeLevel: { type: Number, state: true },
-    _stateSequence: { type: Array, state: true },
-    _allStates: { type: Array, state: true },
-    _activeStateLevel: { type: Number, state: true },
-    _loading: { type: Boolean, state: true },
-    _saving: { type: Boolean, state: true },
-    _statusMsg: { type: String, state: true },
-    _statusType: { type: String, state: true },
+    processes: { type: Array },
+    saving: { type: Boolean },
+    ready: { type: Boolean },
+    dirty: { type: Boolean },
   };
 
-  static styles = css`
-    :host {
-      display: block;
-      height: 100%;
-    }
-
-    h2 {
-      margin-top: 0;
-      font-size: 1.1rem;
-    }
-
-    .panel {
-      padding: 16px;
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-      max-width: 720px;
-    }
-
-    .section-title {
-      font-weight: 700;
-      font-size: 0.95rem;
-      color: #374151;
-      margin-bottom: 4px;
-    }
-
-    .section-hint {
-      font-size: 0.82rem;
-      color: #6b7280;
-      margin-bottom: 10px;
-    }
-
-    /* --- hierarchy editor --- */
-    .hierarchy-editor {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .hierarchy-level {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 10px 12px;
-      border: 1px solid #e6e6e6;
-      border-radius: 6px;
-      background: #f9fafb;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-    }
-
-    .hierarchy-level:hover:not(.pool-level) {
-      border-color: #93c5fd;
-      background: #eff6ff;
-    }
-
-    .hierarchy-level.level-active {
-      border-color: #3b82f6;
-      background: #eff6ff;
-      box-shadow: 0 0 0 2px #bfdbfe;
-    }
-
-    /* Pool row — always last, visually distinct */
-    .hierarchy-level.pool-level {
-      background: #f0fdf4;
-      border-color: #bbf7d0;
-      cursor: default;
-    }
-
-    .hierarchy-level.pool-level.pool-hint {
-      border-style: dashed;
-    }
-
-    .hierarchy-level-index {
-      font-size: 11px;
-      color: #9ca3af;
-      min-width: 64px;
-      padding-top: 6px;
-      flex-shrink: 0;
-      line-height: 1.4;
-    }
-
-    .level-active .hierarchy-level-index {
-      color: #2563eb;
-      font-weight: 700;
-    }
-
-    .pool-level .hierarchy-level-index {
-      color: #16a34a;
-    }
-
-    .hierarchy-level-types {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      flex: 1;
-      align-items: center;
-    }
-
-    .hierarchy-level-actions {
-      display: flex;
-      gap: 4px;
-      flex-shrink: 0;
-      padding-top: 2px;
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: #e0f2fe;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 12px;
-    }
-
-    .chip.removable {
-      cursor: pointer;
-    }
-
-    .chip.removable:hover {
-      background: #fecdd3;
-    }
-
-    .chip-remove {
-      font-weight: bold;
-      color: #64748b;
-    }
-
-    /* Pool chips */
-    .pool-chip {
-      display: inline-flex;
-      align-items: center;
-      background: #dcfce7;
-      border: 1px solid #86efac;
-      padding: 4px 9px;
-      border-radius: 999px;
-      font-size: 12px;
-      color: #166534;
-      cursor: default;
-      opacity: 0.7;
-    }
-
-    .pool-chip.clickable {
-      cursor: pointer;
-      opacity: 1;
-    }
-
-    .pool-chip.clickable:hover {
-      background: #bbf7d0;
-    }
-
-    .add-input {
-      padding: 4px 8px;
-      border: 1px dashed #d1d5db;
-      border-radius: 4px;
-      font-size: 12px;
-      width: 140px;
-      background: #fff;
-      outline: none;
-    }
-
-    .add-input:focus {
-      border-color: #3b82f6;
-    }
-
-    .icon-btn {
-      border: 1px solid #e6e6e6;
-      background: #fff;
-      width: 28px;
-      height: 28px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-    }
-
-    .icon-btn:hover:not(:disabled) {
-      background: #f3f4f6;
-    }
-
-    .icon-btn:disabled {
-      opacity: 0.3;
-      cursor: default;
-    }
-
-    .add-level-btn {
-      align-self: flex-start;
-      margin-top: 4px;
-      padding: 7px 14px;
-      border: 1px dashed #9ca3af;
-      border-radius: 6px;
-      background: #fff;
-      cursor: pointer;
-      font-size: 13px;
-      color: #374151;
-    }
-
-    .add-level-btn:hover {
-      background: #f9fafb;
-    }
-
-    .pool-hint-msg {
-      font-size: 11px;
-      color: #6b7280;
-      font-style: italic;
-      margin-top: 2px;
-      padding: 0 2px;
-    }
-
-    /* --- actions bar --- */
-    .actions {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      padding-top: 8px;
-      border-top: 1px solid #e5e7eb;
-    }
-
-    .btn {
-      padding: 8px 16px;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      background: #f3f4f6;
-      cursor: pointer;
-      font-size: 0.9rem;
-    }
-
-    .btn.primary {
-      background: #3b82f6;
-      color: #fff;
-      border: none;
-    }
-
-    .btn:hover:not(:disabled) {
-      filter: brightness(0.95);
-    }
-
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .status {
-      font-size: 0.85rem;
-    }
-
-    .status.ok {
-      color: #10b981;
-    }
-
-    .status.error {
-      color: #ef4444;
-    }
-
-    .loading-msg {
-      color: #6b7280;
-      font-size: 0.9rem;
-    }
-
-    /* --- project types palette --- */
-    .types-palette {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      padding: 10px 12px;
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
-      border-radius: 6px;
-      margin-bottom: 10px;
-    }
-
-    .types-palette-label {
-      font-size: 11px;
-      color: #6b7280;
-      width: 100%;
-      margin-bottom: 2px;
-    }
-
-    .palette-chip {
-      display: inline-flex;
-      align-items: center;
-      background: #dcfce7;
-      border: 1px solid #86efac;
-      padding: 3px 9px;
-      border-radius: 999px;
-      font-size: 12px;
-      color: #166534;
-    }
-
-    .palette-chip.unplaced {
-      cursor: pointer;
-    }
-
-    .palette-chip.unplaced:hover {
-      background: #bbf7d0;
-    }
-
-  `;
+  static styles = [BaseConfigComponent.styles, css`
+    .panel .editor { display: block; padding: 0 12px 0 0; }
+    .process { padding: 16px 0; border-bottom: 1px solid #dce1e7; }
+    .process:first-child { padding-top: 0; }
+    .process-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    h3 { font-size: 1rem; margin: 0 auto 0 0; }
+    h4 { margin: 0 0 8px; font-size: 0.85rem; overflow-wrap: anywhere; }
+    .tier { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+    .tier-label { color: #586575; width: 54px; flex-shrink: 0; font-size: 0.85rem; }
+    .types { display: flex; flex-wrap: wrap; gap: 8px; }
+    .type { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px;
+      border: 1px solid #d6dce2; border-radius: 4px; background: #f5f7f9; }
+    .icon-btn { width: 28px; height: 28px; padding: 0; flex-shrink: 0; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .state-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 20px; margin-top: 20px; }
+    .state-column { min-width: 0; }
+    .states { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+    .state { padding: 3px 8px; border-radius: 4px; background: #e7ebef; color: #283643;
+      font-size: 0.85rem; max-width: 100%; overflow-wrap: anywhere; box-sizing: border-box; }
+    .state[data-category='InProgress'] { background: #dbeafe; color: #1e40af; }
+    .state[data-category='Resolved'] { background: #fff0c2; color: #704d00; }
+    .state[data-category='Completed'] { background: #dcfce7; color: #166534; }
+    .actions { flex-shrink: 0; flex-wrap: wrap; }
+    .status { overflow-wrap: anywhere; }
+  `];
 
   constructor() {
     super();
-    this._hierarchy = [];
-    this._allTypes = [];
-    this._activeLevel = -1;
-    this._stateSequence = [];
-    this._allStates = [];
-    this._activeStateLevel = -1;
-    this._loading = false;
-    this._saving = false;
-    this._statusMsg = '';
-    this._statusType = 'ok';
+    this.content = { schema_version: 2, process_order: [], type_tiers: {} };
+    this.processes = [];
+    this.saving = false;
+    this.ready = false;
+    this.dirty = false;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this._load();
-  }
-
-  async _load() {
-    this._loading = true;
-    this._statusMsg = '';
-    const [dataResult, schemaResult, projectsResult] = await Promise.all([
-      adminProvider.getGlobalSettings(),
-      adminProvider.getSchema('projects'),
-      adminProvider.getProjects(),
-    ]);
-    this._loading = false;
-    const data = dataResult?.ok ? dataResult.data : null;
-    const schema = schemaResult?.ok ? schemaResult.data : null;
-    const projectsCfg = projectsResult?.ok ? projectsResult.data : null;
-
-    if (data) {
-      this._hierarchy = JSON.parse(JSON.stringify(data.task_type_hierarchy || []));
-      this._stateSequence = JSON.parse(JSON.stringify(data.state_display_sequence || []));
-    } else {
-      this._statusMsg = dataResult?.error?.message || 'Failed to load global settings.';
-      this._statusType = 'error';
-    }
-    // Extract the canonical full list of task types from the projects schema enum.
-    const enumTypes =
-      schema?.properties?.project_map?.items?.properties?.task_types?.items?.enum || [];
-    this._allTypes = [...enumTypes].sort();
-
-    const projectMap = Array.isArray(projectsCfg?.project_map) ? projectsCfg.project_map : [];
-    const stateSet = new Set();
-    for (const p of projectMap) {
-      const states = Array.isArray(p?.display_states) ? p.display_states : [];
-      for (const s of states) {
-        const trimmed = String(s || '').trim();
-        if (trimmed) stateSet.add(trimmed);
-      }
-    }
-    this._allStates = Array.from(stateSet).sort();
-
-    this._activeLevel = -1;
-    this._activeStateLevel = -1;
-  }
-
-  async _save() {
-    this._saving = true;
-    this._statusMsg = '';
-    const result = await adminProvider.saveGlobalSettings({
-      task_type_hierarchy: this._hierarchy,
-      state_display_sequence: this._stateSequence,
-    });
-    this._saving = false;
-    if (result && result.ok) {
-      this._statusMsg = 'Saved.';
-      this._statusType = 'ok';
-    } else {
-      this._statusMsg = result?.error?.message || result?.error || 'Save failed.';
-      this._statusType = 'error';
+  async loadConfig() {
+    this.loading = true;
+    this.ready = false;
+    this.statusMsg = '';
+    try {
+      const catalogue = await adminProvider.getAdoProcesses();
+      if (!catalogue.ok) throw new Error(catalogue.error.message);
+      const settings = await adminProvider.getGlobalSettings();
+      if (!settings.ok) throw new Error(settings.error.message);
+      this.processes = catalogue.data.processes;
+      this.content = structuredClone(settings.data);
+      this.ready = true;
+      this.dirty = false;
+    } catch (error) {
+      console.error('Loading global display settings failed', error);
+      this.statusMsg = error.message;
+      this.statusType = 'error';
+    } finally {
+      this.loading = false;
     }
   }
 
-  // ---- Computed ----
-
-  _placedSet(levels) {
-    const placed = new Set();
-    levels.forEach((l) => (l.types || []).forEach((t) => placed.add(t)));
-    return placed;
-  }
-
-  _poolItems(allItems, levels) {
-    const placed = this._placedSet(levels);
-    return allItems.filter((t) => !placed.has(t));
-  }
-
-  // ---- Hierarchy mutation ----
-
-  _addLevel(kind) {
-    if (kind === 'type') {
-      this._hierarchy = [...this._hierarchy, { types: [] }];
-      this._activeLevel = this._hierarchy.length - 1;
-      return;
-    }
-    this._stateSequence = [...this._stateSequence, { types: [] }];
-    this._activeStateLevel = this._stateSequence.length - 1;
-  }
-
-  _removeLevel(kind, levelIndex) {
-    if (kind === 'type') {
-      this._hierarchy = this._hierarchy.filter((_, i) => i !== levelIndex);
-      if (this._activeLevel >= this._hierarchy.length) {
-        this._activeLevel = this._hierarchy.length - 1;
-      }
-      return;
-    }
-    this._stateSequence = this._stateSequence.filter((_, i) => i !== levelIndex);
-    if (this._activeStateLevel >= this._stateSequence.length) {
-      this._activeStateLevel = this._stateSequence.length - 1;
+  async saveConfig() {
+    this.saving = true;
+    this.statusMsg = '';
+    try {
+      const result = await adminProvider.saveGlobalSettings(this.content);
+      if (!result.ok) throw new Error(result.error.message);
+      this.dirty = false;
+      this.statusMsg = 'Saved.';
+      this.statusType = 'success';
+    } catch (error) {
+      console.error('Saving global display settings failed', error);
+      this.statusMsg = error.message;
+      this.statusType = 'error';
+    } finally {
+      this.saving = false;
     }
   }
 
-  _moveLevel(kind, levelIndex, direction) {
-    const levels = kind === 'type' ? [...this._hierarchy] : [...this._stateSequence];
-    const target = levelIndex + direction;
-    if (target < 0 || target >= levels.length) return;
-    [levels[levelIndex], levels[target]] = [levels[target], levels[levelIndex]];
+  moveProcess(index, direction) {
+    const order = [...this.content.process_order];
+    const target = index + direction;
+    if (target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target], order[index]];
+    this.content = { ...this.content, process_order: order };
+    this.dirty = true;
+  }
 
-    if (kind === 'type') {
-      this._hierarchy = levels;
-      if (this._activeLevel === levelIndex) this._activeLevel = target;
-      return;
+  moveType(processId, tierIndex, name, direction) {
+    const tiers = this.content.type_tiers[processId].map((tier) => [...tier]);
+    tiers[tierIndex] = tiers[tierIndex].filter((type) => type !== name);
+    const target = tierIndex + direction;
+    if (target < 0) tiers.unshift([name]);
+    else if (target === tiers.length) tiers.push([name]);
+    else tiers[target].push(name);
+    this.content = { ...this.content, type_tiers: { ...this.content.type_tiers,
+      [processId]: tiers.filter((tier) => tier.length > 0) } };
+    this.dirty = true;
+  }
+
+  stateColumns(process, tiers) {
+    const columns = new Map();
+    for (const name of tiers.flat()) {
+      const type = process.types.find((item) => item.name === name);
+      const states = [...type.states].sort((first, second) => first.order - second.order)
+        .filter((state) => state.category !== 'Removed');
+      const key = JSON.stringify(states.map((state) => [state.name, state.category]));
+      if (!columns.has(key)) columns.set(key, { names: [], states });
+      columns.get(key).names.push(name);
     }
-
-    this._stateSequence = levels;
-    if (this._activeStateLevel === levelIndex) this._activeStateLevel = target;
-  }
-
-  /**
-   * Move a type into the given level, removing it from any other level first.
-   * Accepts types not in _allTypes (manual entry via keyboard).
-   */
-  _moveItemToLevel(kind, levelIndex, rawType) {
-    const trimmed = String(rawType || '').trim();
-    if (!trimmed) return;
-    const levels = kind === 'type' ? this._hierarchy : this._stateSequence;
-    const next = JSON.parse(JSON.stringify(levels));
-    if (!next[levelIndex]) return;
-    // Remove from every level to ensure single-assignment invariant.
-    next.forEach((l) => {
-      l.types = (l.types || []).filter((t) => t !== trimmed);
-    });
-    next[levelIndex].types = [...(next[levelIndex].types || []), trimmed];
-    if (kind === 'type') {
-      this._hierarchy = next;
-    } else {
-      this._stateSequence = next;
-    }
-  }
-
-  /** Remove a type from a named level, returning it to the pool. */
-  _removeItem(kind, levelIndex, type) {
-    const levels = kind === 'type' ? this._hierarchy : this._stateSequence;
-    const next = JSON.parse(JSON.stringify(levels));
-    if (!next[levelIndex]) return;
-    next[levelIndex].types = (next[levelIndex].types || []).filter((t) => t !== type);
-    if (kind === 'type') {
-      this._hierarchy = next;
-    } else {
-      this._stateSequence = next;
-    }
-  }
-
-  // ---- Render ----
-
-  _renderLevel(level, levelIndex, kind) {
-    const isType = kind === 'type';
-    const levels = isType ? this._hierarchy : this._stateSequence;
-    const activeLevel = isType ? this._activeLevel : this._activeStateLevel;
-    const isFirst = levelIndex === 0;
-    const isLast = levelIndex === levels.length - 1;
-    const isActive = activeLevel === levelIndex;
-    const itemName = isType ? 'type' : 'state';
-    return html`
-      <div
-        class="hierarchy-level ${isActive ? 'level-active' : ''}"
-        @click=${() => {
-          if (isType) this._activeLevel = levelIndex;
-          else this._activeStateLevel = levelIndex;
-        }}
-      >
-        <span class="hierarchy-level-index">
-          Level ${levelIndex}${isActive ? html`<br/>\u270e active` : ''}
-        </span>
-        <div class="hierarchy-level-types">
-          ${(level.types || []).map(
-            (type) => html`
-              <span
-                class="chip removable"
-                title="Remove from level (returns to pool)"
-                @click=${(e) => {
-                  e.stopPropagation();
-                  this._removeItem(kind, levelIndex, type);
-                }}
-              >
-                ${type}<span class="chip-remove">\u00d7</span>
-              </span>
-            `
-          )}
-          <input
-            class="add-input"
-            placeholder="${itemName} + Enter"
-            @click=${(e) => e.stopPropagation()}
-            @keydown=${(e) => {
-              if (e.key === 'Enter') {
-                this._moveItemToLevel(kind, levelIndex, e.target.value);
-                e.target.value = '';
-              }
-            }}
-          />
-        </div>
-        <div class="hierarchy-level-actions">
-          <button
-            class="icon-btn"
-            title="Move level up"
-            ?disabled=${isFirst}
-            @click=${(e) => { e.stopPropagation(); this._moveLevel(kind, levelIndex, -1); }}
-          >\u2191</button>
-          <button
-            class="icon-btn"
-            title="Move level down"
-            ?disabled=${isLast}
-            @click=${(e) => { e.stopPropagation(); this._moveLevel(kind, levelIndex, 1); }}
-          >\u2193</button>
-          <button
-            class="icon-btn"
-            title="Remove level (types return to pool)"
-            @click=${(e) => { e.stopPropagation(); this._removeLevel(kind, levelIndex); }}
-          >\uD83D\uDDD1</button>
-        </div>
-      </div>
-    `;
-  }
-
-  _renderPool(kind) {
-    const isType = kind === 'type';
-    const allItems = isType ? this._allTypes : this._allStates;
-    if (!allItems.length) return html``;
-
-    const levels = isType ? this._hierarchy : this._stateSequence;
-    const activeLevel = isType ? this._activeLevel : this._activeStateLevel;
-    const pool = this._poolItems(allItems, levels);
-    const hasTarget = activeLevel >= 0;
-    const itemLabel = isType ? 'type' : 'state';
-    const hintText = hasTarget
-      ? `Click a ${itemLabel} to add it to Level ${activeLevel}`
-      : `Click a named level above to activate it, then click ${itemLabel}s here to assign them`;
-    return html`
-      <div class="hierarchy-level pool-level ${hasTarget ? '' : 'pool-hint'}">
-        <span class="hierarchy-level-index">
-          Pool<br/><span style="font-size:10px;font-weight:400">(unassigned)</span>
-        </span>
-        <div class="hierarchy-level-types">
-          ${pool.length === 0
-            ? html`<span style="color:#16a34a;font-size:12px">All ${itemLabel}s assigned \u2713</span>`
-            : pool.map(
-                (t) => html`
-                  <span
-                    class="pool-chip ${hasTarget ? 'clickable' : ''}"
-                    title=${hasTarget
-                      ? `Add to Level ${activeLevel}`
-                      : `Activate a level first to assign this ${itemLabel}`}
-                    @click=${() => { if (hasTarget) this._moveItemToLevel(kind, activeLevel, t); }}
-                  >${t}</span>
-                `
-              )}
-        </div>
-      </div>
-      <div class="pool-hint-msg">${hintText}</div>
-    `;
+    return [...columns.values()];
   }
 
   render() {
-    if (this._loading) {
-      return html`<div class="loading-msg">Loading global settings\u2026</div>`;
-    }
-
+    if (this.loading) return html`<div class="loading">Loading global settings...</div>`;
     return html`
-      <section>
-        <h2>Global Settings</h2>
-        <div class="panel">
-
-          <!-- Task Type Hierarchy -->
-          <div>
-            <div class="section-title">Task Type Hierarchy</div>
-            <div class="section-hint">
-              Define the parent \u2192 child ordering of task types used across the entire
-              server. Each level represents one step in the hierarchy; types on the same
-              level are siblings. The ordering is applied in the Sidebar filter, Plan
-              Menu, and Team Menu in the user client.
-              <br/><br/>
-              Example: <em>Initiative \u2192 Epic \u2192 Feature \u2192 (User Story, Bug) \u2192 Sub-Task</em>
-            </div>
-
-            <div class="hierarchy-editor">
-              ${this._hierarchy.length === 0
-                ? html`<div style="color:#9ca3af;font-size:13px;padding:8px 0">
-                    No levels defined yet. Click "+ Add Level" to start, then assign types from the pool.
-                  </div>`
-                : this._hierarchy.map((level, idx) => this._renderLevel(level, idx, 'type'))}
-
-              ${this._renderPool('type')}
-
-              <button class="add-level-btn" @click=${() => this._addLevel('type')}>
-                + Add Level
-              </button>
-            </div>
-          </div>
-
-          <!-- State Display Sequence -->
-          <div>
-            <div class="section-title">State Display Sequence</div>
-            <div class="section-hint">
-              Define the ordering of task states shown across the user UI.
-              States earlier in the sequence are displayed first in state lists,
-              filters, and plugins.
-              <br/><br/>
-              Example: <em>(New, Approved) \u2192 (Active, In Progress) \u2192 Resolved \u2192 Closed</em>
-            </div>
-
-            <div class="hierarchy-editor">
-              ${this._stateSequence.length === 0
-                ? html`<div style="color:#9ca3af;font-size:13px;padding:8px 0">
-                    No levels defined yet. Click "+ Add Level" to start, then assign states from the pool.
-                  </div>`
-                : this._stateSequence.map((level, idx) => this._renderLevel(level, idx, 'state'))}
-
-              ${this._renderPool('state')}
-
-              <button class="add-level-btn" @click=${() => this._addLevel('state')}>
-                + Add Level
-              </button>
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="actions">
-            <button
-              class="btn primary"
-              ?disabled=${this._saving}
-              @click=${() => this._save()}
-            >
-              ${this._saving ? 'Saving…' : '💾 Save'}
-            </button>
-            <button class="btn" @click=${() => this._load()}>🔄 Reload</button>
-            ${this._statusMsg
-              ? html`<span class="status ${this._statusType}">${this._statusMsg}</span>`
-              : ''}
-          </div>
-
+      <h2>Global Project Settings</h2>
+      <div class="panel">
+        <div class="editor">
+          ${this.ready && this.content.process_order.length === 0
+            ? html`<p>No work item types imported.</p>` : ''}
+          ${this.ready ? this.content.process_order.map((processId, index) => {
+            const process = this.processes.find((item) => item.id === processId);
+            const tiers = this.content.type_tiers[processId];
+            return html`<section class="process" data-process-id=${processId}>
+              <div class="process-header">
+                <h3 class="process-title">${process.name}</h3>
+                <button class="icon-btn" title=${`Move ${process.name} up`}
+                  ?disabled=${index === 0 || this.saving}
+                  @click=${() => this.moveProcess(index, -1)}>&#8593;</button>
+                <button class="icon-btn" title=${`Move ${process.name} down`}
+                  ?disabled=${index === this.content.process_order.length - 1 || this.saving}
+                  @click=${() => this.moveProcess(index, 1)}>&#8595;</button>
+              </div>
+              ${tiers.map((tier, tierIndex) => html`<div class="tier">
+                <span class="tier-label">Tier ${tierIndex + 1}</span>
+                <div class="types">${tier.map((name) => html`<span class="type">
+                  <span>${name}</span>
+                  <button class="icon-btn" title=${`Move ${name} up a tier`}
+                    ?disabled=${this.saving}
+                    @click=${() => this.moveType(processId, tierIndex, name, -1)}>&#8593;</button>
+                  <button class="icon-btn" title=${`Move ${name} down a tier`}
+                    ?disabled=${this.saving}
+                    @click=${() => this.moveType(processId, tierIndex, name, 1)}>&#8595;</button>
+                </span>`)}</div>
+              </div>`)}
+              <div class="state-columns">${this.stateColumns(process, tiers).map((column) => html`
+                <div class="state-column"><h4>${column.names.join(', ')}</h4>
+                  <div class="states">${column.states.map((state) => html`
+                    <span class="state" data-category=${state.category}>${state.name}</span>
+                  `)}</div>
+                </div>
+              `)}</div>
+            </section>`;
+          }) : ''}
         </div>
-      </section>
+        <div class="actions">
+          <button class="primary" ?disabled=${!this.ready || !this.dirty || this.saving}
+            @click=${this.saveConfig}>${this.saving ? 'Saving...' : 'Save'}</button>
+          <button ?disabled=${this.saving} @click=${this.loadConfig}>Reload</button>
+          <span class="status ${this.statusType}" role="status">${this.statusMsg}</span>
+        </div>
+      </div>
     `;
   }
 }

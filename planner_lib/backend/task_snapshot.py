@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from planner_lib.backend.errors import BackendUnavailableError
+from planner_lib.backend.errors import AreaNotReadableError, BackendAuthError, BackendUnavailableError
 
 logger = logging.getLogger(__name__)
 NAMESPACE = 'backend_domain'
@@ -18,15 +18,17 @@ RETRY_SECONDS = 60
 
 
 class TaskSnapshot:
-    def __init__(self, storage, backend, ttl):
+    def __init__(self, storage, backend, ttl, report_auth_error):
         self._storage = storage
         self._backend = backend
         self._ttl = ttl
+        self._report_auth_error = report_auth_error
         self._state_lock = threading.Lock()
         self._build_lock = threading.Lock()
         self._thread = None
         self._closed = False
         self._served = threading.local()
+        self._access_errors = {}
 
     def _load(self, key):
         try:
@@ -45,6 +47,10 @@ class TaskSnapshot:
             return self._load(SNAPSHOT_KEY), metadata
 
     def read(self, build, identity, guard, credential):
+        self._served.metadata = None
+        with self._state_lock:
+            self._served.access_error = (None if credential is None else
+                                         self._access_errors.pop(credential['user_id'], None))
         tasks, metadata = self._cached(identity, guard)
         if tasks is not None:
             self._served.metadata = metadata
@@ -58,6 +64,24 @@ class TaskSnapshot:
             if tasks is not None:
                 self._served.metadata = metadata
                 return tasks
+            try:
+                return self._build(build, identity, guard, credential)
+            except AreaNotReadableError as error:
+                with guard(), self._storage.transaction():
+                    previous = self._load(SNAPSHOT_KEY)
+                    previous_metadata = self._load(META_KEY)
+                    if previous is None or previous_metadata is None:
+                        raise
+                    metadata = dict(previous_metadata, error=type(error).__name__,
+                                    stale_reason='configuration_changed',
+                                    retry_after=time.time() + RETRY_SECONDS)
+                    self._storage.save(NAMESPACE, META_KEY, metadata)
+                    self._served.metadata = metadata
+                    self._served.access_error = error.target
+                    return previous
+
+    def rebuild_now(self, build, identity, guard, credential):
+        with self._build_lock:
             return self._build(build, identity, guard, credential)
 
     def _build(self, build, identity, guard, credential):
@@ -93,6 +117,9 @@ class TaskSnapshot:
             }
             self._storage.save(NAMESPACE, META_KEY, metadata)
             self._served.metadata = metadata
+            self._served.access_error = None
+        with self._state_lock:
+            self._access_errors.clear()
         logger.info('Task snapshot committed (%d tasks, %.3fs)', len(tasks), time.monotonic() - started)
         return tasks
 
@@ -108,6 +135,11 @@ class TaskSnapshot:
                     with self._build_lock:
                         self._build(build, identity, guard, credential)
                 except Exception as exc:
+                    if isinstance(exc, BackendAuthError):
+                        self._report_auth_error(exc, credential)
+                    if isinstance(exc, AreaNotReadableError):
+                        with self._state_lock:
+                            self._access_errors[credential['user_id']] = exc.target
                     with guard(), self._storage.transaction():
                         metadata = self._load(META_KEY)
                         if metadata is not None and metadata['identity'] == identity():
@@ -126,9 +158,13 @@ class TaskSnapshot:
     def diagnostics(self, identity, guard):
         with guard(), self._storage.transaction():
             metadata = self._load(META_KEY)
-            if metadata is None or metadata['identity'] != identity():
+            if metadata is None:
                 return []
             served = getattr(self._served, 'metadata', None)
+            if metadata['identity'] != identity():
+                if served is None or served.get('stale_reason') != 'configuration_changed':
+                    return []
+                metadata = served
             if served is not None and served['identity'] == metadata['identity']:
                 error = metadata['error'] if served['generation'] == metadata['generation'] else served['error']
                 metadata = dict(served, error=error)
@@ -146,10 +182,17 @@ class TaskSnapshot:
             severity = 'warning'
         elif stale:
             status = 'stale'
-        return [{
+        diagnostics = [{
             'code': 'task_cache_freshness', 'severity': severity,
             'message': f'Task cache updated {updated} ({age}s ago): {status}.',
         }]
+        target = getattr(self._served, 'access_error', None)
+        if target is not None:
+            diagnostics.append({
+                'code': 'task_cache_access', 'severity': 'warning',
+                'message': f'Your Azure DevOps access cannot read {target}; showing data from {updated}.',
+            })
+        return diagnostics
 
     def close(self):
         with self._state_lock:

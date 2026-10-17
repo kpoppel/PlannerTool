@@ -5,12 +5,43 @@ This module contains operations related to fetching and updating work items.
 from __future__ import annotations
 from typing import List, Optional, Any
 import logging
+from planner_lib.azure.catalogue import imported_type_index, resolve_plan_process, seed_in_window
+from planner_lib.backend.errors import AreaNotReadableError, BackendAuthError, classify_ado_exception
 
 logger = logging.getLogger(__name__)
 
 # Sentinel that distinguishes "caller did not supply this argument" from
 # "caller explicitly passed None (meaning: clear the field in ADO)".
 _UNSET = object()
+
+
+def _wiql_literal(value: str) -> str:
+    escaped = value.replace("'", "''").replace('\\', '\\\\')
+    return f"'{escaped}'"
+
+
+def _read_items(wit, ids, **kwargs):
+    try:
+        return wit.get_work_items(ids, **kwargs)
+    except Exception as exc:
+        if isinstance(classify_ado_exception(exc), BackendAuthError):
+            raise AreaNotReadableError('work item ' + str(ids[0])) from exc
+        raise
+
+
+def _omitted_ids(wit, ids, items):
+    absent = set(ids) - {int(item.id) for item in items}
+    if absent:
+        try:
+            deleted = wit.get_deleted_work_items(ids=sorted(absent))
+        except Exception as exc:
+            if isinstance(classify_ado_exception(exc), BackendAuthError):
+                raise AreaNotReadableError('work item ' + str(min(absent))) from exc
+            raise
+        unreadable = absent - {int(item.id) for item in deleted}
+        if unreadable:
+            raise AreaNotReadableError('work item ' + str(min(unreadable)))
+    return absent
 
 
 class WorkItemOperations:
@@ -69,23 +100,22 @@ class WorkItemOperations:
     def get_work_items(
         self, 
         area_path: str, 
-        task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        task_types: List[str],
+        *, catalogue: dict, closed_history_days: int = 0,
     ) -> List[dict]:
         """Fetch work items for a given area path.
         
-        This implementation fetches work items based on the configured task types
-        and states, or uses defaults if not specified.  All ADO field values are
+        This implementation fetches work items based on reviewed types and their
+        catalogue state categories. All ADO field values are
         returned — standard fields are exposed as named keys, and any remaining
         fields (custom, extension, or otherwise) are collected under a 'fields'
         dict keyed by ADO field reference name.
         
         Args:
             area_path: Azure DevOps area path
-            task_types: List of work item types to include (e.g., ['epic', 'feature']).
-                       Defaults to ['epic', 'feature'] if not provided.
-            include_states: List of states to include (e.g., ['new', 'active']).
-                           If not provided, excludes 'Closed' and 'Removed' states.
+            task_types: Imported work item types for the plan's process.
+            catalogue: Server-owned process/type/state metadata.
+            closed_history_days: Completed seed history window in days.
             
         Returns:
             List of work item dictionaries
@@ -96,37 +126,43 @@ class WorkItemOperations:
         assert self.client.conn is not None
         wit_client = self.client.wit_client
         
-        # Use defaults if not provided
-        if task_types is None:
-            task_types = ['epic', 'feature']
-        if include_states is None:
-            include_states = []
+        process = resolve_plan_process({
+            'name': area_path, 'area_path': area_path, 'task_types': task_types,
+        }, catalogue)
+        selected_names = {name.casefold() for name in task_types}
+        selected_types = [item for item in process['types']
+                          if item['name'].casefold() in selected_names]
         
         # Sanitize and escape area path for WIQL
         wiql_area = self._sanitize_area_path(area_path)
-        wiql_area_escaped = wiql_area.replace("'", "''").replace('\\', '\\\\')
+        wiql_area_literal = _wiql_literal(wiql_area)
         
         # Build work item types clause.
         # Use the type string exactly as stored in config; Azure WIQL is case-insensitive
         # but the names come directly from Azure DevOps metadata so casing is already correct.
-        types_list = [f"'{t}'" for t in task_types]
+        types_list = [_wiql_literal(item['name']) for item in selected_types]
         types_clause = ','.join(types_list)
 
-        # Build state filter clause
-        if include_states:
-            # Use positive filter: include only specified states.
-            # State names come from Azure DevOps metadata; use them as-is.
-            states_list = [f"'{s}'" for s in include_states]
-            states_clause = f"AND [System.State] IN ({','.join(states_list)})"
-        else:
-            # Use negative filter: exclude closed/removed by default
-            states_clause = "AND [System.State] NOT IN ('Closed', 'Removed')"
+        active = dict.fromkeys(state['name'] for item in selected_types for state in item['states']
+                               if state['category'] in ('Proposed', 'InProgress', 'Resolved'))
+        completed = dict.fromkeys(state['name'] for item in selected_types for state in item['states']
+                                  if state['category'] == 'Completed')
+        clauses = []
+        if active:
+            clauses.append(f"[System.State] IN ({','.join(_wiql_literal(name) for name in active)})")
+        if closed_history_days > 0 and completed:
+            clauses.append(
+                f"([System.State] IN ({','.join(_wiql_literal(name) for name in completed)}) "
+                f"AND [Microsoft.VSTS.Common.StateChangeDate] >= @Today - {closed_history_days})")
+        if not clauses:
+            return []
+        states_clause = 'AND (' + ' OR '.join(clauses) + ')'
         
         wiql_query = f"""
         SELECT [System.Id]
         FROM WorkItems
         WHERE [System.WorkItemType] IN ({types_clause})
-        AND [System.AreaPath] = '{wiql_area_escaped}' 
+        AND [System.AreaPath] = {wiql_area_literal}
         {states_clause}
         ORDER BY [Microsoft.VSTS.Common.StackRank] ASC
         """
@@ -134,10 +170,12 @@ class WorkItemOperations:
         from azure.devops.v7_1.work_item_tracking.models import Wiql
         wiql_obj = Wiql(query=wiql_query)
 
-        # Let SDK/HTTP exceptions propagate unchanged.  The AzureDevOpsBackend
-        # boundary classifies them into typed BackendError values (auth vs
-        # outage); the low-level client stays free of that policy.
-        result = wit_client.query_by_wiql(wiql=wiql_obj)
+        try:
+            result = wit_client.query_by_wiql(wiql=wiql_obj)
+        except Exception as exc:
+            if isinstance(classify_ado_exception(exc), BackendAuthError):
+                raise AreaNotReadableError(area_path) from exc
+            raise
         
         # Extract work item IDs
         task_ids = [getattr(wi, "id", None) for wi in (getattr(result, "work_items", []) or [])]
@@ -145,9 +183,19 @@ class WorkItemOperations:
         logger.debug(f"Found {len(task_ids)} work items for area '{area_path}'")
 
         ret = []
+        selected_by_name = {item['name'].casefold(): item for item in selected_types}
         for offset in range(0, len(task_ids), 200):
-            items = wit_client.get_work_items(task_ids[offset:offset + 200], expand="All")
-            ret.extend(self.normalize_work_item(item) for item in items)
+            batch = task_ids[offset:offset + 200]
+            items = _read_items(wit_client, batch, expand="All")
+            _omitted_ids(wit_client, batch, items)
+            for item in items:
+                normalized = self.normalize_work_item(item)
+                name = normalized['type'].casefold()
+                if name in selected_by_name and seed_in_window(
+                    selected_by_name[name], normalized['state'], normalized['stateChangeDate'],
+                    closed_history_days,
+                ):
+                    ret.append(normalized)
         return ret
 
     def normalize_work_item(self, item) -> dict:
@@ -207,27 +255,23 @@ class WorkItemOperations:
             entry['fields'] = extra_values
         return entry
 
-    def get_linked_work_items(self, seeds: List[dict]) -> List[dict]:
+    def get_linked_work_items(self, seeds: List[dict], *, catalogue: dict) -> List[dict]:
         """Expand descendants, then load ancestor paths without sibling branches."""
         if not self.client._connected:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         wit = self.client.wit_client
+        eligible = imported_type_index(catalogue)
+        excluded = set()
         loaded = {}
         for item in seeds:
             item_id = int(item['id'])
+            if (item['adoProject'].casefold(), item['type'].casefold()) not in eligible:
+                excluded.add(item_id)
+                continue
             if item_id not in loaded or item['rev'] > loaded[item_id]['rev']:
                 loaded[item_id] = dict(item)
-        category_types = {}
-        excluded = set()
         missing = set()
         expanded = set()
-        task_level_ids = set()
-
-        def is_task_level(project, item_type):
-            if project not in category_types:
-                category = wit.get_work_item_type_category(project, 'Microsoft.TaskCategory')
-                category_types[project] = {entry.name for entry in category.work_item_types}
-            return item_type in category_types[project]
 
         frontier = list(loaded)
         while frontier:
@@ -237,30 +281,27 @@ class WorkItemOperations:
                     continue
                 expanded.add(item_id)
                 item = loaded[item_id]
-                if is_task_level(item['adoProject'], item['type']):
-                    task_level_ids.add(item_id)
-                    continue
                 targets.update(int(r['id']) for r in item['relations'] if r['type'] == 'Child')
             todo = sorted(targets - loaded.keys() - excluded - missing)
             for offset in range(0, len(todo), 200):
                 batch = todo[offset:offset + 200]
-                classified = wit.get_work_items(
-                    batch, fields=['System.TeamProject', 'System.WorkItemType'], error_policy='omit')
-                seen = {int(item.id) for item in classified}
-                missing.update(set(batch) - seen)
+                classified = _read_items(
+                    wit, batch, fields=['System.TeamProject', 'System.WorkItemType'], error_policy='omit')
+                missing.update(_omitted_ids(wit, batch, classified))
                 identities = {
                     int(item.id): (item.fields['System.TeamProject'], item.fields['System.WorkItemType'])
                     for item in classified
                 }
                 allowed = []
                 for item in classified:
-                    if is_task_level(item.fields['System.TeamProject'], item.fields['System.WorkItemType']):
+                    if (item.fields['System.TeamProject'].casefold(),
+                            item.fields['System.WorkItemType'].casefold()) not in eligible:
                         excluded.add(int(item.id))
                     else:
                         allowed.append(int(item.id))
                 if allowed:
-                    hydrated = wit.get_work_items(allowed, expand='All', error_policy='omit')
-                    missing.update(set(allowed) - {int(item.id) for item in hydrated})
+                    hydrated = _read_items(wit, allowed, expand='All', error_policy='omit')
+                    missing.update(_omitted_ids(wit, allowed, hydrated))
                     for item in hydrated:
                         identity = (item.fields['System.TeamProject'], item.fields['System.WorkItemType'])
                         if identity != identities[int(item.id)]:
@@ -280,18 +321,19 @@ class WorkItemOperations:
                     continue
                 expanded_parents.add(item_id)
                 item = loaded[item_id]
-                if is_task_level(item['adoProject'], item['type']):
-                    task_level_ids.add(item_id)
-                    continue
                 targets.update(int(relation['id']) for relation in item['relations']
                                if relation['type'] == 'Parent')
-            todo = sorted(targets - loaded.keys() - missing_parents)
+            todo = sorted(targets - loaded.keys() - missing_parents - excluded)
             for offset in range(0, len(todo), 200):
                 batch = todo[offset:offset + 200]
-                hydrated = wit.get_work_items(batch, expand='All', error_policy='omit')
-                missing_parents.update(set(batch) - {int(item.id) for item in hydrated})
+                hydrated = _read_items(wit, batch, expand='All', error_policy='omit')
+                missing_parents.update(_omitted_ids(wit, batch, hydrated))
                 for item in hydrated:
-                    loaded[int(item.id)] = self.normalize_work_item(item)
+                    if (item.fields['System.TeamProject'].casefold(),
+                            item.fields['System.WorkItemType'].casefold()) in eligible:
+                        loaded[int(item.id)] = self.normalize_work_item(item)
+                    else:
+                        excluded.add(int(item.id))
             frontier = sorted(targets & loaded.keys() - expanded_parents)
 
         for item in loaded.values():
@@ -302,8 +344,8 @@ class WorkItemOperations:
             item['unresolvedParentIds'] = [str(item_id) for item_id in sorted(parents & missing_parents)]
             item['unresolvedChildIds'] = [str(item_id) for item_id in sorted(children & missing)]
             item['excludedChildIds'] = [str(item_id) for item_id in sorted(
-                children & (excluded | task_level_ids))]
-            item['traversalBoundary'] = int(item['id']) in task_level_ids
+                children & excluded)]
+            item['traversalBoundary'] = False
         return list(loaded.values())
     
     def update_work_item_dates(self, work_item_id: int, start=_UNSET, end=_UNSET) -> Any:
@@ -646,69 +688,6 @@ class WorkItemOperations:
             # Return None for all items on error
             return {wid: None for wid in work_item_ids}
     
-    def _get_area_path_used_metadata_wiql(self, project: str, area_path: str) -> dict:
-        # TODO: Should never be used.
-        """Fallback: scan work items UNDER the area path to discover types/states.
-
-        Used when the team-based backlog configuration approach is unavailable
-        (e.g. no team maps to the area path, or the backlog config API fails).
-        Inspects up to 500 work items.
-        """
-        wit_client = self.client.wit_client
-
-        wiql_area = self._sanitize_area_path(area_path)
-        wiql_area_escaped = wiql_area.replace("'", "''").replace('\\', '\\\\')
-
-        wiql_query = f"""
-        SELECT [System.Id]
-        FROM WorkItems
-        WHERE [System.AreaPath] UNDER '{wiql_area_escaped}'
-        ORDER BY [System.Id] ASC
-        """
-
-        logger.error(f"Falling back to WIQL scan for area path metadata on '{area_path}' - this is inefficient and should be avoided. Error details logged above.")
-        try:
-            from azure.devops.v7_1.work_item_tracking.models import Wiql
-            wiql_obj = Wiql(query=wiql_query)
-            result = wit_client.query_by_wiql(wiql=wiql_obj)
-        except Exception as e:
-            logger.warning(f"WIQL query for area '{area_path}' metadata failed: {e}")
-            return {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
-
-        task_ids = [getattr(wi, "id", None) for wi in (getattr(result, "work_items", []) or [])]
-        task_ids = [int(t) for t in task_ids if t is not None][:500]
-
-        if not task_ids:
-            return {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
-
-        types_found: set = set()
-        states_by_type: dict = {}
-
-        def chunks(lst, n):
-            for i in range(0, len(lst), n):
-                yield lst[i:i + n]
-
-        try:
-            for batch in chunks(task_ids, 200):
-                items = wit_client.get_work_items(batch, fields=["System.WorkItemType", "System.State"])
-                for item in items or []:
-                    wi_type = item.fields.get("System.WorkItemType") or ""
-                    wi_state = item.fields.get("System.State") or ""
-                    if wi_type:
-                        types_found.add(wi_type)
-                        states_by_type.setdefault(wi_type, set()).add(wi_state)
-        except Exception as e:
-            logger.warning(f"Batch fetch for area metadata '{area_path}' failed: {e}")
-
-        sorted_types = sorted(types_found)
-        all_states = sorted({s for states in states_by_type.values() for s in states if s})
-        return {
-            'types': sorted_types,
-            'states': all_states,
-            'states_by_type': {t: sorted(s) for t, s in states_by_type.items()},
-            'state_categories': {},  # Not available via WIQL scan
-        }
-
     def get_work_items_by_ids(self, ids: List[int]) -> List[dict]:
         """Fetch work items by explicit IDs, returning minimal dicts for parent traversal.
 
@@ -760,172 +739,6 @@ class WorkItemOperations:
 
         return results
 
-    def get_area_path_used_metadata(self, project: str, area_path: str) -> dict:
-        """Discover work item types and states configured for the team that owns an area path.
-
-        Primary strategy: resolve the team that owns the area path, then fetch its
-        backlog configuration via ``get_backlog_configurations``.  This is the
-        authoritative source — it reflects what actually appears on the team's board,
-        works on empty area paths, and requires only two API calls.
-
-        Fallback: if no team can be resolved, or the backlog config API fails, the
-        method falls back to scanning up to 500 work items UNDER the area path to
-        discover types and states in use.
-
-        Args:
-            project:   Azure DevOps project name.
-            area_path: Area path to inspect.
-
-        Returns:
-            {
-                'types': sorted list of work item type names,
-                'states': sorted list of state names,
-                'states_by_type': { type_name: sorted list of states for that type }
-            }
-        """
-        if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
-
-        assert self.client.conn is not None
-
-        # --- Step 1: resolve team name from area path ---
-        team_plan_ops = self.client._team_plan_ops
-        try:
-            all_teams = team_plan_ops.get_all_teams(project)
-            team_ids = team_plan_ops.get_team_from_area_path(project, area_path)
-            id_to_name = {t['id']: t['name'] for t in all_teams}
-            team_names = [id_to_name[tid] for tid in team_ids if tid in id_to_name]
-        except Exception as e:
-            logger.warning(
-                f"Could not resolve team for area '{area_path}': {e}. Falling back to WIQL scan."
-            )
-            return self._get_area_path_used_metadata_wiql(project, area_path)
-
-        if not team_names:
-            logger.info(
-                f"No team found for area '{area_path}'. Falling back to WIQL scan."
-            )
-            return self._get_area_path_used_metadata_wiql(project, area_path)
-
-        # --- Step 2: fetch backlog configuration for the first matching team ---
-        work_client = self.client.work_client
-        team_name = team_names[0]
-
-        try:
-            try:
-                from azure.devops.v7_1.work.models import TeamContext
-                team_context = TeamContext(project=project, team=team_name)
-            except Exception:
-                # Older SDK versions accept a plain dict
-                team_context = {'project': project, 'team': team_name}  # type: ignore[assignment]
-
-            backlog_config = work_client.get_backlog_configurations(team_context)
-        except Exception as e:
-            logger.warning(
-                f"get_backlog_configurations failed for team '{team_name}': {e}. Falling back to WIQL scan."
-            )
-            return self._get_area_path_used_metadata_wiql(project, area_path)
-
-        # --- Step 3: parse work_item_type_mapped_states ---
-        # Each mapping has: .work_item_type_name (str) and .states (dict {state_name: category})
-        mappings = getattr(backlog_config, 'work_item_type_mapped_states', None) or []
-        if not mappings:
-            logger.info(
-                f"No work_item_type_mapped_states for team '{team_name}'. Falling back to WIQL scan."
-            )
-            return self._get_area_path_used_metadata_wiql(project, area_path)
-
-        types_found = []
-        states_by_type: dict = {}
-        all_states: set = set()
-        # state_categories: {state_name: category} — e.g. {"Active": "InProgress"}
-        state_categories: dict = {}
-
-        for mapping in mappings:
-            type_name = getattr(mapping, 'work_item_type_name', None)
-            if not type_name:
-                continue
-            types_found.append(type_name)
-            # .states is {state_name: state_category} — keys are state names, values are categories
-            states_dict = getattr(mapping, 'states', {}) or {}
-            type_states = sorted(states_dict.keys())
-            states_by_type[type_name] = type_states
-            all_states.update(type_states)
-            # Collect category info — first seen category wins for states shared across types
-            for state_name, category in states_dict.items():
-                state_categories.setdefault(state_name, category)
-
-        logger.info(
-            f"Backlog config for team '{team_name}': "
-            f"{len(types_found)} types, {len(all_states)} states, "
-            f"{len(state_categories)} state-category mappings"
-        )
-        return {
-            'types': sorted(types_found),
-            'states': sorted(all_states),
-            'states_by_type': states_by_type,
-            'state_categories': state_categories,
-        }
-
-    def get_work_item_metadata(self, project: str) -> dict:
-        """Retrieve work item types and states for a project.
-        
-        Args:
-            project: Azure DevOps project name
-            
-        Returns:
-            Dictionary with 'types' (list of work item type names) and
-            'states' (dictionary mapping type names to lists of state names)
-        """
-        if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
-        
-        assert self.client.conn is not None
-        wit_client = self.client.wit_client
-        
-        try:
-            # Retrieve all work item types for the project
-            wi_types = wit_client.get_work_item_types(project)
-            
-            types = []
-            states_by_type = {}
-            # state_categories: {state_name: category} from WorkItemStateColor.category
-            state_categories: dict = {}
-
-            for wi_type in wi_types:
-                type_name = wi_type.name
-                types.append(type_name)
-
-                # Retrieve states for this specific type
-                if hasattr(wi_type, 'states') and wi_type.states:
-                    states = [state.name for state in wi_type.states]
-                    states_by_type[type_name] = states
-                    # Extract category if the SDK provides it (WorkItemStateColor.category)
-                    for state in wi_type.states:
-                        if state.name and hasattr(state, 'category') and state.category:
-                            state_categories.setdefault(state.name, state.category)
-
-            # Collect all unique states across all types
-            all_states = set()
-            for states in states_by_type.values():
-                all_states.update(states)
-
-            return {
-                'types': sorted(types),
-                'states': sorted(all_states),
-                'states_by_type': states_by_type,
-                'state_categories': state_categories,
-            }
-        except Exception as e:
-            logger.warning(f"Failed to retrieve work item metadata for project '{project}': {e}")
-            # Return defaults if metadata retrieval fails (using typical Azure DevOps case)
-            return {
-                'types': ['Feature', 'Epic', 'User Story', 'Task', 'Bug'],
-                'states': ['New', 'Active', 'Defined', 'Resolved', 'Closed', 'Removed'],
-                'states_by_type': {},
-                'state_categories': {},
-            }
-    
     def get_task_revision_history(
         self, 
         work_item_id: int, 

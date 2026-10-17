@@ -1,3 +1,4 @@
+import { displayFixture } from '../helpers/workItemDisplay.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PluginRegistry from '../../www/js/core/pluginRegistry.js';
 import modulesConfig from '../../www/js/modules.config.json';
@@ -89,20 +90,20 @@ describe('Reconciliation detection menu', () => {
 
   function seedActions({ readonly = false, future = false, linked = false } = {}) {
     const state = createInitialAppState();
-    const task = { id: 'task', title: 'Delivery', type: 'Feature', project: 'project',
+    const task = { process_id: 'process', id: 'task', title: 'Delivery', type: 'Feature', project: 'project',
       state: 'Working', start: future ? '2026-10-10' : '2026-10-01',
       end: future ? '2026-10-20' : '2026-10-02', capacity: [], relations: [], parentId: null };
     const project = { id: 'project', name: 'Delivery plan', type: 'project',
-      state_categories: { Working: 'InProgress', Delivered: 'Completed', Cancelled: 'Completed',
-        Draft: 'Proposed', Ready: 'Proposed' },
-      task_type_hierarchy: [{ types: ['Feature'] }] };
+      work_item_display: displayFixture([['Feature']], { Working: 'InProgress', Delivered: 'Completed', Cancelled: 'Completed',
+        Draft: 'Proposed', Ready: 'Proposed' }),
+       };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [project, { ...project, id: 'other', name: 'Other plan' }];
     state.baseline.features = linked ? [task, { ...task, id: 'predecessor', title: 'Prerequisite',
       project: 'other', start: '2026-10-02', end: '2026-10-20',
       relations: [{ type: 'Successor', id: 'task' }, { type: 'Related', id: 'task' }] }] : [task];
     state.selection.projectIds = ['project', 'other'];
-    state.selection.featureStateNames = Object.keys(project.state_categories);
+    state.selection.featureStateNames = project.work_item_display[0].tiers[0][0].states.map((state) => state.name);
     if (!readonly) {
       state.scenarios.activeId = 'review';
       state.scenarios.items.push({ ...state.scenarios.items[0], id: 'review', name: 'Review',
@@ -304,14 +305,14 @@ describe('Reconciliation detection menu', () => {
   it('offers configured completion choices, resolves only matching findings and supports revert', async () => {
     const { element } = await openMenu();
     const state = createInitialAppState();
-    const task = { id: 'task', title: 'Late delivery', type: 'Feature', project: 'project',
+    const task = { process_id: 'process', id: 'task', title: 'Late delivery', type: 'Feature', project: 'project',
       state: 'Working', start: '2026-10-01', end: '2026-10-02', capacity: [],
       relations: [], parentId: null };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Delivery plan', type: 'project',
-      state_categories: { Working: 'InProgress', Delivered: 'Completed', Cancelled: 'Completed',
-        Draft: 'Proposed' }, task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }];
-    state.baseline.features = [{ ...task, id: 'root', type: 'Epic', end: '2026-10-10' }, task];
+      work_item_display: displayFixture([['Epic'], ['Feature']], { Working: 'InProgress', Delivered: 'Completed', Cancelled: 'Completed',
+        Draft: 'Proposed' }),  }];
+    state.baseline.features = [{ process_id: 'process', ...task, id: 'root', type: 'Epic', end: '2026-10-10' }, task];
     state.selection.projectIds = ['project'];
     state.selection.featureStateNames = ['Working'];
     state.scenarios.activeId = 'review';
@@ -544,14 +545,14 @@ describe('Reconciliation detection menu', () => {
     const { plugin, element } = await openMenu();
     element.remove();
     const state = createInitialAppState();
-    const parent = { id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
+    const parent = { process_id: 'process', id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
       state: 'Working', start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [],
       parentId: null };
-    const child = { ...parent, id: 'child', title: 'Delivery', type: 'Feature', parentId: 'parent' };
+    const child = { process_id: 'process', ...parent, id: 'child', title: 'Delivery', type: 'Feature', parentId: 'parent' };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
-      state_categories: { Working: 'InProgress' },
-      task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }];
+      work_item_display: displayFixture([['Epic'], ['Feature']], { Working: 'InProgress' }),
+       }];
     state.baseline.features = [parent, child];
     state.selection.projectIds = ['project'];
     state.selection.featureStateNames = ['Working'];
@@ -622,14 +623,14 @@ describe('Reconciliation detection menu', () => {
   it('toggles card markers without hiding findings and retains the choice across refreshes', async () => {
     const { plugin, element } = await openMenu();
     const state = createInitialAppState();
-    const parent = { id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
+    const parent = { process_id: 'process', id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
       state: 'Working', start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [],
       parentId: null };
-    const child = { ...parent, id: 'child', title: 'Delivery', type: 'Feature', parentId: 'parent' };
+    const child = { process_id: 'process', ...parent, id: 'child', title: 'Delivery', type: 'Feature', parentId: 'parent' };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
-      state_categories: { Working: 'InProgress' },
-      task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }];
+      work_item_display: displayFixture([['Epic'], ['Feature']], { Working: 'InProgress' }),
+       }];
     state.baseline.features = [parent, child];
     state.selection.projectIds = ['project'];
     state.selection.featureStateNames = ['Working'];
@@ -666,19 +667,19 @@ describe('Reconciliation detection menu', () => {
   it('lists tasks within their issue classes and retains resolved inline selections', async () => {
     await openMenu();
     const state = createInitialAppState();
-    const parent = { id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
+    const parent = { process_id: 'process', id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
       state: 'Working', start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [],
       parentId: null };
-    const conflicted = { ...parent, id: 'conflicted', title: 'Conflicted delivery',
+    const conflicted = { process_id: 'process', ...parent, id: 'conflicted', title: 'Conflicted delivery',
       type: 'Feature', parentId: 'parent', start: '2026-09-30', end: '2026-10-22',
       relations: [{ type: 'Predecessor', id: 'parent' }] };
-    const first = { ...parent, id: 'first', title: 'First delivery', type: 'Feature',
+    const first = { process_id: 'process', ...parent, id: 'first', title: 'First delivery', type: 'Feature',
       parentId: 'parent', end: '2026-10-02' };
     const second = { ...first, id: 'second', title: 'Second delivery' };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
-      state_categories: { Working: 'InProgress' },
-      task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }];
+      work_item_display: displayFixture([['Epic'], ['Feature']], { Working: 'InProgress' }),
+       }];
     state.baseline.features = [parent, conflicted, first, second];
     state.selection.projectIds = ['project'];
     state.selection.featureStateNames = ['Working'];
@@ -747,9 +748,9 @@ describe('Reconciliation detection menu', () => {
     const state = createInitialAppState();
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
-      state_categories: { Working: 'InProgress' },
-      task_type_hierarchy: [{ types: ['Feature'] }] }];
-    state.baseline.features = ['first', 'second'].map((id) => ({ id, title: id,
+      work_item_display: displayFixture([['Feature']], { Working: 'InProgress' }),
+       }];
+    state.baseline.features = ['first', 'second'].map((id) => ({ process_id: 'process', id, title: id,
       project: 'project', type: 'Feature', state: 'Working', start: '2026-10-01',
       end: '2026-10-02', parentId: null, capacity: [], relations: [] }));
     state.selection.projectIds = ['project'];
@@ -804,18 +805,16 @@ describe('Reconciliation detection menu', () => {
       start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [] };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
-      state_categories: { Working: 'InProgress' }, task_type_hierarchy: [
-        { types: ['Initiative'] }, { types: ['Epic'] }, { types: ['Feature'] },
-      ] }];
+      work_item_display: displayFixture([['Initiative'], ['Epic'], ['Feature']], { Working: 'InProgress' }),  }];
     state.baseline.features = [
-      { ...task, id: 'root', title: 'Programme', type: 'Initiative', parentId: null },
-      { ...task, id: 'parent', title: 'Parent', type: 'Epic', parentId: 'root' },
-      { ...task, id: 'child', type: 'Feature', parentId: 'parent', start: '2026-09-30', end: '2026-10-22',
+      { process_id: 'process', ...task, id: 'root', title: 'Programme', type: 'Initiative', parentId: null },
+      { process_id: 'process', ...task, id: 'parent', title: 'Parent', type: 'Epic', parentId: 'root' },
+      { process_id: 'process', ...task, id: 'child', type: 'Feature', parentId: 'parent', start: '2026-09-30', end: '2026-10-22',
         relations: [{ type: 'Predecessor', id: 'parent' }] },
     ];
     state.selection.projectIds = ['project'];
     state.selection.featureStateNames = ['Working'];
-    state.selection.taskTypeNames = ['Feature'];
+    state.selection.taskTypeNames = ["[\"process\",\"feature\"]"];
     store.setState(state, true);
     openReconciliationReview('schedule', 'schedule:child');
     await element.updateComplete;
@@ -836,13 +835,13 @@ describe('Reconciliation detection menu', () => {
     vi.spyOn(boardUtils, 'findInBoard').mockReturnValue(board);
     const { element, plugin } = await openMenu();
     const state = createInitialAppState();
-    const parent = { id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
+    const parent = { process_id: 'process', id: 'parent', title: 'Programme', type: 'Epic', project: 'project',
       state: 'Working', start: '2026-10-01', end: '2026-10-10', capacity: [], relations: [], parentId: null };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Programme', type: 'project',
-      state_categories: { Working: 'InProgress' },
-      task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }];
-    state.baseline.features = [parent, { ...parent, id: 'child', type: 'Feature', parentId: 'parent', end: '2026-10-22' }];
+      work_item_display: displayFixture([['Epic'], ['Feature']], { Working: 'InProgress' }),
+       }];
+    state.baseline.features = [parent, { process_id: 'process', ...parent, id: 'child', type: 'Feature', parentId: 'parent', end: '2026-10-22' }];
     state.selection.projectIds = ['project'];
     state.selection.featureStateNames = ['Working'];
     store.setState(state, true);
@@ -883,8 +882,8 @@ describe('Reconciliation detection menu', () => {
     const state = createInitialAppState();
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Delivery plan', type: 'project',
-      state_categories: { Working: 'InProgress' }, task_type_hierarchy: [{ types: ['Epic'] }] }];
-    state.baseline.features = [{ id: 'child', title: 'Delivery', type: 'Epic', project: 'project',
+      work_item_display: displayFixture([['Epic']], { Working: 'InProgress' }),  }];
+    state.baseline.features = [{ process_id: 'process', id: 'child', title: 'Delivery', type: 'Epic', project: 'project',
       state: 'Working', start: '2026-10-01', end: '2026-10-10', parentId: null,
       capacity: [], relations: [{ id: 'unloaded', type: 'Predecessor' }] }];
     state.selection.projectIds = ['project'];
@@ -910,14 +909,14 @@ describe('Reconciliation detection menu', () => {
   it('shows constraint, affected plans and per-finding scenario status separately from drift', async () => {
     const { element } = await openMenu();
     const state = createInitialAppState();
-    const parent = { id: 'parent', title: 'Programme', type: 'Epic', project: 'programme',
+    const parent = { process_id: 'process', id: 'parent', title: 'Programme', type: 'Epic', project: 'programme',
       state: 'Working', start: '2026-10-01', end: '2026-10-10', parentId: null,
       capacity: [], relations: [] };
     state.lifecycle.status = 'ready';
     state.baseline.projects = ['programme', 'delivery'].map((id) => ({ id, name: `${id} plan`,
-      type: 'project', state_categories: { Working: 'InProgress' },
-      task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }] }));
-    state.baseline.features = [parent, { ...parent, id: 'child', title: 'Delivery',
+      type: 'project', work_item_display: displayFixture([['Epic'], ['Feature']], { Working: 'InProgress' }),
+       }));
+    state.baseline.features = [parent, { process_id: 'process', ...parent, id: 'child', title: 'Delivery',
       project: 'delivery', type: 'Feature', parentId: 'parent' }];
     state.selection.projectIds = ['delivery'];
     state.selection.featureStateNames = ['Working'];

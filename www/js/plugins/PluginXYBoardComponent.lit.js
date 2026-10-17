@@ -18,6 +18,7 @@ import {
   ScenarioEvents, ViewManagementEvents, UIEvents,
 } from '../core/EventRegistry.js';
 import { cmd, sel } from '../application/imports.js';
+import { featureTypeKey } from '../application/shared/workItemDisplay.js';
 import { computeGrid } from './xyBoardUtils.js';
 import '../components/XYCard.lit.js';
 
@@ -146,6 +147,11 @@ export class PluginXYBoardComponent extends LitElement {
       overflow-y: auto;
     }
 
+    .xy-process-heading {
+      padding: 8px 10px 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
     .xy-chip {
       padding: 5px 12px;
       border-radius: 8px;
@@ -341,21 +347,8 @@ export class PluginXYBoardComponent extends LitElement {
   }
 
   _refresh() {
-    let features = [];
-    try {
-      features = sel.feature?.getEffectiveFeatures?.() || [];
-    } catch (_) {
-      // state not yet ready — will be called again on AppEvents.READY
-      return;
-    }
-
-    // Derive available task types — union of baseline cache and effective features
-    // so all types are visible in the select even if filtered
-    const typeSet = new Set([
-      ...(sel.feature.getAvailableTaskTypesOrdered() || []),
-      ...features.map((f) => f.type || f.workItemType).filter(Boolean),
-    ]);
-    this._availableTypes = Array.from(typeSet).sort();
+    const features = sel.feature.getEffectiveFeatures();
+    this._availableTypes = sel.feature.getAvailableTaskTypesOrdered();
 
     // Derive all field keys present on the feature set so the card-details
     // select offers real field choices beyond the static AVAILABLE_FIELDS list
@@ -378,7 +371,7 @@ export class PluginXYBoardComponent extends LitElement {
     // Features use `f.project` (string) to reference their parent project.
     // When projects are empty (not yet loaded) show everything.
     // When all projects are deselected show nothing (empty board).
-    const allProjects = sel.selection.getProjects() || [];
+    const allProjects = sel.selection.getProjects();
     let afterProjectFilter;
     if (allProjects.length === 0) {
       // Projects not yet loaded — do not filter
@@ -396,7 +389,7 @@ export class PluginXYBoardComponent extends LitElement {
     // Apply plugin-local task type filter
     const filtered =
       this.selectedTypes.length
-        ? afterProjectFilter.filter((f) => this.selectedTypes.includes(f.type || f.workItemType))
+        ? afterProjectFilter.filter((feature) => this.selectedTypes.includes(featureTypeKey(feature)))
         : afterProjectFilter;
 
     const stateComparator = (a, b) => sel.filter.compareFeatureStates(a, b);
@@ -416,29 +409,19 @@ export class PluginXYBoardComponent extends LitElement {
   // ---- Persistence ----
 
   _saveState() {
-    try {
-      cmd.pluginState.set(STATE_KEY, {
-        xField: this.xField,
-        yField: this.yField,
-        selectedTypes: this.selectedTypes,
-        detailFields: this.detailFields,
-      });
-    } catch (_) {
-      // pluginStateService may not be ready on first load
-    }
+    cmd.pluginState.set(STATE_KEY, {
+      xField: this.xField, yField: this.yField,
+      selectedTypes: this.selectedTypes, detailFields: this.detailFields,
+    });
   }
 
   _loadState() {
-    try {
-      const saved = cmd.pluginState.get(STATE_KEY);
-      if (!saved) return;
-      if (saved.xField) this.xField = saved.xField;
-      if (saved.yField) this.yField = saved.yField;
-      if (Array.isArray(saved.selectedTypes)) this.selectedTypes = saved.selectedTypes;
-      if (Array.isArray(saved.detailFields)) this.detailFields = saved.detailFields;
-    } catch (_) {
-      // ignore if not available
-    }
+    const saved = cmd.pluginState.get(STATE_KEY);
+    if (saved === null) return;
+    this.xField = saved.xField;
+    this.yField = saved.yField;
+    this.selectedTypes = saved.selectedTypes;
+    this.detailFields = saved.detailFields;
   }
 
   // ---- Dropdown interaction ----
@@ -485,12 +468,8 @@ export class PluginXYBoardComponent extends LitElement {
   // ---- Rendering helpers ----
 
   _projectColor(feature) {
-    try {
-      const projectId = feature?.projectId ?? feature?.project;
-      return sel.selection.getProjectById(projectId)?.color || null;
-    } catch (_) {
-      return null;
-    }
+    const project = sel.selection.getProjectById(feature.project);
+    return project === null ? null : project.color;
   }
 
   /**
@@ -541,7 +520,8 @@ export class PluginXYBoardComponent extends LitElement {
 
   _renderToolbar() {
     const { _availableTypes, _availableFields, selectedTypes, xField, yField, detailFields } = this;
-    const typeOptions = _availableTypes.map((t) => ({ value: t, label: t }));
+    const typeOptions = sel.feature.getTaskTypeOptions().filter((type) => _availableTypes.includes(type.key))
+      .map((type) => ({ value: type.key, label: type.name }));
 
     return html`
       <div class="toolbar">
@@ -596,7 +576,7 @@ export class PluginXYBoardComponent extends LitElement {
                 <tr>
                   <th>${y}</th>
                   ${_xVals.map((x) => {
-                    const cellFeatures = rowMap?.get(x) ?? [];
+                    const cellFeatures = rowMap.get(x);
                     return html`
                       <td>
                         <div class="cell-contents">

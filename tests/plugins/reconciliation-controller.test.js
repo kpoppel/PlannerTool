@@ -1,15 +1,16 @@
+import { displayFixture } from '../helpers/workItemDisplay.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReconciliationController } from '../../www/js/plugins/reconciliation/ReconciliationController.js';
 
 function fixture() {
-  const parent = { id: 'parent', title: 'Programme', project: 'project', type: 'Epic',
+  const parent = { process_id: 'process', id: 'parent', title: 'Programme', project: 'project', type: 'Epic',
     state: 'Active', start: '2026-10-01', end: '2026-10-10', parentId: null,
     capacity: [], relations: [] };
-  const child = { ...parent, id: 'child', title: 'Delivery', type: 'Feature', parentId: 'parent' };
+  const child = { process_id: 'process', ...parent, id: 'child', title: 'Delivery', type: 'Feature', parentId: 'parent' };
   let state = {
     lifecycle: { status: 'bootstrapping' },
     baseline: { features: [parent, child], projects: [{ id: 'project', name: 'Programme',
-      type: 'project', state_categories: { Active: 'InProgress' } }] },
+      type: 'project', work_item_display: displayFixture(undefined, { Active: 'InProgress' }) }] },
     scenarios: { activeId: 'baseline', changedIds: [],
       items: [{ id: 'baseline', name: 'Baseline', pluginData: {}, overrides: {} }] },
   };

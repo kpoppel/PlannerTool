@@ -1,4 +1,5 @@
 import { featureCanPresent } from './featureProjection.js';
+import { displayTypes, featureTypeKey, projectDisplay } from './workItemDisplay.js';
 
 function toTypeName(feature) {
   return feature.type;
@@ -28,7 +29,7 @@ export function deriveAvailableTaskTypes(features) {
     if (!featureCanPresent(feature) && feature.ancestorOnly !== true) continue;
     const typeName = toTypeName(feature);
     if (!typeName) continue;
-    const key = String(typeName);
+    const key = featureTypeKey(feature);
     if (seen.has(key)) continue;
     seen.add(key);
     types.push(key);
@@ -41,16 +42,11 @@ export function deriveConfiguredStateSequence(projects) {
   const sequence = [];
   const seen = new Set();
 
-  for (const project of projects) {
-    const raw = project.state_display_sequence;
-
-    for (const item of raw) {
-      for (const stateName of item.types) {
-        const value = String(stateName).trim();
-        if (!value || seen.has(value)) continue;
-        seen.add(value);
-        sequence.push(value);
-      }
+  for (const type of displayTypes(projectDisplay(projects))) {
+    for (const state of type.states) {
+      if (state.category === 'Removed' || seen.has(state.name)) continue;
+      seen.add(state.name);
+      sequence.push(state.name);
     }
   }
 

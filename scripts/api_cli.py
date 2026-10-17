@@ -67,15 +67,28 @@ def cmd_health(args):
     print_response(r)
 
 
+def post_enrollment(session, base, payload):
+    response = session.post(build_url(base, '/api/auth/enroll'), json=payload,
+                            headers={'Accept': 'application/json'}, timeout=30)
+    if response.status_code == 400:
+        error = response.json()
+        if isinstance(error, dict) and error.get('error') in ('pat_required', 'pat_invalid'):
+            pat = getpass('Azure DevOps PAT: ')
+            response = session.post(build_url(base, '/api/auth/enroll'),
+                                    json={**payload, 'pat': pat},
+                                    headers={'Accept': 'application/json'}, timeout=30)
+    return response
+
+
 def cmd_enroll(args):
     base = os.environ.get('API_BASE', 'http://localhost:8000')
     session = _cookie_session(args.cookies, required=False)
     account_key = getpass('Current account key (blank for first enrollment): ')
     descriptor = os.open(args.key_output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, 'w') as key_file:
-        response = session.post(build_url(base, '/api/auth/enroll'),
-                                json={'email': args.email, 'name': args.name, 'accountKey': account_key},
-                                headers={'Accept': 'application/json'}, timeout=30)
+        response = post_enrollment(session, base, {
+            'email': args.email, 'name': args.name, 'accountKey': account_key,
+        })
         response.raise_for_status()
         key_file.write(response.json()['accountKey'] + '\n')
         key_file.flush()

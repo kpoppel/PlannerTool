@@ -31,6 +31,7 @@ def test_delegated_admin_access_is_scoped(client, permission, allowed):
         storage = client.app.state.container.get('storage')
         storage.save('config', 'ado_config', {
             'organization_url': 'ExampleOrg', 'private_setting': 'not-for-delegates',
+            'feature_flags': {'use_azure_mock_generator': True},
         })
         browse = client.get('/admin/v1/browse-config')
         assert browse.status_code == 200
@@ -84,13 +85,13 @@ def test_enrollment_status_is_read_only_and_distinguishes_unenrolled_accounts(cl
     storage = client.app.state.container.get('storage')
     response = client.post('/api/auth/enrollment-status', json={'email': 'unknown@example.com'})
     assert response.status_code == 200
-    assert response.json() == {'requiresKey': False}
+    assert response.json() == {'requiresKey': False, 'requiresPat': False}
     assert response.headers['cache-control'] == 'no-store'
     assert not storage.exists('accounts', 'unknown@example.com')
     accounts.create_account(AccountCredentialsPayload(email='precreated@example.com'))
     assert client.post('/api/auth/enrollment-status', json={
         'email': 'precreated@example.com',
-    }).json() == {'requiresKey': False}
+    }).json() == {'requiresKey': False, 'requiresPat': False}
     enrollment = client.post('/api/auth/enroll', json={
         'email': 'enrolled@example.com', 'name': 'Existing User',
     })
@@ -99,7 +100,7 @@ def test_enrollment_status_is_read_only_and_distinguishes_unenrolled_accounts(cl
     original = storage.load('account_auth', account_id)
     assert client.post('/api/auth/enrollment-status', json={
         'email': 'enrolled@example.com',
-    }).json() == {'requiresKey': True}
+    }).json() == {'requiresKey': True, 'requiresPat': False}
     assert storage.load('account_auth', account_id) == original
     assert client.post('/api/auth/enrollment-status', json={'email': 'invalid'}).status_code == 400
     assert client.post('/api/auth/enrollment-status', json={

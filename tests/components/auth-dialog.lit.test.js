@@ -5,6 +5,7 @@ import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 
 afterEach(() => {
   document.querySelectorAll('auth-dialog').forEach((dialog) => dialog.remove());
+  document.querySelectorAll('set-pat').forEach((dialog) => dialog.remove());
   document.querySelectorAll('admin-users').forEach((component) => component.remove());
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -12,6 +13,47 @@ afterEach(() => {
 });
 
 describe('account enrollment dialog', () => {
+  it('saves a masked PAT through the shared repair screen', async () => {
+    const { showSetPat } = await import('../../www/js/components/SetPat.lit.js');
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ email: 'owner@example.com' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+    vi.stubGlobal('fetch', fetch);
+    const complete = showSetPat('/dev/api', 'pat_required');
+    expect(showSetPat('/dev/api', 'pat_required')).toBe(complete);
+    const screen = document.querySelector('set-pat');
+    await screen.ready;
+    await screen.updateComplete;
+    const input = screen.renderRoot.querySelector('input');
+    expect(input.type).toBe('password');
+    input.value = 'fixture-pat';
+    await screen._onSave(new Event('submit'));
+    await expect(complete).resolves.toBe(true);
+    expect(fetch.mock.calls[1][0]).toBe('/dev/api/config');
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+      email: 'owner@example.com', pat: 'fixture-pat',
+    });
+    expect(input.value).toBe('');
+    expect(document.querySelector('set-pat')).toBeNull();
+  });
+
+  it('keeps the PAT screen open when ADO rejects the supplied token', async () => {
+    const { showSetPat } = await import('../../www/js/components/SetPat.lit.js');
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ email: 'owner@example.com' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'pat_invalid' }), { status: 400 })));
+    showSetPat('/api', 'pat_invalid');
+    const screen = document.querySelector('set-pat');
+    await screen.ready;
+    await screen.updateComplete;
+    screen.renderRoot.querySelector('input').value = 'revoked-fixture-pat';
+    await screen._onSave(new Event('submit'));
+    await screen.updateComplete;
+    expect(screen.renderRoot.textContent).toContain('invalid or expired');
+    expect(document.querySelector('set-pat')).toBe(screen);
+    expect(screen.busy).toBe(false);
+  });
+
   it('shows only one Enroll button in enrollment mode', async () => {
     showAuthDialog('/api');
     const dialog = document.querySelector('auth-dialog');
@@ -20,6 +62,27 @@ describe('account enrollment dialog', () => {
       .filter(button => button.textContent.trim() === 'Enroll');
     expect(enrollButtons).toHaveLength(1);
     expect(enrollButtons[0].type).toBe('submit');
+  });
+
+  it('requests a masked PAT for live ADO enrollment and sends it only to enrollment', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ requiresKey: false, requiresPat: true })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ accountKey: 'next-key' })));
+    vi.stubGlobal('fetch', fetch);
+    showAuthDialog('/api');
+    const dialog = document.querySelector('auth-dialog');
+    await dialog.updateComplete;
+    dialog.renderRoot.querySelector('#email').value = 'owner@example.com';
+    await dialog._checkEnrollment();
+    await dialog.updateComplete;
+    const input = dialog.renderRoot.querySelector('#pat');
+    expect(input.type).toBe('password');
+    expect(input.required).toBe(true);
+    input.value = 'fixture-pat';
+    dialog.renderRoot.querySelector('#name').value = 'Owner';
+    await dialog._submit(new Event('submit'));
+    expect(JSON.parse(fetch.mock.calls[1][1].body).pat).toBe('fixture-pat');
+    expect(localStorage.getItem('az_planner:user_prefs:v1')).not.toContain('fixture-pat');
   });
 
   it('shows real name but no account key before first enrollment', async () => {

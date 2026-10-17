@@ -293,6 +293,12 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null, noti
             return [];
           }
           const converted = resizeAllocations(original, feature, snapshot.allocation.staffing.fteById);
+          if (converted.exceeded.length > 0) {
+            const allocations = converted.exceeded.map((row) => `${feature.id}/${row.team}`).join(', ');
+            notify({ source: 'Allocation', code: 'allocation-resize-limit', severity: 'warning',
+              message: `Schedule unchanged: preserving man-days would exceed 100% for ${allocations}. Extend the schedule or reduce the allocation first.` });
+            return [];
+          }
           const unknownIds = original.capacity.filter((row) => !knownIds.has(row.team))
             .map((row) => row.team);
           if (unknownIds.length !== new Set(unknownIds).size) {

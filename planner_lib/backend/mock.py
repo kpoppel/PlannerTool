@@ -15,10 +15,13 @@ no-ops that update in-memory state only.
 from __future__ import annotations
 
 import logging
+from threading import Lock
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
+from planner_lib.backend.azure import AzureDevOpsBackend
+from planner_lib.azure.catalogue import imported_type_index
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.util import project_id_for_area_path
@@ -26,8 +29,10 @@ from planner_lib.util import project_id_for_area_path
 logger = logging.getLogger(__name__)
 
 
-class _MockBackendBase(BackendPort):
+class _MockBackendBase(AzureDevOpsBackend):
     """Shared helpers for both mock backends."""
+
+    is_remote = False
 
     def __init__(self, organization_url, storage, team_repository=None, capacity_service=None, local_backend=None):
         self._organization_url = organization_url
@@ -36,6 +41,15 @@ class _MockBackendBase(BackendPort):
         self._capacity_service = capacity_service
         self._storage = storage
         self._config = local_backend
+        self._diagnostics = []
+        self._diagnostics_lock = Lock()
+
+    @property
+    def _conn(self):
+        return self._client
+
+    def _require_credential(self, credential, op):
+        return 'mock-pat'
 
     def fetch_plan_tasks(
         self,
@@ -45,8 +59,8 @@ class _MockBackendBase(BackendPort):
         """Interpret the ADO-like seed settings used by these mock clients."""
         tasks = self.fetch_tasks(
             area_path=plan['area_path'],
-            task_types=plan.get('task_types'),
-            include_states=plan.get('include_states'),
+            task_types=plan['task_types'],
+            closed_history_days=plan['closed_history_days'],
             project_id=plan['id'],
             credential=credential,
         )
@@ -57,24 +71,12 @@ class _MockBackendBase(BackendPort):
         seeds: List[BackendTask],
         credential: Optional[BackendCredential] = None,
     ) -> List[BackendTask]:
-        """Mock snapshots already contain their supplied task context."""
-        return [{**task, 'presentationPlanIds': list(task['sourcePlanIds'])} for task in seeds]
+        """Apply the live catalogue/discovery contract to the deterministic SDK."""
+        acting = credential if credential is not None else {'token': 'mock-pat', 'user_id': 'demo'}
+        return super().fetch_task_context(seeds, credential=acting)
 
     def _build_type_canonical(self) -> Dict[str, str]:
-        type_canonical: Dict[str, str] = {}
-        try:
-            if self._config is not None:
-                projects = self._config.fetch_projects()
-                hierarchy = (projects[0].get('task_type_hierarchy') or []) if projects else []
-            else:
-                gs = self._storage.load('config', 'global_settings')
-                hierarchy = (gs.get('task_type_hierarchy', []) if isinstance(gs, dict) else [])
-            for level in hierarchy:
-                for t in (level.get('types') or []):
-                    type_canonical[str(t).lower()] = t
-        except Exception:
-            pass
-        return type_canonical
+        return super()._build_type_canonical()
 
     def _enrich(
         self,
@@ -83,7 +85,7 @@ class _MockBackendBase(BackendPort):
         iteration_map: Dict[str, Any],
         project_id: Optional[str] = None,
     ) -> List[DomainTask]:
-        type_canonical = self._build_type_canonical()
+        eligible = imported_type_index(self._storage.load('config', 'ado_processes'))
         if project_id is None:
             if self._config is None:
                 raise ValueError(f'No configured project owns area {area_path}')
@@ -92,18 +94,17 @@ class _MockBackendBase(BackendPort):
                 raise ValueError(f'No unique configured project owns area {area_path}')
         results: List[DomainTask] = []
         for raw_wi in raw_items or []:
-            try:
-                task = self._adapter.to_domain(
-                    raw_wi=raw_wi,
-                    project_id=project_id,
-                    team_repository=self._team_repository or _NullTeamRepository(),
-                    type_canonical=type_canonical,
-                    iteration_map=iteration_map,
-                    capacity_service=self._capacity_service,
-                )
-                results.append(task)
-            except Exception as exc:
-                logger.warning("Mock: failed to enrich item %s: %s", raw_wi.get('id', '?'), exc)
+            process, item_type = eligible[(raw_wi['adoProject'].casefold(), raw_wi['type'].casefold())]
+            task = self._adapter.to_domain(
+                raw_wi=raw_wi,
+                project_id=project_id,
+                team_repository=self._team_repository or _NullTeamRepository(),
+                type_canonical={item_type['name'].casefold(): item_type['name']},
+                iteration_map=iteration_map,
+                capacity_service=self._capacity_service,
+            )
+            task['process_id'] = process['id']
+            results.append(task)
         return results
 
     def fetch_projects(
@@ -252,7 +253,7 @@ class MockFixtureBackend(_MockBackendBase):
         self,
         area_path: str,
         task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        closed_history_days: int = 0,
         credential: Optional[BackendCredential] = None,
         project_id: Optional[str] = None,
         **kwargs,
@@ -261,7 +262,8 @@ class MockFixtureBackend(_MockBackendBase):
             raw_items = client.get_work_items(
                 area_path,
                 task_types=task_types,
-                include_states=include_states,
+                catalogue=self._storage.load('config', 'ado_processes'),
+                closed_history_days=closed_history_days,
             )
             iteration_map: Dict[str, Any] = {}
             try:
@@ -529,7 +531,7 @@ class MockGeneratorBackend(_MockBackendBase):
         self,
         area_path: str,
         task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        closed_history_days: int = 0,
         credential: Optional[BackendCredential] = None,
         project_id: Optional[str] = None,
         **kwargs,
@@ -538,7 +540,8 @@ class MockGeneratorBackend(_MockBackendBase):
             raw_items = client.get_work_items(
                 area_path,
                 task_types=task_types,
-                include_states=include_states,
+                catalogue=self._storage.load('config', 'ado_processes'),
+                closed_history_days=closed_history_days,
             )
             iteration_map: Dict[str, Any] = {}
             try:

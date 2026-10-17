@@ -353,10 +353,8 @@ export class ReconciliationReview extends LitElement {
       : ['past-unfinished', 'parent-state'].includes(issue.type) ? 'Completed' : null;
     if (requiredGroup === null) return [];
     const feature = this.snapshot.featuresById.get(issue.featureId);
-    const project = this.snapshot.projectsById.get(String(feature.project));
-    if (project === undefined) return [];
-    return Object.entries(project.state_categories)
-      .filter(([, group]) => group === requiredGroup).map(([state]) => state);
+    return sel.filter.getFeatureStates(feature)
+      .filter((state) => state.category === requiredGroup).map((state) => state.name);
   }
 
   _requireEditable() {

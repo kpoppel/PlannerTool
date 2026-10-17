@@ -27,8 +27,7 @@ const TIMELINE_FADED_CATEGORIES = new Set(['completed', 'removed']);
  * @returns {string}
  */
 function getTimelineBarCategory(feature) {
-  const category = sel.filter.getFeatureStateCategory(feature?.state);
-  return String(category || '').toLowerCase();
+  return sel.filter.getFeatureStateCategory(feature).toLowerCase();
 }
 
 /**
@@ -47,9 +46,9 @@ function getTimelineBarOpacity(feature) {
  * @returns {string}
  */
 function getTimelineBarTooltip(feature, projectName) {
-  const start = feature?.start || '-';
-  const end = feature?.end || '-';
-  return `${feature?.id || ''}\n${toTitle(feature?.title)}\n${projectName}\n${start} -> ${end}`.trim();
+  const start = feature.start ? feature.start : '-';
+  const end = feature.end ? feature.end : '-';
+  return `${feature.id}\n${toTitle(feature.title)}\n${projectName}\n${start} -> ${end}`.trim();
 }
 
 /**
@@ -58,7 +57,8 @@ function getTimelineBarTooltip(feature, projectName) {
  * @returns {string}
  */
 function toTitle(value) {
-  return String(value || '').trim() || 'Untitled';
+  const title = String(value).trim();
+  return title === '' ? 'Untitled' : title;
 }
 
 /**
@@ -84,8 +84,8 @@ export function renderPortfolioTimeline({
     : 'No dated tasks in the current selection';
 
   const getProjectName = (feature) => {
-    const project = projectById[String(feature?.project || '')];
-    return project?.name || feature?.project || 'Unknown';
+    const project = projectById[String(feature.project)];
+    return project === undefined ? String(feature.project) : project.name;
   };
 
   const timelineSvg = hasTimeline

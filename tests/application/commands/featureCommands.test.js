@@ -144,18 +144,44 @@ describe('application/commands/featureCommands', () => {
 
   it('removes unconvertible rows while retaining valid allocations and the requested dates', () => {
     store.setState(prepareManDayState([
-      { team: 'A', capacity: 20 }, { team: 'G', capacity: 70 }, { team: 'unknown', capacity: 10 },
+      { team: 'A', capacity: 20 }, { team: 'G', capacity: 40 }, { team: 'unknown', capacity: 10 },
     ]), true);
     const notify = vi.fn();
     const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), notify);
     commands.updateFeatureDates([{ id: 'f1', end: '2026-10-09' }]);
     expect(store.getState().scenarios.items[0].overrides.f1).toMatchObject({
-      end: '2026-10-09', capacity: [{ team: 'A', capacity: 40 }],
+      end: '2026-10-09', capacity: [{ team: 'A', capacity: 40 }, { team: 'G', capacity: 80 }],
     });
     expect(notify).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning',
       message: expect.stringContaining('unknown') }));
     commands.updateFeatureDates([{ id: 'f1', start: null, end: null }]);
     expect(store.getState().scenarios.items[0].overrides.f1.capacity).toEqual([]);
+  });
+
+  it('rejects over-capacity man-day resizing without losing allocations or committing partial dates', () => {
+    const state = prepareManDayState([{ team: 'A', capacity: 60 }]);
+    state.baseline.features.push({ ...state.baseline.features[0], id: 'other',
+      capacity: [{ team: 'A', capacity: 20 }] });
+    state.scenarios.items[0].overrides.f1 = { state: 'Done' };
+    store.setState(state, true);
+    const before = store.getState();
+    const notify = vi.fn();
+    const recompute = vi.fn();
+    const bus = { emit: vi.fn() };
+    const commands = createFeatureCommands(store, bus, recompute, notify);
+
+    expect(commands.updateFeatureDates([
+      { id: 'other', end: '2026-10-09' }, { id: 'f1', end: '2026-10-09' },
+    ])).toEqual([]);
+
+    expect(store.getState()).toBe(before);
+    expect(recompute).not.toHaveBeenCalled();
+    expect(bus.emit).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'allocation-resize-limit', severity: 'warning',
+      message: expect.stringContaining('100%'),
+    }));
+    expect(notify.mock.calls[0][0].message).toContain('f1/A');
   });
 
   it('does not persist redundant capacity overrides when scheduling leaves the percentage unchanged', () => {

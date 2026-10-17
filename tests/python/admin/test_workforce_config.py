@@ -723,6 +723,43 @@ def test_team_deletion_review_preserves_tasks_scenarios_views_and_reports_change
     assert storage.load('backend_domain', 'fetch_task_context__fixture') == tasks
 
 
+@pytest.mark.parametrize('selected_teams,expected_count', [
+    ({'team-one': True, 'group-one': False}, 1),
+    ({'team-one': False, 'group-one': True}, 0),
+    ({}, 0),
+])
+def test_team_deletion_preserves_saved_view_selection_maps(
+    manager: WorkforceConfigManager, selected_teams: dict[str, bool], expected_count: int,
+) -> None:
+    """Saved views use boolean selection maps, including when embedded in scenarios."""
+    storage = manager._storage
+    view = {'name': 'Saved view', 'selectedTeams': selected_teams}
+    scenario = {'view': deepcopy(view), 'overrides': {}}
+    storage.save('views', 'account_view', view)
+    storage.save('scenarios', 'account_scenario', scenario)
+
+    review = manager.review_team_deletion('team-one', task_storage=storage)
+    assert review['saved_selections'] == ([
+        {'namespace': 'scenarios', 'key': 'account_scenario', 'path': ['view', 'selectedTeams']},
+        {'namespace': 'views', 'key': 'account_view', 'path': ['selectedTeams']},
+    ] if expected_count else [])
+    manager.delete_team('team-one', review['revision'], acknowledged=True,
+                        review_revision=review['review_revision'], task_storage=storage)
+    assert storage.load('views', 'account_view') == view
+    assert storage.load('scenarios', 'account_scenario') == scenario
+
+
+@pytest.mark.parametrize('selected_teams', [{'team-one': 'true'}, {'team-one': 1}, None])
+def test_team_deletion_rejects_malformed_saved_selection_maps(
+    manager: WorkforceConfigManager, selected_teams: object,
+) -> None:
+    manager._storage.save('views', 'account_view', {'selectedTeams': selected_teams})
+    before = manager.read_snapshot()
+    with pytest.raises(ValueError, match='Saved team selections'):
+        manager.review_team_deletion('team-one', task_storage=manager._storage)
+    assert manager.read_snapshot() == before
+
+
 def test_team_deletion_requires_fresh_reference_review(manager: WorkforceConfigManager) -> None:
     """New reference/configuration evidence invalidates an otherwise current confirmation."""
     before = manager.read_snapshot()
@@ -1060,6 +1097,7 @@ def test_invalid_creation_leaves_configuration_unchanged(
 def workforce_client(manager: WorkforceConfigManager) -> Iterator[TestClient]:
     """Exercise real authorization decorators with private, disposable cookie sessions."""
     accounts = Mock()
+    accounts.pat_error.return_value = None
     account_ids = {'admin@fixture.test': 'admin-id', 'member@fixture.test': 'member-id'}
     accounts.get_account_id.side_effect = account_ids.__getitem__
     accounts.get_account_by_id.side_effect = lambda identity: {
@@ -1182,8 +1220,14 @@ def test_canonical_project_http_availability_is_validated_before_save(
     assert manager._storage.load('config', 'projects') == current
     accepted = deepcopy(current)
     accepted['allocation_defaults']['project'] = ['team-one']
-    accepted['project_map'] = [{'id': 'plan', 'name': 'Plan', 'area_path': 'Area',
-                                'type': 'project', 'allocatable_ids': []}]
+    accepted['project_map'] = [{'id': 'plan', 'name': 'Plan', 'area_path': 'Platform',
+                                'type': 'project', 'allocatable_ids': [],
+                                'task_types': ['Feature'], 'closed_history_days': 0}]
+    from tests.python.azure.test_process_catalogue import catalogue
+    manager._storage.save('config', 'ado_processes', catalogue())
+    manager._storage.save('config', 'global_settings', {
+        'schema_version': 2, 'process_order': [], 'type_tiers': {},
+    })
     response = workforce_client.post('/admin/v1/projects', json={'content': accepted})
     assert response.status_code == 200
     assert manager._storage.load('config', 'projects') == accepted

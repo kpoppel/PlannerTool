@@ -443,9 +443,9 @@ export class PlanMenuLit extends LitElement {
               ${project.name}
             </div>
             ${taskTypes.map((type) => {
-              const count = counts.get(type.toLowerCase());
+              const count = counts.get(type);
               return html`<span class="chip-badge ${count > 0 ? 'has-count' : ''}"
-                title="${type}">${count > 0 ? count : ''}</span>`;
+                title=${sel.feature.getTypeDisplayName(type)}>${count > 0 ? count : ''}</span>`;
             })}
           </div>
         </li>
@@ -468,7 +468,7 @@ export class PlanMenuLit extends LitElement {
     const projectCounts = new Map(projects.map((project) =>
       [project.id, sel.feature.getCountsForProject(project.id)]));
     const taskTypes = sel.feature.getAvailableTaskTypesOrdered().filter((type) =>
-      projects.some((project) => projectCounts.get(project.id).get(type.toLowerCase()) > 0));
+      projects.some((project) => projectCounts.get(project.id).get(type) > 0));
     const columns = `14px minmax(0, max-content)${taskTypes.length ? ` repeat(${taskTypes.length}, 32px)` : ''}`;
 
     return html`
@@ -528,7 +528,8 @@ export class PlanMenuLit extends LitElement {
               @click=${this._clearHiddenProjects}>Clear hidden</button>
           ` : ''}
           </div>
-          ${taskTypes.map((t) => html`<span class="type-icon" title="${t}">${getIconTemplate(t)}</span>`)}
+          ${taskTypes.map((key) => html`<span class="type-icon" title=${sel.feature.getTypeDisplayName(key)}
+            >${getIconTemplate(sel.feature.getTypeDisplayName(key))}</span>`)}
         </div>
 
         <div class="plans-group">

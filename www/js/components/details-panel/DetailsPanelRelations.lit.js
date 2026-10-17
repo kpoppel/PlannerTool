@@ -19,7 +19,7 @@ export function buildDetailsPanelRelationsModel({
   const types = [...grouped.keys()];
   types.sort((first, second) => first === 'Parent' ? -1 : second === 'Parent' ? 1 : 0);
   const categoryOrder = (linked) => {
-    const index = CATEGORY_ORDER.indexOf(stateCategories.get(linked.state));
+    const index = CATEGORY_ORDER.indexOf(stateCategories.get(String(linked.id)));
     return index < 0 ? CATEGORY_ORDER.length : index;
   };
   return {

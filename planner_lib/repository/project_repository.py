@@ -2,7 +2,7 @@
 
 Delegates to the active backend implementation to fetch projects.  The backend
 is responsible for returning projects in the correct shape, including any
-enrichment needed for the frontend (e.g. state_categories).
+catalogue-backed display model needed for the frontend.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ class ProjectRepository:
         """Return all configured projects in frontend-ready shape.
 
         The backend implementation is responsible for providing the correct
-        data shape, including any enrichment needed (e.g. state_categories).
+        data shape, including the catalogue-backed display model.
         """
         return self._backend.fetch_projects()
 

@@ -173,14 +173,14 @@ export class DetailsPanelController {
 			const linked = sel.feature.getBaselineFeatureById(id);
 			if (linked) {
 				linkedFeatures.set(id, linked);
-				stateCategories.set(linked.state, sel.filter.getFeatureStateCategory(linked.state));
+								stateCategories.set(id, sel.filter.getFeatureStateCategory(linked));
 			}
 		}
 		return {
 			header: {
 				feature, planName,
 				stateChanged: originalState !== undefined && feature.state !== originalState,
-				originalState, stateColors, availableFeatureStates: sel.filter.getAvailableFeatureStates(),
+				originalState, stateColors, availableFeatureStates: sel.filter.getFeatureStates(feature).map((state) => state.name),
 				editingState: this.editor.editingState, stateEditValue: this.editor.stateEditValue,
 			},
 			scheduling: buildDetailsPanelSchedulingModel({

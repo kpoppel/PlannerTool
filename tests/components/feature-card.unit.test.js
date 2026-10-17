@@ -1,7 +1,7 @@
 import { expect, fixture } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/FeatureCard.lit.js';
-import { cmd } from '../../www/js/application/imports.js';
+import { cmd, sel } from '../../www/js/application/imports.js';
 
 describe('FeatureCardLit basic behaviors', () => {
   afterEach(() => {
@@ -35,6 +35,16 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(el.constructor.styles.cssText).to.match(
       /\.feature-dates\s*\{[^}]*min-height:\s*1em;/
     );
+  });
+
+  it('resolves completion using the task process and type, not its state label alone', async () => {
+    const category = sinon.stub(sel.filter, 'getFeatureStateCategory').returns('Completed');
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'closed', process_id: 'process', type: 'Feature', state: 'Closed',
+      title: 'Delivered', start: '2026-01-01', end: '2026-01-02' };
+    await el.updateComplete;
+    expect(category.lastCall.args[0]).to.equal(el.feature);
+    expect(el.shadowRoot.querySelector('.feature-card').classList.contains('completed')).to.be.true;
   });
 
   it('labels ancestor context cards as partial hierarchy without changing ordinary cards', async () => {

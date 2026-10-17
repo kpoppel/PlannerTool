@@ -31,7 +31,7 @@ it('opens only authorized administration deep links', () => {
     expect(app.activeSection).toBe('Iterations');
     window.history.replaceState(null, '', '#users');
     app.setPermissions(['manage_projects']);
-    expect(app.activeSection).toBe('Projects');
+    expect(app.activeSection).toBe('Plans');
   } finally {
     window.history.replaceState(null, '', previousUrl);
   }
@@ -59,10 +59,12 @@ it('limits delegated navigation and rejects direct selection of restricted secti
   const app = document.createElement('admin-app');
   expect(app.sections).toEqual([]);
   app.setPermissions(['manage_projects', 'manage_iterations']);
-  expect(app.sections).toEqual(['Projects', 'Iterations']);
-  expect(app.activeSection).toBe('Projects');
+  expect(app.sections).toEqual([
+    'Plans', 'Azure DevOps Processes', 'Global Project Settings', 'Iterations',
+  ]);
+  expect(app.activeSection).toBe('Plans');
   app._onSelect('Users');
-  expect(app.activeSection).toBe('Projects');
+  expect(app.activeSection).toBe('Plans');
   app.setPermissions(['manage_workforce_costs']);
   expect(app.sections).toEqual(['Workforce']);
   app.setPermissions([]);

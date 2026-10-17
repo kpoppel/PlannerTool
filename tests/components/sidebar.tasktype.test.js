@@ -1,3 +1,4 @@
+import { displayFixture } from '../helpers/workItemDisplay.js';
 /**
  * Tests for Sidebar task-type filter behaviour.
  *
@@ -21,6 +22,7 @@ import { createInitialAppState } from '../../www/js/application/createInitialApp
 import { render } from '../../www/js/vendor/lit.js';
 import { SIDEBAR_STYLES } from '../../www/js/components/sidebar/Sidebar.styles.lit.js';
 import { renderSidebarTaskFilters } from '../../www/js/components/sidebar/SidebarTaskFilters.lit.js';
+import { taskTypeKey } from '../../www/js/application/shared/workItemDisplay.js';
 
 describe('Sidebar task-type filter', () => {
   let sidebar;
@@ -31,10 +33,10 @@ describe('Sidebar task-type filter', () => {
     const state = createInitialAppState();
     state.lifecycle.status = 'ready';
     state.baseline.features = ['epic', 'feature'].map((type) => ({
-      id: type, type, project: 'p1', state: 'New', capacity: [], relations: [], parentId: null,
+      process_id: 'process', id: type, type, project: 'p1', state: 'New', capacity: [], relations: [], parentId: null,
     }));
     state.baseline.projects = [{ id: 'p1', name: 'Plan', type: 'project',
-      state_categories: { New: 'Proposed' }, state_display_sequence: [], task_type_hierarchy: [], }];
+      work_item_display: displayFixture(undefined, { New: 'Proposed', Active: 'InProgress', Resolved: 'Resolved' }), }];
     state.selection.projectIds = ['p1'];
     store.setState(state, true);
     await customElements.whenDefined('app-sidebar');
@@ -52,8 +54,8 @@ describe('Sidebar task-type filter', () => {
     await sidebar.updateComplete;
     await footer.updateComplete;
     // Reset type visibility via seam so store-backed selector state is authoritative.
-    cmd.view.setTypeVisibility('epic', true);
-    cmd.view.setTypeVisibility('feature', true);
+    cmd.view.setTypeVisibility("[\"process\",\"epic\"]", true);
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", true);
   });
 
   afterEach(() => {
@@ -77,22 +79,22 @@ describe('Sidebar task-type filter', () => {
         features: [
           { ...state.baseline.features[0], presentationPlanIds: ['p1'] },
           { ...state.baseline.features[1], presentationPlanIds: ['p1'], state: 'Active' },
-          { ...state.baseline.features[1], id: 'hidden', type: 'User Story',
+          { process_id: 'process', ...state.baseline.features[1], id: 'hidden', type: 'User Story',
             state: 'Closed', presentationPlanIds: [] },
-          { ...state.baseline.features[1], id: 'outside', project: 'p2', type: 'Bug',
+          { process_id: 'process', ...state.baseline.features[1], id: 'outside', project: 'p2', type: 'Bug',
             state: 'Resolved', presentationPlanIds: ['p2'] },
         ],
       },
     }));
     cmd.filter.setSelectedStates(['New']);
-    cmd.view.setTypeVisibility('feature', false);
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", false);
 
     const model = sidebar._controller.getPresentationModel([]);
 
     expect(model.filters.states.map((option) => option.name)).to.deep.equal(['New', 'Active']);
-    expect(model.filters.types.map((option) => option.name)).to.deep.equal(['epic', 'feature']);
+    expect(model.filters.types.map((option) => option.name)).to.deep.equal(['Epic', 'Feature']);
     expect(model.filters.states.find((option) => option.name === 'Active').active).to.equal(false);
-    expect(model.filters.types.find((option) => option.name === 'feature').active).to.equal(false);
+    expect(model.filters.types.find((option) => option.name === 'Feature').active).to.equal(false);
 
     store.setState((state) => ({ ...state,
       selection: { ...state.selection, projectIds: ['p2'] },
@@ -100,6 +102,36 @@ describe('Sidebar task-type filter', () => {
     const next = sidebar._controller.getPresentationModel([]);
     expect(next.filters.states.map((option) => option.name)).to.deep.equal(['Resolved']);
     expect(next.filters.types.map((option) => option.name)).to.deep.equal(['Bug']);
+  });
+
+  it('hides ADO process names while toggling same-named task types independently', async () => {
+    const state = createInitialAppState();
+    const processes = ['second', 'first'].map((processId) => ({
+      process_id: processId, process_name: `${processId} process`, tiers: [[{
+        name: 'Feature', states: [{ name: processId === 'first' ? 'Open' : 'Working', category: 'InProgress' }],
+      }]],
+    }));
+    state.baseline.projects = [{ id: 'p1', work_item_display: processes }];
+    state.baseline.features = processes.map((process) => ({
+      id: process.process_id, process_id: process.process_id, type: 'Feature', project: 'p1',
+      state: process.tiers[0][0].states[0].name, capacity: [], relations: [], parentId: null,
+    }));
+    state.selection.projectIds = ['p1'];
+    store.setState(state, true);
+    let model = sidebar._controller.getPresentationModel([]);
+    expect(model.filters.types.map((type) => type.processId)).to.deep.equal(['second', 'first']);
+    expect(model.filters.types.every((type) => !Object.hasOwn(type, 'processName'))).to.equal(true);
+    const root = document.createElement('div');
+    render(renderSidebarTaskFilters({ model: model.filters,
+      actions: { toggleType: (key) => cmd.view.setTypeVisibility(key, false) } }), root);
+    expect(root.querySelector('.filter-process-heading')).to.equal(null);
+    expect(root.textContent).not.to.include('second process');
+    expect(root.textContent).not.to.include('first process');
+    expect(root.querySelectorAll('[data-type-key]')).to.have.length(2);
+    root.querySelectorAll('[data-type-key]')[0].click();
+    model = sidebar._controller.getPresentationModel([]);
+    expect(model.filters.types.map((type) => type.active)).to.deep.equal([false, true]);
+    expect(sel.filter.getAvailableFeatureStates()).to.deep.equal(['Open']);
   });
 
   it('renders health version, server name, and uptime from the successful result data', async () => {
@@ -272,12 +304,12 @@ describe('Sidebar task-type filter', () => {
 
   it('renders hydrated types without mutating restored visibility during mounting', async () => {
     sidebar.remove();
-    cmd.filter.setSelectedTaskTypes(['feature']);
+    cmd.filter.setSelectedTaskTypes(["[\"process\",\"feature\"]"]);
     const selection = store.getState().selection.taskTypeNames;
     const options = store.getState().view.options;
     document.body.appendChild(sidebar);
     await sidebar.updateComplete;
-    expect(sel.filter.getSelectedTaskTypeNames()).to.deep.equal(['feature']);
+    expect(sel.filter.getSelectedTaskTypeNames()).to.deep.equal(["[\"process\",\"feature\"]"]);
     expect(store.getState().selection.taskTypeNames).to.equal(selection);
     expect(store.getState().view.options).to.equal(options);
   });
@@ -289,28 +321,28 @@ describe('Sidebar task-type filter', () => {
     // Simulate the bug scenario: selectedTaskTypes is empty but view state says all visible
     sidebar.selectedTaskTypes = new Set(); // empty — old bug: would ADD instead of remove
     sidebar.availableTaskTypes = ['epic', 'feature'];
-    cmd.view.setTypeVisibility('epic', true);
-    cmd.view.setTypeVisibility('feature', true);
+    cmd.view.setTypeVisibility("[\"process\",\"epic\"]", true);
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", true);
 
-    sidebar._toggleTaskType('feature');
+    sidebar._toggleTaskType("[\"process\",\"feature\"]");
 
     // Feature should now be hidden in view state
-    expect(sel.view.isTypeVisible('feature')).to.equal(false,
+    expect(sel.view.isTypeVisible("[\"process\",\"feature\"]")).to.equal(false,
       'feature should be hidden after toggle when it was visible');
     // selectedTaskTypes should reflect the new state
-    expect(sel.filter.getSelectedTaskTypeNames()).to.not.include('feature');
+    expect(sel.filter.getSelectedTaskTypeNames()).to.not.include("[\"process\",\"feature\"]");
   });
 
   it('_toggleTaskType re-shows a hidden type', () => {
     sidebar.selectedTaskTypes = new Set(['epic']); // feature not in set
     sidebar.availableTaskTypes = ['epic', 'feature'];
-    cmd.view.setTypeVisibility('feature', false);
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", false);
 
-    sidebar._toggleTaskType('feature');
+    sidebar._toggleTaskType("[\"process\",\"feature\"]");
 
-    expect(sel.view.isTypeVisible('feature')).to.equal(true,
+    expect(sel.view.isTypeVisible("[\"process\",\"feature\"]")).to.equal(true,
       'feature should be visible after toggling from hidden state');
-    expect(sel.filter.getSelectedTaskTypeNames()).to.include('feature');
+    expect(sel.filter.getSelectedTaskTypeNames()).to.include("[\"process\",\"feature\"]");
   });
 
   // -------------------------------------------------------------------------
@@ -319,8 +351,8 @@ describe('Sidebar task-type filter', () => {
   it('task-type button active class reflects view state, not stale selectedTaskTypes', async () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(); // empty – simulates the stale/cold state
-    cmd.view.setTypeVisibility('epic', true);
-    cmd.view.setTypeVisibility('feature', true);
+    cmd.view.setTypeVisibility("[\"process\",\"epic\"]", true);
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", true);
     await sidebar.updateComplete;
 
     const root = sidebar.shadowRoot || sidebar;
@@ -339,7 +371,7 @@ describe('Sidebar task-type filter', () => {
   it('task-type button loses active class when view state hides the type', async () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic', 'feature']);
-    cmd.view.setTypeVisibility('feature', false);
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", false);
     // Trigger re-render so the Lit template picks up the new view state
     sidebar.requestUpdate();
     await sidebar.updateComplete;
@@ -362,29 +394,29 @@ describe('Sidebar task-type filter', () => {
   it('FilterEvents.CHANGED syncs selector-backed type visibility to local selectedTaskTypes', () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic', 'feature']);
-    cmd.view.setTypeVisibility('epic', true);
-    cmd.view.setTypeVisibility('feature', true);
+    cmd.view.setTypeVisibility("[\"process\",\"epic\"]", true);
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", true);
 
     // Hide feature via command/store, then fire the signal event.
-    cmd.view.setTypeVisibility('feature', false, { suppressEvents: true });
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", false, { suppressEvents: true });
     bus.emit(FilterEvents.CHANGED);
 
-    expect(sel.view.isTypeVisible('feature')).to.equal(false,
+    expect(sel.view.isTypeVisible("[\"process\",\"feature\"]")).to.equal(false,
       'feature should be hidden after selector update');
-    expect(sel.view.isTypeVisible('epic')).to.equal(true);
-    expect(sel.filter.getSelectedTaskTypeNames()).to.not.include('feature');
+    expect(sel.view.isTypeVisible("[\"process\",\"epic\"]")).to.equal(true);
+    expect(sel.filter.getSelectedTaskTypeNames()).to.not.include("[\"process\",\"feature\"]");
   });
 
   it('FilterEvents.CHANGED with all visible types syncs local selectedTaskTypes', () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic']);
-    cmd.view.setTypeVisibility('feature', true, { suppressEvents: true });
+    cmd.view.setTypeVisibility("[\"process\",\"feature\"]", true, { suppressEvents: true });
 
     bus.emit(FilterEvents.CHANGED);
 
-    expect(sel.view.isTypeVisible('epic')).to.equal(true);
-    expect(sel.view.isTypeVisible('feature')).to.equal(true);
-    expect(sel.filter.getSelectedTaskTypeNames()).to.include('feature');
+    expect(sel.view.isTypeVisible("[\"process\",\"epic\"]")).to.equal(true);
+    expect(sel.view.isTypeVisible("[\"process\",\"feature\"]")).to.equal(true);
+    expect(sel.filter.getSelectedTaskTypeNames()).to.include("[\"process\",\"feature\"]");
   });
 
   it('does not render moved Scope or display controls', async () => {
@@ -405,8 +437,8 @@ describe('Sidebar task-type filter', () => {
     const originalGetTaskTypes = sel.feature.getAvailableTaskTypesOrdered;
     const originalGetCounts = sel.feature.getCountsForTeam;
     sel.scope.getContextTeams = () => ['team-1'];
-    sel.feature.getAvailableTaskTypesOrdered = () => ['Feature'];
-    sel.feature.getCountsForTeam = () => new Map([['feature', 4]]);
+    sel.feature.getAvailableTaskTypesOrdered = () => [taskTypeKey('process', 'Feature')];
+    sel.feature.getCountsForTeam = () => new Map([[taskTypeKey('process', 'Feature'), 4]]);
     sidebar.requestUpdate();
     await sidebar.updateComplete;
 
@@ -428,11 +460,11 @@ describe('Sidebar task-type filter', () => {
     ];
     sinon.stub(sel.scope, 'getContextTeams').returns(['team-1', 'team-2']);
     sinon.stub(sel.feature, 'getAvailableTaskTypesOrdered')
-      .returns(['Epic', 'Initiative', 'Feature', 'User Story']);
+      .returns(['Epic', 'Initiative', 'Feature', 'User Story'].map((name) => taskTypeKey('process', name)));
     sinon.stub(sel.feature, 'getCountsForTeam').callsFake((id) => new Map([
       ['epic', id === 'team-1' ? 2 : 0], ['initiative', 0],
       ['feature', 37], ['user story', 120],
-    ]));
+    ].map(([name, count]) => [taskTypeKey('process', name), count])));
     const selection = sinon.spy(cmd.selection, 'setTeamSelected');
     sidebar.requestUpdate();
     await sidebar.updateComplete;

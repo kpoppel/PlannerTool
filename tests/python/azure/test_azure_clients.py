@@ -6,10 +6,82 @@ from unittest.mock import MagicMock
 
 from planner_lib.azure.AzureClient import AzureClient
 from planner_lib.backend.azure import AzureDevOpsBackend
+from tests.python.azure.test_process_catalogue import task_catalogue
+from planner_lib.storage.memory_backend import MemoryStorage
 
 
 class DummyStorage:
     pass
+
+
+def test_process_catalogue_client_normalizes_projects_types_and_backlogs():
+    from azure.devops.v7_1.work_item_tracking_process.models import (
+        ProcessInfo, ProcessWorkItemType, ProjectReference, ProcessBehavior,
+        ProcessBehaviorReference, WorkItemTypeBehavior, WorkItemBehaviorReference,
+        WorkItemStateResultModel,
+    )
+    sdk = MagicMock()
+    sdk.get_list_of_processes.return_value = [
+        ProcessInfo(type_id='base', name='Agile', parent_process_type_id='00000000-0000-0000-0000-000000000000'),
+        ProcessInfo(type_id='custom', name='Custom', parent_process_type_id='base',
+                    projects=[ProjectReference(name='Platform')]),
+    ]
+    sdk.get_process_behaviors.return_value = [
+        ProcessBehavior(reference_name='Features', rank=30,
+                        inherits=ProcessBehaviorReference(behavior_ref_name='System.PortfolioBacklogBehavior')),
+        ProcessBehavior(reference_name='System.TaskBacklogBehavior', rank=10),
+        ProcessBehavior(reference_name='System.RequirementBacklogBehavior', rank=20),
+    ]
+    sdk.get_process_work_item_types.return_value = [
+        ProcessWorkItemType(reference_name='Task', name='Task', states=[], behaviors=[
+            WorkItemTypeBehavior(behavior=WorkItemBehaviorReference(id='System.TaskBacklogBehavior'))]),
+        ProcessWorkItemType(reference_name='Feature', name='Feature', states=[
+            WorkItemStateResultModel(name='Closed', state_category='Completed', order=4),
+            WorkItemStateResultModel(name='New', state_category='Proposed', order=1),
+        ], behaviors=[WorkItemTypeBehavior(behavior=WorkItemBehaviorReference(id='Features'))]),
+        ProcessWorkItemType(reference_name='Story', name='User Story', states=[], behaviors=[
+            WorkItemTypeBehavior(behavior=WorkItemBehaviorReference(id='System.RequirementBacklogBehavior'))]),
+        ProcessWorkItemType(reference_name='Issue', name='Issue', states=[], behaviors=[]),
+    ]
+    client = AzureClient('org', DummyStorage())
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(
+        get_work_item_tracking_process_client=lambda: sdk))
+    assert client.list_processes() == [
+        {'id': 'base', 'name': 'Agile', 'projects': []},
+        {'id': 'custom', 'name': 'Custom', 'parent_name': 'Agile', 'projects': ['Platform']},
+    ]
+    types = client.get_process_types('custom')
+    assert [item['name'] for item in types] == ['Feature', 'User Story', 'Task', 'Issue']
+    assert [item['backlog_level'] for item in types] == ['portfolio', 'requirement', 'task', 'none']
+    assert types[0]['backlog'] == 'Features'
+    assert types[0]['states'] == [
+        {'name': 'New', 'category': 'Proposed', 'order': 1},
+        {'name': 'Closed', 'category': 'Completed', 'order': 4},
+    ]
+    assert all(item['imported'] is False and item['missing'] is False for item in types)
+    sdk.get_list_of_processes.assert_called_once_with(expand='projects')
+    sdk.get_process_work_item_types.assert_called_once_with('custom', expand='states,behaviors')
+
+
+@pytest.mark.parametrize('method,args', [('list_processes', ()), ('get_process_types', ('custom',))])
+def test_process_catalogue_requires_acting_connection(method, args):
+    client = AzureClient('org', DummyStorage())
+    with pytest.raises(RuntimeError, match='not connected'):
+        getattr(client, method)(*args)
+
+
+def test_recorded_mock_process_catalogue():
+    from planner_lib.azure.AzureMockClient import AzureMockClient
+    from planner_lib.storage import create_storage
+    client = AzureMockClient('org', create_storage(backend='memory'))
+    with client.connect('fixture-pat'):
+        processes = client.list_processes()
+        process = next(item for item in processes if 'MyProject' in item['projects'])
+        assert process['parent_name'] == 'Agile'
+        types = client.get_process_types(process['id'])
+    assert any(item['backlog_level'] == 'task' for item in types)
+    assert any(item['name'] == 'Feature' and item['states'] for item in types)
 
 
 def make_dummy_conn_for_projects():
@@ -146,11 +218,102 @@ def test_work_item_type_passthrough():
 
         nc._connected = True
         nc.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: FakeWit()))
-        results = nc.get_work_items('Proj\\Team')
+        stored = task_catalogue(['Proj'])
+        stored['processes'][0]['types'] = [{
+            'name': azure_type, 'reference_name': azure_type, 'backlog_level': 'portfolio',
+            'backlog': azure_type, 'imported': True, 'missing': False,
+            'states': [{'name': 'Active', 'category': 'InProgress', 'order': 1}],
+        }]
+        results = nc.get_work_items('Proj\\Team', [azure_type], catalogue=stored)
         assert len(results) == 1, f'Expected 1 result for type {azure_type}'
         assert results[0]['type'] == expected, (
             f"Expected type '{expected}' but got '{results[0]['type']}' for Azure type '{azure_type}'"
         )
+
+
+@pytest.mark.parametrize(('task_types', 'include_states', 'expected_types', 'expected_states'), [
+    (["Owner's Feature"], ["Won't Do"], "'Owner''s Feature'", "IN ('Won''t Do')"),
+    (["Feature') OR [System.Id] > 0 --", 'Bug'],
+     ["Active') OR [System.Id] > 0 --", 'New'],
+     "'Feature'') OR [System.Id] > 0 --','Bug'",
+     "IN ('Active'') OR [System.Id] > 0 --','New')"),
+    (['Feature'], ['Active'], "'Feature'", "IN ('Active')"),
+])
+def test_seed_wiql_escapes_all_string_literals(
+    task_types, include_states, expected_types, expected_states,
+):
+    client = AzureClient('org', DummyStorage())
+    wit = MagicMock()
+    wit.query_by_wiql.return_value = SimpleNamespace(work_items=[])
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(
+        get_work_item_tracking_client=lambda: wit,
+    ))
+
+    stored = task_catalogue(['Project'])
+    stored['processes'][0]['types'] = [{
+        'name': name, 'reference_name': name, 'backlog_level': 'portfolio', 'backlog': name,
+        'imported': True, 'missing': False,
+        'states': [{'name': state, 'category': 'Proposed', 'order': order}
+                   for order, state in enumerate(include_states)],
+    } for name in task_types]
+    assert client.get_work_items("/Project/Owner's Area", task_types, catalogue=stored) == []
+
+    query = wit.query_by_wiql.call_args.kwargs['wiql'].query
+    assert f'[System.WorkItemType] IN ({expected_types})' in query
+    assert f'[System.State] {expected_states}' in query
+    assert "[System.AreaPath] = 'Project\\\\Owner''s Area'" in query
+    wit.get_work_items.assert_not_called()
+
+
+@pytest.mark.parametrize('days', [0, 90])
+def test_catalogue_seed_query_limits_completed_history(days):
+    from tests.python.azure.test_process_catalogue import catalogue
+
+    stored = catalogue()
+    stored['processes'][0]['types'][1]['states'] = [
+        {'name': 'Ready', 'category': 'Proposed', 'order': 1},
+        {'name': 'Working', 'category': 'InProgress', 'order': 2},
+        {'name': 'Done', 'category': 'Completed', 'order': 3},
+        {'name': 'Deleted', 'category': 'Removed', 'order': 4},
+    ]
+    client = AzureClient('org', DummyStorage())
+    wit = MagicMock()
+    wit.query_by_wiql.return_value = SimpleNamespace(work_items=[])
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: wit))
+
+    client.get_work_items('Platform\\Team', ['feature'], catalogue=stored,
+                          closed_history_days=days)
+
+    query = wit.query_by_wiql.call_args.kwargs['wiql'].query
+    assert "[System.WorkItemType] IN ('Feature')" in query
+    assert "[System.State] IN ('Ready','Working')" in query
+    assert 'Deleted' not in query
+    assert 'User Story' not in query
+    if days:
+        assert "[System.State] IN ('Done')" in query
+        assert '[Microsoft.VSTS.Common.StateChangeDate] >= @Today - 90' in query
+    else:
+        assert 'Done' not in query
+        assert 'StateChangeDate' not in query
+
+
+@pytest.mark.parametrize('project,types,code', [
+    ('Unknown', ['Feature'], 'process_not_imported'),
+    ('Platform', ['Task'], 'type_not_imported'),
+    ('Platform', [], 'type_not_imported'),
+])
+def test_catalogue_seed_query_rejects_unimported_types(project, types, code):
+    from planner_lib.azure.catalogue import CatalogueError
+    from tests.python.azure.test_process_catalogue import catalogue
+
+    client = AzureClient('org', DummyStorage())
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=MagicMock()))
+    with pytest.raises(CatalogueError) as error:
+        client.get_work_items(project, types, catalogue=catalogue(), closed_history_days=0)
+    assert error.value.code == code
 
 
 def test_get_projects_uses_connection():
@@ -345,13 +508,13 @@ def test_azure_native_client_get_work_items_parses_items():
 
     nc._connected = True
     nc.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: FakeWit()))
-    res = nc.get_work_items('Area/Sub')
+    res = nc.get_work_items('Area/Sub', ['Feature', 'Epic'], catalogue=task_catalogue(['Area']))
     assert isinstance(res, list)
     assert any(r['id'] == '10' for r in res)
 
 
 # ---------------------------------------------------------------------------
-# get_area_path_used_metadata — backlog-config path
+# Linked hierarchy traversal
 # ---------------------------------------------------------------------------
 
 def test_linked_hierarchy_crosses_areas_but_stops_at_project_task_category():
@@ -402,14 +565,19 @@ def test_linked_hierarchy_crosses_areas_but_stops_at_project_task_category():
     client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: wit))
     seed = client._work_item_ops.normalize_work_item(items[1])
 
-    linked = client._work_item_ops.get_linked_work_items([seed])
+    stored = task_catalogue(['A', 'B'])
+    stored['processes'][0]['types'].append({
+        'name': 'Test Plan', 'reference_name': 'Test Plan', 'imported': True,
+        'backlog_level': 'none', 'backlog': None, 'missing': False, 'states': [],
+    })
+    linked = client._work_item_ops.get_linked_work_items([seed], catalogue=stored)
 
-    assert [item['id'] for item in linked] == ['1', '2', '4', '5']
+    assert [item['id'] for item in linked] == ['1', '2', '5']
     assert linked[1]['areaPath'] == 'B\\WrongArea'
     assert linked[1]['adoProject'] == 'B'
     assert linked[1]['state'] == 'Closed'
     assert seed['relations'][1]['id'] == '3'
-    assert sorted(category_projects) == ['A', 'B']
+    assert category_projects == []
     assert all(3 not in ids and 6 not in ids for ids, fields, expand in batches if expand)
     assert all(1 not in ids for ids, fields, expand in batches)
 
@@ -444,6 +612,7 @@ def _linked_client(items, missing_ids=()):
 
     wit = SimpleNamespace(
         get_work_items=MagicMock(side_effect=get_work_items),
+        get_deleted_work_items=MagicMock(return_value=[SimpleNamespace(id=identity) for identity in missing_ids]),
         get_work_item_type_category=MagicMock(return_value=SimpleNamespace(
             work_item_types=[SimpleNamespace(name='Task'), SimpleNamespace(name='Implementation Step')],
         )),
@@ -464,7 +633,8 @@ def test_linked_hierarchy_loads_ancestor_paths_without_sibling_branches():
     client, wit = _linked_client(items)
     seed = client._work_item_ops.normalize_work_item(items[1])
 
-    tasks = {item['id']: item for item in client.get_linked_work_items([seed])}
+    tasks = {item['id']: item for item in client.get_linked_work_items(
+        [seed], catalogue=task_catalogue(['A', 'B', 'C', 'D']))}
 
     assert set(tasks) == {'1', '2', '10', '20'}
     assert not tasks['1']['ancestorOnly']
@@ -485,7 +655,7 @@ def test_linked_hierarchy_reports_missing_parents_and_terminates_parent_cycles()
     client, wit = _linked_client(items, missing_ids=(99,))
     tasks = {item['id']: item for item in client.get_linked_work_items([
         client._work_item_ops.normalize_work_item(items[1]),
-    ])}
+    ], catalogue=task_catalogue(['A', 'B', 'C', 'D']))}
 
     assert set(tasks) == {'1', '10'}
     assert tasks['1']['unresolvedParentIds'] == ['99']
@@ -500,7 +670,7 @@ def test_linked_hierarchy_batches_and_deduplicates_shared_children():
     client, wit = _linked_client(items)
     seeds = [client._work_item_ops.normalize_work_item(items[item_id]) for item_id in (1, 2)]
 
-    result = client.get_linked_work_items(seeds)
+    result = client.get_linked_work_items(seeds, catalogue=task_catalogue(['A', 'B', 'C', 'D']))
 
     assert len(result) == 407
     classified = []
@@ -511,7 +681,7 @@ def test_linked_hierarchy_batches_and_deduplicates_shared_children():
         (classified if 'fields' in call.kwargs else hydrated).extend(ids)
     assert classified == list(children)
     assert hydrated == list(children)
-    wit.get_work_item_type_category.assert_called_once_with('A', 'Microsoft.TaskCategory')
+    wit.get_work_item_type_category.assert_not_called()
 
 
 @pytest.mark.parametrize('through_repository', [False, True])
@@ -531,8 +701,10 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
         path=f"\\{kwargs['project']}\\Iteration", name=kwargs['project'], attributes={}, children=[],
     ))
     plans = [
-        {'id': 'plan-a', 'area_path': 'A\\WrongArea', 'task_types': ['Epic', 'Feature']},
-        {'id': 'plan-b', 'area_path': 'B\\WrongArea', 'task_types': ['Feature']},
+        {'id': 'plan-a', 'area_path': 'A\\WrongArea', 'task_types': ['Epic', 'Feature'],
+         'closed_history_days': 0},
+        {'id': 'plan-b', 'area_path': 'B\\WrongArea', 'task_types': ['Feature'],
+         'closed_history_days': 0},
     ]
     config = SimpleNamespace(
         fetch_project_map=lambda: plans,
@@ -541,7 +713,9 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
     )
     capacity = MagicMock()
     capacity.parse.return_value = []
-    backend = AzureDevOpsBackend('org', storage=MagicMock(), team_repository=MagicMock(),
+    storage = MemoryStorage()
+    storage.save('config', 'ado_processes', task_catalogue(['A', 'B', 'C', 'D']))
+    backend = AzureDevOpsBackend('org', storage=storage, team_repository=MagicMock(),
                                  capacity_service=capacity, local_backend=config)
 
     @contextmanager
@@ -594,7 +768,47 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
     assert tasks['5']['sourcePlanIds'] == ['plan-a', 'plan-b']
     assert tasks['5']['presentationPlanIds'] == ['plan-a', 'plan-b']
     assert [call.args[0] for call in wit.get_work_items.call_args_list] == [[2], [2], [3, 5], [5], [10]]
-    assert wit.get_work_item_type_category.call_count == 4
+    wit.get_work_item_type_category.assert_not_called()
+
+
+@pytest.mark.parametrize('excluded_type,project', [('Bug', 'A'), ('Feature', 'Unknown')])
+def test_catalogue_discovery_excludes_unimported_items_without_traversing(excluded_type, project):
+    from tests.python.azure.test_process_catalogue import catalogue
+
+    stored = catalogue()
+    stored['processes'][0]['projects'] = ['A']
+    items = {1: _linked_item(1, children=(2,)),
+             2: _linked_item(2, excluded_type, (3,), project=project),
+             3: _linked_item(3)}
+    client, wit = _linked_client(items)
+    seed = client._work_item_ops.normalize_work_item(items[1])
+
+    result = client.get_linked_work_items([seed], catalogue=stored)
+
+    assert [item['id'] for item in result] == ['1']
+    assert result[0]['excludedChildIds'] == ['2']
+    assert all(3 not in call.args[0] for call in wit.get_work_items.call_args_list)
+    wit.get_work_item_type_category.assert_not_called()
+
+
+@pytest.mark.parametrize('deleted', [False, True])
+def test_catalogue_discovery_checks_omitted_ids_against_recycle_bin(deleted):
+    from planner_lib.backend.errors import AreaNotReadableError
+    from tests.python.azure.test_process_catalogue import catalogue
+
+    stored = catalogue()
+    stored['processes'][0]['projects'] = ['A']
+    items = {1: _linked_item(1, children=(2,))}
+    client, wit = _linked_client(items, missing_ids=(2,))
+    wit.get_deleted_work_items = MagicMock(return_value=[SimpleNamespace(id=2)] if deleted else [])
+    seed = client._work_item_ops.normalize_work_item(items[1])
+    if deleted:
+        result = client.get_linked_work_items([seed], catalogue=stored)
+        assert result[0]['unresolvedChildIds'] == ['2']
+    else:
+        with pytest.raises(AreaNotReadableError, match='2'):
+            client.get_linked_work_items([seed], catalogue=stored)
+    wit.get_deleted_work_items.assert_called_once_with(ids=[2])
 
 
 def test_linked_hierarchy_preserves_references_without_fetching_lateral_targets():
@@ -607,7 +821,7 @@ def test_linked_hierarchy_preserves_references_without_fetching_lateral_targets(
         for item_id, relation_type in enumerate(('Parent', 'Related', 'Predecessor', 'Successor'), 10)
     )
 
-    result = client.get_linked_work_items([seed])
+    result = client.get_linked_work_items([seed], catalogue=task_catalogue(['A', 'B', 'C', 'D']))
 
     assert [item['id'] for item in result] == ['1', '2']
     assert result[0]['unresolvedChildIds'] == ['4']
@@ -625,7 +839,7 @@ def test_linked_hierarchy_keeps_independent_seeds_beyond_a_task_boundary():
     client, wit = _linked_client(items)
     seeds = [client._work_item_ops.normalize_work_item(items[item_id]) for item_id in (1, 3)]
 
-    result = client.get_linked_work_items(seeds)
+    result = client.get_linked_work_items(seeds, catalogue=task_catalogue(['A', 'B', 'C', 'D']))
 
     assert [item['id'] for item in result] == ['1', '3', '4']
     assert result[0]['excludedChildIds'] == ['2']
@@ -633,57 +847,59 @@ def test_linked_hierarchy_keeps_independent_seeds_beyond_a_task_boundary():
     assert all(2 not in call.args[0] for call in wit.get_work_items.call_args_list if 'expand' in call.kwargs)
 
 
-def test_explicit_task_seed_is_kept_without_expanding_children():
+def test_explicit_task_seed_is_excluded_without_expanding_children():
     items = {1: _linked_item(1, 'Task', (2,))}
     client, wit = _linked_client(items)
 
-    result = client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])])
+    result = client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])],
+                                          catalogue=task_catalogue(['A']))
 
-    assert [item['id'] for item in result] == ['1']
-    assert result[0]['traversalBoundary'] is True
+    assert result == []
     wit.get_work_items.assert_not_called()
 
 
-def test_seeded_task_child_remains_loaded_but_excluded_from_parent_traversal():
+def test_seeded_task_child_is_excluded_from_parent_traversal():
     items = {1: _linked_item(1, children=(2,)), 2: _linked_item(2, 'Task', (3,)),
              3: _linked_item(3, 'Requirement')}
     client, wit = _linked_client(items)
     seeds = [client._work_item_ops.normalize_work_item(items[item_id]) for item_id in (1, 2, 3)]
 
-    result = client.get_linked_work_items(seeds)
+    result = client.get_linked_work_items(seeds, catalogue=task_catalogue(['A']))
 
-    assert [item['id'] for item in result] == ['1', '2', '3']
+    assert [item['id'] for item in result] == ['1', '3']
     assert result[0]['excludedChildIds'] == ['2']
-    assert [item['traversalBoundary'] for item in result] == [False, True, False]
+    assert [item['traversalBoundary'] for item in result] == [False, False]
     wit.get_work_items.assert_not_called()
 
 
-def test_empty_task_category_does_not_guess_from_a_type_name():
+def test_empty_task_category_does_not_override_catalogue_eligibility():
     items = {1: _linked_item(1, children=(2,)), 2: _linked_item(2, 'Task')}
     client, wit = _linked_client(items)
     wit.get_work_item_type_category.return_value.work_item_types = []
 
-    result = client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])])
+    result = client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])],
+                                          catalogue=task_catalogue(['A']))
 
-    assert [item['id'] for item in result] == ['1', '2']
+    assert [item['id'] for item in result] == ['1']
     assert all(item['traversalBoundary'] is False for item in result)
 
 
-@pytest.mark.parametrize('failed_call', ['get_work_item_type_category', 'get_work_items'])
+@pytest.mark.parametrize('failed_call', ['get_work_items'])
 def test_linked_hierarchy_does_not_reinterpret_sdk_failure_as_empty(failed_call):
     items = {1: _linked_item(1, children=(2,))}
     client, wit = _linked_client(items)
     getattr(wit, failed_call).side_effect = RuntimeError('SDK unavailable')
 
     with pytest.raises(RuntimeError, match='SDK unavailable'):
-        client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])])
+        client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])],
+                         catalogue=task_catalogue(['A']))
 
 
 def test_linked_hierarchy_requires_a_connected_client():
     client = AzureClient('org', DummyStorage())
 
     with pytest.raises(RuntimeError, match='not connected'):
-        client.get_linked_work_items([])
+        client.get_linked_work_items([], catalogue=task_catalogue(['A']))
 
 
 def test_linked_hierarchy_keeps_the_highest_revision_of_duplicate_seeds():
@@ -692,7 +908,7 @@ def test_linked_hierarchy_keeps_the_highest_revision_of_duplicate_seeds():
     seed = client._work_item_ops.normalize_work_item(items[1])
     newer = {**seed, 'rev': 2, 'title': 'Latest seed'}
 
-    result = client.get_linked_work_items([newer, seed])
+    result = client.get_linked_work_items([newer, seed], catalogue=task_catalogue(['A']))
 
     assert len(result) == 1
     assert result[0]['title'] == 'Latest seed'
@@ -715,130 +931,8 @@ def test_linked_hierarchy_rejects_type_or_project_drift(changed_field, changed_v
     wit.get_work_items.side_effect = get_work_items
 
     with pytest.raises(RuntimeError, match='classification changed for work item 2'):
-        client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])])
-
-
-def _make_mapping(type_name, states_dict):
-    """Return a SimpleNamespace mimicking WorkItemTypeStateInfo."""
-    return SimpleNamespace(work_item_type_name=type_name, states=states_dict)
-
-
-def _make_area_path_client(team_ids, teams, backlog_config, wit_items=None):
-    """Build a AzureClient whose internals are wired for area-path-metadata tests.
-
-    Args:
-        team_ids:      List of team ID strings returned by get_team_from_area_path.
-        teams:         List of {'id':str,'name':str} dicts returned by get_all_teams.
-        backlog_config: Object with .work_item_type_mapped_states.
-        wit_items:     Optional list of work items for the WIQL-fallback path.
-    """
-    c = AzureClient('org', DummyStorage())
-
-    class FakeTeamPlanOps:
-        def get_all_teams(self, project):
-            return teams
-
-        def get_team_from_area_path(self, project, area_path):
-            return team_ids
-
-    class FakeWorkClient:
-        def get_backlog_configurations(self, team_context):
-            return backlog_config
-
-    wit_items = wit_items or []
-
-    class FakeWit:
-        def query_by_wiql(self, wiql):
-            return SimpleNamespace(work_items=wit_items)
-
-        def get_work_items(self, ids, fields=None):
-            return []
-
-    c._team_plan_ops = FakeTeamPlanOps()
-    c._connected = True
-    c.conn = SimpleNamespace(
-        clients=SimpleNamespace(
-            get_work_client=lambda: FakeWorkClient(),
-            get_work_item_tracking_client=lambda: FakeWit(),
-        )
-    )
-    return c
-
-
-def test_area_path_metadata_uses_backlog_config_when_team_found():
-    """Happy path: team resolved → backlog config used → types and states extracted."""
-    teams = [{'id': 'tid-1', 'name': 'Team Alpha'}]
-    mappings = [
-        _make_mapping('Feature', {'Active': 'InProgress', 'Done': 'Completed', 'New': 'Proposed'}),
-        _make_mapping('Bug', {'Active': 'InProgress', 'Closed': 'Completed'}),
-    ]
-    backlog = SimpleNamespace(work_item_type_mapped_states=mappings)
-    c = _make_area_path_client(team_ids=['tid-1'], teams=teams, backlog_config=backlog)
-
-    result = c.get_area_path_used_metadata('Proj', 'Proj\\Team Alpha')
-
-    assert set(result['types']) == {'Feature', 'Bug'}
-    # States come from the keys of the states dicts
-    assert 'Active' in result['states']
-    assert 'Done' in result['states']
-    assert 'Closed' in result['states']
-    # states_by_type must be populated
-    assert 'Active' in result['states_by_type']['Feature']
-    assert 'Active' in result['states_by_type']['Bug']
-
-
-def test_area_path_metadata_falls_back_to_wiql_when_no_team():
-    """If no team owns the area path, fall back to WIQL scan (which returns empty here)."""
-    c = _make_area_path_client(team_ids=[], teams=[], backlog_config=None)
-    result = c.get_area_path_used_metadata('Proj', 'Proj\\Orphan')
-    # WIQL fake returns no items → empty lists
-    assert result == {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
-
-
-def test_area_path_metadata_falls_back_when_backlog_config_throws():
-    """If get_backlog_configurations raises, fall back to WIQL scan."""
-    teams = [{'id': 'tid-1', 'name': 'Team Beta'}]
-
-    class FailingWorkClient:
-        def get_backlog_configurations(self, team_context):
-            raise RuntimeError('API unavailable')
-
-    class FakeTeamPlanOps:
-        def get_all_teams(self, project):
-            return teams
-
-        def get_team_from_area_path(self, project, area_path):
-            return ['tid-1']
-
-    class FakeWit:
-        def query_by_wiql(self, wiql):
-            return SimpleNamespace(work_items=[])
-
-        def get_work_items(self, ids, fields=None):
-            return []
-
-    c = AzureClient('org', DummyStorage())
-    c._team_plan_ops = FakeTeamPlanOps()
-    c._connected = True
-    c.conn = SimpleNamespace(
-        clients=SimpleNamespace(
-            get_work_client=lambda: FailingWorkClient(),
-            get_work_item_tracking_client=lambda: FakeWit(),
-        )
-    )
-
-    result = c.get_area_path_used_metadata('Proj', 'Proj\\Beta')
-    assert result == {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
-
-
-def test_area_path_metadata_falls_back_when_empty_mappings():
-    """If backlog config has no type mappings, fall back to WIQL scan."""
-    teams = [{'id': 'tid-1', 'name': 'Team Gamma'}]
-    backlog = SimpleNamespace(work_item_type_mapped_states=[])
-    c = _make_area_path_client(team_ids=['tid-1'], teams=teams, backlog_config=backlog)
-
-    result = c.get_area_path_used_metadata('Proj', 'Proj\\Gamma')
-    assert result == {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
+        client.get_linked_work_items([client._work_item_ops.normalize_work_item(items[1])],
+                         catalogue=task_catalogue(['A']))
 
 
 def test_native_client_passes_task_types_to_wiql():
@@ -878,18 +972,18 @@ def test_native_client_passes_task_types_to_wiql():
 
     nc._connected = True
     nc.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: FakeWit()))
-    nc.get_work_items('Proj\\Team', task_types=['Story', 'Task'])
+    nc.get_work_items('Proj\\Team', task_types=['Story', 'Issue'], catalogue=task_catalogue(['Proj']))
 
     assert 'captured_query' not in captured_wiql or captured_wiql  # query was captured
     q = captured_wiql.get('query', '')
     assert 'Story' in q, f"Expected 'Story' in WIQL query, got: {q}"
-    assert 'Task' in q, f"Expected 'Task' in WIQL query, got: {q}"
+    assert 'Issue' in q, f"Expected 'Issue' in WIQL query, got: {q}"
     assert 'Epic' not in q, f"'Epic' should not appear when task_types overrides the default"
     assert 'Feature' not in q, f"'Feature' should not appear when task_types overrides the default"
 
 
-def test_native_client_defaults_task_types_when_none():
-    """When task_types is None AzureClient should use the built-in default (epic, feature)."""
+def test_native_client_rejects_missing_task_types():
+    """A plan must explicitly select imported types."""
     nc = AzureClient('org', DummyStorage())
     captured_wiql = {}
 
@@ -903,30 +997,76 @@ def test_native_client_defaults_task_types_when_none():
 
     nc._connected = True
     nc.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: FakeWit()))
-    nc.get_work_items('Proj\\Team')  # no task_types → default
+    from planner_lib.azure.catalogue import CatalogueError
+    with pytest.raises(CatalogueError):
+        nc.get_work_items('Proj\\Team', [], catalogue=task_catalogue(['Proj']))
+    assert captured_wiql == {}
 
-    q = captured_wiql.get('query', '')
-    assert 'Epic' in q or 'epic' in q, f"Default WIQL should contain 'Epic', got: {q}"
-    assert 'Feature' in q or 'feature' in q, f"Default WIQL should contain 'Feature', got: {q}"
 
-
-def test_get_work_items_propagates_raw_error_for_backend_to_classify():
-    """The low-level client no longer swallows or classifies failures.
-
-    It must propagate the raw SDK exception so the AzureDevOpsBackend boundary
-    can translate it into a typed BackendError.
-    """
+@pytest.mark.parametrize('status', [401, 403])
+def test_seed_query_access_failure_aborts_with_area(status):
+    from planner_lib.backend.errors import AreaNotReadableError
     c = AzureClient('org', DummyStorage())
 
     class FakeWit:
         def query_by_wiql(self, wiql):
-            raise RuntimeError('401 Unauthorized: TF400813')
+            raise RuntimeError(f'{status} access denied')
 
     c._connected = True
     c.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: FakeWit()))
 
-    with pytest.raises(RuntimeError):
-        c.get_work_items('Proj\\Team')
+    with pytest.raises(AreaNotReadableError) as caught:
+        c.get_work_items('Proj\\Team', ['Feature'], catalogue=task_catalogue(['Proj']))
+    assert caught.value.target == 'Proj\\Team'
+
+
+def test_omitted_non_deleted_seed_aborts_without_returning_partial_items():
+    from planner_lib.backend.errors import AreaNotReadableError
+    client = AzureClient('org', DummyStorage())
+    wit = SimpleNamespace(
+        query_by_wiql=MagicMock(return_value=SimpleNamespace(
+            work_items=[SimpleNamespace(id=1), SimpleNamespace(id=2)])),
+        get_work_items=MagicMock(return_value=[_linked_item(1)]),
+        get_deleted_work_items=MagicMock(return_value=[]),
+    )
+    client._connected = True
+    client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: wit))
+    with pytest.raises(AreaNotReadableError):
+        client.get_work_items('A\\Team', ['Feature'], catalogue=task_catalogue(['A']))
+
+
+@pytest.mark.parametrize('stage', ['seed', 'classification', 'child', 'parent', 'recycle_bin'])
+def test_direct_hydration_permission_failure_is_an_access_error(stage):
+    from planner_lib.backend.errors import AreaNotReadableError
+    root = _linked_item(1, children=() if stage == 'parent' else (2,),
+                        parents=(2,) if stage == 'parent' else ())
+    client, wit = _linked_client({1: root, 2: _linked_item(2)},
+                                 missing_ids=(2,) if stage == 'recycle_bin' else ())
+    original = wit.get_work_items.side_effect
+
+    def read_items(ids, **kwargs):
+        if (stage == 'seed' or (stage == 'classification' and 'fields' in kwargs)
+                or (stage in ('child', 'parent') and 'expand' in kwargs)):
+            raise RuntimeError('403 Forbidden')
+        return original(ids, **kwargs)
+
+    wit.get_work_items.side_effect = read_items
+    wit.query_by_wiql = MagicMock(return_value=SimpleNamespace(work_items=[SimpleNamespace(id=1)]))
+    if stage == 'recycle_bin':
+        wit.get_deleted_work_items.side_effect = RuntimeError('403 Forbidden')
+    with pytest.raises(AreaNotReadableError):
+        if stage == 'seed':
+            client.get_work_items('A\\Team', ['Feature'], catalogue=task_catalogue(['A']))
+        else:
+            client.get_linked_work_items([client._work_item_ops.normalize_work_item(root)],
+                                          catalogue=task_catalogue(['A']))
+
+
+def test_mock_recycle_bin_confirms_only_absent_fixture_items():
+    from planner_lib.azure.AzureMockClient import _MockWITClient
+    fixtures = SimpleNamespace(get_work_item=lambda identity: {'id': 1} if identity == 1 else None)
+    wit = _MockWITClient(fixtures)
+    assert [item.id for item in wit.get_deleted_work_items([1, 2])] == [2]
 
 
 def test_classify_ado_exception_maps_auth_and_outage():

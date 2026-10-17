@@ -17,10 +17,8 @@ class DomainProject(TypedDict):
     container_types: List[str]                  # full configured hierarchy, including unused levels
     area_path: Optional[str]                    # Azure DevOps area path
     task_types: List[str]                       # configured work item types
-    task_type_hierarchy: List[str]              # global hierarchy list
-    state_display_sequence: List[str]           # global state ordering list
-    display_states: List[str]
-    state_categories: Dict[str, StateCategory]  # state name → ADO category
+    closed_history_days: int
+    work_item_display: List[dict]
     iteration_uuid: NotRequired[Optional[str]]  # associated iteration set id
     allocation_defaults: NotRequired[Dict[str, List[str]]]
     allocatable_ids: NotRequired[List[str]]

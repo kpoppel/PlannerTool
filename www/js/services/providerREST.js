@@ -22,6 +22,10 @@ export class ProviderREST extends RestProviderBase {
       networkRetryCount: 2,
       networkRetryDelay: 1000,
       onSessionExpired: () => this._handleSessionExpiry(),
+      onPatRequired: async (code) => {
+        const { showSetPat } = await import('../components/SetPat.lit.js');
+        return showSetPat(this._resolveUrl('/api'), code);
+      },
       onResponse: (response, context) => this._recordResponse(response, context.url),
       onNetworkError: (err) => uiCommands.addNotification({
         source: 'Network', code: 'network_unreachable', severity: 'error',

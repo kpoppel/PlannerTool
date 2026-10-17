@@ -201,6 +201,156 @@ def test_snapshot_refresh_failure_preserves_data_and_throttles_retries(snapshot_
     assert 'private credential failure' not in str(current)
     assert 'user_id' not in current and 'token' not in current
     assert repository.snapshot_diagnostics()[0]['severity'] == 'warning'
+    assert backend.consume_diagnostics(user_id='other-account') == []
+    diagnostic, = backend.consume_diagnostics(user_id=CRED['user_id'])
+    assert diagnostic['code'] == 'tasks_stale_invalid_pat'
+
+
+def test_access_failure_after_configuration_change_preserves_snapshot_and_recovers(
+    snapshot_repository, inner, storage,
+):
+    from unittest.mock import Mock
+    from planner_lib.backend.errors import AreaNotReadableError
+    from planner_lib.backend.task_snapshot import META_KEY, NAMESPACE, SNAPSHOT_KEY
+
+    repository, backend, projects = snapshot_repository
+    original = repository.read(credential=CRED)
+    context = inner.fetch_task_context
+    projects.get_project_map.return_value = [{'id': 'p', 'area_path': AREA},
+                                            {'id': 'second', 'area_path': AREA_B}]
+    inner.fetch_task_context = Mock(side_effect=AreaNotReadableError(AREA_B))
+
+    assert repository.read(credential=CRED) == original
+    assert storage.load(NAMESPACE, SNAPSHOT_KEY) == original
+    assert storage.load(NAMESPACE, META_KEY)['stale_reason'] == 'configuration_changed'
+    diagnostic = next(item for item in repository.snapshot_diagnostics()
+                      if item['code'] == 'task_cache_access')
+    assert diagnostic['severity'] == 'warning'
+    assert AREA_B in diagnostic['message']
+
+    inner.fetch_task_context = context
+    assert len(repository.read(credential={'token': 'other', 'user_id': 'other'})) == 2
+    assert all(item['code'] != 'task_cache_access' for item in repository.snapshot_diagnostics())
+    assert storage.load(NAMESPACE, META_KEY)['error'] is None
+    assert 'stale_reason' not in storage.load(NAMESPACE, META_KEY)
+
+
+def test_non_access_failure_after_configuration_change_still_propagates(snapshot_repository, inner):
+    from unittest.mock import Mock
+    from planner_lib.backend.errors import BackendUnavailableError
+
+    repository, backend, projects = snapshot_repository
+    repository.read(credential=CRED)
+    projects.get_project_map.return_value = []
+    inner.fetch_task_context = Mock(side_effect=BackendUnavailableError('offline'))
+    with pytest.raises(BackendUnavailableError, match='offline'):
+        repository.read(credential=CRED)
+
+
+def test_access_failure_during_background_refresh_is_scoped_to_acting_user(
+    snapshot_repository, inner, storage,
+):
+    from unittest.mock import Mock
+    from planner_lib.backend.errors import AreaNotReadableError
+    from planner_lib.backend.task_snapshot import META_KEY, NAMESPACE
+
+    repository, backend, projects = snapshot_repository
+    original = repository.read(credential=CRED)
+    inner.fetch_task_context = Mock(side_effect=AreaNotReadableError(AREA))
+    assert repository.request_refresh(CRED) == {'status': 'queued'}
+    backend.close()
+
+    assert repository.read(credential={'token': 'other', 'user_id': 'other'}) == original
+    assert all(item['code'] != 'task_cache_access' for item in repository.snapshot_diagnostics())
+    assert repository.read(credential=CRED) == original
+    assert any(item['code'] == 'task_cache_access' for item in repository.snapshot_diagnostics())
+    assert storage.load(NAMESPACE, META_KEY)['error'] == 'AreaNotReadableError'
+
+
+def test_rebuild_now_replaces_snapshot_without_invalidating_it(snapshot_repository, inner, storage):
+    from unittest.mock import Mock
+    from planner_lib.backend.errors import AreaNotReadableError
+    from planner_lib.backend.task_snapshot import NAMESPACE, SNAPSHOT_KEY
+
+    repository, backend, projects = snapshot_repository
+    original = repository.read(credential=CRED)
+    context = inner.fetch_task_context
+    inner.fetch_task_context = Mock(side_effect=AreaNotReadableError(AREA))
+    with pytest.raises(AreaNotReadableError):
+        repository.rebuild_now(CRED)
+    assert storage.load(NAMESPACE, SNAPSHOT_KEY) == original
+
+    inner.fetch_task_context = context
+    inner.set_tasks(AREA, [dict(_TASK, title='Rebuilt')])
+    assert repository.rebuild_now(CRED)[0]['title'] == 'Rebuilt'
+    assert repository.read()[0]['title'] == 'Rebuilt'
+
+
+def test_rebuild_now_serializes_with_background_refresh(snapshot_repository, inner):
+    from threading import Event, Lock, Thread, current_thread
+    repository, backend, projects = snapshot_repository
+    repository.read(credential=CRED)
+    entered, release, attempted = Event(), Event(), Event()
+    lock = Lock()
+    context = inner.fetch_task_context
+    calls, result, errors = [], [], []
+
+    class ObservedLock:
+        def __enter__(self):
+            if current_thread().name == 'synchronous-rebuild':
+                attempted.set()
+            lock.acquire()
+
+        def __exit__(self, *args):
+            lock.release()
+
+    def blocked_context(seeds, credential):
+        calls.append(credential['user_id'])
+        if len(calls) == 1:
+            entered.set()
+            assert release.wait(5)
+        return context(seeds, credential)
+
+    def rebuild():
+        try:
+            result.extend(repository.rebuild_now({'token': 'other', 'user_id': 'admin'}))
+        except Exception as error:
+            errors.append(error)
+
+    backend._task_snapshot._build_lock = ObservedLock()
+    inner.fetch_task_context = blocked_context
+    thread = Thread(target=rebuild, name='synchronous-rebuild')
+    try:
+        assert repository.request_refresh(CRED) == {'status': 'queued'}
+        assert entered.wait(5)
+        thread.start()
+        assert attempted.wait(5)
+        assert calls == [CRED['user_id']]
+    finally:
+        release.set()
+        thread.join(5)
+        backend.close()
+    assert not thread.is_alive()
+    assert errors == []
+    assert len(result) == 1
+    assert calls == [CRED['user_id'], 'admin']
+
+
+def test_rebuild_now_rejects_superseded_configuration(snapshot_repository, inner, storage):
+    from planner_lib.backend.errors import BackendUnavailableError
+    from planner_lib.backend.task_snapshot import NAMESPACE, SNAPSHOT_KEY
+    repository, backend, projects = snapshot_repository
+    original = repository.read(credential=CRED)
+    context = inner.fetch_task_context
+
+    def changing_context(seeds, credential):
+        projects.get_project_map.return_value = []
+        return context(seeds, credential)
+
+    inner.fetch_task_context = changing_context
+    with pytest.raises(BackendUnavailableError, match='superseded'):
+        repository.rebuild_now(CRED)
+    assert storage.load(NAMESPACE, SNAPSHOT_KEY) == original
 
 
 def test_changed_configuration_can_commit_an_empty_complete_snapshot(snapshot_repository):

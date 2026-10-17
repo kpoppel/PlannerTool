@@ -28,6 +28,17 @@ file in secure storage and replace the old saved key. Choose a new output filena
 for each enrollment; the CLI will not overwrite an existing key file. If the
 response is lost after enrollment, ask an administrator to reset access.
 
+Fresh installations use the synthetic generator demo and require no Azure PAT.
+When live Azure DevOps is selected, both enrollment commands privately prompt for
+a PAT if the server requires or rejects that account's credential. The PAT is sent
+only to the enrollment API, not stored in the cookie jar or account-key file,
+printed, or accepted as a command-line argument. Rejected PATs do not consume the
+current account key. Existing stored PATs are reused only for that same account.
+An ADO validation outage is an error, not a reason to replace the account key or
+mark the stored PAT invalid. Authenticated CLI data calls report HTTP 403
+`pat_required` / `pat_invalid`; use browser Configuration or enrollment with the
+current key to set a valid credential.
+
 Enroll `user@example.com` or reuse its session. The script renews an expired session
 first and re-enrolls only when renewal fails. It sends the stored account key from
 `$HOME/planner-account-key.txt` and replaces that file with the rotated key:

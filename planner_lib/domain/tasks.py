@@ -42,7 +42,8 @@ class DomainTask(TypedDict):
     """
     id: str
     title: str
-    type: str                       # canonical casing from task_type_hierarchy
+    type: str                       # canonical casing from the process catalogue
+    process_id: str
     state: str
     stateCategory: NotRequired[str]  # Backend-neutral lifecycle category when known.
     project: str                    # canonical project UUID

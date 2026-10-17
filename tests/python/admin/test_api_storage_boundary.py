@@ -27,7 +27,7 @@ def make_request(services, payload=None, cookies=None):
 def test_save_projects_storage_failure_returns_500():
     service = SimpleNamespace(
         get_config=Mock(return_value=None),
-        save_config=Mock(side_effect=RuntimeError('private-storage-error')),
+        save_plans=Mock(side_effect=RuntimeError('private-storage-error')),
     )
     request = make_request({'admin_service': service}, {
         'content': {'container_types': ['project', 'team'], 'project_map': []},
@@ -36,7 +36,7 @@ def test_save_projects_storage_failure_returns_500():
         asyncio.run(admin_api.admin_save_projects.__wrapped__(request))
     assert error.value.status_code == 500
     assert error.value.detail == 'Internal server error'
-    service.save_config.assert_called_once()
+    service.save_plans.assert_called_once()
 
 
 def test_get_projects_storage_failure_returns_500():

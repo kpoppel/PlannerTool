@@ -5,6 +5,8 @@ that flows cleanly through the AzureCachingClient layer (the same path used
 during normal server operation with the generator enabled).
 """
 import pytest
+from planner_lib.azure.catalogue import sync_display
+from tests.python.azure.test_process_catalogue import task_catalogue
 
 from planner_lib.azure.AzureMockGeneratorClient import (
     AzureDataset,
@@ -14,6 +16,7 @@ from planner_lib.azure.AzureMockGeneratorClient import (
     _collect_sprint_paths,
     _generate_area_items,
     _generate_revisions,
+    _STATE_NAMES,
 )
 
 
@@ -26,7 +29,7 @@ _AREA_CONFIG = {
     "area_path": "MyProject\\TeamA\\Teams\\Architecture",
     "type": "team",
     "task_types": ["Epic", "Feature", "User Story"],
-    "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
+    "closed_history_days": 0,
 }
 
 _MULTI_CONFIG_DICT = {
@@ -45,6 +48,22 @@ def _make_rng():
     return random.Random(42)
 
 
+def test_generator_process_catalogue_matches_configured_projects(tmp_path):
+    from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
+    from planner_lib.storage import create_storage
+    storage = create_storage(backend='memory')
+    _populate_mock_config(storage)
+    client = AzureMockGeneratorClient('org', storage, data_dir=str(tmp_path),
+                                      config_dict={'default_items_per_area': 2})
+    with client.connect('fixture-pat'):
+        processes = client.list_processes()
+        process = next(item for item in processes if 'MyProject' in item['projects'])
+        assert process['parent_name'] == 'Agile'
+        types = client.get_process_types(process['id'])
+    assert {'Epic', 'Feature', 'User Story', 'Bug', 'Task'} <= {item['name'] for item in types}
+    assert next(item for item in types if item['name'] == 'Task')['backlog_level'] == 'task'
+
+
 def _dummy_storage(tmp_path):
     """Return a minimal in-memory storage backend backed by tmp_path."""
     from planner_lib.storage import create_storage
@@ -60,8 +79,7 @@ _MOCK_PROJECT_MAP = [
         "area_path": "MyProject\\TeamA\\Teams\\Architecture",
         "type": "team",
         "task_types": ["Epic", "Feature", "User Story"],
-        "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
-        "display_states": ["New", "Defined", "Active", "Resolved", "Closed"],
+        "closed_history_days": 0,
     },
     {
         "id": "22222222-2222-4222-8222-222222222222",
@@ -69,8 +87,7 @@ _MOCK_PROJECT_MAP = [
         "area_path": "MyProject\\TeamA\\Teams\\Platform",
         "type": "team",
         "task_types": ["Feature", "User Story", "Bug"],
-        "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
-        "display_states": ["New", "Defined", "Active", "Resolved", "Closed"],
+        "closed_history_days": 0,
     },
 ]
 
@@ -96,6 +113,17 @@ def _populate_mock_config(storage):
              'allocation_token': 'PLT', 'archived': False, 'group_id': None},
         ], 'groups': [],
     })
+    _review_generated_catalogue(storage)
+
+
+def _review_generated_catalogue(storage):
+    projects = {plan['area_path'].split('\\')[0]
+                for plan in storage.load('config', 'projects')['project_map']}
+    stored = task_catalogue(projects)
+    storage.save('config', 'ado_processes', stored)
+    storage.save('config', 'global_settings', sync_display(stored, {
+        'schema_version': 2, 'process_order': [], 'type_tiers': {},
+    }))
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +145,7 @@ def test_generated_projects_retain_valid_container_configuration(tmp_path, confi
         dataset.build()
         dataset.populate_storage()
         saved_config = storage.load("config", "projects")
+        _review_generated_catalogue(storage)
         if configured:
             assert saved_config == expected_config
         assert saved_config["schema_version"] == 4
@@ -184,6 +213,7 @@ def test_generated_plans_use_lowest_configured_container_when_no_plans_exist(tmp
                                config_dict=_MULTI_CONFIG_DICT)
         dataset.build()
         dataset.populate_storage()
+        _review_generated_catalogue(storage)
         projects = ConfigBackend(storage).fetch_projects()
         assert projects
         assert {plan['type'] for plan in projects} == {'squad'}
@@ -389,7 +419,7 @@ class TestWorkItemGeneration:
 
     def test_states_in_allowed_set(self):
         items = self._build_items()
-        allowed = set(_AREA_CONFIG["include_states"])
+        allowed = set(_STATE_NAMES)
         for item in items:
             assert item["fields"]["System.State"] in allowed
 
@@ -610,11 +640,11 @@ class TestAzureMockGeneratorClientIntegration:
 
     def test_get_work_items_returns_results(self, client):
         with client.connect("dummy-pat") as c:
-            # AzureCachingClient.get_work_items(area_path, task_types, include_states)
+            # The caller explicitly selects reviewed catalogue types.
             items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
-                include_states=["New", "Active", "Defined", "Resolved", "Closed"],
+                catalogue=task_catalogue(['MyProject']),
             )
         assert isinstance(items, list)
         assert len(items) > 0
@@ -629,11 +659,6 @@ class TestAzureMockGeneratorClientIntegration:
             iters = c.get_iterations("MyProject")
         assert iters is not None
 
-    def test_get_work_item_metadata(self, client):
-        with client.connect("dummy-pat") as c:
-            meta = c.get_work_item_metadata("MyProject")
-        assert isinstance(meta, dict)
-
     def test_get_history_returns_revisions(self, client):
         """get_task_revision_history tracks start/end/iteration field changes.
         It returns one entry per revision that changed a tracked field, which
@@ -644,7 +669,7 @@ class TestAzureMockGeneratorClientIntegration:
             items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
-                include_states=["New", "Active", "Defined", "Resolved", "Closed"],
+                catalogue=task_catalogue(['MyProject']),
             )
         if not items:
             pytest.skip("No items generated for Architecture")
@@ -794,7 +819,7 @@ class TestAzureMockGeneratorPersistence:
             items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
-                include_states=["New", "Active", "Defined", "Resolved", "Closed"],
+                catalogue=task_catalogue(['MyProject']),
             )
         assert items, "Need at least one feature to test persistence"
         # get_work_items normalises id to str; cast to int for disk lookup
@@ -850,7 +875,7 @@ class TestAzureMockGeneratorPersistence:
             work_items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
-                include_states=["New", "Active", "Defined", "Resolved", "Closed"],
+                catalogue=task_catalogue(['MyProject']),
             )
         assert isinstance(work_items, list)
         assert len(work_items) > 0, (
@@ -1015,7 +1040,7 @@ class TestGeneratorPersistEnabled:
             items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
-                include_states=["New", "Active", "Defined", "Resolved", "Closed"],
+                catalogue=task_catalogue(['MyProject']),
             )
         assert items, "Need a Feature work item to test mutation persistence"
         wid = int(items[0].get("id") or items[0].get("work_item_id"))

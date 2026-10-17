@@ -110,6 +110,12 @@ def _retained_references(
                         if record_id is not None:
                             location['record_id'] = record_id
                         allocations.append(location)
+            elif field == 'selectedTeams' and isinstance(child, Mapping):
+                if any(not isinstance(identity, str) or not isinstance(selected, bool)
+                       for identity, selected in child.items()):
+                    raise ValueError('Saved team selections must map IDs to booleans')
+                if child.get(team['id']) is True:
+                    selections.append(ReferenceLocation(namespace=namespace, key=key, path=child_path))
             elif field in {'teams', 'teamIds', 'team_ids', 'selectedTeams'}:
                 if not isinstance(child, list) or any(not isinstance(identity, str) for identity in child):
                     raise ValueError('Saved team selections must contain an explicit list of IDs')

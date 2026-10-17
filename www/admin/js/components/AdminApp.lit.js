@@ -2,6 +2,7 @@ import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import '../../../js/components/TopMenu.lit.js';
 import { getAdminSections } from '../../../js/services/adminNavigation.js';
 import './admin/GlobalSettings.lit.js';
+import './admin/AdoProcesses.lit.js';
 // AzureDevOps module removed — backend config and TTLs are now in Data Sources
 import './admin/DataSources.lit.js';
 import './admin/Plugins.lit.js';
@@ -199,8 +200,10 @@ export class AdminApp extends LitElement {
         return html`<admin-users></admin-users>`;
       case 'Global Project Settings':
         return html`<admin-global-settings></admin-global-settings>`;
-      case 'Projects':
-        return html`<admin-projects></admin-projects>`;
+      case 'Azure DevOps Processes':
+        return html`<admin-ado-processes></admin-ado-processes>`;
+      case 'Plans':
+        return html`<admin-projects .permissions=${this.permissions}></admin-projects>`;
       case 'Workforce':
         return html`<admin-workforce .permissions=${this.permissions}></admin-workforce>`;
       case 'Area Mappings':

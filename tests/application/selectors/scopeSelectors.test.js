@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createScopeSelectors } from '../../../www/js/application/selectors/scopeSelectors.js';
 import { createFeatureSelectors } from '../../../www/js/application/selectors/featureSelectors.js';
 import { createSelectionSelectors } from '../../../www/js/application/selectors/selectionSelectors.js';
+import { taskTypeKey } from '../../../www/js/application/shared/workItemDisplay.js';
 
 function createStore(state) {
   return { getState: () => state };
@@ -13,12 +14,12 @@ function baseState(overrides = {}) {
       projects: [{ id: 'selected' }, { id: 'parent' }, { id: 'child' }, { id: 'other' }],
       teams: [{ id: 'team-a' }, { id: 'team-b' }],
       features: [
-        { id: 'own', project: 'selected', parentId: 'parent-task', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
-        { id: 'parent-task', project: 'parent', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
-        { id: 'child-task', project: 'child', parentId: 'own', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
-        { id: 'dependency-task', project: 'other', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
-        { id: 'unrelated', project: 'other', parentId: null, type: 'Bug', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
-        { id: 'hidden-type', project: 'selected', parentId: null, type: 'Bug', state: 'Active', relations: [], capacity: [] },
+        { process_id: 'process', id: 'own', project: 'selected', parentId: 'parent-task', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
+        { process_id: 'process', id: 'parent-task', project: 'parent', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
+        { process_id: 'process', id: 'child-task', project: 'child', parentId: 'own', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
+        { process_id: 'process', id: 'dependency-task', project: 'other', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
+        { process_id: 'process', id: 'unrelated', project: 'other', parentId: null, type: 'Bug', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
+        { process_id: 'process', id: 'hidden-type', project: 'selected', parentId: null, type: 'Bug', state: 'Active', relations: [], capacity: [] },
       ],
     },
     scenarios: {
@@ -30,7 +31,7 @@ function baseState(overrides = {}) {
       teamIds: ['team-a', 'team-b'],
       featureStateNames: ['Active'],
       taskFilters: { schedule: {}, allocation: {}, hierarchy: {}, relations: {} },
-      taskTypeNames: ['Feature'],
+      taskTypeNames: ["[\"process\",\"feature\"]"],
     },
     view: {
       options: { hiddenTypes: [], showUnplannedWork: true },
@@ -73,17 +74,17 @@ describe('application/selectors/scopeSelectors', () => {
           hierarchy: { hasParent: true, noParent: true },
           relations: { hasLinks: true, noLinks: true },
         },
-        taskTypeNames: ['Feature'],
+        taskTypeNames: ["[\"process\",\"feature\"]"],
       },
       view: { options: { showUnplannedWork: false } },
     });
     state.baseline.features = [
-      {
+      { process_id: 'process',
         id: 'anchor', project: 'selected', type: 'Feature', state: 'Closed',
         start: null, end: null, parentId: null, capacity: [], relations: [],
         presentation: { renderType: 'anchor', date: '2026-05-19', sourceState: 'Closed' },
       },
-      {
+      { process_id: 'process',
         id: 'unplanned', project: 'selected', type: 'Feature', state: 'Closed',
         start: null, end: null, parentId: null, capacity: [], relations: [],
       },
@@ -105,21 +106,21 @@ describe('application/selectors/scopeSelectors', () => {
           hierarchy: { hasParent: true, noParent: true },
           relations: { hasLinks: true, noLinks: true },
         },
-        taskTypeNames: ['Feature'],
+        taskTypeNames: ["[\"process\",\"feature\"]"],
       },
       view: { context: { parent: true, child: true } },
     });
     state.baseline.features = [
-      {
+      { process_id: 'process',
         id: 'parent-a', project: 'selected', parentId: null, type: 'Feature',
         state: 'Active', start: '2026-05-01', end: '2026-06-01',
         capacity: [], relations: [],
       },
-      {
+      { process_id: 'process',
         id: 'parent-b', project: 'child', parentId: 'parent-a', type: 'Feature',
         state: 'Active', start: null, end: null, capacity: [], relations: [],
       },
-      {
+      { process_id: 'process',
         id: 'child-a', project: 'child', parentId: 'parent-b', type: 'Feature',
         state: 'Active', start: null, end: null, capacity: [], relations: [],
       },
@@ -143,7 +144,7 @@ describe('application/selectors/scopeSelectors', () => {
       { id: 'other-team', project: 'child', parentId: 'feature', capacity: [{ team: 'team-b' }] },
       { id: 'other-story', project: 'child', parentId: 'other-team', capacity: [] },
       { id: 'unrelated', project: 'selected', parentId: null, capacity: [] },
-    ].map((feature) => ({ ...feature, type: 'Feature', state: 'Active', relations: [] }));
+    ].map((feature) => ({ process_id: 'process', ...feature, type: 'Feature', state: 'Active', relations: [] }));
     const store = createStore(state);
     const selectors = createScopeSelectors(store);
     const assignments = createFeatureSelectors(store).getCountsForTeam('team-a');
@@ -181,7 +182,7 @@ describe('application/selectors/scopeSelectors', () => {
       { id: 'selected-team', project: 'child', parentId: 'other-team', capacity: [{ team: 'team-a' }] },
       { id: 'story', project: 'child', parentId: 'selected-team', capacity: [] },
       { id: 'sibling', project: 'child', parentId: 'other-team', capacity: [] },
-    ].map((feature) => ({ ...feature, type: 'Feature', state: 'Active', relations: [] }));
+    ].map((feature) => ({ process_id: 'process', ...feature, type: 'Feature', state: 'Active', relations: [] }));
     const selectors = createScopeSelectors(createStore(state));
     expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
       'root', 'other-team', 'selected-team', 'story',
@@ -203,7 +204,7 @@ describe('application/selectors/scopeSelectors', () => {
       sourcePlanIds: feature.id === 'parent-task' ? ['selected'] : [feature.project],
       presentationPlanIds: feature.id === 'hidden-type' ? [] : [feature.project],
     }));
-    state.baseline.features.push({
+    state.baseline.features.push({ process_id: 'process',
       id: 'filtered', project: 'selected', type: 'Bug', state: 'Active',
       parentId: null, relations: [], capacity: [],
       sourcePlanIds: ['selected'], presentationPlanIds: ['selected'],
@@ -244,7 +245,7 @@ describe('application/selectors/scopeSelectors', () => {
       relations: { hasLinks: true, noLinks: false },
     };
     state.baseline.features = Array.from({ length: 7 }, (_, index) => ({
-      id: String(index), project: 'selected', type: index === 0 || index === 5 ? 'Bug' : 'Feature',
+      process_id: 'process', id: String(index), project: 'selected', type: index === 0 || index === 5 ? 'Bug' : 'Feature',
       state: index === 4 ? 'Closed' : 'Active',
       start: index === 0 ? null : '2026-10-01', end: '2026-10-31',
       parentId: index === 2 ? null : '6',
@@ -266,7 +267,7 @@ describe('application/selectors/scopeSelectors', () => {
 
   it('starts with the exact Plan menu total rather than hidden imported context', () => {
     const state = baseState({ view: { context: { child: true } } });
-    state.baseline.features = Array.from({ length: 320 }, (_, index) => ({
+    state.baseline.features = Array.from({ length: 320 }, (_, index) => ({ process_id: 'process',
       id: String(index), project: index < 313 ? 'selected' : 'child',
       sourcePlanIds: [index < 313 ? 'selected' : 'child'],
       presentationPlanIds: index >= 213 && index < 313 ? [] : [index < 313 ? 'selected' : 'child'],
@@ -303,31 +304,28 @@ describe('application/selectors/scopeSelectors', () => {
 
   it('orders count columns by configured hierarchy levels and type positions', () => {
     const state = baseState();
-    state.baseline.projects = [{ id: 'selected', task_type_hierarchy: [
-      { types: ['Epic', 'Initiative'] },
-      { types: ['Feature', 'Change Request'] },
-      { types: ['User Story', 'Bug'] },
-      { types: ['Task'] },
-    ] }];
+    const tiers = [['Epic', 'Initiative'], ['Feature', 'Change Request'],
+      ['User Story', 'Bug'], ['Task']];
+    state.baseline.projects = [{ id: 'selected', work_item_display: [{
+      process_id: 'process', process_name: 'Process',
+      tiers: tiers.map((tier) => tier.map((name) => ({ name, states: [] }))),
+    }] }];
     state.baseline.features = ['Zebra', 'Bug', 'Task', 'Change Request', 'Initiative',
-      'User Story', 'Feature', 'Epic', 'Alpha'].map((type) => ({ type }));
+      'User Story', 'Feature', 'Epic', 'Alpha'].map((type) => ({ type, process_id: 'process' }));
     const selectors = createFeatureSelectors(createStore(state));
 
     expect(selectors.getAvailableTaskTypesOrdered()).toEqual([
       'Epic', 'Initiative', 'Feature', 'Change Request', 'User Story', 'Bug', 'Task',
       'Alpha', 'Zebra',
-    ]);
-    state.baseline.projects[0].task_type_hierarchy[1].types = ['Change Request', 'Feature'];
+    ].map((name) => taskTypeKey('process', name)));
+    state.baseline.projects[0].work_item_display[0].tiers[1].reverse();
     expect(selectors.getAvailableTaskTypesOrdered().slice(2, 4)).toEqual([
       'Change Request', 'Feature',
-    ]);
+    ].map((name) => taskTypeKey('process', name)));
   });
 
-  it('honors admin display states for owned and ancestor context without changing resolved work', () => {
+  it('presents owned and ancestor context without a per-plan state gate', () => {
     const state = baseState({ view: { context: { parent: true } } });
-    state.baseline.projects = state.baseline.projects.map((project) => ({ ...project,
-      display_states: project.id === 'selected' ? ['Active'] : ['New'],
-    }));
     state.baseline.features = state.baseline.features.map((feature) => ({ ...feature,
       ancestorOnly: feature.id === 'parent-task',
       presentationPlanIds: feature.id === 'parent-task' ? [] : [feature.project],
@@ -337,17 +335,13 @@ describe('application/selectors/scopeSelectors', () => {
     state.selection.taskTypeNames = [];
     const selectors = createScopeSelectors(createStore(state));
 
-    expect(selectors.getPresentableContextFeatures().map((feature) => feature.id)).toEqual(['own']);
-    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own']);
-    expect(selectors.getResolvedFeatures()).toHaveLength(6);
-    expect(selectors.getContextOptionCounts().parent).toBe(0);
-
-    state.baseline.projects = state.baseline.projects.map((project) => ({ ...project,
-      display_states: ['Active', 'Closed'],
-    }));
+    expect(selectors.getPresentableContextFeatures().map((feature) => feature.id)).toEqual([
+      'own', 'parent-task', 'hidden-type',
+    ]);
     expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
       'own', 'parent-task', 'hidden-type',
     ]);
+    expect(selectors.getResolvedFeatures()).toHaveLength(6);
     expect(selectors.getContextOptionCounts().parent).toBe(1);
   });
 
@@ -377,7 +371,7 @@ describe('application/selectors/scopeSelectors', () => {
     const state = baseState();
     const taskCount = 5800;
     let relationReads = 0;
-    state.baseline.features = Array.from({ length: taskCount }, (_, index) => ({
+    state.baseline.features = Array.from({ length: taskCount }, (_, index) => ({ process_id: 'process',
       id: String(index), project: index < 200 ? 'selected' : 'other',
       parentId: index >= 200 ? '0' : null, type: 'Feature', state: 'Active',
       capacity: [{ team: 'team-a', capacity: 10 }],
@@ -405,18 +399,18 @@ describe('application/selectors/scopeSelectors', () => {
     state.selection.teamIds = ['team-b'];
     expect(selectors.getContextOptionCounts()).toBe(originalCounts);
 
-    state.selection.taskTypeNames = ['Bug'];
+    state.selection.taskTypeNames = ["[\"process\",\"bug\"]"];
     expect(selectors.getContextOptionCounts()).toEqual({
       parent: 0, child: 0, dependency: 0, otherAllocations: 0,
     });
-    state.selection.taskTypeNames = ['Feature'];
+    state.selection.taskTypeNames = ["[\"process\",\"feature\"]"];
     state.selection.projectIds = ['child'];
     expect(selectors.getContextOptionCounts().parent).toBe(2);
 
     state.selection.projectIds = ['selected'];
     state.scenarios.items = [{ id: 'baseline', overrides: { 'child-task': { parentId: null } } }];
     expect(selectors.getContextOptionCounts().child).toBe(0);
-    state.baseline.features = [...state.baseline.features, {
+    state.baseline.features = [...state.baseline.features, { process_id: 'process',
       id: 'new-child', project: 'other', parentId: 'own', type: 'Feature', state: 'Active',
       capacity: [{ team: 'team-a', capacity: 10 }], relations: [],
     }];
@@ -451,25 +445,25 @@ describe('application/selectors/scopeSelectors', () => {
   it('counts eligible card additions without counting hidden context descendants', () => {
     const state = baseState();
     state.baseline.features = [
-      { id: 'root', project: 'selected', type: 'Epic', parentId: 'ancestor',
+      { process_id: 'process', id: 'root', project: 'selected', type: 'Epic', parentId: 'ancestor',
         state: 'Active', relations: [{ id: 'dependency', type: 'Successor' }], capacity: [{ team: 'team-a' }],
         sourcePlanIds: ['selected'], presentationPlanIds: ['selected'] },
-      { id: 'ancestor', project: 'parent', type: 'Feature', parentId: null,
+      { process_id: 'process', id: 'ancestor', project: 'parent', type: 'Feature', parentId: null,
         state: 'Active', relations: [], capacity: [],
         sourcePlanIds: ['parent'], presentationPlanIds: ['parent'] },
-      { id: 'child', project: 'child', type: 'Feature', parentId: 'root',
+      { process_id: 'process', id: 'child', project: 'child', type: 'Feature', parentId: 'root',
         state: 'Active', relations: [], capacity: [{ team: 'team-a' }],
         sourcePlanIds: ['selected', 'child'], presentationPlanIds: ['selected', 'child'] },
-      { id: 'grandchild', project: 'child', type: 'Task', parentId: 'child',
+      { process_id: 'process', id: 'grandchild', project: 'child', type: 'Task', parentId: 'child',
         state: 'Active', relations: [], capacity: [{ team: 'team-a' }],
         sourcePlanIds: ['selected', 'child'], presentationPlanIds: [] },
-      { id: 'unallocated-child', project: 'child', type: 'Feature', parentId: 'root',
+      { process_id: 'process', id: 'unallocated-child', project: 'child', type: 'Feature', parentId: 'root',
         state: 'Active', relations: [], capacity: [],
         sourcePlanIds: ['selected', 'child'], presentationPlanIds: ['selected'] },
-      { id: 'dependency', project: 'other', type: 'Feature', parentId: null,
+      { process_id: 'process', id: 'dependency', project: 'other', type: 'Feature', parentId: null,
         state: 'Active', relations: [], capacity: [{ team: 'team-a' }],
         sourcePlanIds: ['other'], presentationPlanIds: ['other'] },
-      { id: 'other-work', project: 'other', type: 'Feature', parentId: null,
+      { process_id: 'process', id: 'other-work', project: 'other', type: 'Feature', parentId: null,
         state: 'Active', relations: [], capacity: [{ team: 'team-a' }],
         sourcePlanIds: ['other'], presentationPlanIds: ['other'] },
     ];
@@ -488,9 +482,9 @@ describe('application/selectors/scopeSelectors', () => {
     expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
       'root', 'child', 'grandchild', 'unallocated-child',
     ]);
-    state.selection.taskTypeNames = ['Epic'];
+    state.selection.taskTypeNames = ["[\"process\",\"epic\"]"];
     expect(selectors.getContextOptionCounts().child).toBe(0);
-    state.selection.taskTypeNames = ['Feature'];
+    state.selection.taskTypeNames = ["[\"process\",\"feature\"]"];
     state.selection.featureStateNames = [];
     expect(selectors.getContextOptionCounts().child).toBe(0);
   });
@@ -498,10 +492,10 @@ describe('application/selectors/scopeSelectors', () => {
   it('presents ancestor-only cards through parent context without importing their plan', () => {
     const state = baseState({ selection: { teamIds: [], taskTypeNames: [] } });
     state.baseline.features = [
-      { id: 'seed', project: 'selected', type: 'Feature', state: 'Active',
+      { process_id: 'process', id: 'seed', project: 'selected', type: 'Feature', state: 'Active',
         sourcePlanIds: ['selected'], presentationPlanIds: ['selected'],
         parentId: 'ancestor', relations: [], capacity: [] },
-      { id: 'ancestor', project: 'internal-owner', type: 'Epic', state: 'Active',
+      { process_id: 'process', id: 'ancestor', project: 'internal-owner', type: 'Epic', state: 'Active',
         sourcePlanIds: [], presentationPlanIds: [], ancestorOnly: true, childrenComplete: false,
         parentId: null, relations: [], capacity: [] },
     ];
@@ -519,13 +513,13 @@ describe('application/selectors/scopeSelectors', () => {
   it('keeps imported context inspectable but presents only configured types', () => {
     const state = baseState({ selection: { teamIds: ['team-a'] } });
     state.baseline.features = [
-      { id: 'seed', project: 'selected', type: 'Epic', state: 'Active',
+      { process_id: 'process', id: 'seed', project: 'selected', type: 'Epic', state: 'Active',
         sourcePlanIds: ['selected'], presentationPlanIds: ['selected'],
         parentId: null, relations: [], capacity: [] },
-      { id: 'linked', project: 'internal-owner', type: 'Requirement', state: 'Active',
+      { process_id: 'process', id: 'linked', project: 'internal-owner', type: 'Requirement', state: 'Active',
         sourcePlanIds: ['selected', 'other'], presentationPlanIds: [],
         parentId: 'seed', relations: [], capacity: [{ team: 'team-a', capacity: 50 }] },
-      { id: 'shared', project: 'internal-owner', type: 'Feature', state: 'Active',
+      { process_id: 'process', id: 'shared', project: 'internal-owner', type: 'Feature', state: 'Active',
         sourcePlanIds: ['selected', 'other'], presentationPlanIds: ['selected', 'other'],
         parentId: 'linked', relations: [], capacity: [{ team: 'team-a', capacity: 10 }] },
     ];
@@ -542,9 +536,9 @@ describe('application/selectors/scopeSelectors', () => {
     ]);
     expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed', 'shared']);
     const featureSelectors = createFeatureSelectors(createStore(state));
-    expect(featureSelectors.getAvailableTaskTypes()).toEqual(['Epic', 'Feature']);
+    expect(featureSelectors.getAvailableTaskTypes()).toEqual(['Epic', 'Feature'].map((name) => taskTypeKey('process', name)));
     expect(featureSelectors.getCountsForProject('selected')).toEqual(
-      new Map([['epic', 1], ['feature', 1]])
+      new Map([[taskTypeKey('process', 'Epic'), 1], [taskTypeKey('process', 'Feature'), 1]])
     );
     expect(createSelectionSelectors(createStore(state)).getProjects()
       .some((plan) => plan.id === 'internal-owner')).toBe(false);
@@ -559,7 +553,7 @@ describe('application/selectors/scopeSelectors', () => {
     state.view.context.otherAllocations = true;
     expect(selectors.getContextFeatures()).toEqual([]);
     expect(selectors.getResolvedFeatures()).toHaveLength(3);
-    state.baseline.features = [...state.baseline.features, {
+    state.baseline.features = [...state.baseline.features, { process_id: 'process',
       id: 'unrelated-seed', project: 'child', type: 'Feature', state: 'Active',
       sourcePlanIds: ['child'], presentationPlanIds: ['child'],
       parentId: null, relations: [], capacity: [{ team: 'team-a', capacity: 10 }],
@@ -579,7 +573,7 @@ describe('application/selectors/scopeSelectors', () => {
         projectIds: ['selected'],
         teamIds: ['team-a'],
         taskFilters: { schedule: {}, allocation: {}, hierarchy: {}, relations: {} },
-        taskTypeNames: ['Feature'],
+        taskTypeNames: ["[\"process\",\"feature\"]"],
       },
     });
     state.baseline.features[3].relations = [{ id: 'own', relationType: 'DependsOn' }];
@@ -634,7 +628,7 @@ describe('application/selectors/scopeSelectors', () => {
 
   it('matches lowercase saved task type selections to canonical task types', () => {
     const state = baseState();
-    state.selection.taskTypeNames = ['feature'];
+    state.selection.taskTypeNames = ["[\"process\",\"feature\"]"];
     const selectors = createScopeSelectors(createStore(state));
 
     expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
@@ -768,7 +762,7 @@ describe('application/selectors/scopeSelectors', () => {
   it('keeps all allocated and unallocated scoped tasks in plan overview', () => {
     const state = baseState();
     state.view.context.parent = true;
-    state.baseline.features.push({
+    state.baseline.features.push({ process_id: 'process',
       id: 'own-team-b',
       project: 'selected',
       parentId: null,
@@ -777,7 +771,7 @@ describe('application/selectors/scopeSelectors', () => {
       relations: [],
       capacity: [{ team: 'team-b' }],
     });
-    state.baseline.features.push({
+    state.baseline.features.push({ process_id: 'process',
       id: 'own-unallocated',
       project: 'selected',
       parentId: null,
@@ -803,11 +797,11 @@ describe('application/selectors/scopeSelectors', () => {
       view: { options: { taskViewMode: 'plan' } },
     });
     state.baseline.features.push(
-      { id: 'relevant-parent', project: 'selected', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [] },
-      { id: 'team-leaf', project: 'selected', parentId: 'relevant-parent', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
-      { id: 'unrelated-parent', project: 'selected', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [] },
-      { id: 'unrelated-leaf', project: 'selected', parentId: 'unrelated-parent', type: 'Feature', state: 'Active', relations: [], capacity: [] },
-      { id: 'team-b-leaf', project: 'selected', parentId: 'relevant-parent', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
+      { process_id: 'process', id: 'relevant-parent', project: 'selected', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [] },
+      { process_id: 'process', id: 'team-leaf', project: 'selected', parentId: 'relevant-parent', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-a' }] },
+      { process_id: 'process', id: 'unrelated-parent', project: 'selected', parentId: null, type: 'Feature', state: 'Active', relations: [], capacity: [] },
+      { process_id: 'process', id: 'unrelated-leaf', project: 'selected', parentId: 'unrelated-parent', type: 'Feature', state: 'Active', relations: [], capacity: [] },
+      { process_id: 'process', id: 'team-b-leaf', project: 'selected', parentId: 'relevant-parent', type: 'Feature', state: 'Active', relations: [], capacity: [{ team: 'team-b' }] },
     );
     const selectors = createScopeSelectors(createStore(state));
 
@@ -836,7 +830,7 @@ describe('application/selectors/scopeSelectors', () => {
         options: { taskViewMode: 'team' } },
     });
     state.baseline.features[1].capacity = [{ team: 'team-b' }];
-    state.baseline.features.push({
+    state.baseline.features.push({ process_id: 'process',
       id: 'own-team-b',
       project: 'selected',
       parentId: null,
@@ -845,7 +839,7 @@ describe('application/selectors/scopeSelectors', () => {
       relations: [],
       capacity: [{ team: 'team-b' }],
     });
-    state.baseline.features.push({
+    state.baseline.features.push({ process_id: 'process',
       id: 'own-unallocated',
       project: 'selected',
       parentId: null,
@@ -869,7 +863,7 @@ describe('application/selectors/scopeSelectors', () => {
     });
     state.selection.teamIds = [];
     state.selection.taskTypeNames = [];
-    state.baseline.features.push({
+    state.baseline.features.push({ process_id: 'process',
       id: 'other-team-a',
       project: 'other',
       parentId: null,

@@ -107,14 +107,14 @@ export class EmptyBoardModal extends LitElement {
 
     // View options — check if all task types are hidden
     {
-      const availableTypes = sel.feature.getAvailableTaskTypes() || ['epic', 'feature'];
+      const availableTypes = sel.feature.getAvailableTaskTypes();
       const allHidden = availableTypes.every((t) => !sel.view.isTypeVisible(t));
       if (allHidden) {
         reasons.push('All task types are hidden in view options.');
       } else {
         const hiddenLabels = availableTypes.filter((t) => !sel.view.isTypeVisible(t));
         for (const t of hiddenLabels) {
-          reasons.push(`${t.charAt(0).toUpperCase() + t.slice(1)}s are hidden in view options.`);
+          reasons.push(`${sel.feature.getTypeDisplayName(t)} items are hidden in view options.`);
         }
       }
     }

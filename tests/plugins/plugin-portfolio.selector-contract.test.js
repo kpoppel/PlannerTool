@@ -8,7 +8,7 @@ const mockSel = vi.hoisted(() => ({
     getSelectedTeamIds: vi.fn(() => ['t1']),
   },
   scope: {
-    getVisibleFeatures: vi.fn(() => [{
+    getVisibleFeatures: vi.fn(() => [{ process_id: 'process',
       id: 'f1',
       project: 'p1',
       state: 'Doing',
@@ -25,9 +25,9 @@ const mockSel = vi.hoisted(() => ({
     compareFeatureStates: vi.fn((a, b) => a.localeCompare(b)),
   },
   feature: {
-    getAvailableTaskTypes: vi.fn(() => ['feature']),
+    getAvailableTaskTypesOrdered: vi.fn(() => ['["process","feature"]']),
     getEffectiveFeatures: vi.fn(() => [
-      {
+      { process_id: 'process',
         id: 'f1',
         project: 'p1',
         state: 'Doing',
@@ -62,7 +62,7 @@ describe('PluginPortfolioComponent selector seam', () => {
 
   it('uses canonical visible features instead of legacy expansion scope', () => {
     mockSel.feature.getEffectiveFeatures.mockReturnValue([]);
-    mockSel.scope.getVisibleFeatures.mockReturnValue([{
+    mockSel.scope.getVisibleFeatures.mockReturnValue([{ process_id: 'process',
       id: 'f2',
       project: 'p1',
       state: 'Doing',
@@ -78,7 +78,7 @@ describe('PluginPortfolioComponent selector seam', () => {
   });
 
   it('counts each team allocation once in a plan rollup', () => {
-    mockSel.scope.getVisibleFeatures.mockReturnValue([{
+    mockSel.scope.getVisibleFeatures.mockReturnValue([{ process_id: 'process',
       id: 'f3',
       project: 'p1',
       state: 'Doing',
@@ -103,7 +103,7 @@ describe('PluginPortfolioComponent selector seam', () => {
   });
 
   it('reports contributing teams without a non-temporal allocation total', async () => {
-    mockSel.scope.getVisibleFeatures.mockReturnValue([{
+    mockSel.scope.getVisibleFeatures.mockReturnValue([{ process_id: 'process',
       id: 'f3',
       project: 'p1',
       state: 'Doing',
@@ -134,7 +134,7 @@ describe('PluginPortfolioComponent selector seam', () => {
   });
 
   it('does not turn an empty Team Drill-down into an all-team rollup', () => {
-    mockSel.scope.getVisibleFeatures.mockReturnValue([{
+    mockSel.scope.getVisibleFeatures.mockReturnValue([{ process_id: 'process',
       id: 'f4',
       project: 'p1',
       state: 'Doing',
@@ -161,14 +161,14 @@ describe('PluginPortfolioComponent selector seam', () => {
     ]);
     mockSel.scope.getTeamDrilldownIds.mockReturnValue(['t1', 't2']);
     mockSel.scope.getVisibleFeatures.mockReturnValue([
-      {
+      { process_id: 'process',
         id: 'f5',
         project: 'p1',
         state: 'Doing',
         type: 'feature',
         capacity: [{ team: 't1', capacity: 50 }],
       },
-      {
+      { process_id: 'process',
         id: 'f6',
         project: 'p2',
         state: 'Doing',

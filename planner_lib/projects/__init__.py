@@ -1,6 +1,5 @@
-"""Projects package: CapacityService and AzureProjectMetadataService."""
+"""Projects package: capacity calculations."""
 
 from .capacity_service import CapacityService
-from .metadata_service import AzureProjectMetadataService
 
-__all__ = ["CapacityService", "AzureProjectMetadataService"]
+__all__ = ["CapacityService"]

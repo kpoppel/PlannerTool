@@ -38,6 +38,14 @@ class BackendUnavailableError(BackendError):
     """
 
 
+class AreaNotReadableError(BackendError):
+    """The acting user's access cannot certify a complete task snapshot."""
+
+    def __init__(self, target: str):
+        self.target = target
+        super().__init__(f'Azure DevOps access cannot read {target}')
+
+
 class BackendConfigError(BackendError):
     """The backend request failed due to invalid server-side configuration.
 

@@ -15,6 +15,25 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Keep allocation wheel input responsive in both units by coalescing rapid ticks before expensive recalculation, with immediate Enter and blur commits.
+- Reject man-day resizes above 100% without losing task allocations or changing dates, and explain the scheduling limit.
+- Keep ADO process names in the ADO catalogue rather than runtime display payloads, task-type models or XY controls.
+- Hide ADO process names from the sidebar task-type filters.
+- Show plan drag handles, dragged-row feedback and precise insertion markers when reordering plans.
+- Fix team deletion review rejecting valid saved-view team selection maps while preserving retained views and scenarios.
+- Remove legacy task-level type selections from existing plans while preserving eligible types.
+- Import plan-selected ADO types before plan validation so first-use plans save atomically.
+- Migrate retired `completed_retention_months` values out of configured plans before enforcing the current plan contract.
+- Preserve flattened validation details from plan and process configuration save requests.
+- Render Azure DevOps project names in the new plan area-path selector and expand its scroll region to fill the available drawer height.
+- Remove legacy Plans metadata APIs, caches and the unmounted ADO editor; document catalogue-backed types, per-plan history windows and complete snapshot access guarantees (Plans admin redesign Phase 7).
+- Replace inline Projects administration with delegated Plans setup, isolated edit drawers, process-backed type imports, immediate data loading and retry, level ordering and grouped workforce defaults (Plans admin redesign Phase 6).
+- Use process-qualified display models throughout planner filters, state categories and adjacent-tier folding, and replace Global settings with a process/tier editor (Plans admin redesign Phase 5).
+- Migrate plans to catalogue-backed types and day-window discovery, atomic plan/import saves, process-aware display data and non-destructive complete snapshot rebuilds (Plans admin redesign Phase 4).
+- Resolve ADO process metadata per project, automatically import and lock plan-used types, retain editable discovery imports and remove unused processes on reload (Plans admin redesign Phase 3a).
+- Add the ADO process catalogue, delegated import administration, protected plan-used types and transactional display-tier synchronization (Plans admin redesign Phase 3).
+- Require validated per-account PATs only for live ADO, add shared enrollment and repair flows with user-scoped refresh failures, and default fresh installs to the generator demo (Plans admin redesign Phase 2).
+- Escape all WIQL type, state and area-path literals to prevent query injection (Plans admin redesign Phase 1).
 - Restore development admin access by proxying permission checks and resolving API/login roots independently of static asset URLs.
 - Replace the standalone Administration link with a chevron gear menu listing authorized admin screens and opening them directly.
 - Update authentication and browser bootstrap fixtures to canonical project/workforce contracts and target the system backup upload explicitly.

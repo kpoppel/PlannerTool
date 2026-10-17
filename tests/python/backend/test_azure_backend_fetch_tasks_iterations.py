@@ -1,20 +1,23 @@
 from contextlib import contextmanager
-from datetime import date
+from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from planner_lib.backend.adapter import AzureAdapter
-from planner_lib.backend.azure import AzureDevOpsBackend, _calendar_months_before
+from planner_lib.backend.azure import AzureDevOpsBackend
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 from planner_lib.backend.mock import MockFixtureBackend, MockGeneratorBackend
 from planner_lib.backend.port import BackendTask
+from planner_lib.storage.memory_backend import MemoryStorage
+from tests.python.azure.test_process_catalogue import task_catalogue
 
 
 class _FakeConfig:
     def __init__(self, project_map, iterations_config):
-        self._project_map = project_map
+        self._project_map = [{'name': 'Test plan', 'task_types': ['Feature'],
+                              'closed_history_days': 0, **plan} for plan in project_map]
         self._iterations_config = iterations_config
 
     def fetch_project_map(self):
@@ -25,9 +28,13 @@ class _FakeConfig:
 
 
 def _make_backend(config):
+    storage = MemoryStorage()
+    storage.save('config', 'ado_processes', task_catalogue([
+        'A', 'B', 'C', 'D', 'ADOA', 'ADOB', 'ADOC', 'OtherADO', 'MyADO',
+    ]))
     backend = AzureDevOpsBackend(
         organization_url='MyOrg',
-        storage=MagicMock(),
+        storage=storage,
         team_repository=MagicMock(),
         capacity_service=MagicMock(),
         local_backend=config,
@@ -180,7 +187,7 @@ def test_linked_items_resolve_dates_from_native_project_once_across_areas():
         'unresolvedChildIds': [], 'traversalBoundary': False,
     } for item_id in (2, 3)]
     linked[1]['startDate'] = '2026-04-03'
-    client.get_linked_work_items.side_effect = lambda roots: [
+    client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
         {**roots[0], 'excludedChildIds': [], 'unresolvedChildIds': [], 'traversalBoundary': False},
         *linked,
     ]
@@ -289,7 +296,7 @@ def test_fetch_tasks_attaches_failed_area_path_to_configuration_error():
     backend._conn = SimpleNamespace(connect=_connect)
 
     with pytest.raises(BackendConfigError) as raised:
-        backend.fetch_tasks('MyADO\\MissingArea', credential={'token': 'valid'})
+        backend.fetch_tasks('MyADO\\MissingArea', task_types=['Feature'], credential={'token': 'valid'})
 
     assert raised.value.failed_path == 'MyADO\\MissingArea'
 
@@ -317,7 +324,8 @@ def test_fetch_tasks_preserves_source_identity_revision_and_link_diagnostics():
         yield client
 
     backend._conn = MagicMock(connect=connect)
-    task, = backend.fetch_tasks('MyADO\\TeamA', credential={'token': 'test', 'user_id': 'test'})
+    task, = backend.fetch_tasks('MyADO\\TeamA', task_types=['Feature'],
+                                credential={'token': 'test', 'user_id': 'test'})
 
     assert task['backendData'] == {'adoProject': 'OtherADO', 'rev': 7, 'type': 'Requirement'}
     assert task['project'] == '11111111-1111-4111-8111-111111111111'
@@ -382,7 +390,7 @@ def test_fetch_task_context_preserves_source_owner_and_unions_seed_provenance():
          'relations': [], 'excludedChildIds': [], 'unresolvedChildIds': ['99'],
          'traversalBoundary': False},
     ]
-    client.get_linked_work_items.side_effect = lambda roots: [
+    client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
         *[{**root, 'excludedChildIds': [], 'unresolvedChildIds': [],
            'traversalBoundary': False} for root in roots], *linked,
     ]
@@ -427,10 +435,9 @@ def test_fetch_task_context_preserves_source_owner_and_unions_seed_provenance():
 
 
 @pytest.mark.parametrize('removed_state', ['Removed', 'Discarded'])
-def test_context_respects_display_states_without_treating_terminated_as_removed(removed_state):
+def test_context_uses_catalogue_categories_without_a_display_state_gate(removed_state):
     plan = {'id': 'plan-a', 'area_path': 'A\\plan-a',
-            'task_types': ['Feature', 'Change Request'],
-            'display_states': ['Active', 'Terminated']}
+            'task_types': ['Feature', 'Change Request'], 'closed_history_days': 0}
     seeds = [_context_seed(1, 'plan-a', (2, 3, 4))]
     backend, client = _context_backend(seeds)
     backend._config = _FakeConfig([plan], {'iteration_sets': []})
@@ -440,17 +447,11 @@ def test_context_respects_display_states_without_treating_terminated_as_removed(
         {**_context_seed(4, 'plan-a'), 'state': 'Closed'},
     ]
     backend._capacity_service.parse.return_value = [{'team': 'A', 'capacity': 10}]
-    client.get_linked_work_items.side_effect = lambda roots: [
+    client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
         {**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
          'unresolvedChildIds': [], 'traversalBoundary': False}
         for item in [*roots, *children]
     ]
-    backend._metadata_service = MagicMock()
-    backend._metadata_service.get_cached.return_value = {
-        'state_categories': {'Active': 'InProgress', removed_state: 'Removed',
-                             'Terminated': 'Completed', 'Closed': 'Completed'},
-    }
-
     tasks = {task['id']: task for task in backend.fetch_task_context(
         seeds, {'token': 'test', 'user_id': 'test'},
     )}
@@ -460,11 +461,12 @@ def test_context_respects_display_states_without_treating_terminated_as_removed(
     assert tasks['3']['sourcePlanIds'] == ['plan-a']
     assert tasks['3']['presentationPlanIds'] == ['plan-a']
     assert tasks['4']['sourcePlanIds'] == ['plan-a']
-    assert tasks['4']['presentationPlanIds'] == []
+    assert tasks['4']['presentationPlanIds'] == ['plan-a']
 
 
 def test_plan_seeds_can_be_passed_directly_to_context_loading():
-    plan = {'id': 'plan-a', 'area_path': 'A\\Seeds', 'task_types': ['Feature']}
+    plan = {'id': 'plan-a', 'area_path': 'A\\Seeds', 'task_types': ['Feature'],
+            'closed_history_days': 0}
     backend = _make_backend(_FakeConfig([plan], {'iteration_sets': []}))
     backend._build_type_canonical = MagicMock(return_value={'feature': 'Feature'})
     client = MagicMock()
@@ -472,7 +474,7 @@ def test_plan_seeds_can_be_passed_directly_to_context_loading():
         'id': '1', 'rev': 3, 'adoProject': 'A', 'areaPath': 'A\\Seeds',
         'type': 'feature', 'title': 'Seed', 'state': 'Active', 'relations': [],
     }]
-    client.get_linked_work_items.side_effect = lambda roots: [
+    client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
         {**root, 'excludedChildIds': [], 'unresolvedChildIds': [], 'traversalBoundary': False}
         for root in roots
     ]
@@ -492,7 +494,9 @@ def test_plan_seeds_can_be_passed_directly_to_context_loading():
     assert tasks[0]['type'] == 'Feature'
     assert tasks[0]['backendData']['type'] == 'feature'
     assert client.get_linked_work_items.call_args.args[0][0]['type'] == 'feature'
-    client.get_work_items.assert_called_once_with('A\\Seeds', task_types=['Feature'], include_states=None)
+    client.get_work_items.assert_called_once_with(
+        'A\\Seeds', task_types=['Feature'], closed_history_days=0,
+        catalogue=backend._storage.load('config', 'ado_processes'))
 
 
 def _context_seed(item_id, plan_id, children=(), item_type='Feature', revision=1):
@@ -501,16 +505,18 @@ def _context_seed(item_id, plan_id, children=(), item_type='Feature', revision=1
         'state': 'Active', 'revision': revision, 'areaPath': f'A\\{plan_id}',
         'relations': [{'type': 'Child', 'id': str(child)} for child in children],
         'sourcePlanIds': [plan_id],
-        'backendData': {'adoProject': 'A', 'rev': revision, 'type': item_type},
+        'backendData': {'adoProject': 'A', 'rev': revision, 'type': item_type,
+                'stateChangeDate': datetime.now(timezone.utc).date().isoformat()},
     }
 
 
 def _context_backend(seeds, boundary_ids=()):
-    plans = [{'id': plan_id, 'area_path': f'A\\{plan_id}', 'task_types': ['Feature', 'Task']}
+    plans = [{'id': plan_id, 'area_path': f'A\\{plan_id}', 'task_types': ['Feature'],
+              'closed_history_days': 90}
              for plan_id in ('plan-a', 'plan-b')]
     backend = _make_backend(_FakeConfig(plans, {'iteration_sets': []}))
     client = MagicMock()
-    client.get_linked_work_items.side_effect = lambda roots: [
+    client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
         {**root, 'excludedChildIds': [relation['id'] for relation in root['relations']
                                     if relation['type'] == 'Child' and relation['id'] in boundary_ids],
          'unresolvedChildIds': [], 'traversalBoundary': root['id'] in boundary_ids}
@@ -523,6 +529,52 @@ def _context_backend(seeds, boundary_ids=()):
 
     backend._conn = MagicMock(connect=MagicMock(side_effect=connect))
     return backend, client
+
+
+@pytest.mark.parametrize('days,age,active,expected', [
+    (0, 1, False, set()), (90, 30, False, {'1', '2'}),
+    (90, 91, False, set()), (0, 400, True, {'1', '2'}),
+])
+def test_catalogue_context_uses_component_plan_windows(days, age, active, expected):
+    from datetime import datetime, timedelta, timezone
+    from planner_lib.storage.memory_backend import MemoryStorage
+    from tests.python.azure.test_process_catalogue import catalogue
+
+    stored = catalogue()
+    stored['processes'][0]['projects'] = ['A']
+    stored['processes'][0]['types'][1]['states'] = [
+        {'name': 'Active', 'category': 'InProgress', 'order': 1},
+        {'name': 'Closed', 'category': 'Completed', 'order': 2},
+    ]
+    seeds = [_context_seed(1, 'plan-b', (2,)), _context_seed(2, 'plan-a')]
+    transition = (datetime.now(timezone.utc).date() - timedelta(days=age)).isoformat()
+    for seed in seeds:
+        seed['state'] = 'Closed'
+        seed['backendData']['stateChangeDate'] = transition
+    if active:
+        seeds[0]['state'] = 'Active'
+    backend, client = _context_backend(seeds)
+    backend._storage = MemoryStorage()
+    backend._storage.save('config', 'ado_processes', stored)
+    for plan in backend._config._project_map:
+        plan['task_types'] = ['Feature']
+        plan['closed_history_days'] = days if plan['id'] == 'plan-b' else 0
+    client.get_linked_work_items.side_effect = None
+    client.get_linked_work_items.return_value = [
+        {**seed, 'adoProject': 'A', 'rev': 1,
+         'stateChangeDate': transition, 'excludedChildIds': [], 'unresolvedChildIds': [],
+         'traversalBoundary': False} for seed in seeds
+    ]
+
+    tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+
+    assert {task['id'] for task in tasks} == expected
+    assert all(task['process_id'] == 'agile' for task in tasks)
+    assert all(task['stateCategory'] in ('InProgress', 'Completed') for task in tasks)
+    if expected:
+        assert tasks[1]['sourcePlanIds'] == ['plan-a', 'plan-b']
+    client.get_linked_work_items.assert_called_once()
+    assert client.get_linked_work_items.call_args.kwargs['catalogue'] == stored
 
 
 def test_context_preserves_completed_empty_subtrees_for_display_filtering():
@@ -542,12 +594,6 @@ def test_context_preserves_completed_empty_subtrees_for_display_filtering():
     seeds[2]['capacity'] = [{'team': 'A', 'capacity': 0}]
     seeds[3]['capacity'] = [{'team': 'unknown', 'capacity': 20}]
     backend, _client = _context_backend(seeds)
-    backend._metadata_service = MagicMock()
-    backend._metadata_service.get_cached.return_value = {
-        'state_categories': {'Active': 'InProgress', 'Closed': 'Completed',
-                             'Terminated': 'Completed'},
-    }
-
     tasks = {task['id']: task for task in backend.fetch_task_context(
         seeds, {'token': 'test', 'user_id': 'test'},
     )}
@@ -571,28 +617,26 @@ def test_context_keeps_completed_branches_with_unresolved_children(incomplete):
         seed['state'] = 'Closed'
     backend, client = _context_backend(seeds)
     get_linked = client.get_linked_work_items.side_effect
-    client.get_linked_work_items.side_effect = lambda roots: [
+    client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
         {**item, **(incomplete if item['id'] == '1' else {})}
         for item in get_linked(roots)
     ]
-    backend._metadata_service = MagicMock()
-    backend._metadata_service.get_cached.return_value = {
-        'state_categories': {'Closed': 'Completed'},
-    }
-
     tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
 
     assert {task['id'] for task in tasks} == {'1', '2'}
     assert all(task['excludedChildIds'] == [] for task in tasks)
 
 
-@pytest.mark.parametrize('categories', [{}, {'Closed': 'InProgress'}])
+@pytest.mark.parametrize('categories', [{'Closed': 'InProgress'}])
 def test_context_does_not_infer_completion_from_state_names(categories):
     seed = _context_seed(1, 'plan-a')
     seed['state'] = 'Closed'
     backend, _client = _context_backend([seed])
-    backend._metadata_service = MagicMock()
-    backend._metadata_service.get_cached.return_value = {'state_categories': categories}
+    stored = backend._storage.load('config', 'ado_processes')
+    for item in stored['processes'][0]['types']:
+        item['states'] = [{'name': name, 'category': category, 'order': order}
+                          for order, (name, category) in enumerate(categories.items())]
+    backend._storage.save('config', 'ado_processes', stored)
 
     task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
 
@@ -605,18 +649,14 @@ def test_context_preserves_deep_completed_empty_trees_without_recursion():
     for seed in seeds:
         seed['state'] = 'Closed'
     backend, _client = _context_backend(seeds)
-    backend._metadata_service = MagicMock()
-    backend._metadata_service.get_cached.return_value = {
-        'state_categories': {'Closed': 'Completed'},
-    }
-
     tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
     assert len(tasks) == 5000
     assert all(task['sourcePlanIds'] == ['plan-a'] for task in tasks)
 
 
 def test_context_prunes_only_wholly_expired_trees():
-    plans = [{'id': 'plan-a', 'area_path': 'A\\plan-a', 'task_types': ['Feature']}]
+    plans = [{'id': 'plan-a', 'area_path': 'A\\plan-a', 'task_types': ['Feature'],
+              'closed_history_days': 90}]
     seeds = [
         _context_seed(1, 'plan-a', (2,)),
         _context_seed(3, 'plan-a', (4, 7)),
@@ -627,6 +667,7 @@ def test_context_prunes_only_wholly_expired_trees():
                                                   'stateChangeDate': '2020-01-01'})
     undated_seed = _context_seed(9, 'plan-a')
     undated_seed['state'] = 'Closed'
+    undated_seed['backendData'].pop('stateChangeDate')
     undated_seed['capacity'] = [{'team': 'A', 'capacity': 10}]
     seeds[2]['capacity'] = [{'team': 'A', 'capacity': 10}]
     seeds.append(undated_seed)
@@ -646,29 +687,24 @@ def test_context_prunes_only_wholly_expired_trees():
         {**_context_seed(10, 'plan-a', (1,)), 'state': 'Active',
          'ancestorOnly': True},
     ]
-    client.get_linked_work_items.side_effect = lambda roots: [
+    client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
         *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
            'unresolvedChildIds': [], 'traversalBoundary': False} for item in roots],
         *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
            'unresolvedChildIds': [], 'traversalBoundary': False} for item in children],
     ]
-    backend._metadata_service = MagicMock()
-    backend._metadata_service.get_cached.return_value = {
-        'state_categories': {'Active': 'InProgress', 'Closed': 'Completed'},
-    }
-
     tasks = {task['id']: task for task in backend.fetch_task_context(
         seeds, {'token': 'test', 'user_id': 'test'},
     )}
 
-    assert set(tasks) == {'3', '4', '5', '6', '7', '8', '9'}
+    assert set(tasks) == {'3', '4', '5', '6', '7', '8'}
     assert tasks['3']['sourcePlanIds'] == ['plan-a']
     assert tasks['4']['sourcePlanIds'] == ['plan-a']
     assert tasks['5']['sourcePlanIds'] == ['plan-a']
     assert tasks['6']['sourcePlanIds'] == ['plan-a']
     assert tasks['7']['sourcePlanIds'] == ['plan-a']
     assert tasks['8']['ancestorOnly'] is True
-    assert tasks['9']['sourcePlanIds'] == ['plan-a']
+    assert '9' not in tasks
 
 
 def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
@@ -695,17 +731,12 @@ def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
         {**_context_seed(6, 'plan-a'), 'state': 'Closed',
          'iterationPath': 'A', 'stateChangeDate': '2026-04-30T12:40:34Z'},
     ]
-    client.get_linked_work_items.side_effect = lambda roots: [
+    client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
         *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
            'unresolvedChildIds': [], 'traversalBoundary': False} for item in roots],
         *[{**item, 'adoProject': 'A', 'rev': 1, 'excludedChildIds': [],
            'unresolvedChildIds': [], 'traversalBoundary': False} for item in children],
     ]
-    backend._metadata_service = MagicMock()
-    backend._metadata_service.get_cached.return_value = {
-        'state_categories': {'Active': 'InProgress', 'Closed': 'Completed'},
-    }
-
     tasks = {task['id']: task for task in backend.fetch_task_context(
         [seed], {'token': 'test', 'user_id': 'test'},
     )}
@@ -727,14 +758,6 @@ def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
     assert 'presentation' not in tasks['5']
 
 
-@pytest.mark.parametrize(('day', 'expected'), [
-    (date(2026, 8, 31), date(2026, 2, 28)),
-    (date(2024, 8, 31), date(2024, 2, 29)),
-])
-def test_closed_retention_cutoff_uses_calendar_months(day, expected):
-    assert _calendar_months_before(day, 6) == expected
-
-
 def test_context_provenance_stops_at_task_boundaries_and_ignores_lateral_links():
     seeds = [_context_seed(1, 'plan-a', (2,)), _context_seed(2, 'plan-a', (3,), 'Task'),
              _context_seed(3, 'plan-b', (4,)), _context_seed(4, 'plan-b', (3,))]
@@ -746,7 +769,7 @@ def test_context_provenance_stops_at_task_boundaries_and_ignores_lateral_links()
     )}
 
     assert tasks['1']['sourcePlanIds'] == ['plan-a']
-    assert tasks['2']['sourcePlanIds'] == ['plan-a']
+    assert '2' not in tasks
     assert tasks['3']['sourcePlanIds'] == ['plan-b']
     assert tasks['4']['sourcePlanIds'] == ['plan-b']
     assert tasks['1']['excludedChildIds'] == ['2']

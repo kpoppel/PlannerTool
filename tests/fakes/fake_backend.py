@@ -96,7 +96,7 @@ class FakeBackend(BackendPort):
         tasks = self.fetch_tasks(
             area_path=plan['area_path'],
             task_types=plan.get('task_types'),
-            include_states=plan.get('include_states'),
+            closed_history_days=plan.get('closed_history_days', 0),
             credential=credential,
         )
         return [{**task, 'project': plan['id']} for task in tasks]
@@ -112,14 +112,14 @@ class FakeBackend(BackendPort):
         self,
         area_path: str,
         task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        closed_history_days: int = 0,
         credential: Optional[BackendCredential] = None,
         **kwargs,
     ) -> List[DomainTask]:
         self.fetch_tasks_calls.append({
             'area_path': area_path,
             'task_types': task_types,
-            'include_states': include_states,
+            'closed_history_days': closed_history_days,
             'credential': credential,
             'kwargs': kwargs,
         })
@@ -127,9 +127,6 @@ class FakeBackend(BackendPort):
         if task_types:
             types_lower = {t.lower() for t in task_types}
             items = [t for t in items if (t.get('type') or '').lower() in types_lower]
-        if include_states:
-            states_lower = {s.lower() for s in include_states}
-            items = [t for t in items if (t.get('state') or '').lower() in states_lower]
         return items
 
     def write_task(

@@ -9,6 +9,129 @@ from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
 
 
+def test_live_ado_enrollment_requires_pat_without_creating_account(client, app):
+    storage = app.state.container.get('storage')
+    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+
+    response = client.post('/api/auth/enroll', json={'email': 'new@example.com', 'name': 'New'})
+
+    assert response.status_code == 400
+    assert response.json()['error'] == 'pat_required'
+    assert not storage.exists('accounts', 'new@example.com')
+    assert not client.cookies.get('sessionId')
+
+
+def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monkeypatch):
+    from planner_lib.azure.AzureClient import AzureClient
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda self: [])
+    response = client.post('/api/auth/enroll', json={'email': 'admin@example.com', 'name': 'Admin'})
+    assert response.status_code == 200
+    storage = app.state.container.get('storage')
+    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+
+    for path in ('/api/teams', '/admin/v1/projects', '/admin/check'):
+        response = client.get(path)
+        assert response.status_code == 403
+        assert response.json()['error'] == 'pat_required'
+    assert client.get('/api/auth/me').status_code == 200
+    assert client.post('/api/session').status_code == 200
+    response = client.post('/api/config', json={'email': 'admin@example.com', 'pat': 'fixture-pat'})
+    assert response.status_code == 200
+    assert response.json()['ok'] is True
+    assert client.get('/admin/check').status_code == 200
+    rejected = client.post('/admin/v1/users', json={'email': 'new@example.com', 'permissions': []})
+    assert rejected.status_code == 400
+    assert rejected.json()['error'] == 'pat_required'
+    created = client.post('/admin/v1/users', json={
+        'email': 'new@example.com', 'permissions': [], 'pat': 'new-user-fixture-pat',
+    })
+    assert created.status_code == 200
+    assert storage.exists('accounts', 'new@example.com')
+
+
+def test_rejected_pat_does_not_rotate_enrollment_key(client, app, monkeypatch):
+    from planner_lib.azure.AzureClient import AzureClient
+    first = client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'}).json()
+    storage = app.state.container.get('storage')
+    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+
+    def reject(client):
+        raise RuntimeError('401 Unauthorized')
+
+    monkeypatch.setattr(AzureClient, 'get_projects', reject)
+    response = client.post('/api/auth/enroll', json={
+        'email': 'owner@example.com', 'accountKey': first['accountKey'], 'pat': 'revoked-pat',
+    })
+    assert response.status_code == 400
+    assert response.json()['error'] == 'pat_invalid'
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    response = client.post('/api/auth/enroll', json={
+        'email': 'owner@example.com', 'accountKey': first['accountKey'], 'pat': 'valid-pat',
+    })
+    assert response.status_code == 200
+    assert response.json()['accountKey'] != first['accountKey']
+
+
+@pytest.mark.parametrize('operation', ['tasks', 'azure_browse', 'admin_iterations'])
+def test_ado_auth_failure_routes_to_pat_repair_not_enrollment(client, app, monkeypatch, operation):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from planner_lib.azure.AzureClient import AzureClient
+    from planner_lib.backend.errors import BackendAuthError
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
+    storage = app.state.container.get('storage')
+    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'valid-pat'})
+    repository = app.state.container.get('task_repository')
+
+    def reject(*args, **kwargs):
+        raise BackendAuthError('401 Unauthorized')
+
+    monkeypatch.setattr(repository, 'read', reject)
+    azure = app.state.container.get('azure_client')
+    monkeypatch.setattr(azure, 'connect', lambda pat: nullcontext(SimpleNamespace(
+        get_area_paths=reject, get_iterations=reject,
+    )))
+    if operation == 'tasks':
+        response = client.get('/api/tasks', headers={'Accept': 'application/json'})
+    elif operation == 'azure_browse':
+        response = client.get('/api/azure/area-paths?project=Example')
+    else:
+        response = client.post('/admin/v1/iterations/browse', json={'project': 'Example'})
+    assert response.status_code == 403
+    assert response.json()['error'] == 'pat_invalid'
+    assert client.get('/admin/check').json()['error'] == 'pat_invalid'
+    assert client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'new-pat'}).status_code == 200
+    assert client.get('/admin/check').status_code == 200
+
+
+@pytest.mark.parametrize('operation', ['repair', 'create'])
+def test_pat_validation_outage_preserves_credentials_and_returns_503(client, app, monkeypatch, operation):
+    from planner_lib.azure.AzureClient import AzureClient
+    from planner_lib.backend.errors import BackendUnavailableError
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
+    storage = app.state.container.get('storage')
+    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'valid-pat'})
+
+    def unavailable(client):
+        raise BackendUnavailableError('Fixture outage')
+
+    monkeypatch.setattr(AzureClient, 'get_projects', unavailable)
+    path, payload = ('/api/config', {'email': 'owner@example.com', 'pat': 'replacement-pat'})
+    if operation == 'create':
+        path, payload = ('/admin/v1/users', {'email': 'new@example.com', 'pat': 'new-user-pat'})
+    response = client.post(path, json=payload)
+
+    assert response.status_code == 503
+    assert response.json() == {'error': 'backend_unavailable'}
+    assert app.state.container.get('account_manager').load('owner@example.com')['pat'] == 'valid-pat'
+    assert client.get('/admin/check').status_code == 200
+    assert not storage.exists('accounts', 'new@example.com')
+
+
 def test_account_key_enrollment_rotates_and_preserves_other_browsers(tmp_path, monkeypatch):
     with closing(DiskCacheStorage(tmp_path)) as storage:
         accounts = AccountManager(storage)

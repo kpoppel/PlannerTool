@@ -12,7 +12,6 @@ async function accountKeyAppearance(page) {
         padding: style.padding,
         borderRadius: style.borderRadius,
         width: element.getBoundingClientRect().width,
-        height: element.getBoundingClientRect().height,
       };
     })
   );
@@ -258,6 +257,47 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
     expect(Object.hasOwn(full.request().postDataJSON(), 'authentication')).toBe(true);
     await expect(page.locator('admin-utilities')).toContainText('User accounts restored');
     expect((await page.request.post('/api/session')).status()).toBe(200);
+
+    const repairContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    try {
+      expect((await repairContext.request.post('http://127.0.0.1:8017/api/auth/enroll', {
+        data: { email: 'pat-repair-e2e@example.com', name: 'PAT Repair Test' },
+      })).status()).toBe(200);
+      expect((await page.request.post('/admin/v1/ado', {
+        data: { content: { organization_url: 'auth-fixture', feature_flags: {} } },
+      })).status()).toBe(200);
+      expect((await page.request.get('/api/projects')).status()).toBe(403);
+      expect((await page.request.get('/admin/check')).status()).toBe(403);
+
+      await page.goto('/admin/');
+      await expect(page.getByRole('heading', { name: 'Set your Azure DevOps PAT' })).toBeVisible();
+      const patInput = page.getByLabel('Azure DevOps PAT', { exact: true });
+      await expect(patInput).toHaveAttribute('type', 'password');
+      await patInput.fill('rejected-fixture-pat');
+      await page.getByRole('button', { name: 'Save PAT', exact: true }).click();
+      await expect(page.locator('set-pat')).toContainText('invalid or expired');
+      await page.screenshot({ path: 'test-results/auth-desktop-admin-pat-invalid.png' });
+      await patInput.fill('auth-e2e-fixture-pat');
+      await page.getByRole('button', { name: 'Save PAT', exact: true }).click();
+      await expect(page.locator('set-pat')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Users', exact: true })).toBeVisible();
+      expect((await page.request.get('/admin/check')).status()).toBe(200);
+
+      const repairPage = await repairContext.newPage();
+      await repairPage.goto('http://127.0.0.1:8017/');
+      await expect(repairPage.getByRole('heading', { name: 'Set your Azure DevOps PAT' })).toBeVisible();
+      await expect(repairPage.locator('set-pat')).toHaveCount(1);
+      await repairPage.screenshot({ path: 'test-results/auth-desktop-planner-pat-required.png' });
+      await repairPage.getByLabel('Azure DevOps PAT', { exact: true }).fill('auth-e2e-fixture-pat');
+      await repairPage.getByRole('button', { name: 'Save PAT', exact: true }).click();
+      await expect(repairPage.locator('set-pat')).toHaveCount(0);
+      expect((await repairContext.request.get('http://127.0.0.1:8017/api/projects')).status()).toBe(200);
+      expect(await repairPage.evaluate(() =>
+        JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)])))
+        .not.toContain('auth-e2e-fixture-pat');
+    } finally {
+      await repairContext.close();
+    }
   } finally {
     await retainedContext.close();
   }

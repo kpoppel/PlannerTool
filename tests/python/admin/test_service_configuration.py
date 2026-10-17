@@ -1,7 +1,7 @@
 """Contracts for current admin schemas and area mapping services.
 
 Covers:
-- schema.get_schema / get_schema deep copy / enrich_projects_schema
+- schema.get_schema / get_schema deep copy / catalogue-owned plan fields
 - area_mapping_service._merge_plans / refresh_single / refresh_all
 """
 import copy
@@ -36,54 +36,20 @@ class TestAdminSchema:
         s2 = self.schema.get_schema('system')
         assert '_mutation' not in s2, "Mutation leaked into the registry"
 
-    def test_enrich_projects_schema_updates_enum_and_defaults(self):
+    def test_projects_schema_requires_explicit_type_selection(self):
         schema = self.schema.get_schema('projects')
-        azure_client = MagicMock()
-        conn_ctx = MagicMock()
-        mock_client_instance = MagicMock()
-        mock_client_instance.get_work_item_metadata.return_value = {
-            'types': ['Bug', 'Task'],
-            'states': ['Active', 'Closed'],
-        }
-        conn_ctx.__enter__ = MagicMock(return_value=mock_client_instance)
-        conn_ctx.__exit__ = MagicMock(return_value=False)
-        azure_client.connect.return_value = conn_ctx
-
-        admin_svc = MagicMock()
-        admin_svc.get_config.return_value = {
-            'project_map': [{'area_path': 'MyProject\\Team\\Area'}]
-        }
-
-        self.schema.enrich_projects_schema(
-            schema,
-            azure_client=azure_client,
-            pat='my-pat',
-            admin_svc=admin_svc,
-        )
-
         project_items = schema['properties']['project_map']['items']['properties']
-        assert project_items['task_types']['items']['enum'] == ['Bug', 'Task']
-        assert project_items['include_states']['default'] == ['Active', 'Closed']
-        assert project_items['display_states']['default'] == ['Active', 'Closed']
+        assert project_items['task_types']['minItems'] == 1
+        assert 'default' not in project_items['task_types']
+        assert 'enum' not in project_items['task_types']['items']
 
-    def test_enrich_projects_schema_noop_on_error(self):
-        """Enrich silently ignores Azure failures."""
+    def test_projects_schema_does_not_expose_retired_state_filters(self):
         schema = self.schema.get_schema('projects')
-        azure_client = MagicMock()
-        azure_client.connect.side_effect = RuntimeError('no connection')
-
-        admin_svc = MagicMock()
-        admin_svc.get_config.return_value = {
-            'project_map': [{'area_path': 'MyProject\\Team'}]
-        }
-
-        # Should not raise
-        self.schema.enrich_projects_schema(
-            schema,
-            azure_client=azure_client,
-            pat='token',
-            admin_svc=admin_svc,
-        )
+        entry = schema['properties']['project_map']['items']
+        assert entry['additionalProperties'] is False
+        assert 'include_states' not in entry['properties']
+        assert 'display_states' not in entry['properties']
+        assert entry['properties']['closed_history_days']['minimum'] == 0
 
 
 # ===========================================================================

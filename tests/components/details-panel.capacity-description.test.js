@@ -64,7 +64,7 @@ describe('DetailsPanel relations section contract', () => {
         ['3', { id: '3', project: 'p1', title: 'New child', type: 'Task', state: 'New' }],
       ]),
       stateColors: { New: { background: '#ffffff' }, Done: { background: '#00ff00' } },
-      stateCategories: new Map([['New', 'Proposed'], ['Done', 'Completed']]),
+      stateCategories: new Map([['2', 'Completed'], ['3', 'Proposed']]),
     });
   }
 
@@ -232,6 +232,52 @@ describe('DetailsPanel capacity section contract', () => {
     }
   });
 
+  it('paints every wheel step immediately and batches rapid allocation commits in both units', async () => {
+    for (const unit of ['percent', 'man-days']) {
+      const model = buildDetailsPanelCapacityModel({
+        allocation: { unit, staffing: { status: 'ready', fteById: { t1: 5 } } }, feature,
+        capacity: [{ team: 't1', capacity: 20 }], orgLoad: '20%', teams,
+        availability: { allowed_ids: ['t1'] }, showAddTeamPopover: false,
+      });
+      const actions = createActions();
+      const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);
+      const input = root.querySelector('.capacity-bar-input');
+      const clock = sinon.useFakeTimers();
+      try {
+        for (let step = 0; step < 3; step++) {
+          input.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, cancelable: true }));
+          expect(input.value).to.equal(String(unit === 'percent' ? 30 + step * 10 : 11 + step));
+          clock.tick(16);
+        }
+        expect(actions.changeCapacity.called).to.be.false;
+        clock.tick(100);
+        expect(actions.changeCapacity.calledOnceWithExactly('t1', unit === 'percent' ? '50' : '13')).to.be.true;
+      } finally {
+        clock.restore();
+      }
+    }
+  });
+
+  it('flushes pending wheel edits on blur and does not commit again after the timer', async () => {
+    const model = buildDetailsPanelCapacityModel({
+      allocation, feature, capacity: [{ team: 't1', capacity: 20 }], orgLoad: '20%', teams,
+      availability: { allowed_ids: ['t1'] }, showAddTeamPopover: false,
+    });
+    const actions = createActions();
+    const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);
+    const input = root.querySelector('.capacity-bar-input');
+    const clock = sinon.useFakeTimers();
+    try {
+      input.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, cancelable: true }));
+      input.dispatchEvent(new Event('blur'));
+      expect(actions.changeCapacity.calledOnceWithExactly('t1', '30')).to.be.true;
+      clock.tick(100);
+      expect(actions.changeCapacity.calledOnce).to.be.true;
+    } finally {
+      clock.restore();
+    }
+  });
+
   it('submits only the selected team and input value to the add action', async () => {
     const model = buildDetailsPanelCapacityModel({
       allocation, feature,
@@ -248,6 +294,29 @@ describe('DetailsPanel capacity section contract', () => {
     expect(event.defaultPrevented).to.be.true;
     expect(actions.addTeam.calledOnceWithExactly('t2', '30')).to.be.true;
     expect(root.querySelector('.add-team-form select').options).to.have.length(3);
+  });
+
+  it('flushes wheel edits on Enter and cancels pending work on Escape or removal', async () => {
+    for (const action of ['Enter', 'Escape', 'remove']) {
+      const model = buildDetailsPanelCapacityModel({
+        allocation, feature, capacity: [{ team: 't1', capacity: 20 }], orgLoad: '20%', teams,
+        availability: { allowed_ids: ['t1'] }, showAddTeamPopover: false,
+      });
+      const actions = createActions();
+      const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);
+      const input = root.querySelector('.capacity-bar-input');
+      const clock = sinon.useFakeTimers();
+      try {
+        input.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, cancelable: true }));
+        if (action === 'remove') root.remove();
+        else input.dispatchEvent(new KeyboardEvent('keydown', { key: action }));
+        clock.tick(100);
+        expect(actions.changeCapacity.callCount).to.equal(action === 'Enter' ? 1 : 0);
+        if (action === 'Escape') expect(input.value).to.equal('20');
+      } finally {
+        clock.restore();
+      }
+    }
   });
 
   it('renders man-day inputs while keeping bars in percent and unavailable rows visible', async () => {

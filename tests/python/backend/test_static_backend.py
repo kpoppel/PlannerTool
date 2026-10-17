@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import json
 import pytest
+from tests.python.azure.test_process_catalogue import catalogue_storage
 
 
 AREA = 'MyOrg\\\\TeamA'
 
 _TASKS = [
     {'id': '1', 'title': 'Feature A', 'type': 'Feature', 'state': 'Active', 'project': 'p'},
-    {'id': '2', 'title': 'Epic B',    'type': 'Epic',    'state': 'Closed', 'project': 'p'},
+    {'id': '2', 'title': 'Epic B',    'type': 'Epic',    'state': 'Resolved', 'project': 'p'},
 ]
 
 
@@ -32,14 +33,14 @@ def _yaml_backend(tmp_path, data: dict):
     from planner_lib.backend.static import StaticBackend
     p = tmp_path / 'data.yml'
     p.write_text(yaml.safe_dump(data))
-    return StaticBackend(str(p))
+    return StaticBackend(str(p), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
 
 
 def _json_backend(tmp_path, data: dict):
     from planner_lib.backend.static import StaticBackend
     p = tmp_path / 'data.json'
     p.write_text(json.dumps(data))
-    return StaticBackend(str(p))
+    return StaticBackend(str(p), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
 
 
 # ---------------------------------------------------------------------------
@@ -48,34 +49,34 @@ def _json_backend(tmp_path, data: dict):
 
 def test_load_yaml(tmp_path):
     b = _yaml_backend(tmp_path, {AREA: _TASKS})
-    assert len(b.fetch_tasks(AREA)) == 2
+    assert len(b.fetch_tasks(AREA, task_types=["Feature", "Epic"])) == 2
 
 
 def test_load_json(tmp_path):
     b = _json_backend(tmp_path, {AREA: _TASKS})
-    assert len(b.fetch_tasks(AREA)) == 2
+    assert len(b.fetch_tasks(AREA, task_types=["Feature", "Epic"])) == 2
 
 
 def test_missing_file_returns_empty(tmp_path):
     from planner_lib.backend.static import StaticBackend
-    b = StaticBackend(str(tmp_path / 'nonexistent.yml'))
-    assert b.fetch_tasks(AREA) == []
+    b = StaticBackend(str(tmp_path / 'nonexistent.yml'), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
+    assert b.fetch_tasks(AREA, task_types=["Feature", "Epic"]) == []
 
 
 def test_corrupt_yaml_returns_empty(tmp_path):
     from planner_lib.backend.static import StaticBackend
     p = tmp_path / 'bad.yml'
     p.write_text(': invalid: yaml: [{')
-    b = StaticBackend(str(p))
-    assert b.fetch_tasks(AREA) == []
+    b = StaticBackend(str(p), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
+    assert b.fetch_tasks(AREA, task_types=["Feature", "Epic"]) == []
 
 
 def test_unsupported_extension_returns_empty(tmp_path):
     from planner_lib.backend.static import StaticBackend
     p = tmp_path / 'data.csv'
     p.write_text('id,title\n1,foo')
-    b = StaticBackend(str(p))
-    assert b.fetch_tasks(AREA) == []
+    b = StaticBackend(str(p), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
+    assert b.fetch_tasks(AREA, task_types=["Feature", "Epic"]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -88,21 +89,20 @@ def test_filter_by_type(tmp_path):
     assert [t['id'] for t in result] == ['1']
 
 
-def test_filter_by_state(tmp_path):
-    b = _yaml_backend(tmp_path, {AREA: _TASKS})
-    result = b.fetch_tasks(AREA, include_states=['Closed'])
-    assert [t['id'] for t in result] == ['2']
+def test_completed_without_history_is_excluded(tmp_path):
+    b = _yaml_backend(tmp_path, {AREA: [{**task, 'state': 'Closed'} for task in _TASKS]})
+    assert b.fetch_tasks(AREA, task_types=['Feature', 'Epic']) == []
 
 
 def test_filter_combined(tmp_path):
     b = _yaml_backend(tmp_path, {AREA: _TASKS})
-    result = b.fetch_tasks(AREA, task_types=['Feature'], include_states=['Active'])
+    result = b.fetch_tasks(AREA, task_types=['Feature'], closed_history_days=30)
     assert len(result) == 1 and result[0]['id'] == '1'
 
 
 def test_filter_no_match(tmp_path):
     b = _yaml_backend(tmp_path, {AREA: _TASKS})
-    assert b.fetch_tasks(AREA, task_types=['UserStory']) == []
+    assert b.fetch_tasks(AREA, task_types=['Bug']) == []
 
 
 # ---------------------------------------------------------------------------
@@ -174,19 +174,19 @@ def test_invalidate_cache_forces_reload(tmp_path):
 
     p = tmp_path / 'data.yml'
     p.write_text(yaml.safe_dump({AREA: _TASKS[:1]}))   # 1 task initially
-    b = StaticBackend(str(p))
+    b = StaticBackend(str(p), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
 
-    assert len(b.fetch_tasks(AREA)) == 1   # populates in-process cache
+    assert len(b.fetch_tasks(AREA, task_types=["Feature", "Epic"])) == 1   # populates in-process cache
 
     # Update the file on disk
     p.write_text(yaml.safe_dump({AREA: _TASKS}))       # now 2 tasks
 
     # Without invalidation the stale cache is served
-    assert len(b.fetch_tasks(AREA)) == 1
+    assert len(b.fetch_tasks(AREA, task_types=["Feature", "Epic"])) == 1
 
     # After invalidation the new data is read
     b.invalidate_cache()
-    assert len(b.fetch_tasks(AREA)) == 2
+    assert len(b.fetch_tasks(AREA, task_types=["Feature", "Epic"])) == 2
 
 
 def test_invalidate_cache_result(tmp_path):
@@ -209,14 +209,15 @@ def test_build_from_flags_uses_static_data_path(tmp_path):
 
     b = StaticBackend.build_from_flags(
         {'use_static_backend': True, 'static_data_path': str(p)},
+        storage=catalogue_storage(['MyOrg']),
     )
     assert isinstance(b, StaticBackend)
-    assert len(b.fetch_tasks(AREA)) == 2
+    assert len(b.fetch_tasks(AREA, task_types=["Feature", "Epic"])) == 2
 
 
 def test_build_from_flags_default_path_accepted(tmp_path):
     """build_from_flags must not raise even if the default path doesn't exist."""
     from planner_lib.backend.static import StaticBackend
-    b = StaticBackend.build_from_flags({})
+    b = StaticBackend.build_from_flags({}, storage=catalogue_storage(['MyOrg']))
     assert isinstance(b, StaticBackend)
-    assert b.fetch_tasks(AREA) == []   # missing file → empty, no exception
+    assert b.fetch_tasks(AREA, task_types=["Feature", "Epic"]) == []   # missing file → empty, no exception

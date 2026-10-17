@@ -23,7 +23,7 @@ describe('plugin-portfolio-board drag and drop', () => {
       Doing: { background: '#16a34a', text: '#ffffff' },
     }));
     seamStubs.push(sinon.stub(sel.filter, 'compareFeatureStates').callsFake((a, b) => String(a).localeCompare(String(b))));
-    seamStubs.push(sinon.stub(sel.feature, 'getAvailableTaskTypes').returns(['Feature']));
+    seamStubs.push(sinon.stub(sel.feature, 'getAvailableTaskTypesOrdered').returns(['["process","feature"]']));
     getVisibleFeaturesStub = sinon.stub(sel.scope, 'getVisibleFeatures').returns([]);
     seamStubs.push(getVisibleFeaturesStub);
     seamStubs.push(sinon.stub(sel.view, 'isTypeVisible').returns(true));
@@ -38,7 +38,7 @@ describe('plugin-portfolio-board drag and drop', () => {
   });
 
   it('updates feature state on drop and shows success feedback', async () => {
-    const feature = {
+    const feature = { process_id: 'process',
       id: 'F-1',
       title: 'Feature One',
       type: 'Feature',
@@ -68,7 +68,7 @@ describe('plugin-portfolio-board drag and drop', () => {
   });
 
   it('silently resets drag state when state update returns false', async () => {
-    const feature = {
+    const feature = { process_id: 'process',
       id: 'F-2',
       title: 'Feature Two',
       type: 'Feature',
@@ -98,7 +98,7 @@ describe('plugin-portfolio-board drag and drop', () => {
   });
 
   it('suppresses click selection after pointer movement crosses threshold', async () => {
-    const feature = {
+    const feature = { process_id: 'process',
       id: 'F-3',
       title: 'Feature Three',
       type: 'Feature',
@@ -124,7 +124,7 @@ describe('plugin-portfolio-board drag and drop', () => {
   });
 
   it('rejects drop when target team row differs from source row', async () => {
-    const feature = {
+    const feature = { process_id: 'process',
       id: 'F-4',
       title: 'Feature Four',
       type: 'Feature',
@@ -166,7 +166,7 @@ describe('plugin-portfolio-board drag and drop', () => {
 
   it('builds a timeline extent from the visible task date range', async () => {
     const features = [
-      {
+      { process_id: 'process',
         id: 'F-10',
         title: 'First feature',
         type: 'Feature',
@@ -176,7 +176,7 @@ describe('plugin-portfolio-board drag and drop', () => {
         end: '2026-02-10',
         capacity: [{ team: 't1', capacity: 50 }],
       },
-      {
+      { process_id: 'process',
         id: 'F-11',
         title: 'Last feature',
         type: 'Feature',

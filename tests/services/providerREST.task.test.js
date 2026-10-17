@@ -55,6 +55,8 @@ describe('ProviderREST feature/team/project endpoints', () => {
     const diagnostics = [
       { code: 'schedule_missing', severity: 'warning', message: '3 schedules were not found.' },
       { code: 'tasks_stale', severity: 'warning', message: 'Using cached tasks.' },
+      { code: 'task_cache_access', severity: 'warning',
+        message: 'Your backend access cannot read Plan A; showing previously loaded data.' },
     ];
     const pr = new ProviderREST();
     vi.spyOn(pr, '_fetchImpl').mockResolvedValue(new Response('[]', {

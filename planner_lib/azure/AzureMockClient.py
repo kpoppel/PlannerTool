@@ -261,6 +261,7 @@ class _MockFixtures:
     def __init__(self, fixture_dir: str) -> None:
         self._dir = Path(fixture_dir)
         self._loaded = False
+        self.process_catalogue = {'processes': [], 'types': {}, 'behaviors': {}}
 
         self.teams: Dict[str, list] = {}             # _safe_key(proj) -> [{id,name}]
         self.plans: Dict[str, list] = {}             # _safe_key(proj) -> [{id,name}]
@@ -296,7 +297,9 @@ class _MockFixtures:
 
             s = f.stem  # filename without extension
 
-            if s.startswith("sdk_teams__"):
+            if s == 'sdk_process_catalogue':
+                self.process_catalogue = data
+            elif s.startswith("sdk_teams__"):
                 self.teams[s[len("sdk_teams__"):]] = data
             elif s.startswith("sdk_plans__"):
                 self.plans[s[len("sdk_plans__"):]] = data
@@ -338,6 +341,18 @@ class _MockFixtures:
 
     def load(self) -> None:
         self._load()
+
+    def get_processes(self):
+        self.load()
+        return self.process_catalogue['processes']
+
+    def get_process_types(self, process_id):
+        self.load()
+        return self.process_catalogue['types'][process_id]
+
+    def get_process_behaviors(self, process_id):
+        self.load()
+        return self.process_catalogue['behaviors'][process_id]
 
     def get_teams(self, project: str) -> list:
         self._load(); return self.teams.get(_safe_key(project), [])
@@ -466,6 +481,11 @@ class _MockWITClient:
                 result.append(_SdkWorkItem(d))
         return result
 
+    def get_deleted_work_items(self, ids, project=None):
+        from azure.devops.v7_1.work_item_tracking.models import WorkItemDeleteReference
+        return [WorkItemDeleteReference(id=int(identity)) for identity in ids
+                if self._f.get_work_item(int(identity)) is None]
+
     def get_work_item(
         self,
         id: int,
@@ -586,11 +606,34 @@ class _MockWorkClient:
         return _SdkBacklogConfig(self._f.get_backlog_config(project, team))
 
 
+class _MockProcessClient:
+    def __init__(self, fixtures):
+        self._fixtures = fixtures
+
+    def get_list_of_processes(self, expand=None):
+        from azure.devops.v7_1.work_item_tracking_process.models import ProcessInfo
+        return [ProcessInfo.from_dict(item) for item in self._fixtures.get_processes()]
+
+    def get_process_work_item_types(self, process_id, expand=None):
+        from azure.devops.v7_1.work_item_tracking_process.models import ProcessWorkItemType
+        return [ProcessWorkItemType.from_dict(item)
+                for item in self._fixtures.get_process_types(process_id)]
+
+    def get_process_behaviors(self, process_id):
+        from azure.devops.v7_1.work_item_tracking_process.models import ProcessBehavior
+        return [ProcessBehavior.from_dict(item)
+                for item in self._fixtures.get_process_behaviors(process_id)]
+
+
 class _MockClientsAccessor:
     def __init__(self, fixtures: _MockFixtures) -> None:
         self._wit = _MockWITClient(fixtures)
         self._core = _MockCoreClient(fixtures)
         self._work = _MockWorkClient(fixtures)
+        self._process = _MockProcessClient(fixtures)
+
+    def get_work_item_tracking_process_client(self):
+        return self._process
 
     def get_work_item_tracking_client(self) -> _MockWITClient:
         return self._wit

@@ -9,7 +9,8 @@ from fastapi import HTTPException
 
 def make_request(container, headers=None, cookies=None):
     app = SimpleNamespace(state=SimpleNamespace(container=container))
-    return SimpleNamespace(headers=headers or {}, cookies=cookies or {}, app=app, url=SimpleNamespace(path='/'))
+    return SimpleNamespace(headers=headers or {}, cookies=cookies or {}, app=app,
+                           state=SimpleNamespace(), url=SimpleNamespace(path='/'))
 
 
 class FakeStorage:
@@ -48,6 +49,9 @@ class FakeStorage:
 class FakeAccountManager:
     def __init__(self, storage):
         self._storage = storage
+
+    def requires_pat(self):
+        return False
 
     def save(self, config: AccountPayload) -> dict: ...
 
@@ -136,6 +140,9 @@ class FakeAdminService:
 
     def save_config_raw(self, key, content):
         self._config_storage.save('config', key, content)
+
+    def save_plans(self, content, process_imports):
+        self.save_config('projects', content)
 
     def get_project_map(self):
         return []
@@ -284,6 +291,7 @@ def test_admin_restore_backup_reloads_config_after_restore():
             self._payload = payload
             self.headers = {}
             self.cookies = {'sessionId': 'restore-session'}
+            self.state = SimpleNamespace()
             self.app = SimpleNamespace(state=SimpleNamespace(container=container))
 
         async def json(self):

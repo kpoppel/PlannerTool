@@ -1,3 +1,4 @@
+import { displayFixture } from '../helpers/workItemDisplay.js';
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import { store } from '../../www/js/application/store.js';
@@ -59,10 +60,10 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
     document.querySelector('timeline-board').appendChild(wrapper);
     const el = wrapper.querySelector('feature-board');
     await el.updateComplete;
-    const target = { feature: { id: 'offscreen', title: 'Offscreen task', type: 'Feature',
+    const target = { feature: { process_id: 'process', id: 'offscreen', title: 'Offscreen task', type: 'Feature',
       project: 'project', state: 'Active', start: '2026-10-01', end: '2026-10-10',
       parentId: null, capacity: [], relations: [] }, teams: [], condensed: false,
-      project: { id: 'project', name: 'Plan', color: '#23344d', state_categories: { Active: 'InProgress' } },
+      project: { id: 'project', name: 'Plan', color: '#23344d', work_item_display: displayFixture(undefined, { Active: 'InProgress' }) },
       left: 1800, width: 40, top: 4000 };
     el._fullRenderList = [target];
     const scrollContainer = wrapper.querySelector('#scroll-container');
@@ -81,16 +82,16 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
     const state = createInitialAppState();
     state.lifecycle.status = 'ready';
     state.baseline.projects = [{ id: 'project', name: 'Plan', type: 'project',
-      task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }],
-      state_categories: { Active: 'InProgress' }, color: '#23344d' }];
-    const parent = { id: 'parent', title: 'Parent', project: 'project', type: 'Epic',
+      work_item_display: displayFixture([['Epic'], ['Feature']], { Active: 'InProgress' }),
+       color: '#23344d' }];
+    const parent = { process_id: 'process', id: 'parent', title: 'Parent', project: 'project', type: 'Epic',
       state: 'Active', start: '2026-10-01', end: '2026-10-10', parentId: null,
       capacity: [], relations: [] };
-    state.baseline.features = [parent, { ...parent, id: 'child', type: 'Feature', parentId: 'parent' },
-      { ...parent, id: 'other', type: 'Feature' }];
+    state.baseline.features = [parent, { process_id: 'process', ...parent, id: 'child', type: 'Feature', parentId: 'parent' },
+      { process_id: 'process', ...parent, id: 'other', type: 'Feature' }];
     state.selection.projectIds = ['project'];
     state.selection.featureStateNames = ['Active'];
-    state.selection.taskTypeNames = ['Feature'];
+    state.selection.taskTypeNames = ["[\"process\",\"feature\"]"];
     store.setState(state, true);
     _resetTimelineState();
     await initTimeline();

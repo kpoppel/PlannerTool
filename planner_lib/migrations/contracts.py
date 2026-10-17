@@ -13,7 +13,7 @@ BASELINE_REVISION = 24
 # Startup (including dev-server reload) applies pending revisions before serving HTTP.
 # Never rewrite applied revisions or ledger entries: edits do not rerun an upgrade.
 # Use a new revision for further changes, or isolated pre-upgrade data to test iterations.
-TARGET_REVISION = 38
+TARGET_REVISION = 41
 MIGRATION_IDS = {
     26: '0026.migrate-ttl-cache-to-remote-cache-storage',
     27: '0027.add-missing-scenario-metadata-to-scenarios',
@@ -28,6 +28,9 @@ MIGRATION_IDS = {
     36: '0036.assign-unique-project-ids',
     37: '0037.assign-unique-team-ids',
     38: '0038.harmonise-team-id-format',
+    39: '0039.plan-process-catalogue-contract',
+    40: '0040.remove-retired-plan-completion-retention',
+    41: '0041.remove-task-level-plan-selections',
 }
 
 

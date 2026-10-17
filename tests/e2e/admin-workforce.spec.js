@@ -1,5 +1,174 @@
 import { test, expect } from '@playwright/test';
 
+test('Global display settings reorder processes and tiers with explicit saving', async ({ page }, testInfo) => {
+  const states = [{ name: 'New', category: 'Proposed', order: 1 },
+    { name: 'Done', category: 'Completed', order: 2 },
+    { name: 'Removed', category: 'Removed', order: 3 }];
+  const catalogue = { schema_version: 1, processes: [
+    { id: 'first', name: 'First process', types: ['Epic', 'Feature', 'Story', 'Bug'].map((name) =>
+      ({ name, imported: true, states })) },
+    { id: 'second', name: 'Second process', types: [{ name: 'Feature', imported: true,
+      states: [{ name: 'Working', category: 'InProgress', order: 1 }] }] },
+  ] };
+  let settings = { schema_version: 2, process_order: ['first', 'second'],
+    type_tiers: { first: [['Epic'], ['Feature'], ['Story', 'Bug']], second: [['Feature']] } };
+  const errors = [];
+  const saves = [];
+  let rejectSave = true;
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.route('**/api/**', (route) => route.fulfill({ json: {
+    email: 'delegate@example.test', permissions: ['manage_projects'],
+  } }));
+  await page.route('**/admin/check', (route) => route.fulfill({ json: {
+    ok: true, permissions: ['manage_projects'],
+  } }));
+  await page.route('**/admin/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/ado-processes')) return route.fulfill({ json: { content: catalogue } });
+    if (path.endsWith('/global-settings')) {
+      if (request.method() === 'POST') {
+        saves.push(request.postDataJSON().content);
+        if (rejectSave) return route.fulfill({ status: 400,
+          json: { detail: { error: 'display_validation', message: 'Save denied' } } });
+        settings = request.postDataJSON().content;
+      }
+      return route.fulfill({ json: { content: settings } });
+    }
+    return route.fulfill({ json: { content: {
+      server_name: 'Fixture', feature_flags: { manage_backup_snapshots: false },
+    } } });
+  });
+  await page.goto('/admin/#global-project-settings');
+  const editor = page.locator('admin-global-settings');
+  await expect(editor.locator('.process-title')).toHaveText(['First process', 'Second process']);
+  await expect(editor.locator('.state-column h4')).toHaveText(['Epic, Feature, Story, Bug', 'Feature']);
+  await expect(editor.locator('[data-category="Removed"]')).toHaveCount(0);
+  await editor.getByTitle('Move First process down', { exact: true }).click();
+  await expect(editor.locator('.process-title')).toHaveText(['Second process', 'First process']);
+  await editor.getByTitle('Move Story up a tier', { exact: true }).click();
+  await expect(editor.locator('[data-process-id="first"] .tier').nth(1)).toContainText('Feature');
+  await expect(editor.locator('[data-process-id="first"] .tier').nth(1)).toContainText('Story');
+  expect(saves).toEqual([]);
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor.getByRole('status')).toContainText('HTTP 400');
+  await expect(editor.locator('.process-title')).toHaveText(['Second process', 'First process']);
+  rejectSave = false;
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor.getByRole('status')).toContainText('Saved.');
+  expect(saves[1]).toEqual({ schema_version: 2, process_order: ['second', 'first'],
+    type_tiers: { first: [['Epic'], ['Feature', 'Story'], ['Bug']], second: [['Feature']] } });
+  expect(errors).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('global-display-desktop.png') });
+});
+
+test('Empty process catalogue points to plan setup without a bulk refresh', async ({ page }, testInfo) => {
+  const refreshes = [];
+  await page.route('**/api/**', route => route.fulfill({ json: { projects: [] } }));
+  await page.route('**/admin/check', route => route.fulfill({ json: {
+    ok: true, permissions: ['manage_projects'],
+  } }));
+  await page.route('**/admin/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/ado-processes/refresh')) refreshes.push(path);
+    const content = path.endsWith('/ado-processes')
+      ? { schema_version: 1, processes: [] } : { project_map: [] };
+    return route.fulfill({ json: { content } });
+  });
+  await page.goto('/admin/#ado-processes');
+  await expect(page.getByRole('link', { name: 'Add a plan', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add a plan', exact: true }))
+    .toHaveAttribute('href', 'http://127.0.0.1:5175/admin/#projects');
+  await expect(page.getByRole('button', { name: 'Reload from Azure DevOps' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save import selections' })).toBeDisabled();
+  expect(refreshes).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('catalogue-empty-desktop.png') });
+});
+
+test('Delegated process catalogue imports types and keeps validation errors visible', async ({ page }) => {
+  const type = (name, imported, level = 'portfolio', missing = false) => ({
+    reference_name: name, name, imported, missing, backlog_level: level, backlog: name,
+    states: [{ name: 'New', category: 'Proposed', order: 1 },
+      { name: 'Active', category: 'InProgress', order: 2 },
+      { name: 'Closed', category: 'Completed', order: 3 }],
+  });
+  let catalogue = { schema_version: 1, processes: [{
+    id: 'process-agile', name: 'Planner Agile', parent_name: 'Agile',
+    projects: ['Platform'], loaded_at: '2026-10-17T10:00:00Z',
+    types: [type('Epic', true), type('Feature', true), type('Task', false, 'task'),
+      type('Retired Portfolio', true, 'portfolio', true)],
+  }] };
+  const plans = { project_map: [{ name: 'Platform roadmap', area_path: 'Platform\\Team',
+    task_types: ['feature'] }] };
+  const errors = [];
+  const saves = [];
+  let rejectSave = true;
+  let reloads = 0;
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/**', route => route.fulfill({ json: {
+    email: 'delegate@example.test', permissions: ['manage_projects'],
+  } }));
+  await page.route('**/admin/check', route => route.fulfill({ json: {
+    ok: true, permissions: ['manage_projects'],
+  } }));
+  await page.route('**/admin/v1/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/projects')) {
+      return route.fulfill({ json: { content: plans } });
+    }
+    if (path.endsWith('/ado-processes/refresh')) {
+      reloads += 1;
+      return route.fulfill({ json: { ok: true, content: catalogue } });
+    }
+    if (path.endsWith('/ado-processes')) {
+      if (request.method() === 'POST') {
+        const payload = request.postDataJSON();
+        saves.push(payload);
+        if (rejectSave) {
+          return route.fulfill({ status: 400, json: { detail: {
+            error: 'type_in_use', message: 'Import selection is required by plans: Platform roadmap',
+          } } });
+        }
+        catalogue = payload.content;
+        return route.fulfill({ json: { ok: true, content: catalogue } });
+      }
+      return route.fulfill({ json: { content: catalogue } });
+    }
+    return route.fulfill({ json: { content: {
+      server_name: 'Fixture', feature_flags: { manage_backup_snapshots: false },
+    } } });
+  });
+  await page.goto('/admin/#ado-processes');
+  await expect(page.getByRole('heading', { name: 'Azure DevOps Processes' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Users', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Data Sources', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Global Project Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Import Task from Planner Agile' })).toBeDisabled();
+  await expect(page.getByRole('checkbox', { name: 'Import Feature from Planner Agile' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Import Feature from Planner Agile' })).toBeDisabled();
+  await expect(page.getByRole('checkbox', { name: 'Import Epic from Planner Agile' })).toBeEnabled();
+  await page.getByRole('checkbox', { name: 'Import Epic from Planner Agile' }).uncheck();
+  await page.getByRole('checkbox', { name: 'Import Retired Portfolio from Planner Agile' }).uncheck();
+  await page.getByRole('button', { name: 'Save import selections' }).click();
+  await expect(page.getByRole('status')).toContainText('Platform roadmap');
+  await expect(page.getByRole('checkbox', { name: 'Import Feature from Planner Agile' })).toBeChecked();
+  rejectSave = false;
+  await page.getByRole('button', { name: 'Save import selections' }).click();
+  await expect(page.getByRole('status')).toHaveText('Import selections saved');
+  expect(saves).toHaveLength(2);
+  expect(saves[1].content.processes[0].types[0].imported).toBe(false);
+  expect(saves[1].content.processes[0].types[1].imported).toBe(true);
+  await page.getByRole('button', { name: 'Reload from Azure DevOps' }).click();
+  await expect(page.getByRole('status')).toHaveText('Process definitions reloaded');
+  expect(reloads).toBe(1);
+  expect(errors).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/ado-processes-desktop.png', fullPage: true });
+});
+
 test('Utilities transfers workforce through a fresh explicit import review', async ({ page }, testInfo) => {
   const current = { id: 'team-one', allocation_token: 'ONE', name: 'Engineering',
     short_name: 'ENG', archived: false, group_id: null };
@@ -181,13 +350,13 @@ test('Denied administration startup redirects without mounting configuration con
   expect(configRequests).toEqual([]);
 });
 
-for (const [permission, section] of [
-  ['manage_projects', 'Projects'],
-  ['manage_iterations', 'Iterations'],
-  ['manage_workforce_teams', 'Workforce'],
-  ['manage_workforce_costs', 'Workforce'],
+for (const [permission, sections] of [
+  ['manage_projects', ['Plans', 'Azure DevOps Processes', 'Global Project Settings']],
+  ['manage_iterations', ['Iterations']],
+  ['manage_workforce_teams', ['Workforce']],
+  ['manage_workforce_costs', ['Workforce']],
 ]) {
-  test(`Delegated ${permission} opens only its permitted administration section`, async ({ page }, testInfo) => {
+  test(`Delegated ${permission} opens only its permitted administration sections`, async ({ page }, testInfo) => {
     const requests = [];
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
@@ -212,6 +381,7 @@ for (const [permission, section] of [
         '/admin/v1/projects': { content: { schema_version: 4, container_types: ['project'],
           project_map: [], allocation_defaults: { project: [] } } },
         '/admin/v1/iterations': { content: { iteration_sets: [] } },
+        '/admin/v1/ado-processes': { content: { schema_version: 1, processes: [] } },
         '/admin/v1/browse-config': { content: { organization_url: 'ExampleOrg' } },
         '/admin/v1/schema/projects': { type: 'object', properties: {} },
         '/admin/v1/workforce': { content: snapshot },
@@ -222,7 +392,7 @@ for (const [permission, section] of [
       return route.fulfill({ json: content[path] });
     });
     await page.goto('/admin/');
-    await expect(page.locator('admin-app .admin-sidebar .chip')).toHaveText([section]);
+    await expect(page.locator('admin-app .admin-sidebar .chip')).toHaveText(sections);
     await expect(page.locator('admin-app main h2')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open planner', exact: true })).toHaveAttribute('href', '/');
     await expect(page.locator('admin-app .admin-sidebar')).toHaveJSProperty('offsetTop', 40);
@@ -260,6 +430,7 @@ test('Shared header switches applications and opens Configuration under a proxy 
       '/tenant/admin/v1/projects': { schema_version: 4, container_types: ['project'],
         project_map: [], allocation_defaults: { project: [] } },
       '/tenant/admin/v1/iterations': { iteration_sets: [] },
+      '/tenant/admin/v1/ado-processes': { schema_version: 1, processes: [] },
       '/tenant/admin/v1/browse-config': { organization_url: 'ExampleOrg' },
       '/tenant/admin/v1/workforce': { revision: 'header',
         teams: { schema_version: 3, teams: [], groups: [] },
@@ -300,11 +471,11 @@ test('Shared header switches applications and opens Configuration under a proxy 
   await page.locator('config-modal #closeConfigBtn').click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath('gear-administration-menu-desktop.png') });
-  await page.getByRole('menuitem', { name: 'Projects', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Plans', exact: true }).click();
   await expect(page).toHaveURL(/\/tenant\/admin\/#projects$/);
   await expect(page.getByRole('navigation', { name: 'Top menu' })).toBeVisible();
   await expect(page.locator('admin-app .admin-content')).toHaveJSProperty('offsetTop', 40);
-  await expect(page.locator('admin-app .chip.active')).toHaveText('Projects');
+  await expect(page.locator('admin-app .chip.active')).toHaveText('Plans');
   await expect(page.locator('admin-projects')).toBeAttached();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Iterations', exact: true }).click();
@@ -315,7 +486,7 @@ test('Shared header switches applications and opens Configuration under a proxy 
   await page.getByRole('link', { name: 'Open planner', exact: true }).click();
   await expect(page).toHaveURL(/\/tenant\/$/);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Projects', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Plans', exact: true })).toBeVisible();
   permissions = [];
   await page.evaluate(() => document.querySelector('top-menu-bar').loadPermissions());
   await expect(page.getByRole('group', { name: 'Administration', exact: true })).toHaveCount(0);

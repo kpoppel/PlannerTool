@@ -108,18 +108,21 @@ test.describe('Board letter shortcuts', () => {
       const { bus } = await import('/js/core/EventBus.js');
       const { BoardEvents } = await import('/js/core/EventRegistry.js');
       const { buildFoldModel, applyFoldAction } = await import('/js/components/hierarchyFold.js');
-      const features = [{ id: 'root', parentId: null }, { id: 'child', parentId: 'root' },
-        { id: 'leaf', parentId: 'child' }];
+      const features = [{ id: 'root', type: 'Epic', process_id: 'process', parentId: null },
+        { id: 'child', type: 'Feature', process_id: 'process', parentId: 'root' },
+        { id: 'leaf', type: 'Story', process_id: 'process', parentId: 'child' }];
+      const display = [{ process_id: 'process', process_name: 'Process',
+        tiers: ['Epic', 'Feature', 'Story'].map((name) => [{ name, states: [] }]) }];
       const sections = new Map(features.map((feature) => [feature.id, 'board']));
       let folded = new Set();
-      let model = buildFoldModel(features, sections, folded);
+      let model = buildFoldModel(features, sections, folded, display);
       const output = document.createElement('output');
       output.id = 'visibleTasks';
       output.textContent = model.visible.map((feature) => feature.id).join(',');
       document.body.appendChild(output);
       bus.on(BoardEvents.FOLD_ACTION, ({ action }) => {
         folded = applyFoldAction(model, folded, action);
-        model = buildFoldModel(features, sections, folded);
+        model = buildFoldModel(features, sections, folded, display);
         output.textContent = model.visible.map((feature) => feature.id).join(',');
       });
     });
@@ -149,8 +152,10 @@ test.describe('Board letter shortcuts', () => {
       const { BoardEvents } = await import('/js/core/EventRegistry.js');
       const { sel } = await import('/js/application/imports.js');
       const taskTypes = ['Epic', 'Initiative', 'Feature', 'User Story', 'Task'];
-      sel.feature.getAvailableTaskTypesOrdered = () => taskTypes;
-      sel.feature.getCountsForTeam = () => new Map(taskTypes.map((type) => [type.toLowerCase(), 1]));
+      const keys = taskTypes.map((type) => JSON.stringify(['process', type.toLowerCase()]));
+      sel.feature.getAvailableTaskTypesOrdered = () => keys;
+      sel.feature.getTypeDisplayName = (key) => taskTypes[keys.indexOf(key)];
+      sel.feature.getCountsForTeam = () => new Map(keys.map((key) => [key, 1]));
       const sidebar = document.createElement('app-sidebar');
       sidebar._getTeamDrilldownTeams = () => [{ id: 'team-a', name: 'Team A', selected: true }];
       document.body.appendChild(sidebar);

@@ -6,9 +6,6 @@ glue and schema selection.
 Public API:
 - ``get_schema(config_type)`` — return the JSON Schema dict for a config type
   or ``None`` when the type is unknown.
-- ``enrich_projects_schema(schema, azure_client, pat, admin_svc)`` — optionally
-  decorates the ``projects`` schema with work-item types/states fetched live
-  from Azure DevOps.  Silently no-ops when Azure is unreachable.
 """
 from __future__ import annotations
 
@@ -22,6 +19,44 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _SCHEMAS: dict[str, Any] = {
+    'ado_processes': {
+        'type': 'object', 'title': 'Azure DevOps Processes', 'additionalProperties': False,
+        'required': ['schema_version', 'processes'],
+        'properties': {
+            'schema_version': {'type': 'integer', 'const': 1},
+            'processes': {'type': 'array', 'items': {
+                'type': 'object', 'additionalProperties': False,
+                'required': ['id', 'name', 'projects', 'loaded_at', 'types'],
+                'properties': {
+                    'id': {'type': 'string', 'minLength': 1},
+                    'name': {'type': 'string', 'minLength': 1},
+                    'parent_name': {'type': 'string'},
+                    'projects': {'type': 'array', 'items': {'type': 'string'}, 'uniqueItems': True},
+                    'loaded_at': {'type': 'string'},
+                    'types': {'type': 'array', 'items': {
+                        'type': 'object', 'additionalProperties': False,
+                        'required': ['reference_name', 'name', 'backlog_level', 'backlog',
+                                     'imported', 'missing', 'states'],
+                        'properties': {
+                            'reference_name': {'type': 'string'}, 'name': {'type': 'string'},
+                            'backlog_level': {'enum': ['portfolio', 'requirement', 'task', 'none']},
+                            'backlog': {'type': ['string', 'null']},
+                            'imported': {'type': 'boolean'}, 'missing': {'type': 'boolean'},
+                            'states': {'type': 'array', 'items': {
+                                'type': 'object', 'additionalProperties': False,
+                                'required': ['name', 'category', 'order'],
+                                'properties': {
+                                    'name': {'type': 'string'},
+                                    'category': {'enum': ['Proposed', 'InProgress', 'Resolved', 'Completed', 'Removed']},
+                                    'order': {'type': 'integer'},
+                                },
+                            }},
+                        },
+                    }},
+                },
+            }},
+        },
+    },
     'system': {
         'type': 'object',
         'title': 'Server Configuration',
@@ -112,6 +147,7 @@ _SCHEMAS: dict[str, Any] = {
                 'title': 'Project Mappings',
                 'items': {
                     'type': 'object',
+                    'additionalProperties': False,
                     'properties': {
                         'id': {
                             'type': 'string',
@@ -151,21 +187,11 @@ _SCHEMAS: dict[str, Any] = {
                             'title': 'Work Item Types',
                             'description': 'Types of work items to include',
                             'items': {'type': 'string'},
-                            'default': ['Feature', 'Epic'],
+                            'minItems': 1,
                         },
-                        'include_states': {
-                            'type': 'array',
-                            'title': 'Work Item States to Fetch',
-                            'description': 'States of work items to fetch from Azure DevOps',
-                            'items': {'type': 'string'},
-                            'default': ['new', 'active', 'defined', 'resolved'],
-                        },
-                        'display_states': {
-                            'type': 'array',
-                            'title': 'Displayable States',
-                            'description': 'States available for selection in UI',
-                            'items': {'type': 'string'},
-                            'default': ['new', 'active', 'defined', 'resolved', 'closed'],
+                        'closed_history_days': {
+                            'type': 'integer', 'title': 'Closed work history',
+                            'minimum': 0, 'default': 0,
                         },
                         'iteration_uuid': {
                             'type': ['string', 'null'],
@@ -173,7 +199,7 @@ _SCHEMAS: dict[str, Any] = {
                             'description': 'Optional iteration set ID from iterations configuration.',
                         },
                     },
-                    'required': ['name', 'area_path', 'type'],
+                    'required': ['name', 'area_path', 'type', 'task_types', 'closed_history_days'],
                 },
             },
         },
@@ -304,38 +330,3 @@ def get_schema(config_type: str) -> Optional[dict]:
     if schema is None:
         return None
     return copy.deepcopy(schema)
-
-
-def enrich_projects_schema(schema: dict, *, azure_client, pat: str, admin_svc) -> None:
-    """Mutate the ``projects`` schema in-place with live Azure metadata.
-
-    Fetches work-item types and states from the Azure project inferred from
-    the first entry of ``projects.yml``.  Silently no-ops on any error so the
-    caller can always return a valid static schema as fallback.
-    """
-    if not pat:
-        return
-    try:
-        projects_cfg = admin_svc.get_config('projects') or {}
-        project_map = projects_cfg.get('project_map', [])
-        if not project_map:
-            return
-        area_path = project_map[0].get('area_path', '')
-        azure_project = area_path.split('\\')[0] if '\\' in area_path else None
-        if not azure_project:
-            return
-
-        with azure_client.connect(pat) as client:
-            logger.info("Fetching work item metadata from Azure project '%s'", azure_project)
-            metadata = client.get_work_item_metadata(azure_project)
-
-        project_items = schema['properties']['project_map']['items']['properties']
-        if metadata.get('types'):
-            project_items['task_types']['items']['enum'] = metadata['types']
-            logger.info("Retrieved %d work item types from Azure", len(metadata['types']))
-        if metadata.get('states'):
-            project_items['include_states']['default'] = metadata['states']
-            project_items['display_states']['default'] = metadata['states']
-            logger.info("Retrieved %d states from Azure", len(metadata['states']))
-    except Exception as e:
-        logger.warning("Failed to enrich projects schema with Azure metadata: %s", e)

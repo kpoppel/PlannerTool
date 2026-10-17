@@ -1,7 +1,7 @@
 """Tests for the Azure browse API endpoints in planner_lib/azure/api.py.
 
 These endpoints allow any authenticated user with a PAT to browse Azure DevOps
-projects, area paths, and work item metadata without requiring admin privileges.
+projects and area paths without requiring admin privileges.
 
 The browse-live endpoints (/projects, /wikis, /wiki-pages) build a fresh live
 AzureClient via _live_client_or_raise().  Tests patch that helper to inject
@@ -31,37 +31,15 @@ class FakeSessionMgr:
 class FakeAzureClient:
     """Stand-in for the AzureClient returned by azure_svc.connect(pat)."""
 
-    def __init__(self, projects=None, area_paths=None, metadata=None, area_path_metadata=None):
+    def __init__(self, projects=None, area_paths=None):
         self._projects = projects or ['ProjectA', 'ProjectB']
         self._area_paths = area_paths or ['ProjectA', 'ProjectA\\Team1', 'ProjectA\\Team2']
-        self._metadata = metadata or {
-            'types': ['Bug', 'Epic', 'Feature', 'Task', 'User Story'],
-            'states': ['Active', 'Closed', 'New', 'Resolved'],
-            'states_by_type': {'Bug': ['Active', 'Closed', 'New', 'Resolved']},
-            'state_categories': {'Active': 'InProgress', 'Closed': 'Completed', 'New': 'Proposed'},
-        }
-        # area-path-scoped metadata (only types/states found in that specific area)
-        self._area_path_metadata = area_path_metadata or {
-            'types': ['Feature', 'Bug'],
-            'states': ['Active', 'New'],
-            'states_by_type': {'Feature': ['Active', 'New'], 'Bug': ['Active']},
-            'state_categories': {'Active': 'InProgress', 'New': 'Proposed'},
-        }
-        self.call_count = 0
 
     def get_projects(self):
         return self._projects
 
     def get_area_paths(self, project, root_path='/'):
         return self._area_paths
-
-    def get_work_item_metadata(self, project):
-        return self._metadata
-
-    def get_area_path_used_metadata(self, project, area_path):
-        self.call_count += 1
-        return self._area_path_metadata
-
 
 class FakeAzureService:
     """Stand-in for the azure_client service registered in the DI container."""
@@ -79,7 +57,7 @@ def _register_azure_services(authenticated_client, pat='test-pat', inner_client=
     fake_client = inner_client or FakeAzureClient()
     register_services_on_client(authenticated_client, {
         'session_manager': FakeSessionMgr(),
-        'account_manager': SimpleNamespace(load=lambda email: {'pat': pat}),
+        'account_manager': SimpleNamespace(load=lambda email: {'pat': pat}, pat_error=lambda email: None),
         'azure_client': FakeAzureService(fake_client),
     })
     return fake_client
@@ -99,6 +77,15 @@ def _patch_live_client(fake_client):
 # ---------------------------------------------------------------------------
 # Tests — GET /api/azure/projects
 # ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('endpoint', [
+    'work-item-metadata', 'area-path-metadata', 'prefetch-projects-metadata',
+])
+def test_legacy_metadata_routes_are_not_registered(endpoint):
+    from planner_lib.azure.api import browse_router
+
+    assert f'/{endpoint}' not in {route.path for route in browse_router.routes}
+
 
 def test_browse_projects_returns_project_list(authenticated_client):
     fake_client = _register_azure_services(authenticated_client)
@@ -145,62 +132,6 @@ def test_browse_area_paths_missing_pat_returns_401(authenticated_client):
     assert resp.status_code == 401
 
 
-# ---------------------------------------------------------------------------
-# Tests — GET /api/azure/work-item-metadata
-# ---------------------------------------------------------------------------
-
-def test_work_item_metadata_returns_types_and_states(authenticated_client):
-    _register_azure_services(authenticated_client)
-    resp = authenticated_client.get('/api/azure/work-item-metadata?project=ProjectA')
-    assert resp.status_code == 200
-    data = resp.json()
-    assert 'types' in data
-    assert 'states' in data
-    assert 'states_by_type' in data
-    assert 'Feature' in data['types']
-    assert 'Bug' in data['types']
-    # Types must be exact Azure casing, not lowercased
-    assert 'feature' not in data['types']
-    assert 'epic' not in data['types']
-
-
-def test_work_item_metadata_missing_project_param_returns_422(authenticated_client):
-    _register_azure_services(authenticated_client)
-    resp = authenticated_client.get('/api/azure/work-item-metadata')
-    assert resp.status_code == 422
-
-
-def test_work_item_metadata_missing_pat_returns_401(authenticated_client):
-    _register_azure_services(authenticated_client, pat=None)
-    resp = authenticated_client.get('/api/azure/work-item-metadata?project=ProjectA', headers={'Accept': 'application/json'})
-    assert resp.status_code == 401
-
-
-# ---------------------------------------------------------------------------
-# Tests — GET /api/azure/area-path-metadata
-# ---------------------------------------------------------------------------
-
-def test_area_path_metadata_returns_scoped_types_and_states(authenticated_client):
-    """area-path-metadata returns only what is actually used in that area path."""
-    _register_azure_services(authenticated_client)
-    resp = authenticated_client.get('/api/azure/area-path-metadata?project=ProjectA&area_path=ProjectA%5CTeam1')
-    assert resp.status_code == 200
-    data = resp.json()
-    assert 'types' in data
-    assert 'states' in data
-    assert 'states_by_type' in data
-    # Should only have types actually present in the area (Feature, Bug) — not all project types
-    assert set(data['types']) == {'Bug', 'Feature'}
-    assert 'Task' not in data['types']
-    assert 'Epic' not in data['types']
-
-
-def test_area_path_metadata_missing_project_returns_422(authenticated_client):
-    _register_azure_services(authenticated_client)
-    resp = authenticated_client.get('/api/azure/area-path-metadata?area_path=ProjectA%5CTeam1')
-    assert resp.status_code == 422
-
-
 def test_cache_refresh_uses_active_projects_and_rejects_archived_areas(authenticated_client):
     from tests.helpers import register_services_on_client
     from planner_lib.azure.api import router as cache_router
@@ -210,12 +141,12 @@ def test_cache_refresh_uses_active_projects_and_rejects_archived_areas(authentic
     active_project = {
         'id': '11111111-1111-4111-8111-111111111111',
         'name': 'Active', 'type': 'project', 'area_path': 'ProjectA\\Active',
-        'task_types': ['Feature'], 'include_states': ['Active'],
+        'task_types': ['Feature'], 'closed_history_days': 0,
     }
     archived_project = {
         'id': '22222222-2222-4222-8222-222222222222',
         'name': 'Archived', 'type': 'project', 'area_path': 'ProjectA\\Archived',
-        'task_types': ['Feature'], 'include_states': ['Active'], 'archived': True,
+        'task_types': ['Feature'], 'closed_history_days': 0, 'archived': True,
     }
 
     class FakeProjectRepository:
@@ -262,133 +193,3 @@ def test_cache_refresh_uses_active_projects_and_rejects_archived_areas(authentic
         'area': 'ProjectA\\Archived',
         'error': 'Archived project areas cannot be refreshed',
     }]
-
-
-def test_area_path_metadata_missing_area_path_returns_422(authenticated_client):
-    _register_azure_services(authenticated_client)
-    resp = authenticated_client.get('/api/azure/area-path-metadata?project=ProjectA')
-    assert resp.status_code == 422
-
-
-def test_area_path_metadata_missing_pat_returns_401(authenticated_client):
-    _register_azure_services(authenticated_client, pat=None)
-    resp = authenticated_client.get(
-        '/api/azure/area-path-metadata?project=ProjectA&area_path=ProjectA%5CTeam1',
-        headers={'Accept': 'application/json'},
-    )
-    assert resp.status_code == 401
-
-
-def test_area_path_metadata_returns_state_categories(authenticated_client):
-    """area-path-metadata now includes state_categories field."""
-    inner = FakeAzureClient(area_path_metadata={
-        'types': ['Feature'],
-        'states': ['Active', 'New'],
-        'states_by_type': {'Feature': ['Active', 'New']},
-        'state_categories': {'Active': 'InProgress', 'New': 'Proposed'},
-    })
-    _register_azure_services(authenticated_client, inner_client=inner)
-    resp = authenticated_client.get('/api/azure/area-path-metadata?project=ProjectA&area_path=ProjectA%5CTeam1')
-    assert resp.status_code == 200
-    data = resp.json()
-    assert 'state_categories' in data
-    assert data['state_categories']['Active'] == 'InProgress'
-    assert data['state_categories']['New'] == 'Proposed'
-
-
-# ---------------------------------------------------------------------------
-# Tests — GET /api/azure/prefetch-projects-metadata
-# ---------------------------------------------------------------------------
-
-def test_prefetch_projects_metadata_returns_results(authenticated_client):
-    """prefetch endpoint returns metadata keyed by area path."""
-    _register_azure_services(authenticated_client)
-    import urllib.parse
-    area_path = urllib.parse.quote('ProjectA\\Team1', safe='')
-    resp = authenticated_client.get(f'/api/azure/prefetch-projects-metadata?area_paths={area_path}')
-    assert resp.status_code == 200
-    data = resp.json()
-    assert 'results' in data
-    assert 'ProjectA\\Team1' in data['results']
-    result = data['results']['ProjectA\\Team1']
-    assert result['azure_project'] == 'ProjectA'
-    assert 'types' in result
-    assert 'states' in result
-    assert 'state_categories' in result
-
-
-def test_prefetch_projects_metadata_multiple_paths(authenticated_client):
-    """prefetch endpoint handles multiple comma-separated area paths."""
-    _register_azure_services(authenticated_client)
-    import urllib.parse
-    p1 = urllib.parse.quote('ProjectA\\Team1', safe='')
-    p2 = urllib.parse.quote('ProjectA\\Team2', safe='')
-    resp = authenticated_client.get(f'/api/azure/prefetch-projects-metadata?area_paths={p1}%2C{p2}')
-    assert resp.status_code == 200
-    data = resp.json()
-    assert 'ProjectA\\Team1' in data['results']
-    assert 'ProjectA\\Team2' in data['results']
-    # Both should derive to the same azure_project
-    assert data['results']['ProjectA\\Team1']['azure_project'] == 'ProjectA'
-    assert data['results']['ProjectA\\Team2']['azure_project'] == 'ProjectA'
-
-
-def test_prefetch_projects_metadata_missing_pat_returns_401(authenticated_client):
-    _register_azure_services(authenticated_client, pat=None)
-    import urllib.parse
-    area_path = urllib.parse.quote('ProjectA\\Team1', safe='')
-    resp = authenticated_client.get(
-        f'/api/azure/prefetch-projects-metadata?area_paths={area_path}',
-        headers={'Accept': 'application/json'},
-    )
-    assert resp.status_code == 401
-
-
-def test_prefetch_projects_metadata_missing_area_paths_returns_422(authenticated_client):
-    """Missing required area_paths param → 422 from FastAPI."""
-    _register_azure_services(authenticated_client)
-    resp = authenticated_client.get('/api/azure/prefetch-projects-metadata')
-    assert resp.status_code == 422
-
-
-def test_prefetch_projects_metadata_uses_disk_cache(authenticated_client):
-    """On second call for same area path the Azure authenticated_client is not called again."""
-    authenticated_client.cookies.set('sessionId', 'test-session')
-    # Create a metadata service with an in-memory cache
-    class InMemoryCache:
-        def __init__(self):
-            self._store = {}
-        def load(self, ns, key):
-            k = f"{ns}::{key}"
-            if k not in self._store:
-                raise KeyError(key)
-            return self._store[k]
-        def save(self, ns, key, val):
-            self._store[f"{ns}::{key}"] = val
-
-    from planner_lib.projects.metadata_service import AzureProjectMetadataService
-    from tests.helpers import register_services_on_client
-
-    svc_cache = InMemoryCache()
-    meta_svc = AzureProjectMetadataService(cache=svc_cache)
-
-    inner = FakeAzureClient()
-    register_services_on_client(authenticated_client, {
-        'session_manager': FakeSessionMgr(),
-        'account_manager': SimpleNamespace(load=lambda email: {'pat': 'test-pat'}),
-        'azure_client': FakeAzureService(inner),
-        'azure_project_metadata_service': meta_svc,
-    })
-
-    import urllib.parse
-    area_path = urllib.parse.quote('ProjectA\\Team1', safe='')
-
-    # First call — cache miss
-    resp1 = authenticated_client.get(f'/api/azure/prefetch-projects-metadata?area_paths={area_path}')
-    assert resp1.status_code == 200
-    call_count_after_first = inner.call_count
-
-    # Second call — should hit the in-memory/disk cache, not call Azure again
-    resp2 = authenticated_client.get(f'/api/azure/prefetch-projects-metadata?area_paths={area_path}')
-    assert resp2.status_code == 200
-    assert inner.call_count == call_count_after_first  # no extra Azure call

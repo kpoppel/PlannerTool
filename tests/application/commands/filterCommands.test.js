@@ -105,12 +105,12 @@ describe('application/commands/filterCommands', () => {
     const recomputeCapacity = vi.fn();
     const commands = createFilterCommands(store, bus, recomputeCapacity);
 
-    commands.setSelectedTaskTypes(['feature'], { suppressEvents: true });
+    commands.setSelectedTaskTypes(["[\"process\",\"feature\"]"], { suppressEvents: true });
     commands.setSelectedStates(['Doing'], { suppressEvents: true });
     commands.setSidebarDisabledElements({ states: ['Doing'] }, { suppressEvents: true });
 
     const selection = store.getState().selection;
-    expect(selection.taskTypeNames).toEqual(['feature']);
+    expect(selection.taskTypeNames).toEqual(["[\"process\",\"feature\"]"]);
     expect(selection.featureStateNames).toEqual(['Doing']);
     expect(selection.sidebarDisabled).toEqual({ states: ['Doing'] });
     expect(recomputeCapacity).not.toHaveBeenCalled();
@@ -133,33 +133,33 @@ describe('application/commands/filterCommands', () => {
 
   it('updates type visibility and persisted selection in one transition without a Sidebar', () => {
     store.setState((state) => ({ ...state, baseline: { ...state.baseline,
-      features: [{ id: 'a', type: 'Epic' }, { id: 'b', type: 'Task' }],
+      features: [{ process_id: 'process', id: 'a', type: 'Epic' }, { process_id: 'process', id: 'b', type: 'Task' }],
     } }));
     const bus = { emit: vi.fn() };
     const commands = createFilterCommands(store, bus);
     const snapshots = [];
     const unsubscribe = store.subscribe((state) => snapshots.push(state));
-    commands.setTaskTypeSelected('Task', false);
+    commands.setTaskTypeSelected("[\"process\",\"task\"]", false);
     unsubscribe();
     expect(snapshots).toHaveLength(1);
-    expect(snapshots[0].selection.taskTypeNames).toEqual(['Epic']);
-    expect(snapshots[0].view.options.hiddenTypes).toEqual(['Task']);
+    expect(snapshots[0].selection.taskTypeNames).toEqual(["[\"process\",\"epic\"]"]);
+    expect(snapshots[0].view.options.hiddenTypes).toEqual(["[\"process\",\"task\"]"]);
     expect(bus.emit.mock.calls).toEqual([[FilterEvents.CHANGED], [FeatureEvents.UPDATED]]);
-    commands.setTaskTypeSelected('Task', true, { suppressEvents: true });
-    expect(store.getState().selection.taskTypeNames).toEqual(['Epic', 'Task']);
+    commands.setTaskTypeSelected("[\"process\",\"task\"]", true, { suppressEvents: true });
+    expect(store.getState().selection.taskTypeNames).toEqual(["[\"process\",\"epic\"]", "[\"process\",\"task\"]"]);
     expect(store.getState().view.options.hiddenTypes).toEqual([]);
     expect(bus.emit).toHaveBeenCalledTimes(2);
   });
 
   it('bulk type selection also updates visibility, including deselecting every type', () => {
     store.setState((state) => ({ ...state, baseline: { ...state.baseline,
-      features: [{ id: 'a', type: 'Epic' }, { id: 'b', type: 'Task' }],
+      features: [{ process_id: 'process', id: 'a', type: 'Epic' }, { process_id: 'process', id: 'b', type: 'Task' }],
     } }));
     const commands = createFilterCommands(store, { emit: vi.fn() });
-    commands.setSelectedTaskTypes(['Task']);
-    expect(store.getState().view.options.hiddenTypes).toEqual(['Epic']);
+    commands.setSelectedTaskTypes(["[\"process\",\"task\"]"]);
+    expect(store.getState().view.options.hiddenTypes).toEqual(["[\"process\",\"epic\"]"]);
     commands.setSelectedTaskTypes([]);
-    expect(store.getState().view.options.hiddenTypes).toEqual(['Epic', 'Task']);
+    expect(store.getState().view.options.hiddenTypes).toEqual(["[\"process\",\"epic\"]", "[\"process\",\"task\"]"]);
   });
 
   it('does not require a capacity seam for presentation filters', () => {
@@ -172,10 +172,10 @@ describe('application/commands/filterCommands', () => {
     const commands = createFilterCommands(store, bus, vi.fn());
 
     expect(() => commands.setSelectedStates(['Doing'])).not.toThrow();
-    expect(() => commands.setSelectedTaskTypes(['feature'])).not.toThrow();
+    expect(() => commands.setSelectedTaskTypes(["[\"process\",\"feature\"]"])).not.toThrow();
 
     expect(store.getState().selection.featureStateNames).toEqual(['Doing']);
-    expect(store.getState().selection.taskTypeNames).toEqual(['feature']);
+    expect(store.getState().selection.taskTypeNames).toEqual(["[\"process\",\"feature\"]"]);
   });
 
   it('emits the expected filter events for state and task filter toggles', () => {

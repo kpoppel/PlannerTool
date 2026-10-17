@@ -87,10 +87,7 @@ def _build_services(
     from planner_lib.server.health import HealthConfig
     from planner_lib.accounts.config import AccountManager
     from planner_lib.middleware.session import SessionManager
-    from planner_lib.projects import (
-        AzureProjectMetadataService,
-        CapacityService,
-    )
+    from planner_lib.projects import CapacityService
     from planner_lib.azure import AzureService
     from planner_lib.services.workforce_runtime import (
         refresh_workforce_backend_cache, register_workforce_runtime,
@@ -132,9 +129,6 @@ def _build_services(
                             container.get("session_manager")))
 
     # --- Project domain ---
-    container.register_factory("azure_project_metadata_service",
-        lambda: AzureProjectMetadataService(cache=storage_diskcache))
-
     container.register_factory("capacity_service",
         lambda: CapacityService(team_repository=container.get("team_repository")))
 
@@ -161,7 +155,6 @@ def _build_services(
             config_backend=container.get("config_backend"),
             team_repository=container.get("team_repository"),
             capacity_service=container.get("capacity_service"),
-            metadata_service=container.get("azure_project_metadata_service"),
         )
 
         if feature_flags.get('enable_cache', False):
@@ -203,7 +196,7 @@ def _build_services(
 
     # project_repository uses the active backend (which handles enrichment).
     # The backend's fetch_projects() is responsible for returning the correct
-    # data shape, including any enrichment (e.g. state_categories for ADO).
+    # data shape, including the catalogue-backed display model.
     container.register_factory("project_repository",
         lambda: ProjectRepository(
             backend=container.get("backend"),
@@ -415,8 +408,28 @@ def _build_app(
 
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+    def pat_invalid_response(request):
+        from planner_lib.middleware.session import get_session_credentials_from_request
+        from planner_lib.services.resolver import resolve_service
+        credentials = get_session_credentials_from_request(request)
+        resolve_service(request, 'account_manager').reject_pat(credentials['email'], credentials['pat'])
+        return JSONResponse(status_code=403, content={'error': 'pat_invalid'})
+
+    from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError
+
+    @app.exception_handler(BackendAuthError)
+    async def backend_auth_exception_handler(request, exc):
+        return pat_invalid_response(request)
+
+    @app.exception_handler(BackendUnavailableError)
+    async def backend_unavailable_exception_handler(request, exc):
+        return JSONResponse(status_code=503, content={'error': 'backend_unavailable'})
+
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
+        if exc.status_code in (401, 403) and isinstance(exc.detail, dict):
+            if exc.detail.get('error') in ('invalid_pat', 'pat_invalid'):
+                return pat_invalid_response(request)
         if exc.status_code == 401:
             return access_denied_response(request, exc.detail)
         # For non-401 HTTP exceptions, return the error detail as JSON

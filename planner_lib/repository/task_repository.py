@@ -161,6 +161,17 @@ class TaskRepository:
             return self._backend.task_snapshot_diagnostics(self._snapshot_identity, self._snapshot_guard)
         return []
 
+    def rebuild_now(self, credential):
+        if credential is None:
+            raise BackendAuthError('A valid credential is required to rebuild tasks')
+        if isinstance(self._backend, TaskSnapshotBackend):
+            tasks = self._backend.rebuild_task_snapshot(
+                self._build_context, self._snapshot_identity, self._snapshot_guard, credential,
+            )
+        else:
+            tasks = self._build_context(self._backend, credential)
+        return self._project_tasks(tasks)
+
     @staticmethod
     def _project_tasks(tasks: List[BackendTask]) -> List[DomainTask]:
         return [{key: value for key, value in task.items() if key != 'backendData'}
@@ -247,7 +258,8 @@ class WorkforceTaskRepository(TaskRepository):
         self._task_storage = task_storage
 
     def _snapshot_identity(self):
-        keys = {'projects', 'teams', 'global_settings', 'ado_config', 'iterations', 'area_plan_map'}
+        keys = {'projects', 'teams', 'global_settings', 'ado_config', 'ado_processes',
+            'iterations', 'area_plan_map'}
         configuration = {
             key: self._storage.load('config', key)
             for key in self._storage.list_keys('config') if key in keys
@@ -286,10 +298,16 @@ class WorkforceTaskRepository(TaskRepository):
                     validate_allocation_change(availability, update['capacity'])
                 candidate[identity].update(update)
                 if 'state' in update:
-                    owner = next((project for project in projects if project['id'] == original['project']), None)
-                    if owner is None or update['state'] not in owner['state_categories']:
+                    display = projects[0]['work_item_display']
+                    categories = {
+                        state['name']: state['category']
+                        for process in display if process['process_id'] == original['process_id']
+                        for tier in process['tiers'] for item in tier if item['name'] == original['type']
+                        for state in item['states']
+                    }
+                    if update['state'] not in categories:
                         raise ValueError(f'Unknown publication state: {update["state"]}')
-                    candidate[identity]['stateCategory'] = owner['state_categories'][update['state']]
+                    candidate[identity]['stateCategory'] = categories[update['state']]
                 if 'relations' in update:
                     for relation in update['relations']:
                         if relation['type'] in ('Parent', 'Child') and str(relation['id']) not in candidate:

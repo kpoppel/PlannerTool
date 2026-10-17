@@ -17,6 +17,7 @@ from tests.fakes.fake_backend import FakeBackend, FakeCredentialProvider
 from planner_lib.domain.tasks import DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
+from tests.python.azure.test_process_catalogue import catalogue_storage
 
 
 # ---------------------------------------------------------------------------
@@ -32,7 +33,7 @@ def test_fake_backend_returns_tasks():
                          'areaPath': 'P1\\TeamA', 'url': None,
                          '_inferred_start': False, '_inferred_end': False}
     backend.set_tasks('P1\\TeamA', [task])
-    result = backend.fetch_tasks('P1\\TeamA')
+    result = backend.fetch_tasks('P1\\TeamA', task_types=["Feature", "Epic"])
     assert len(result) == 1
     assert result[0]['id'] == '1'
 
@@ -134,8 +135,8 @@ def test_credential_provider_returns_none_on_load_exception():
 def test_static_backend_returns_empty_for_missing_file(tmp_path):
     from planner_lib.backend.static import StaticBackend
 
-    backend = StaticBackend(str(tmp_path / 'nonexistent.yml'))
-    result = backend.fetch_tasks('SomeArea')
+    backend = StaticBackend(str(tmp_path / 'nonexistent.yml'), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
+    result = backend.fetch_tasks('SomeArea', task_types=["Feature", "Epic"])
     assert result == []
 
 
@@ -146,8 +147,8 @@ def test_static_backend_loads_json(tmp_path):
     data_file.write_text(json.dumps({'MyProject\\\\TeamA': tasks}))
 
     from planner_lib.backend.static import StaticBackend
-    backend = StaticBackend(str(data_file))
-    result = backend.fetch_tasks('MyProject\\\\TeamA')
+    backend = StaticBackend(str(data_file), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
+    result = backend.fetch_tasks('MyProject\\\\TeamA', task_types=["Feature", "Epic"])
     assert len(result) == 1
     assert result[0]['id'] == '10'
 
@@ -162,15 +163,15 @@ def test_static_backend_filters_by_state(tmp_path):
     data_file.write_text(json.dumps({'P\\T': tasks}))
 
     from planner_lib.backend.static import StaticBackend
-    backend = StaticBackend(str(data_file))
-    result = backend.fetch_tasks('P\\T', include_states=['Active'])
+    backend = StaticBackend(str(data_file), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
+    result = backend.fetch_tasks('P\\T', task_types=['Feature'], closed_history_days=0)
     assert len(result) == 1
     assert result[0]['state'] == 'Active'
 
 
 def test_static_backend_write_raises():
     from planner_lib.backend.static import StaticBackend
-    backend = StaticBackend('nofile.json')
+    backend = StaticBackend('nofile.json', storage=catalogue_storage(["A"]))
     with pytest.raises(NotImplementedError):
         backend.write_task(1, {}, {'token': 'x', 'user_id': 'u'})
 
@@ -181,9 +182,9 @@ def test_static_backend_invalidate_clears_cache(tmp_path):
     data_file.write_text(json.dumps({'A\\B': [{'id': '1', 'type': 'Feature', 'state': 'Active'}]}))
 
     from planner_lib.backend.static import StaticBackend
-    backend = StaticBackend(str(data_file))
+    backend = StaticBackend(str(data_file), storage=catalogue_storage(["MyOrg", "MyProject", "SomeArea", "P", "A", "Unknown"]))
     # Load once
-    backend.fetch_tasks('A\\B')
+    backend.fetch_tasks('A\\B', task_types=["Feature", "Epic"])
     assert backend._data is not None
     # Invalidate
     result = backend.invalidate_cache()

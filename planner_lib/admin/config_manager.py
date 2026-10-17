@@ -37,7 +37,7 @@ class ConfigManager:
     # Keys written during a full backup.
     CONFIG_KEYS = [
         "projects", "teams", "workforce",
-        "area_plan_map", "iterations", "global_settings", "ado_config", "plugin_runtime_config", "server_config",
+        "area_plan_map", "iterations", "global_settings", "ado_config", "ado_processes", "plugin_runtime_config", "server_config",
     ]
 
     def __init__(

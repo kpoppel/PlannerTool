@@ -15,6 +15,36 @@ function response({ ok = true, status = 200, jsonData = null, jsonThrows = false
 }
 
 describe('RestProviderBase', () => {
+  it('repairs a required PAT and retries a read without renewing the session', async () => {
+    const onPatRequired = vi.fn().mockResolvedValue(true);
+    const onSessionExpired = vi.fn();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'pat_required' }), { status: 403 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ value: 42 })));
+    const base = new RestProviderBase({ fetchImpl, onPatRequired, session: true, onSessionExpired });
+
+    const result = await base._fetchJson('/api/tasks');
+
+    expect(result).toEqual({ ok: true, data: { value: 42 } });
+    expect(onPatRequired).toHaveBeenCalledWith('pat_required');
+    expect(onSessionExpired).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not replay a write after PAT repair or open repair for permission denials', async () => {
+    const onPatRequired = vi.fn().mockResolvedValue(true);
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'pat_invalid' }), { status: 403 }),
+    );
+    const base = new RestProviderBase({ fetchImpl, onPatRequired });
+    await base._fetch('/api/tasks', { method: 'POST' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(onPatRequired).toHaveBeenCalledTimes(1);
+    fetchImpl.mockResolvedValue(new Response(JSON.stringify({ error: 'access_denied' }), { status: 403 }));
+    await base._fetch('/admin/check');
+    expect(onPatRequired).toHaveBeenCalledTimes(1);
+  });
+
   it('observes only the final response after session recovery', async () => {
     const finalResponse = response({ jsonData: { ok: true } });
     const fetchImpl = vi.fn()

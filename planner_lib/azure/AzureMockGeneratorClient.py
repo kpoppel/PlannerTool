@@ -450,15 +450,15 @@ def _collect_sprint_paths(tree: dict) -> List[str]:
 
 def _pick_state(
     wit: str,
-    include_states: List[str],
+    state_names: List[str],
     config: GeneratorConfig,
     rng: random.Random,
 ) -> str:
-    """Choose a terminal state for a work item, respecting include_states."""
+    """Choose a terminal state from the generated process's state sequence."""
     progression = _STATE_PROGRESSIONS.get(wit, _STATE_PROGRESSIONS["Feature"])
-    valid = [s for s in progression if s in include_states]
+    valid = [s for s in progression if s in state_names]
     if not valid:
-        valid = [include_states[0]] if include_states else ["New"]
+        valid = [state_names[0]] if state_names else ["New"]
 
     weights_key = wit if wit in config.state_weights else "default"
     raw_weights = config.state_weights[weights_key]
@@ -490,7 +490,7 @@ def _generate_area_items(
     task_types: List[str] = area_config.get("task_types") or ["Feature", "User Story"]
     area_path: str = area_config["area_path"]
     project: str = _area_to_project(area_path)
-    include_states: List[str] = area_config.get("include_states") or _STATE_NAMES
+    state_names = _STATE_NAMES
 
     active_types = [t for t in _TYPE_HIERARCHY if t in task_types]
     if not active_types:
@@ -619,7 +619,7 @@ def _generate_area_items(
     def _generate_node(type_idx: int, parent_id: Optional[int]) -> int:
         """Recursively generate a work item and its children.  Returns the new ID."""
         wit = active_types[type_idx]
-        state = _pick_state(wit, include_states, config, rng)
+        state = _pick_state(wit, state_names, config, rng)
         sprint = rng.choice(sprint_paths) if sprint_paths else fallback_sprint
 
         # Random creation offset in the past 2 years
@@ -771,7 +771,7 @@ def _make_work_item_types(type_names: set, project: str, base_url: str) -> List[
 
 def _make_backlog_config(
     task_types: List[str],
-    include_states: List[str],
+    state_names: List[str],
     project: str,
     base_url: str,
 ) -> dict:
@@ -782,7 +782,7 @@ def _make_backlog_config(
         states_map = {
             s: _STATE_CATEGORIES.get(s, "InProgress")
             for s in progression
-            if s in include_states
+            if s in state_names
         }
         type_mapped_states.append({
             "work_item_type_name": wit,
@@ -908,12 +908,12 @@ class AzureDataset:
                     "name": "TestTeam",
                     "area_path": "TestProject\\TestTeam",
                     "task_types": ["Epic", "Feature", "User Story"],
-                    "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
-                    "display_states": ["New", "Defined", "Active", "Resolved", "Closed"],
+                    "closed_history_days": 0,
                 }
             ]
 
         projects = sorted(set(_area_to_project(a["area_path"]) for a in area_configs))
+        self.projects = projects
         project_ids = {p: _det_uuid(f"project:{p}") for p in projects}
         person_pool = _build_person_pool(area_configs, self.config, self.base_url)
 
@@ -985,7 +985,7 @@ class AzureDataset:
 
                 self.backlog_configs[tfv_key] = _make_backlog_config(
                     area.get("task_types") or ["Feature", "User Story"],
-                    area.get("include_states") or _STATE_NAMES,
+                    _STATE_NAMES,
                     proj,
                     self.base_url,
                 )
@@ -1065,22 +1065,9 @@ class AzureDataset:
                         "area_path": ap,
                         "type": projects_config['container_types'][-1],
                         "task_types": ["Feature", "User Story"],
-                        "include_states": _STATE_NAMES,
-                        "display_states": _STATE_NAMES,
+                        "closed_history_days": 0,
                     })
         self.storage.save("config", "projects", {**projects_config, "project_map": project_map})
-
-        # global_settings (task_type_hierarchy and state_display_sequence)
-        gs = {
-            "task_type_hierarchy": _TYPE_HIERARCHY,
-            "state_display_sequence": _STATE_NAMES,
-        }
-        try:
-            existing_gs = self.storage.load("config", "global_settings") or {}
-            gs.update(existing_gs)
-        except KeyError:
-            pass
-        self.storage.save("config", "global_settings", gs)
 
         # Work items stored per area under namespace "work_items"
         areas_by_project: Dict[str, Dict[str, list]] = {}
@@ -1366,6 +1353,44 @@ class _GeneratedFixtures:
 
     def load(self) -> None:
         self._ensure()
+
+    def get_processes(self):
+        self._ensure()
+        return [
+            {'typeId': _det_uuid('process:Agile'), 'name': 'Agile', 'projects': []},
+            {'typeId': _det_uuid('process:Planner'), 'name': 'Planner Agile',
+             'parentProcessTypeId': _det_uuid('process:Agile'),
+             'projects': [{'name': project} for project in self._ds.projects]},
+        ]
+
+    def get_process_behaviors(self, process_id):
+        self._ensure()
+        return [
+            {'referenceName': 'Initiatives', 'rank': 50,
+             'inherits': {'behaviorRefName': 'System.PortfolioBacklogBehavior'}},
+            {'referenceName': 'Epics', 'rank': 40,
+             'inherits': {'behaviorRefName': 'System.PortfolioBacklogBehavior'}},
+            {'referenceName': 'Features', 'rank': 30,
+             'inherits': {'behaviorRefName': 'System.PortfolioBacklogBehavior'}},
+            {'referenceName': 'System.RequirementBacklogBehavior', 'rank': 20},
+            {'referenceName': 'System.TaskBacklogBehavior', 'rank': 10},
+        ]
+
+    def get_process_types(self, process_id):
+        self._ensure()
+        backlogs = {
+            'Initiative': 'Initiatives', 'Epic': 'Epics', 'Feature': 'Features',
+            'User Story': 'System.RequirementBacklogBehavior',
+            'Bug': 'System.RequirementBacklogBehavior', 'Task': 'System.TaskBacklogBehavior',
+        }
+        return [
+            {'referenceName': f"Microsoft.VSTS.WorkItemTypes.{name.replace(' ', '')}",
+             'name': name,
+             'states': [{'name': state, 'stateCategory': _STATE_CATEGORIES[state], 'order': order}
+                        for order, state in enumerate(_STATE_PROGRESSIONS[name], 1)],
+             'behaviors': [{'behavior': {'id': backlogs[name]}}]}
+            for name in _TYPE_HIERARCHY
+        ]
 
     def get_teams(self, project: str) -> list:
         self._ensure()

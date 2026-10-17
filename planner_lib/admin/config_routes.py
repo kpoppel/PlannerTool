@@ -5,6 +5,8 @@ refresh + toggle), schema, backup, restore, system, ado (Azure DevOps config), a
 events-config (event backend selection).
 """
 import asyncio
+from datetime import datetime, timezone
+from planner_lib.backend.errors import AreaNotReadableError, BackendAuthError, BackendUnavailableError
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -20,6 +22,7 @@ from planner_lib.middleware.session import (
 from planner_lib.admin import schema as admin_schema
 from planner_lib.admin import area_mapping_service
 from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
+from planner_lib.azure.catalogue import CatalogueError, validate_display
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -68,11 +71,15 @@ async def admin_save_projects(request: Request):
             })
 
         admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('projects', content)
+        admin_svc.save_plans(content, payload.get('process_imports', {}))
 
         return {'ok': True}
     except HTTPException:
         raise
+    except CatalogueError as error:
+        raise HTTPException(status_code=400, detail={
+            'error': error.code, 'message': str(error),
+        }) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail={
             'error': 'invalid_allocation_availability', 'message': str(error),
@@ -86,31 +93,51 @@ async def admin_save_projects(request: Request):
 # Global settings
 # ---------------------------------------------------------------------------
 
-def _normalize_global_settings(content):
-    data = content if isinstance(content, dict) else {}
-    return {
-        'task_type_hierarchy': data.get('task_type_hierarchy') or [],
-        'state_display_sequence': data.get('state_display_sequence') or [],
-    }
+@router.post('/admin/v1/projects/{plan_id}/refresh')
+@require_permission(AccountPermissions.MANAGE_PROJECTS)
+async def admin_refresh_plan(request: Request, plan_id: str):
+    admin_svc = resolve_service(request, 'admin_service')
+    plans = admin_svc.get_config('projects')['project_map']
+    plan = next((entry for entry in plans if entry['id'] == plan_id), None)
+    if plan is None:
+        raise HTTPException(status_code=404, detail={'error': 'plan_not_found', 'plan_id': plan_id})
+    if plan.get('archived') is True:
+        raise HTTPException(status_code=400, detail={'error': 'plan_archived', 'plan_id': plan_id})
+    context = get_session_credentials_from_request(request)
+    credential = {'token': context['pat'], 'user_id': context['account_id']}
+    repository = resolve_service(request, 'task_repository')
+    try:
+        tasks = await asyncio.to_thread(repository.rebuild_now, credential)
+    except CatalogueError as error:
+        raise HTTPException(status_code=409, detail={
+            'error': error.code, 'message': str(error), 'plan_id': plan_id,
+        }) from error
+    except AreaNotReadableError as error:
+        raise HTTPException(status_code=403, detail={
+            'error': 'area_not_readable', 'message': str(error), 'plan_id': plan_id,
+        }) from error
+    except BackendUnavailableError as error:
+        raise HTTPException(status_code=503, detail={
+            'error': 'backend_unavailable', 'message': str(error), 'plan_id': plan_id,
+        }) from error
+    return {'plan_id': plan_id,
+            'item_count': sum(plan_id in task['presentationPlanIds'] for task in tasks),
+            'completed_at': datetime.now(timezone.utc).isoformat()}
 
 @router.get('/admin/v1/global-settings')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_PROJECTS)
 async def admin_get_global_settings(request: Request):
     """Return the server-wide global settings."""
     try:
         admin_svc = resolve_service(request, 'admin_service')
-        cfg = admin_svc.get_config(
-            'global_settings',
-            default={'task_type_hierarchy': [], 'state_display_sequence': []},
-        )
-        return {'content': _normalize_global_settings(cfg)}
+        return {'content': admin_svc.get_config('global_settings')}
     except Exception as e:
         logger.exception('Failed to load global settings: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
 
 
 @router.post('/admin/v1/global-settings')
-@require_admin_session
+@require_permission(AccountPermissions.MANAGE_PROJECTS)
 async def admin_save_global_settings(request: Request):
     """Save server-wide global settings; creates a timestamped backup first."""
     try:
@@ -119,10 +146,15 @@ async def admin_save_global_settings(request: Request):
         if content is None:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
         admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('global_settings', _normalize_global_settings(content))
+        validated = validate_display(admin_svc.get_ado_processes(), content)
+        admin_svc.save_config('global_settings', validated)
         return {'ok': True}
     except HTTPException:
         raise
+    except CatalogueError as error:
+        raise HTTPException(status_code=400, detail={
+            'error': error.code, 'message': str(error),
+        }) from error
     except Exception as e:
         logger.exception('Failed to save global settings: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -323,7 +355,7 @@ async def admin_browse_iterations(request: Request):
         iterations = await asyncio.to_thread(fetch_iterations)
 
         return {'iterations': iterations}
-    except HTTPException:
+    except (HTTPException, BackendAuthError, BackendUnavailableError):
         raise
     except Exception as e:
         logger.exception('Failed to browse iterations: %s', e)
@@ -466,20 +498,11 @@ async def admin_toggle_plan_enabled(request: Request):
 @require_permission(AccountPermissions.MANAGE_PROJECTS)
 async def admin_get_schema(request: Request, config_type: str):
     """Return JSON Schema for a configuration type.  Delegates to admin_schema module."""
-    if config_type != 'projects' and not has_admin_access(request):
+    if config_type not in ('projects', 'ado_processes') and not has_admin_access(request):
         raise HTTPException(403, detail='Administrator permission required')
     schema = admin_schema.get_schema(config_type)
     if schema is None:
         raise HTTPException(status_code=404, detail={'error': 'unknown_schema', 'message': f'No schema defined for {config_type}'})
-    if config_type == 'projects':
-        try:
-            pat = get_session_credentials_from_request(request)['pat']
-            if pat:
-                azure_svc = resolve_service(request, 'azure_client')
-                admin_svc = resolve_service(request, 'admin_service')
-                admin_schema.enrich_projects_schema(schema, azure_client=azure_svc, pat=pat, admin_svc=admin_svc)
-        except Exception as e:
-            logger.warning('Failed to enrich projects schema: %s', e)
     return schema
 
 

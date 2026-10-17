@@ -42,6 +42,7 @@ from typing import Any, Dict, List, Optional
 from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
+from planner_lib.azure.catalogue import resolve_plan_process, seed_in_window
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +89,14 @@ class StaticBackend(BackendPort):
     def build_from_flags(cls, feature_flags: Dict[str, Any], **services: Any) -> 'StaticBackend':
         """Construct a StaticBackend from feature_flags.
 
-        ``services`` kwargs are accepted but not used (StaticBackend requires
-        no external dependencies).
+        ``services['storage']`` supplies the reviewed process catalogue.
         """
         data_path = feature_flags.get('static_data_path', 'data/static_tasks.yml')
-        return cls(data_path=data_path)
+        return cls(data_path=data_path, storage=services['storage'])
 
-    def __init__(self, data_path: str) -> None:
+    def __init__(self, data_path: str, *, storage) -> None:
         self._data_path = Path(data_path)
+        self._storage = storage
         self._data: Optional[Dict[str, Any]] = None
         logger.info("StaticBackend: initialised (data_path=%r)", str(data_path))
 
@@ -140,8 +141,8 @@ class StaticBackend(BackendPort):
         """Translate a configured plan to this file backend's source key."""
         tasks = self.fetch_tasks(
             area_path=plan['area_path'],
-            task_types=plan.get('task_types'),
-            include_states=plan.get('include_states'),
+            task_types=plan['task_types'],
+            closed_history_days=plan['closed_history_days'],
             credential=credential,
         )
         return [{**task, 'project': plan['id']} for task in tasks]
@@ -158,27 +159,27 @@ class StaticBackend(BackendPort):
         self,
         area_path: str,
         task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        closed_history_days: int = 0,
         credential: Optional[BackendCredential] = None,
         **kwargs,
     ) -> List[DomainTask]:
         """Return pre-loaded DomainTask list for *area_path*.
 
-        Filters by *task_types* and *include_states* when provided.
+        Applies catalogue types, categories and the plan's closed history window.
         No credential required.
         """
         data = self._load()
         items: List[DomainTask] = list(data.get(area_path, []))
 
-        if task_types:
-            types_lower = {t.lower() for t in task_types}
-            items = [t for t in items if (t.get('type') or '').lower() in types_lower]
-
-        if include_states:
-            states_lower = {s.lower() for s in include_states}
-            items = [t for t in items if (t.get('state') or '').lower() in states_lower]
-
-        return items
+        process = resolve_plan_process({
+            'name': area_path, 'area_path': area_path, 'task_types': task_types,
+        }, self._storage.load('config', 'ado_processes'))
+        selected = {name.casefold() for name in task_types}
+        types = {item['name'].casefold(): item for item in process['types'] if item['imported']}
+        return [{**task, 'type': types[task['type'].casefold()]['name'], 'process_id': process['id']}
+                for task in items if task['type'].casefold() in selected
+                and seed_in_window(types[task['type'].casefold()], task['state'],
+                                   task.get('stateChangeDate'), closed_history_days)]
 
     # ------------------------------------------------------------------
     # BackendPort: write_task — not supported

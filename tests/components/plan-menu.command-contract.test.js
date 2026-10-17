@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { bus } from '../../www/js/core/EventBus.js';
 import { ViewManagementEvents } from '../../www/js/core/EventRegistry.js';
+import { taskTypeKey } from '../../www/js/application/shared/workItemDisplay.js';
 
 const mockSelectionCommands = vi.hoisted(() => ({
   setProjectSelected: vi.fn(),
@@ -21,9 +22,10 @@ vi.mock('../../www/js/application/imports.js', () => ({
     selection: { getProjects: () => [] },
     scope: { getResolvedFeatures: () => mockFeatures.current },
     feature: {
-      getAvailableTaskTypesOrdered: () => mockCounts.types,
+      getAvailableTaskTypesOrdered: () => mockCounts.types.map((type) => taskTypeKey('process', type)),
+      getTypeDisplayName: (key) => mockCounts.types.find((name) => taskTypeKey('process', name) === key),
       getCountsForProject: (id) => mockCounts.projects.has(id)
-        ? mockCounts.projects.get(id) : new Map(),
+        ? new Map([...mockCounts.projects.get(id)].map(([name, count]) => [taskTypeKey('process', name), count])) : new Map(),
     },
   },
 }));
@@ -200,19 +202,21 @@ describe('PlanMenu command seam', () => {
     el.remove();
   });
 
-  it('renders plans grouped in configured B, A, C container order', async () => {
+  it('groups by configured level and preserves project_map order within each level', async () => {
     const el = new PlanMenuLit();
     document.body.appendChild(el);
     el.projects = [
       { id: 'a', name: 'Alpha', type: 'A', container_order: 1, selected: true },
       { id: 'c', name: 'Charlie', type: 'C', container_order: 2, selected: true },
       { id: 'b', name: 'Bravo', type: 'B', container_order: 0, selected: true },
+      { id: 'z', name: 'Zulu', type: 'A', container_order: 1, selected: true },
+      { id: 'aa', name: 'Aardvark', type: 'A', container_order: 1, selected: true },
     ];
     await el.updateComplete;
 
     const names = [...el.shadowRoot.querySelectorAll('.project-name-col')]
       .map((node) => node.textContent.trim());
-    expect(names).to.deep.equal(['Bravo', 'Alpha', 'Charlie']);
+    expect(names).to.deep.equal(['Bravo', 'Alpha', 'Zulu', 'Aardvark', 'Charlie']);
     el.remove();
   });
 

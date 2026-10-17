@@ -25,7 +25,11 @@ window in which someone could enroll another person's existing account. Once
 enrolled, email and name alone can never authenticate that account again.
 
 On a fresh installation, the first enrolled account becomes administrator and
-is redirected to admin configuration. Do not publish the service to users until
+is redirected to admin configuration. New installations default to the synthetic
+generator mock for demo use; registration and demo administration require no ADO
+PAT. Existing installations retain their configured backend. To use live Azure
+DevOps, the administrator selects the live backend and organization in Data
+Sources and enters their PAT in account configuration. Do not publish the service to users until
 the administrator completes configuration. Initial admin claiming happens once,
 not whenever the installation happens to have no administrators.
 
@@ -35,6 +39,29 @@ enrollment remains pending. The user then enters that email and their name in
 the normal enrollment dialog, receives their own device and account key, and
 retains the permissions assigned by the administrator. Creating an account
 does not sign the administrator into it or issue another user's credentials.
+
+## Azure DevOps credentials
+
+PATs are required only when the live Azure DevOps backend is selected. Enrollment
+and User Management require a PAT for each new live-ADO account. Selecting live
+ADO also activates this requirement for existing accounts. The server checks
+the submitted PAT against the configured organization before saving it. Missing
+and rejected credentials return HTTP 400 `pat_required` or `pat_invalid` without
+creating an account, rotating its account key, or overwriting its stored PAT.
+Validation outages return HTTP 503 `backend_unavailable` instead.
+
+Data and administration APIs return HTTP 403 `pat_required` or `pat_invalid` when
+the signed-in account needs a credential. Both frontends open the same **Set your
+Azure DevOps PAT** dialog. Account identity, enrollment, session renewal,
+credential configuration, sign-out and account deletion remain reachable.
+Successfully saving a replacement resumes reads; writes are not automatically
+replayed. A PAT rejection does not send an authenticated user back to enrollment.
+
+Browse calls, administration and request-triggered cache refreshes use only the
+acting account's PAT. Failed background refreshes retain the shared snapshot and
+report credential failures only to the initiating account. Another user's valid
+credential is never borrowed. PATs are encrypted at rest, entered in masked
+fields, and never persisted in browser preferences or exposed in error messages.
 
 ## Delegated administration
 
@@ -82,9 +109,10 @@ are hashed in `auth_sessions`; records do not persist decrypted PATs. Browser
 cookies are scoped to the installation's reverse-proxy root path.
 
 Authenticated handlers share a request-local identity context, so session/device
-idle-expiry updates occur once per request. Identity-only routes, including groups,
-do not load or decrypt PATs. Routes needing Azure credentials explicitly resolve
-the current account PAT once per request. Neither identities nor decrypted PATs
+idle-expiry updates occur once per request. With non-ADO backends, identity-only
+routes, including groups, do not load or decrypt PATs. The live-ADO gate checks
+the account credential before protected routes. Routes needing Azure credentials
+resolve the current account PAT within that request. Neither identities nor decrypted PATs
 are cached across requests or shared between users; later requests read current
 credentials. Each server worker reuses only the Fernet cryptographic setup for
 the configured encryption secret, replacing it if that secret changes. This does
@@ -122,9 +150,10 @@ server restart silently renews a session from a valid browser credential. After
 use **Enrollment** with the account email and current account key. There are no
 pairing codes or separate Recovery mode. Successful enrollment consumes the key
 and displays its replacement; save it before continuing. A rate-limited,
-non-cached `POST /api/auth/enrollment-status` checks only whether the email needs
-an account key; it does not enroll, issue credentials, or rotate a key. The modal
-shows Real name for first enrollment and Account key for enrolled accounts.
+non-cached `POST /api/auth/enrollment-status` reports `requiresKey` and `requiresPat`;
+it does not enroll, issue credentials, or rotate a key. The modal shows Real name
+for first enrollment, Account key for enrolled accounts, and a masked PAT field
+when live ADO is selected.
 Other enrolled browsers
 retain access. Configuration can revoke individual browsers and active sessions.
 

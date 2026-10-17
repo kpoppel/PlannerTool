@@ -56,6 +56,7 @@ def make_request(container, payload, session_email=None):
         def __init__(self, payload, container, session_email):
             self._payload = payload
             self.headers = {}
+            self.state = SimpleNamespace()
             self.cookies = {'sessionId': 's1'} if session_email else {}
             self.app = SimpleNamespace(state=SimpleNamespace(container=container))
         async def json(self):
@@ -64,6 +65,9 @@ def make_request(container, payload, session_email=None):
 
 
 class ExplicitAccountManager:
+    def requires_pat(self):
+        return False
+
     def __init__(self):
         self.accounts = {
             'current@example.com': {
@@ -175,6 +179,7 @@ def test_get_users_returns_account_ids_and_current_id():
             'permissions': ['admin'],
         }],
         'currentId': '11111111-1111-4111-8111-111111111111',
+        'requiresPat': False,
     }
 
 

@@ -249,6 +249,38 @@ class TestPatEncryption:
 class TestPatValidation:
     """AccountManager must reject malformed PATs on save and survive corrupt PATs on load."""
 
+    @pytest.mark.parametrize('pat', [None, ''])
+    def test_live_ado_requires_pat(self, pat):
+        from planner_lib.accounts.config import AccountCredentialsPayload
+        storage = self._make_storage()
+        storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+        manager = self._make_manager(storage)
+
+        result = manager.create_account(AccountCredentialsPayload(email='user@example.com', pat=pat))
+
+        assert result == {'ok': False, 'email': 'user@example.com', 'error': 'pat_required'}
+        assert not storage.exists('accounts', 'user@example.com')
+
+    def test_live_ado_validates_pat_before_persisting(self, monkeypatch):
+        from planner_lib.accounts.config import AccountCredentialsPayload
+        from planner_lib.azure.AzureClient import AzureClient
+        storage = self._make_storage()
+        storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+        calls = []
+
+        def reject_pat(client):
+            calls.append(client.organization_url)
+            raise RuntimeError('401 Unauthorized')
+
+        monkeypatch.setattr(AzureClient, 'get_projects', reject_pat)
+        result = self._make_manager(storage).create_account(
+            AccountCredentialsPayload(email='user@example.com', pat='revoked-fixture-pat')
+        )
+
+        assert result == {'ok': False, 'email': 'user@example.com', 'error': 'pat_invalid'}
+        assert calls == ['example']
+        assert not storage.exists('accounts', 'user@example.com')
+
     def _make_storage(self):
         return MemoryStorage()
 

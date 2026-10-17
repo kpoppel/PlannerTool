@@ -36,7 +36,7 @@ config. The v4.2.1 server config can still be the owned writable
 used as a runtime fallback. Its `people` record may lack a schema-version field.
 
 The explicit post-baseline chain is `24 -> 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
--> 33 -> 34 -> 35 -> 36 -> 37`; there was no migration 25. Revisions preserve their historical IDs.
+-> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41`; there was no migration 25. Revisions preserve their historical IDs.
 Revision 26 drops disposable remote records, 27 fills scenario metadata, 28 adds
 account IDs, 29 converts view Context flags, 30 adds plan container types, 31
 prepares device enrollment, 32 changes ownership to account IDs, and 33 harmonizes
@@ -44,7 +44,7 @@ plugin settings using a fixed packaged menu resource. Revision 34 persists packe
 Unplanned preferences in saved views. The server registry has no
 pre-v4.2.1 migrations or reverse functions; older IDs are admission evidence only.
 
-Fresh installations initialize revision 37 directly and invoke no upgrades.
+Fresh installations initialize revision 41 directly and invoke no upgrades.
 External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
@@ -125,6 +125,45 @@ same timestamp/entropy Base32 format used when creating workforce identities.
 Workforce staffing, project allocation defaults and overrides, saved views and
 scenarios are remapped atomically. Derived task and cost caches are cleared;
 allocation tokens remain unchanged.
+
+### Revision 39 plan contract
+
+`0039.plan-process-catalogue-contract` removes `include_states` and `display_states`
+from every configured plan and sets `closed_history_days: 0`. Plan order, existing
+`task_types` casing and unrelated fields are preserved. It creates an empty
+`ado_processes` catalogue (schema version 1) and replaces Global settings with
+schema version 2, empty `process_order` and `type_tiers`. The old hierarchy cannot
+be mapped to ADO processes offline. Fresh installations use the same defaults.
+
+After upgrading, an administrator must open each existing plan, let its ADO
+project resolve/load the relevant process, review the selected types and save to
+import them. Plans sharing a process reuse its metadata; no organization-wide
+catalogue load is required. Until configured, task fetches fail explicitly with
+`process_not_imported` or `type_not_imported`. Saving canonicalizes type names.
+
+The catalogue participates in task-snapshot identity. Seed queries include active
+categories and only include Completed work within the plan's explicit day window;
+Removed is excluded. Discovery stops at unimported project/type boundaries.
+Access failures preserve the last complete snapshot and report the requesting
+user's access warning rather than committing partial data. Plan refresh rebuilds
+the combined snapshot without invalidating it first.
+
+### Revision 40 retired plan retention field
+
+`0040.remove-retired-plan-completion-retention` removes the obsolete
+`completed_retention_months` field from configured plans. Plan order and all other
+plan fields are preserved. Revision-40 validation rejects the retired field.
+
+### Revision 41 task-level plan selections
+
+`0041.remove-task-level-plan-selections` removes task-level work item types from
+existing plans using the resolved process metadata already in the catalogue.
+Other selected types and plan order are preserved. The migration aborts without
+committing if it would leave a plan without any eligible type. Revision-41
+validation rejects task-level selections.
+
+Phases 3-6 of the Plans admin redesign must ship together: revision 39 requires
+the corresponding catalogue, plan-editor and planner-display consumers.
 
 ## Development iterations
 

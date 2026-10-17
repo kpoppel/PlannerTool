@@ -50,7 +50,7 @@ Configuration offers a browser-local allocation unit: Percent (default) or Man-d
 
 Man-day entry accepts whole days only. Both man-day and percentage displays round upward to whole numbers; zero is displayed only for an actual zero. Stored and published allocations retain fractional percentage precision, including through scenario saves and Azure reloads. Scheduling and financial calculations use those precise values, not the rounded display. Feature cards, allocation bars and graphs remain percent-based. Changing units, leaving a displayed value unchanged, or refreshing data does not rewrite allocations. Existing integer allocations remain valid.
 
-In Man-days mode, scheduling preserves previous effort against final dates. It removes rows with missing/zero staffing, invalid or zero-working-day schedules, or a result above 100%. Failed/loading staffing and protected duplicate unknown-team allocations block the batch instead. Retry staffing in Configuration or switch to Percent. Notifications explain removals. Existing feature/scenario revert controls recover changes; feature revert removes all of that feature's overrides.
+In Man-days mode, scheduling preserves previous effort against final dates. If preserving effort would exceed 100% for any allocation, the entire scheduling operation is rejected with a warning; existing dates and allocations remain unchanged. Extend the schedule or reduce the allocation before retrying. Rows with missing/zero staffing or invalid or zero-working-day schedules are removed. Failed/loading staffing and protected duplicate unknown-team allocations block the batch instead. Retry staffing in Configuration or switch to Percent. Notifications explain removals. Existing feature/scenario revert controls recover changes; feature revert removes all of that feature's overrides.
 
 Parents still cannot end before their scheduled children. Man-day edits report the limiting child and date; parent resizing does not compress descendants. Propagated changes may require reverting other affected features or the scenario.
 
@@ -69,11 +69,38 @@ The product includes:
 
 The server and admin interface support:
 
-- project and team configuration
+- delegated Plans administration with guided creation, explicit edit/save,
+  within-level reordering, archive/restore, plan levels and workforce defaults
+- project-driven Azure DevOps process loading and reviewed work item type imports
+- process-ordered type tiers with sibling types and per-type ADO state sequences
+- team configuration
 - Azure organization and feature-flag setup
 - user account and permission management
 - cache invalidation and server reload workflows
 - schema-driven configuration editing
+
+Users with `manage_projects` can create the first plan without configuring a
+process catalogue beforehand. Choosing an ADO project loads only its process;
+saving imports the selected eligible types with the plan. Task-level types cannot
+be imported. Azure DevOps Processes reviews discovery imports, while Global
+Project Settings arranges processes and type tiers. Raw plan JSON is admin-only.
+
+Each plan selects its work item types and a closed-work history window, defaulting
+to None. No per-plan fetch/display state lists are needed. Completed items linked
+to active work remain available regardless of that window; all-Completed linked
+work uses the longest source-plan window. Removed and unimported types are excluded.
+Planner filters group types by process and distinguish same-named types across
+processes; sibling types do not imply a parent/child relationship.
+
+Creating a plan, changing its data selection or restoring it immediately loads
+its work items. Saving and loading are separate: failed loads keep the saved plan
+and offer Retry. A refresh that cannot read all configured work never publishes
+partial data; the previous complete snapshot remains available with an access
+warning to the requesting user.
+
+Fresh installations use generated demo data without requiring an ADO PAT. With
+live ADO selected, every account must configure a valid PAT, and all ADO requests
+use the acting user's credentials. Account credential repair remains reachable.
 
 ## Core user value
 

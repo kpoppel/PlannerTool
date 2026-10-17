@@ -1,5 +1,35 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { computeGrid, ensureArray, fieldValues } from '../../www/js/plugins/xyBoardUtils.js';
+import { render } from '../../www/js/vendor/lit.js';
+import { sel } from '../../www/js/application/imports.js';
+import { PluginXYBoardComponent } from '../../www/js/plugins/PluginXYBoardComponent.lit.js';
+
+describe('XY toolbar type identities', () => {
+  it('shows task types without ADO process names and toggles the qualified identity', () => {
+    const types = ['second', 'first'].map((processId) => ({
+      key: JSON.stringify([processId, 'feature']), name: 'Feature',
+      processId,
+    }));
+    const options = vi.spyOn(sel.feature, 'getTaskTypeOptions').mockReturnValue(types);
+    const labels = vi.spyOn(sel.feature, 'getTypeDisplayName').mockReturnValue('Feature');
+    try {
+      const component = new PluginXYBoardComponent();
+      component._availableTypes = types.map((type) => type.key);
+      component._openDropdown = 'types';
+      const toggle = vi.spyOn(component, '_toggleType');
+      const root = document.createElement('div');
+      render(component._renderToolbar(), root);
+      expect(root.querySelector('.xy-process-heading')).toBeNull();
+      expect([...root.querySelectorAll('.xy-chip')].map((node) => node.textContent.trim()))
+        .toEqual(['Feature', 'Feature']);
+      root.querySelector('.xy-chip').click();
+      expect(toggle).toHaveBeenCalledWith(types[0].key);
+    } finally {
+      options.mockRestore();
+      labels.mockRestore();
+    }
+  });
+});
 
 describe('ensureArray', () => {
   it('wraps a scalar in an array', () => {

@@ -52,6 +52,46 @@ class _Store:
 # ---------------------------------------------------------------------------
 
 
+def test_fresh_install_uses_generator_and_first_admin_needs_no_pat():
+    from planner_lib.accounts.config import AccountManager
+    from planner_lib.backend.mock import MockGeneratorBackend
+    from planner_lib.backend.registry import get_active_class
+    from planner_lib.session.auth import AuthManager
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    storage = MemoryStorage()
+    initialize(storage)
+    config = storage.load('config', 'ado_config')
+
+    assert config == {
+        'organization_url': '',
+        'feature_flags': {'use_azure_mock_generator': True},
+    }
+    assert get_active_class(config['feature_flags']) is MockGeneratorBackend
+    accounts = AccountManager(storage)
+    sessions = SessionManager(accounts, storage)
+    auth = AuthManager(storage, accounts, sessions)
+
+    _, _, session = auth.enroll('admin@example.com', 'First Admin')
+
+    assert accounts.has_permission('admin@example.com', 'admin')
+    assert accounts.load('admin@example.com')['pat'] is None
+    assert sessions.is_valid(session)
+
+
+@pytest.mark.parametrize('flags', [{}, {'use_static_backend': True}, {'use_azure_mock': True}])
+def test_initialization_preserves_existing_backend_selection(flags):
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    storage = MemoryStorage()
+    existing = {'organization_url': 'existing-org', 'feature_flags': flags}
+    storage.save('config', 'ado_config', existing)
+
+    initialize(storage)
+
+    assert storage.load('config', 'ado_config') == existing
+
+
 def test_get_config_returns_value():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
@@ -164,7 +204,7 @@ def test_get_backup_covers_all_live_config_keys():
     from planner_lib.admin.config_manager import ConfigManager
     expected = {
         "projects", "teams", "workforce",
-        "area_plan_map", "iterations", "global_settings", "ado_config", "plugin_runtime_config", "server_config",
+        "area_plan_map", "iterations", "global_settings", "ado_config", "ado_processes", "plugin_runtime_config", "server_config",
     }
     assert set(ConfigManager.CONFIG_KEYS) == expected, (
         f"CONFIG_KEYS mismatch — backup would silently omit: "

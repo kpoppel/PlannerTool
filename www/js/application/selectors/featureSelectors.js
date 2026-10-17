@@ -8,6 +8,7 @@ import {
 import { deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
 import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
 import { projectAllocationAvailability } from '../shared/allocationAvailability.js';
+import { displayTypes, featureTypeKey, projectDisplay, taskTypeKey } from '../shared/workItemDisplay.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
@@ -16,30 +17,19 @@ function buildBaselineFeatureMap(state) {
 }
 
 function deriveTaskTypeHierarchy(projects) {
-  for (const project of projects) {
-    if (project.task_type_hierarchy.length > 0) {
-      return project.task_type_hierarchy;
-    }
-  }
-  return [];
+  return projectDisplay(projects).flatMap((process) => process.tiers.map((tier, level) => ({
+    process_id: process.process_id, level,
+    types: tier.map((type) => taskTypeKey(process.process_id, type.name)),
+  })));
 }
 
 function getTypeLevelFromHierarchy(type, hierarchy) {
-  const key = String(type).toLowerCase();
+  const key = String(type);
   for (let index = 0; index < hierarchy.length; index += 1) {
-    const types = hierarchy[index].types.map((item) => String(item).toLowerCase());
+    const types = hierarchy[index].types;
     if (types.includes(key)) return index;
   }
   return 9999;
-}
-
-function getTypeDisplayNameFromHierarchy(type, hierarchy) {
-  const key = String(type).toLowerCase();
-  for (const level of hierarchy) {
-    const canonical = level.types.find((item) => String(item).toLowerCase() === key);
-    if (canonical !== undefined) return canonical;
-  }
-  return type;
 }
 
 function getSchedulePresetsForProjectFromStore(state, projectId) {
@@ -60,7 +50,7 @@ function buildTaskTypeOrderMap(hierarchy) {
   const order = new Map();
   for (const level of hierarchy) {
     for (const type of level.types) {
-      const key = String(type).toLowerCase();
+      const key = String(type);
       if (!order.has(key)) order.set(key, order.size);
     }
   }
@@ -75,7 +65,7 @@ function makeCountsMap(features, predicate) {
   const counts = new Map();
   for (const feature of features) {
     if (!predicate(feature)) continue;
-    const typeName = getFeatureTypeName(feature).toLowerCase();
+    const typeName = featureTypeKey(feature);
     if (!typeName) continue;
     const current = counts.get(typeName);
     if (current === undefined) {
@@ -135,12 +125,21 @@ export function createFeatureSelectors(store) {
       return deriveTaskTypeHierarchy(store.getState().baseline.projects);
     },
 
+    getWorkItemDisplay() {
+      return projectDisplay(store.getState().baseline.projects);
+    },
+
+    getTaskTypeOptions() {
+      return displayTypes(selectors.getWorkItemDisplay());
+    },
+
     getTypeLevel(type) {
       return getTypeLevelFromHierarchy(type, selectors.getTaskTypeHierarchy());
     },
 
     getTypeDisplayName(type) {
-      return getTypeDisplayNameFromHierarchy(type, selectors.getTaskTypeHierarchy());
+      const configured = selectors.getTaskTypeOptions().find((item) => item.key === type);
+      return configured.name;
     },
 
     getBaselineFeatureById(id) {
@@ -160,8 +159,8 @@ export function createFeatureSelectors(store) {
       const hierarchy = selectors.getTaskTypeHierarchy();
       const orderMap = buildTaskTypeOrderMap(hierarchy);
       return [...taskTypes].sort((first, second) => {
-        const firstPosition = orderMap.get(String(first).toLowerCase());
-        const secondPosition = orderMap.get(String(second).toLowerCase());
+        const firstPosition = orderMap.get(first);
+        const secondPosition = orderMap.get(second);
         const firstOrder = firstPosition === undefined ? orderMap.size : firstPosition;
         const secondOrder = secondPosition === undefined ? orderMap.size : secondPosition;
         if (firstOrder !== secondOrder) return firstOrder - secondOrder;

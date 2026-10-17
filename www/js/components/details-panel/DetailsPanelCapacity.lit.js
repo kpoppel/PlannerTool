@@ -3,6 +3,8 @@ import { formatManDays, getAllocationBasis, percentToManDays } from '../../appli
 import { ceilAllocation } from '../../application/shared/teamAllocation.js';
 
 const capacityInputCommits = new WeakMap();
+const capacityWheelTimers = new WeakMap();
+const WHEEL_COMMIT_DELAY = 75;
 
 /**
  * Project allocation presentation without changing feature or team data.
@@ -86,20 +88,39 @@ function stepCapacityInput(event, manDays) {
 
 function commitCapacityInput(event, row, model, actions) {
   const input = event.target;
+  cancelCapacityWheel(input);
   if (input.value !== '' && Number(input.value) === Number(row.inputValue)) return;
   if (model.manDays) {
     if (input.value === '' || !input.checkValidity()) {
       input.reportValidity();
       return;
     }
-    const committed = capacityInputCommits.get(input);
-    if (committed !== undefined && committed.row === row && committed.value === input.value) return;
   }
+  const committed = capacityInputCommits.get(input);
+  if (committed !== undefined && committed.row === row && committed.value === input.value) return;
   const result = actions.changeCapacity(row.teamId, input.value);
   if (result !== false) {
     if (model.manDays && typeof result === 'string') input.value = result;
     capacityInputCommits.set(input, { row, value: input.value });
   }
+}
+
+function cancelCapacityWheel(input) {
+  clearTimeout(capacityWheelTimers.get(input));
+  capacityWheelTimers.delete(input);
+}
+
+function queueCapacityWheel(event, row, model, actions) {
+  const input = event.target;
+  stepCapacityInput(event, model.manDays);
+  if (input.disabled) return;
+  cancelCapacityWheel(input);
+  capacityWheelTimers.set(input, setTimeout(() => {
+    capacityWheelTimers.delete(input);
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+    if (!input.isConnected) return;
+    commitCapacityInput({ target: input }, row, model, actions);
+  }, WHEEL_COMMIT_DELAY));
 }
 
 /** Render a capacity model using value-based actions, without a panel host. */
@@ -140,16 +161,14 @@ export function renderDetailsPanelCapacity({ model, actions }) {
                       event.preventDefault();
                       commitCapacityInput(event, row, model, actions);
                     } else if (event.key === 'Escape') {
+                      cancelCapacityWheel(event.target);
                       event.target.value = row.inputValue;
                       actions.cancelEdit();
                     }
                   }}
                   @blur=${(event) => commitCapacityInput(event, row, model, actions)}
                   @focus=${(event) => event.target.select()}
-                  @wheel=${(event) => {
-                    stepCapacityInput(event, model.manDays);
-                    commitCapacityInput(event, row, model, actions);
-                  }}
+                  @wheel=${(event) => queueCapacityWheel(event, row, model, actions)}
                 />
               </div>
             </div>

@@ -116,6 +116,12 @@ def _try_decrypt_pat(encrypted: str) -> Optional[str]:
         )
         return None
 
+class CredentialValidationError(ValueError):
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
 class AccountIdentityPayload(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -136,6 +142,58 @@ class AccountManager:
     DEFAULT_NS = 'accounts'
     def __init__(self, storage: StorageBackend):
         self._storage = storage
+
+    def requires_pat(self) -> bool:
+        from planner_lib.backend.azure import AzureDevOpsBackend
+        from planner_lib.backend.registry import get_active_class
+
+        if not self._storage.exists('config', 'ado_config'):
+            return False
+        ado = self._storage.load('config', 'ado_config')
+        flags = {}
+        if self._storage.exists('config', 'server_config'):
+            flags.update(self._storage.load('config', 'server_config')['feature_flags'])
+        flags.update(ado['feature_flags'])
+        return get_active_class(flags) is AzureDevOpsBackend
+
+    def validate_pat(self, pat: str | None) -> str | None:
+        from planner_lib.azure.AzureClient import AzureClient
+        from planner_lib.backend.errors import BackendAuthError, classify_ado_exception
+
+        if not pat:
+            return 'pat_required'
+        if not _is_valid_pat(pat):
+            return 'pat_invalid'
+        ado = self._storage.load('config', 'ado_config')
+        if not ado['organization_url'].strip():
+            return 'ado_organization_required'
+        try:
+            with AzureClient(ado['organization_url'], self._storage).connect(pat) as client:
+                client.get_projects()
+        except Exception as error:
+            classified = classify_ado_exception(error)
+            if isinstance(classified, BackendAuthError):
+                return 'pat_invalid'
+            raise classified from error
+        return None
+
+    def pat_error(self, email: str) -> str | None:
+        if not self.requires_pat():
+            return None
+        pat = self.load(email)['pat']
+        if not pat:
+            return 'pat_required'
+        record = self._storage.load(self.DEFAULT_NS, email)
+        if not _is_valid_pat(pat) or record.get('pat_invalid', False):
+            return 'pat_invalid'
+        return None
+
+    def reject_pat(self, email: str, pat: str | None) -> None:
+        if self.load(email)['pat'] != pat:
+            return
+        record = dict(self._storage.load(self.DEFAULT_NS, email))
+        record['pat_invalid'] = True
+        self._storage.save(self.DEFAULT_NS, email, record)
 
     def create_account(
         self,
@@ -252,6 +310,12 @@ class AccountManager:
         # Simple email verification
         if not _is_valid_email(config.email):
             return { 'ok': False, 'email': config.email }
+
+        if self.requires_pat():
+            pat = self.load(config.email)['pat'] if existing and config.pat == '' else config.pat
+            error = self.validate_pat(pat)
+            if error:
+                return {'ok': False, 'email': config.email, 'error': error}
 
         # Validate PAT format when provided (but allow None/empty to preserve
         # existing PAT behaviour).

@@ -8,6 +8,7 @@ import {
 } from '../shared/featureProjection.js';
 import { expandAllocationFocusIds, hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
 import { hasTimelinePlacement } from '../shared/featurePresentation.js';
+import { featureTypeKey } from '../shared/workItemDisplay.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
@@ -144,15 +145,10 @@ export function createScopeSelectors(store) {
   }
 
   function canPresentInContext(feature, context) {
-    const state = store.getState();
     const membership = getScopeMembership();
     const isAncestorContext = feature.ancestorOnly === true
       && context.parent && membership.ancestorIds.has(String(feature.id));
-    if (!featureCanPresent(feature) && !isAncestorContext) return false;
-    const plan = state.baseline.projects.find((project) => project.id === feature.project);
-    // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
-    return plan === undefined || plan.display_states === undefined
-      || plan.display_states.includes(feature.state);
+    return featureCanPresent(feature) || isAncestorContext;
   }
 
   function getPresentableContextFeatures() {
@@ -166,7 +162,7 @@ export function createScopeSelectors(store) {
       state.selection.featureStateNames.map((stateName) => String(stateName).toLowerCase())
     );
     const selectedTaskTypeNames = new Set(
-      state.selection.taskTypeNames.map((type) => String(type).toLowerCase())
+      state.selection.taskTypeNames
     );
     const hiddenTypes = new Set(state.view.options.hiddenTypes.map((type) => String(type)));
     const membership = getScopeMembership();
@@ -184,8 +180,8 @@ export function createScopeSelectors(store) {
       if (selectedFeatureStates.size === 0
         || !selectedFeatureStates.has(String(feature.state).toLowerCase())) return 'state';
       if ((selectedTaskTypeNames.size > 0
-        && !selectedTaskTypeNames.has(String(feature.type).toLowerCase()))
-        || hiddenTypes.has(String(feature.type))) return 'taskTypes';
+        && !selectedTaskTypeNames.has(featureTypeKey(feature)))
+        || hiddenTypes.has(featureTypeKey(feature))) return 'taskTypes';
       return null;
     };
   }

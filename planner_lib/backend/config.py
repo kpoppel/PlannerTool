@@ -37,6 +37,7 @@ from planner_lib.backend.port import (
 )
 from planner_lib.domain.allocation_availability import validate_project_availability
 from planner_lib.domain.projects import DomainProject
+from planner_lib.azure.catalogue import work_item_display
 from planner_lib.domain.teams import DomainTeam, TeamCatalogue
 from planner_lib.storage.base import StorageBackend
 
@@ -115,14 +116,10 @@ class ConfigBackend(
             type_name: index for index, type_name in enumerate(cfg['container_types'])
         }
 
-        global_hierarchy: list = []
-        global_state_sequence: list = []
-        try:
-            gs = self._storage.load("config", "global_settings") or {}
-            global_hierarchy = gs.get("task_type_hierarchy") or []
-            global_state_sequence = gs.get("state_display_sequence") or []
-        except Exception:
-            pass
+        display = work_item_display(
+            self._storage.load('config', 'ado_processes'),
+            self._storage.load('config', 'global_settings'),
+        )
 
         return [
             DomainProject(
@@ -132,11 +129,9 @@ class ConfigBackend(
                 container_order=container_order[p['type']],
                 container_types=list(cfg['container_types']),
                 area_path=p.get("area_path"),
-                display_states=p.get("display_states") or [],
-                state_categories={},
-                task_types=p.get("task_types") or [],
-                task_type_hierarchy=global_hierarchy,
-                state_display_sequence=global_state_sequence,
+                task_types=p['task_types'],
+                closed_history_days=p['closed_history_days'],
+                work_item_display=display,
                 iteration_uuid=(str(p.get("iteration_uuid")).strip() if p.get("iteration_uuid") else None),
             )
             for p in active_projects

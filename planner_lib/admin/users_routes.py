@@ -13,6 +13,7 @@ from planner_lib.services.resolver import resolve_service
 from planner_lib.middleware.session import get_session_context_from_request
 from planner_lib.accounts.config import _is_valid_email, AccountCredentialsPayload
 from planner_lib.accounts.constants import AccountPermissions
+from planner_lib.backend.errors import BackendUnavailableError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,7 +26,8 @@ async def admin_get_users(request: Request):
     try:
         context = get_session_context_from_request(request)
         account_manager = resolve_service(request, 'account_manager')
-        return {'accounts': account_manager.list_accounts(), 'currentId': context['account_id']}
+        return {'accounts': account_manager.list_accounts(), 'currentId': context['account_id'],
+            'requiresPat': account_manager.requires_pat()}
     except Exception as e:
         logger.exception('Failed to list users/admins: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -56,19 +58,21 @@ async def admin_create_user(request: Request):
         payload = await request.json()
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expected JSON object'})
-        credentials = AccountCredentialsPayload(email=payload.get('email'), pat=None)
+        credentials = AccountCredentialsPayload(email=payload.get('email'), pat=payload.get('pat'))
         if not _is_valid_email(credentials.email):
             raise HTTPException(status_code=400, detail={'error': 'invalid_email', 'message': 'Invalid email'})
         permissions = _validate_permissions(payload.get('permissions', []))
         account_manager = resolve_service(request, 'account_manager')
-        account_manager.create_account(credentials, permissions)
+        status = account_manager.create_account(credentials, permissions)
+        if not status['ok']:
+            raise HTTPException(status_code=400, detail=status)
         logger.info('Admin %s created account %s with permissions %s', _get_current_email(request), credentials.email, permissions)
         return {'ok': True}
-    except ValidationError as error:
-        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': str(error)})
+    except ValidationError:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Invalid account credentials'})
     except ValueError as error:
         raise HTTPException(status_code=409, detail={'error': 'account_exists', 'message': str(error)})
-    except HTTPException:
+    except (HTTPException, BackendUnavailableError):
         raise
     except Exception as e:
         logger.exception('Failed to create user: %s', e)

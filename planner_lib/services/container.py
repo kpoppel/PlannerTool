@@ -18,7 +18,6 @@ class ServiceKeys:
     ACCOUNT_MANAGER = "account_manager"
     ADMIN_SERVICE = "admin_service"
     AZURE_CLIENT = "azure_client"
-    AZURE_PROJECT_METADATA_SERVICE = "azure_project_metadata_service"
     BACKEND = "backend"
     CACHE_COORDINATOR = "cache_coordinator"
     CAPACITY_SERVICE = "capacity_service"

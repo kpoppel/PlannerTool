@@ -4,8 +4,8 @@ import { hasTimelinePlacement } from '../shared/featurePresentation.js';
 import {
   deriveConfiguredStateSequence,
   deriveAvailableTaskTypes,
-  deriveOrderedFeatureStateNames,
 } from '../shared/stateDerivations.js';
+import { displayTypes, featureTypeKey, projectDisplay, typeStateCategory } from '../shared/workItemDisplay.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
@@ -103,17 +103,6 @@ function compareStrings(a, b) {
   return String(a).localeCompare(String(b));
 }
 
-function deriveStateCategoryMap(projects) {
-  const categories = {};
-  for (const project of projects) {
-    const projectCategories = project.state_categories;
-    for (const [stateName, category] of Object.entries(projectCategories)) {
-      categories[String(stateName)] = String(category);
-    }
-  }
-  return categories;
-}
-
 /**
  * @param {StoreApi} store
  * @returns {object}
@@ -125,10 +114,6 @@ export function createFilterSelectors(store) {
     return normalizeTaskFilters(store.getState().selection.taskFilters);
   }
 
-  function getStateCategories() {
-    return deriveStateCategoryMap(store.getState().baseline.projects);
-  }
-
   function getConfiguredSequence() {
     return deriveConfiguredStateSequence(store.getState().baseline.projects);
   }
@@ -137,7 +122,9 @@ export function createFilterSelectors(store) {
     getSelectedTaskTypeNames() {
       const state = store.getState();
       const hidden = new Set(state.view.options.hiddenTypes);
-      return deriveAvailableTaskTypes(state.baseline.features).filter((type) => !hidden.has(type));
+      const selected = state.selection.taskTypeNames;
+      return deriveAvailableTaskTypes(state.baseline.features).filter((type) => !hidden.has(type)
+        && (selected.length === 0 || selected.includes(type)));
     },
 
     isSidebarControlDisabled(kind, key, option) {
@@ -163,7 +150,18 @@ export function createFilterSelectors(store) {
 
     getAvailableFeatureStates() {
       const state = store.getState();
-      return deriveOrderedFeatureStateNames(state.baseline.projects, state.baseline.features);
+      const types = selectors.getSelectedTaskTypeNames();
+      const sequence = displayTypes(projectDisplay(state.baseline.projects))
+        .filter((type) => types.includes(type.key))
+        .flatMap((type) => type.states.filter((item) => item.category !== 'Removed')
+          .map((item) => item.name));
+      return [...new Set(sequence)];
+    },
+
+    getFeatureStates(feature) {
+      const type = displayTypes(projectDisplay(store.getState().baseline.projects))
+        .find((item) => item.key === featureTypeKey(feature));
+      return type === undefined ? [] : type.states.filter((state) => state.category !== 'Removed');
     },
 
     getFeatureStateColors() {
@@ -178,9 +176,8 @@ export function createFilterSelectors(store) {
       return fallbackTaskFilter(feature);
     },
 
-    getFeatureStateCategory(stateName) {
-      const key = String(stateName);
-      const category = getStateCategories()[key];
+    getFeatureStateCategory(feature) {
+      const category = typeStateCategory(projectDisplay(store.getState().baseline.projects), feature);
       return category === undefined ? '' : category;
     },
 

@@ -759,7 +759,8 @@ class FeatureBoard extends LitElement {
     this._foldModel = isPacked ? null : buildFoldModel(
       this._orderFeaturesHierarchically(foldableFeatures, sel.view.getFeatureSortMode()),
       sections,
-      foldedFeatures
+      foldedFeatures,
+      sel.feature.getWorkItemDisplay()
     );
     bus.emit(BoardEvents.FOLD_STATE, {
       active: this._foldModel !== null && this._foldModel.counts.size > 0,

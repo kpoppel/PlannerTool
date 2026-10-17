@@ -91,19 +91,22 @@ describe('allocation units', () => {
       .toEqual([{ team: 'alpha', capacity: 40 }]);
   });
 
-  it('removes invalid rows independently, including raw results above 100 before rounding', () => {
+  it('reports over-capacity rows separately from unconvertible allocation removals', () => {
     const feature = { ...span, capacity: [
       { team: 'alpha', capacity: 20 }, { team: 'beta', capacity: 51 },
       { team: 'missing', capacity: 10 }, { team: 'empty', capacity: 0 },
     ] };
     const result = resizeAllocations(feature, { ...span, end: '2026-10-09' }, staffing);
     expect(result.capacity).toEqual([{ team: 'alpha', capacity: 40 }]);
-    expect(result.removed.map((row) => row.team)).toEqual(['beta', 'missing', 'empty']);
+    expect(result.removed.map((row) => row.team)).toEqual(['missing', 'empty']);
+    expect(result.exceeded).toEqual([{ team: 'beta', capacity: 102 }]);
     const exact = { ...span, capacity: [{ team: 'alpha', capacity: 50 }] };
     expect(resizeAllocations(exact, { ...span, end: '2026-10-09' }, staffing).capacity[0].capacity)
       .toBe(100);
     const over = { ...span, capacity: [{ team: 'alpha', capacity: 50.1 }] };
-    expect(resizeAllocations(over, { ...span, end: '2026-10-09' }, staffing).capacity).toEqual([]);
+    const overResult = resizeAllocations(over, { ...span, end: '2026-10-09' }, staffing);
+    expect(overResult.removed).toEqual([]);
+    expect(overResult.exceeded).toEqual([{ team: 'alpha', capacity: 100.2 }]);
   });
 
   it('clears unconvertible spans and preserves fractional effort through repeated resizing', () => {

@@ -1,18 +1,37 @@
+import { displayFixture } from '../../helpers/workItemDisplay.js';
 import { describe, it, expect } from 'vitest';
 import { createFilterSelectors } from '../../../www/js/application/selectors/filterSelectors.js';
 import { ColorService } from '../../../www/js/services/ColorService.js';
 import { createInitialAppState } from '../../../www/js/application/createInitialAppState.js';
+import { taskTypeKey } from '../../../www/js/application/shared/workItemDisplay.js';
 
 describe('application/selectors/filterSelectors', () => {
+  it('limits state choices to explicitly selected and visible qualified types', () => {
+    const state = createInitialAppState();
+    state.baseline.projects = [{ work_item_display: [{ process_id: 'process',
+      process_name: 'Process', tiers: [[
+        { name: 'Feature', states: [{ name: 'Active', category: 'InProgress' }] },
+        { name: 'Bug', states: [{ name: 'Open', category: 'Proposed' }] },
+      ]] }] }];
+    state.baseline.features = ['Feature', 'Bug'].map((type) => ({
+      id: type, process_id: 'process', type,
+    }));
+    state.selection.taskTypeNames = [taskTypeKey('process', 'Bug')];
+    const selectors = createFilterSelectors({ getState: () => state });
+    expect(selectors.getAvailableFeatureStates()).toEqual(['Open']);
+    state.view.options.hiddenTypes = [taskTypeKey('process', 'Bug')];
+    expect(selectors.getAvailableFeatureStates()).toEqual([]);
+  });
+
   it('offers ancestor card types while keeping hidden descendant types out of menus', () => {
     const state = createInitialAppState();
     state.baseline.features = [
-      { id: 'seed', type: 'Feature', presentationPlanIds: ['plan-a'] },
-      { id: 'ancestor', type: 'Epic', presentationPlanIds: [], ancestorOnly: true },
-      { id: 'hidden', type: 'Requirement', presentationPlanIds: [] },
+      { process_id: 'process', id: 'seed', type: 'Feature', presentationPlanIds: ['plan-a'] },
+      { process_id: 'process', id: 'ancestor', type: 'Epic', presentationPlanIds: [], ancestorOnly: true },
+      { process_id: 'process', id: 'hidden', type: 'Requirement', presentationPlanIds: [] },
     ];
     const selectors = createFilterSelectors({ getState: () => state });
-    expect(selectors.getSelectedTaskTypeNames()).toEqual(['Feature', 'Epic']);
+    expect(selectors.getSelectedTaskTypeNames()).toEqual(['Feature', 'Epic'].map((name) => taskTypeKey('process', name)));
   });
 
   it('treats historical anchor presentations as planned without changing task dates', () => {
@@ -39,25 +58,25 @@ describe('application/selectors/filterSelectors', () => {
   it('does not offer context-only types in ordinary task menus', () => {
     const state = createInitialAppState();
     state.baseline.features = [
-      { id: 'seed', type: 'Epic', presentationPlanIds: ['plan-a'] },
-      { id: 'linked', type: 'Requirement', presentationPlanIds: [] },
-      { id: 'visible', type: 'Feature', presentationPlanIds: ['plan-a'] },
+      { process_id: 'process', id: 'seed', type: 'Epic', presentationPlanIds: ['plan-a'] },
+      { process_id: 'process', id: 'linked', type: 'Requirement', presentationPlanIds: [] },
+      { process_id: 'process', id: 'visible', type: 'Feature', presentationPlanIds: ['plan-a'] },
     ];
     const selectors = createFilterSelectors({ getState: () => state });
 
-    expect(selectors.getSelectedTaskTypeNames()).toEqual(['Epic', 'Feature']);
+    expect(selectors.getSelectedTaskTypeNames()).toEqual(['Epic', 'Feature'].map((name) => taskTypeKey('process', name)));
     expect(state.baseline.features).toHaveLength(3);
   });
 
   it('projects visible types and unions packed restrictions with plugin restrictions', () => {
     const state = createInitialAppState();
-    state.baseline.features = [{ id: 'a', type: 'Epic' }, { id: 'b', type: 'Task' }];
-    state.view.options.hiddenTypes = ['Epic'];
+    state.baseline.features = [{ process_id: 'process', id: 'a', type: 'Epic' }, { process_id: 'process', id: 'b', type: 'Task' }];
+    state.view.options.hiddenTypes = ["[\"process\",\"epic\"]"];
     state.view.options.displayMode = 'packed';
     const pluginRestrictions = { taskFilters: { schedule: ['planned'] }, states: ['Done'] };
     state.selection.sidebarDisabled = pluginRestrictions;
     const selectors = createFilterSelectors({ getState: () => state });
-    expect(selectors.getSelectedTaskTypeNames()).toEqual(['Task']);
+    expect(selectors.getSelectedTaskTypeNames()).toEqual([taskTypeKey('process', 'Task')]);
     expect(selectors.isSidebarControlDisabled('taskFilter', 'schedule', 'planned')).toBe(true);
     expect(selectors.isSidebarControlDisabled('taskFilter', 'schedule', 'unplanned')).toBe(true);
     expect(selectors.isSidebarControlDisabled('state', 'Done')).toBe(true);
@@ -70,7 +89,9 @@ describe('application/selectors/filterSelectors', () => {
   it('store selectors read selected states from selection slice', () => {
     const store = {
       getState: () => ({
+        view: { options: { hiddenTypes: [] } },
         selection: {
+          taskTypeNames: [],
           featureStateNames: ['Open', 'Closed'],
           taskFilters: {
             schedule: { planned: true, unplanned: true },
@@ -94,10 +115,12 @@ describe('application/selectors/filterSelectors', () => {
     expect(selectors.getSelectedFeatureStateNames()).toEqual(['Open', 'Closed']);
   });
 
-  it('store selectors derive available states from baseline features when explicit list is absent', () => {
+  it('store selectors derive available states from normalized type metadata', () => {
     const store = {
       getState: () => ({
+        view: { options: { hiddenTypes: [] } },
         selection: {
+          taskTypeNames: [],
           featureStateNames: [],
           taskFilters: {
             schedule: { planned: true, unplanned: true },
@@ -108,11 +131,11 @@ describe('application/selectors/filterSelectors', () => {
         },
         baseline: {
           features: [
-            { id: 'f1', state: 'Todo' },
-            { id: 'f2', state: 'Doing' },
-            { id: 'f3', state: 'Todo' },
+            { process_id: 'process', type: 'Feature', id: 'f1', state: 'Todo' },
+            { process_id: 'process', type: 'Feature', id: 'f2', state: 'Doing' },
+            { process_id: 'process', type: 'Feature', id: 'f3', state: 'Todo' },
           ],
-          projects: [],
+          projects: [{ work_item_display: displayFixture([['Feature']], { Todo: 'Proposed', Doing: 'InProgress' }) }],
         },
         filter: {
           availableFeatureStates: [],
@@ -127,7 +150,9 @@ describe('application/selectors/filterSelectors', () => {
   it('store selectors tolerate a missing filter slice and still derive states from baseline data', () => {
     const store = {
       getState: () => ({
+        view: { options: { hiddenTypes: [] } },
         selection: {
+          taskTypeNames: [],
           featureStateNames: [],
           taskFilters: {
             schedule: { planned: true, unplanned: true },
@@ -138,11 +163,11 @@ describe('application/selectors/filterSelectors', () => {
         },
         baseline: {
           features: [
-            { id: 'f1', state: 'Todo' },
-            { id: 'f2', state: 'Blocked' },
-            { id: 'f3', state: 'Todo' },
+            { process_id: 'process', type: 'Feature', id: 'f1', state: 'Todo' },
+            { process_id: 'process', type: 'Feature', id: 'f2', state: 'Blocked' },
+            { process_id: 'process', type: 'Feature', id: 'f3', state: 'Todo' },
           ],
-          projects: [],
+          projects: [{ work_item_display: displayFixture([['Feature']], { Todo: 'Proposed', Blocked: 'InProgress' }) }],
         },
       }),
     };
@@ -151,10 +176,12 @@ describe('application/selectors/filterSelectors', () => {
     expect(selectors.getAvailableFeatureStates()).toEqual(['Todo', 'Blocked']);
   });
 
-  it('store selectors respect configured state_display_sequence ordering', () => {
+  it('store selectors respect normalized type state ordering', () => {
     const store = {
       getState: () => ({
+        view: { options: { hiddenTypes: [] } },
         selection: {
+          taskTypeNames: [],
           featureStateNames: [],
           taskFilters: {
             schedule: { planned: true, unplanned: true },
@@ -165,21 +192,15 @@ describe('application/selectors/filterSelectors', () => {
         },
         baseline: {
           features: [
-            { id: 'f1', state: 'Closed' },
-            { id: 'f2', state: 'New' },
-            { id: 'f3', state: 'Resolved' },
-            { id: 'f4', state: 'Defined' },
-            { id: 'f5', state: 'Active' },
+            { process_id: 'process', type: 'Feature', id: 'f1', state: 'Closed' },
+            { process_id: 'process', type: 'Feature', id: 'f2', state: 'New' },
+            { process_id: 'process', type: 'Feature', id: 'f3', state: 'Resolved' },
+            { process_id: 'process', type: 'Feature', id: 'f4', state: 'Defined' },
+            { process_id: 'process', type: 'Feature', id: 'f5', state: 'Active' },
           ],
           projects: [
             {
-              state_display_sequence: [
-                { types: ['New'] },
-                { types: ['Defined'] },
-                { types: ['Active'] },
-                { types: ['Resolved'] },
-                { types: ['Closed'] },
-              ],
+              work_item_display: displayFixture(undefined, undefined, ['New', 'Defined', 'Active', 'Resolved', 'Closed']),
             },
           ],
         },
@@ -203,7 +224,9 @@ describe('application/selectors/filterSelectors', () => {
   it('store selectors prefer project configuration over stale explicit state order', () => {
     const store = {
       getState: () => ({
+        view: { options: { hiddenTypes: [] } },
         selection: {
+          taskTypeNames: [],
           featureStateNames: [],
           taskFilters: {
             schedule: { planned: true, unplanned: true },
@@ -215,21 +238,15 @@ describe('application/selectors/filterSelectors', () => {
         filter: { availableFeatureStates: ['Closed', 'New', 'Resolved', 'Active', 'Defined'] },
         baseline: {
           features: [
-            { id: 'f1', state: 'Closed' },
-            { id: 'f2', state: 'New' },
-            { id: 'f3', state: 'Resolved' },
-            { id: 'f4', state: 'Defined' },
-            { id: 'f5', state: 'Active' },
+            { process_id: 'process', type: 'Feature', id: 'f1', state: 'Closed' },
+            { process_id: 'process', type: 'Feature', id: 'f2', state: 'New' },
+            { process_id: 'process', type: 'Feature', id: 'f3', state: 'Resolved' },
+            { process_id: 'process', type: 'Feature', id: 'f4', state: 'Defined' },
+            { process_id: 'process', type: 'Feature', id: 'f5', state: 'Active' },
           ],
           projects: [
             {
-              state_display_sequence: [
-                { types: ['New'] },
-                { types: ['Defined'] },
-                { types: ['Active'] },
-                { types: ['Resolved'] },
-                { types: ['Closed'] },
-              ],
+              work_item_display: displayFixture(undefined, undefined, ['New', 'Defined', 'Active', 'Resolved', 'Closed']),
             },
           ],
         },
@@ -258,7 +275,9 @@ describe('application/selectors/filterSelectors', () => {
 
     const store = {
       getState: () => ({
+        view: { options: { hiddenTypes: [] } },
         selection: {
+          taskTypeNames: [],
           featureStateNames: [],
           taskFilters: {
             schedule: { planned: true, unplanned: true },
@@ -268,11 +287,10 @@ describe('application/selectors/filterSelectors', () => {
           },
         },
         baseline: {
-          features: [{ id: 'f1', state: 'Todo' }, { id: 'f2', state: 'Doing' }],
+          features: [{ process_id: 'process', type: 'Feature', id: 'f1', state: 'Todo' }, { process_id: 'process', type: 'Feature', id: 'f2', state: 'Doing' }],
           projects: [
             {
-              state_categories: { Todo: 'Proposed', Doing: 'InProgress' },
-              state_display_sequence: [{ types: ['Todo', 'Doing'] }],
+              work_item_display: displayFixture(undefined, { Todo: 'Proposed', Doing: 'InProgress' }, ['Todo', 'Doing']),
             },
           ],
         },
@@ -288,7 +306,7 @@ describe('application/selectors/filterSelectors', () => {
 
     expect(Object.keys(colors)).toEqual(['Todo', 'Doing']);
     expect(colors).toEqual(expected);
-    expect(selectors.getFeatureStateCategory('Todo')).toBe('Proposed');
+    expect(selectors.getFeatureStateCategory({ process_id: 'process', type: 'Feature', state: 'Todo' })).toBe('Proposed');
     expect(selectors.compareFeatureStates('Doing', 'Todo')).toBeGreaterThan(0);
   });
 
@@ -318,6 +336,7 @@ describe('application/selectors/filterSelectors', () => {
     for (const [dimension, options] of disabledDimensions) {
       const store = {
         getState: () => ({
+        view: { options: { hiddenTypes: [] } },
           selection: {
             featureStateNames: [],
             taskFilters: {

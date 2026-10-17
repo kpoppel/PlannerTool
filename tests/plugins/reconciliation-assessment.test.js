@@ -1,7 +1,8 @@
+import { displayFixture } from '../helpers/workItemDisplay.js';
 import { describe, expect, it } from 'vitest';
 import { assessReconciliation } from '../../www/js/plugins/reconciliation/assessment.js';
 
-const task = (id, values = {}) => ({
+const task = (id, values = {}) => ({ process_id: 'process',
   id, title: `Task ${id}`, project: 'project', type: 'Feature', state: 'Active',
   start: '2026-10-01', end: '2026-10-10', parentId: null, capacity: [], relations: [],
   ...values,
@@ -9,13 +10,13 @@ const task = (id, values = {}) => ({
 const assess = (features, scopeIds, sourceFeatures = features) => assessReconciliation({
   features, sourceFeatures, scopeIds: new Set(scopeIds), today: '2026-10-03',
   projects: [{ id: 'project', name: 'Programme', type: 'project', container_order: 0,
-    state_categories: { Closed: 'Completed', Active: 'InProgress', New: 'Proposed' } }],
+    work_item_display: displayFixture(undefined, { Closed: 'Completed', Active: 'InProgress', New: 'Proposed' }) }],
   hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }, { types: ['Task'] }],
 });
 
 describe('Reconciliation assessment', () => {
   it('reports unloaded dependency targets without treating an incomplete assessment as healthy', () => {
-    const features = [task('child', { type: 'Epic', relations: [
+    const features = [task('child', { process_id: 'process', type: 'Epic', relations: [
       { id: 'unloaded', type: 'Predecessor' },
       { id: 'unloaded', type: 'Predecessor' },
     ] }), task('outside', { relations: [{ id: 'other', type: 'Successor' }] })];
@@ -30,7 +31,7 @@ describe('Reconciliation assessment', () => {
 
   it('reports an unloaded ancestor beyond a loaded intermediate task', () => {
     const features = [task('child', { parentId: 'middle' }),
-      task('middle', { type: 'Epic', parentId: 'unloaded' })];
+      task('middle', { process_id: 'process', type: 'Epic', parentId: 'unloaded' })];
     expect(assess(features, ['child']).find((issue) => issue.type === 'unavailable-ancestor'))
       .toMatchObject({ category: 'schedule', featureId: 'child', relatedId: 'unloaded',
         path: ['child', 'middle', 'unloaded'], severity: 'info' });
@@ -45,7 +46,7 @@ describe('Reconciliation assessment', () => {
   });
 
   it('detects a hidden ancestor and deduplicates a relationship when both ends are scoped', () => {
-    const features = [task('parent', { type: 'Epic' }),
+    const features = [task('parent', { process_id: 'process', type: 'Epic' }),
       task('child', { parentId: 'parent', end: '2026-10-22' })];
     const hidden = assess(features, ['child']).filter((issue) => issue.category === 'schedule');
     expect(hidden).toHaveLength(1);
@@ -56,7 +57,7 @@ describe('Reconciliation assessment', () => {
   });
 
   it('reports incomplete ancestor dates separately from measurable containment drift', () => {
-    const features = [task('parent', { type: 'Epic', end: null }),
+    const features = [task('parent', { process_id: 'process', type: 'Epic', end: null }),
       task('child', { parentId: 'parent' })];
     expect(assess(features, ['child']).find((issue) => issue.type === 'unavailable-containment-dates'))
       .toMatchObject({ category: 'schedule', featureId: 'child', relatedId: 'parent',
@@ -64,7 +65,7 @@ describe('Reconciliation assessment', () => {
   });
 
   it('includes related parent and children in contextual quality findings', () => {
-    const features = [task('parent', { type: 'Epic', state: 'Closed', capacity: [{ team: 'one' }] }),
+    const features = [task('parent', { process_id: 'process', type: 'Epic', state: 'Closed', capacity: [{ team: 'one' }] }),
       task('child', { parentId: 'parent', capacity: [{ team: 'two' }] })];
     const issues = assess(features, ['child']);
     expect(issues.find((issue) => issue.type === 'parent-state').path).toEqual(['child', 'parent']);
@@ -72,16 +73,16 @@ describe('Reconciliation assessment', () => {
   });
 
   it('finds descendants beyond an unplanned intermediate task', () => {
-    const features = [task('root', { type: 'Epic' }),
+    const features = [task('root', { process_id: 'process', type: 'Epic' }),
       task('middle', { parentId: 'root', start: null, end: null }),
-      task('leaf', { type: 'Task', parentId: 'middle', start: '2026-09-29' })];
+      task('leaf', { process_id: 'process', type: 'Task', parentId: 'middle', start: '2026-09-29' })];
     const issue = assess(features, ['root']).find((entry) => entry.type === 'containment');
     expect(issue).toMatchObject({ featureId: 'leaf', relatedId: 'root', earlyDays: 2,
       path: ['leaf', 'middle', 'root'] });
   });
 
   it('distinguishes new and worsened conflicts from existing conflicts', () => {
-    const source = [task('parent', { type: 'Epic' }), task('child', { parentId: 'parent' })];
+    const source = [task('parent', { process_id: 'process', type: 'Epic' }), task('child', { parentId: 'parent' })];
     const proposed = [source[0], { ...source[1], end: '2026-10-12' }];
     expect(assess(proposed, ['child'], source).find((issue) => issue.category === 'schedule').change)
       .toBe('new');
@@ -90,7 +91,7 @@ describe('Reconciliation assessment', () => {
   });
 
   it('does not call unloaded parents or natural roots orphaned', () => {
-    const issues = assess([task('root', { type: 'Epic' }),
+    const issues = assess([task('root', { process_id: 'process', type: 'Epic' }),
       task('child', { parentId: 'unloaded' }), task('unlinked')], ['root', 'child', 'unlinked']);
     expect(issues.filter((issue) => issue.type === 'missing-parent').map((issue) => issue.featureId))
       .toEqual(['unlinked']);
@@ -120,7 +121,7 @@ describe('Reconciliation assessment', () => {
   });
 
   it('preserves team allocation and dependency diagnostics with hidden context', () => {
-    const features = [task('parent', { type: 'Epic', capacity: [{ team: 'one' }] }),
+    const features = [task('parent', { process_id: 'process', type: 'Epic', capacity: [{ team: 'one' }] }),
       task('child', { parentId: 'parent', capacity: [{ team: 'two' }],
         relations: [{ id: 'predecessor', type: 'Predecessor' }] }),
       task('predecessor', { start: '2026-10-05' })];
@@ -132,11 +133,11 @@ describe('Reconciliation assessment', () => {
   });
 
   it('uses configured container levels for same-type cross-plan anchoring', () => {
-    const features = [task('programme', { type: 'Epic', project: 'program' }),
-      task('anchored', { type: 'Epic', project: 'squad', parentId: 'programme' }),
-      task('unanchored', { type: 'Epic', project: 'squad' })];
-    const projects = [{ id: 'program', container_order: 0, state_categories: {} },
-      { id: 'squad', container_order: 1, state_categories: {} }];
+    const features = [task('programme', { process_id: 'process', type: 'Epic', project: 'program' }),
+      task('anchored', { process_id: 'process', type: 'Epic', project: 'squad', parentId: 'programme' }),
+      task('unanchored', { process_id: 'process', type: 'Epic', project: 'squad' })];
+    const projects = [{ id: 'program', container_order: 0, work_item_display: displayFixture(undefined, {}) },
+      { id: 'squad', container_order: 1, work_item_display: displayFixture(undefined, {}) }];
     const issues = assessReconciliation({ features, sourceFeatures: features,
       scopeIds: new Set(['anchored', 'unanchored']), today: '2026-10-03', projects,
       hierarchy: [{ types: ['Epic'] }] });
@@ -145,7 +146,9 @@ describe('Reconciliation assessment', () => {
   });
 
   it.each([
-    ['Epic', 'Feature', false], ['Feature', 'Task', false],
+    ['Epic', 'Feature', false], ['Feature', 'Task', true],
+    ['Feature', 'User Story', false], ['Feature', 'Bug', false],
+    ['User Story', 'Bug', true], ['Epic', 'User Story', true],
     ['Epic', 'Epic', true], ['Feature', 'Epic', true], ['Task', 'Task', true],
   ])('preserves hierarchy checks for %s above %s', (parentType, childType, invalid) => {
     const features = [task('parent', { type: parentType }),
@@ -154,7 +157,7 @@ describe('Reconciliation assessment', () => {
   });
 
   it('does not change root status when a higher-level task is hidden', () => {
-    const features = [task('root', { type: 'Epic' }), task('unlinked', { type: 'Task' })];
+    const features = [task('root', { process_id: 'process', type: 'Epic' }), task('unlinked', { process_id: 'process', type: 'Task' })];
     expect(assess(features, ['unlinked']).find((issue) => issue.type === 'missing-parent')).toBeDefined();
     expect(assess(features, ['root']).some((issue) => issue.type === 'missing-parent')).toBe(false);
   });
@@ -168,7 +171,7 @@ describe('Reconciliation assessment', () => {
   });
 
   it('compares a scenario with its source independently of baseline overrides', () => {
-    const source = [task('parent', { type: 'Epic' }), task('child', { parentId: 'parent' })];
+    const source = [task('parent', { process_id: 'process', type: 'Epic' }), task('child', { parentId: 'parent' })];
     const changed = [source[0], { ...source[1], end: '2026-10-22' }];
     expect(assess(changed, ['child'], source).find((issue) => issue.category === 'schedule').change)
       .toBe('new');

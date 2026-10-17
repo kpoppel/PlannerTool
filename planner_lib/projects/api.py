@@ -81,6 +81,8 @@ async def api_tasks(request: Request, response: Response):
     except Exception as exc:
         # Warning propagation must never break task reads.
         logger.warning('Failed to deliver task diagnostics: %s', exc)
+    if any(entry['code'] == 'tasks_stale_invalid_pat' for entry in diagnostics):
+        raise BackendAuthError('Task refresh rejected the acting user credential')
     return tasks
 
 

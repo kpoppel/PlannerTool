@@ -28,7 +28,7 @@ describe('application/commands/viewRestoreCommands', () => {
 
   it('captures visible default task types before a Sidebar is mounted', async () => {
     store.setState((state) => ({ ...state, baseline: { ...state.baseline,
-      features: [{ id: '1', type: 'epic' }, { id: '2', type: 'feature' }],
+      features: [{ process_id: 'process', id: '1', type: 'epic' }, { process_id: 'process', id: '2', type: 'feature' }],
     } }));
     let saved;
     const commands = createViewRestoreCommands(store, {
@@ -36,22 +36,22 @@ describe('application/commands/viewRestoreCommands', () => {
       listViews: async () => [],
     });
     await commands.saveCurrentView('Defaults');
-    expect(saved.viewOptions.selectedTaskTypes).toEqual(['epic', 'feature']);
+    expect(saved.viewOptions.selectedTaskTypes).toEqual(["[\"process\",\"epic\"]", "[\"process\",\"feature\"]"]);
     expect(store.getState().selection.taskTypeNames).toEqual([]);
   });
 
   it('restores task-type selection and visibility atomically before mount', async () => {
     store.setState((state) => ({ ...state, baseline: { ...state.baseline,
-      features: [{ id: '1', type: 'epic' }, { id: '2', type: 'feature' }],
+      features: [{ process_id: 'process', id: '1', type: 'epic' }, { process_id: 'process', id: '2', type: 'feature' }],
     } }));
     const commands = createViewRestoreCommands(store, {
       getView: async () => ({ id: 'v1', selectedProjects: {}, selectedTeams: {},
-        viewOptions: { selectedTaskTypes: ['feature'], hiddenTypes: ['feature'] },
+        viewOptions: { selectedTaskTypes: ["[\"process\",\"feature\"]"], hiddenTypes: ["[\"process\",\"feature\"]"] },
       }),
     }, null, vi.fn());
     await commands.loadAndApplyView('v1');
-    expect(store.getState().selection.taskTypeNames).toEqual(['feature']);
-    expect(store.getState().view.options.hiddenTypes).toEqual(['epic']);
+    expect(store.getState().selection.taskTypeNames).toEqual(["[\"process\",\"feature\"]"]);
+    expect(store.getState().view.options.hiddenTypes).toEqual(["[\"process\",\"epic\"]"]);
   });
 
   it('does not mutate the current filters while restoring a packed view', async () => {
@@ -147,14 +147,14 @@ describe('application/commands/viewRestoreCommands', () => {
       (state) => ({
         ...state,
         baseline: { ...state.baseline, features: [
-          { id: 'f1', type: 'feature' }, { id: 'f2', type: 'epic' },
+          { process_id: 'process', id: 'f1', type: 'feature' }, { process_id: 'process', id: 'f2', type: 'epic' },
         ] },
         selection: {
           ...state.selection,
           projectIds: ['p1', 'p3'],
           teamIds: ['t2'],
           featureStateNames: ['Doing', 'Done'],
-          taskTypeNames: ['feature', 'epic'],
+          taskTypeNames: ["[\"process\",\"feature\"]", "[\"process\",\"epic\"]"],
           taskFilters: { schedule: { planned: true, unplanned: false } },
         },
         view: {
@@ -185,7 +185,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(captured.viewOptions.taskViewMode).toBe('team');
     expect(captured.viewOptions.focusedPlanId).toBe('p3');
     expect(captured.viewOptions.selectedFeatureStates).toEqual(['Doing', 'Done']);
-    expect(captured.viewOptions.selectedTaskTypes).toEqual(['feature', 'epic']);
+    expect(captured.viewOptions.selectedTaskTypes).toEqual(["[\"process\",\"feature\"]", "[\"process\",\"epic\"]"]);
     expect(captured.viewOptions.taskFilters).toMatchObject({ schedule: { planned: true, unplanned: false } });
     expect(captured.viewOptions.context).toEqual({
       parent: true,
@@ -235,7 +235,7 @@ describe('application/commands/viewRestoreCommands', () => {
           timelineScale: 'weeks',
           taskViewMode: 'team',
           selectedFeatureStates: ['Doing', 'Done'],
-          selectedTaskTypes: ['feature'],
+          selectedTaskTypes: ["[\"process\",\"feature\"]"],
           taskFilters: { schedule: { planned: false, unplanned: true }, relations: { hasLinks: true, noLinks: false } },
           capacityViewMode: 'project',
           focusedPlanId: 'p3',
@@ -262,7 +262,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(snapshot.selection.projectIds).toEqual(['p1', 'p3']);
     expect(snapshot.selection.teamIds).toEqual(['t2']);
     expect(snapshot.selection.featureStateNames).toEqual(['Doing', 'Done']);
-    expect(snapshot.selection.taskTypeNames).toEqual(['feature']);
+    expect(snapshot.selection.taskTypeNames).toEqual(["[\"process\",\"feature\"]"]);
     expect(snapshot.selection.taskFilters).toMatchObject({
       schedule: { planned: false, unplanned: true },
       relations: { hasLinks: true, noLinks: false },
@@ -470,8 +470,8 @@ describe('application/commands/viewRestoreCommands', () => {
           projects: [{ id: 'p1' }, { id: 'p2' }],
           teams: [{ id: 't1' }, { id: 't2' }],
           features: [
-            { id: 'f1', state: 'Doing', type: 'Feature' },
-            { id: 'f2', state: 'Done', type: 'Epic' },
+            { process_id: 'process', id: 'f1', state: 'Doing', type: 'Feature' },
+            { process_id: 'process', id: 'f2', state: 'Done', type: 'Epic' },
           ],
         },
         scenarios: {
@@ -483,7 +483,7 @@ describe('application/commands/viewRestoreCommands', () => {
           projectIds: ['p2'],
           teamIds: ['t2'],
           featureStateNames: ['Doing'],
-          taskTypeNames: ['Feature'],
+          taskTypeNames: ["[\"process\",\"feature\"]"],
           taskFilters: {
             schedule: { planned: true, unplanned: false },
             allocation: { allocated: false, unallocated: true },
@@ -502,7 +502,7 @@ describe('application/commands/viewRestoreCommands', () => {
             showUnassignedCards: false,
             showUnplannedWork: false,
             showOnlyProjectHierarchy: true,
-            hiddenTypes: ['epic'],
+            hiddenTypes: ["[\"process\",\"epic\"]"],
             context: {
               parent: true,
               child: true,
@@ -547,7 +547,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(snapshot.selection.projectIds).toEqual(['p1', 'p2']);
     expect(snapshot.selection.teamIds).toEqual(['t1', 't2']);
     expect(snapshot.selection.featureStateNames).toEqual(['Doing', 'Done']);
-    expect(snapshot.selection.taskTypeNames).toEqual(['Feature', 'Epic']);
+    expect(snapshot.selection.taskTypeNames).toEqual(["[\"process\",\"feature\"]", "[\"process\",\"epic\"]"]);
     expect(snapshot.selection.taskFilters).toEqual({
       schedule: { planned: true, unplanned: true },
       allocation: { allocated: true, unallocated: true },

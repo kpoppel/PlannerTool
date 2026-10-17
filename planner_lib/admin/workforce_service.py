@@ -9,6 +9,12 @@ from planner_lib.domain.teams import TeamCatalogue
 class WorkforceAdminService(AdminService):
     """Serialize project availability checks with catalogue mutation and persistence."""
 
+    def save_plans(self, content, process_imports):
+        with self._config_manager._storage.transaction():
+            catalogue = TeamCatalogue(self.get_config('teams'))
+            validate_project_availability(content, catalogue.definitions())
+            return super().save_plans(content, process_imports)
+
     def save_config(self, key: str, content: Any) -> None:
         """Validate project references before writing either a backup or the new value."""
         if key != 'projects':

@@ -72,8 +72,9 @@ export function renderSidebarTaskFilters({ model, actions }) {
         <div class="filter-options">
           ${model.types.map((type) => html`
             <div class="filter-option ${type.active ? 'active' : ''} ${type.disabled ? 'disabled' : ''}"
+              data-type-key=${type.key}
               aria-disabled=${type.disabled ? 'true' : 'false'}
-              @click=${() => { if (!type.disabled) actions.toggleType(type.name); }}
+              @click=${() => { if (!type.disabled) actions.toggleType(type.key); }}
               title=${type.disabled ? 'Not relevant in current tool context' : ''}>
               <div class="filter-checkbox"></div>
               <div style="flex:1;display:flex;align-items:center;gap:4px;">

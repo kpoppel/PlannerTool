@@ -1,11 +1,12 @@
+import { displayFixture } from '../helpers/workItemDisplay.js';
 import { describe, expect, it } from 'vitest';
 import { projectPublication } from '../../www/js/components/scenarioPublication.js';
 
-const task = (id, project, values = {}) => ({ id, project, title: `Task ${id}`,
+const task = (id, project, values = {}) => ({ process_id: 'process', id, project, title: `Task ${id}`,
   type: 'Feature', state: 'Active', start: '2026-10-01', end: '2026-10-10',
   parentId: null, capacity: [], relations: [], ...values });
 const projects = ['own', 'other'].map((id) => ({ id, name: id, container_order: 0,
-  state_categories: { Active: 'InProgress' } }));
+  work_item_display: displayFixture(undefined, { Active: 'InProgress' }) }));
 const context = { projects, hierarchy: [{ types: ['Feature'] }], today: '2026-10-03' };
 
 describe('Scenario publication projection', () => {

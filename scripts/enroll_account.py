@@ -78,9 +78,9 @@ def session_is_valid(base, cookies, email):
 
 def enroll(base, cookies, key_file, email, name):
     session = api_cli._cookie_session(cookies, required=False)
-    response = session.post(api_cli.build_url(base, '/api/auth/enroll'),
-                            json={'email': email, 'name': name, 'accountKey': _read_key(key_file)},
-                            headers=JSON_HEADERS, timeout=30)
+    response = api_cli.post_enrollment(session, base, {
+        'email': email, 'name': name, 'accountKey': _read_key(key_file),
+    })
     if response.status_code == 409:
         raise EnrollmentError('Account key required; restore the saved key file or ask an administrator to reset access')
     if response.status_code == 401:

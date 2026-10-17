@@ -27,22 +27,24 @@ test.beforeEach(async ({ page }) => {
     await import('/js/components/sidebar/SidebarFooter.lit.js');
     await import('/js/components/DetailsPanel.lit.js');
     const state = createInitialAppState();
-    const parent = { id: 'programme', title: 'Programme delivery', type: 'Epic',
+    const parent = { id: 'programme', process_id: 'process', title: 'Programme delivery', type: 'Epic',
       project: 'programme', state: 'Active', start: '2026-10-01', end: '2026-10-10',
       parentId: null, capacity: [], relations: [] };
     const child = { ...parent, id: 'delivery', title: 'Integration and customer acceptance',
       type: 'Feature', project: 'delivery', parentId: 'programme' };
     const project = { id: 'programme', name: 'Programme', type: 'project', container_order: 0,
-      container_types: ['project', 'team'], task_type_hierarchy: [{ types: ['Epic'] }, { types: ['Feature'] }],
+      container_types: ['project', 'team'], work_item_display: [{ process_id: 'process',
+        process_name: 'Delivery process', tiers: ['Epic', 'Feature'].map((name) => [{ name,
+          states: [{ name: 'Active', category: 'InProgress' }] }]) }],
       allocation_defaults: { project: [], team: [] },
-      state_categories: { Active: 'InProgress' }, state_display_sequence: [], color: '#167d69' };
+      color: '#167d69' };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [project, { ...project, id: 'delivery', name: 'Delivery team',
       type: 'team', container_order: 1, color: '#d99030' }];
     state.baseline.features = [parent, child];
     state.selection.projectIds = ['programme', 'delivery'];
     state.selection.featureStateNames = ['Active'];
-    state.selection.taskTypeNames = ['Feature'];
+    state.selection.taskTypeNames = ['["process","feature"]'];
     store.setState(state, true);
     reconciliation.clock = () => new Date('2026-10-03T12:00:00');
     await pluginManager.register(new PluginReconciliation('plugin-reconciliation', {
@@ -76,7 +78,7 @@ test('task cache freshness is logged and background refresh preserves the workin
   await page.route('**/api/tasks', (route) => {
     taskReads += 1;
     return route.fulfill({ json: [{ id: 'delivery', title: refreshed ? 'Updated delivery' : 'Cached delivery',
-      type: 'Feature', state: 'Active', project: 'delivery', relations: [], capacity: [] }],
+      process_id: 'process', type: 'Feature', state: 'Active', project: 'delivery', relations: [], capacity: [] }],
     headers: { 'X-Backend-Diagnostics': JSON.stringify([{
       code: 'task_cache_freshness', severity: 'info',
       message: refreshed ? 'Task cache updated just now: fresh.' : 'Task cache updated 12 minutes ago: fresh.',
@@ -198,7 +200,10 @@ for (const width of [1366, 1024]) {
       store.setState((state) => ({ ...state,
         baseline: { ...state.baseline,
           projects: state.baseline.projects.map((project) => ({ ...project,
-            state_categories: { Active: 'InProgress', Done: 'Completed' } })),
+            work_item_display: project.work_item_display.map((process) => ({ ...process,
+              tiers: process.tiers.map((tier) => tier.map((type) => ({ ...type, states: [
+                { name: 'Active', category: 'InProgress' }, { name: 'Done', category: 'Completed' },
+              ] }))) })) })),
           features: state.baseline.features.map((feature) => feature.id === 'delivery'
             ? { ...feature, end: '2026-10-02' } : { ...feature, state: 'Done' }),
         },
@@ -278,7 +283,11 @@ for (const width of [1366, 1024]) {
       store.setState((state) => ({ ...state,
         baseline: { ...state.baseline,
           projects: state.baseline.projects.map((project) => ({ ...project,
-            state_categories: { Active: 'InProgress', Delivered: 'Completed', Cancelled: 'Completed' } })),
+            work_item_display: project.work_item_display.map((process) => ({ ...process,
+              tiers: process.tiers.map((tier) => tier.map((type) => ({ ...type, states: [
+                { name: 'Active', category: 'InProgress' }, { name: 'Delivered', category: 'Completed' },
+                { name: 'Cancelled', category: 'Completed' },
+              ] }))) })) })),
           features: state.baseline.features.map((feature) => feature.id === 'delivery'
             ? { ...feature, end: '2026-10-02' } : feature),
         },

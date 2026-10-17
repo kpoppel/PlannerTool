@@ -41,9 +41,8 @@ Design
 * ``fetch_projects`` / ``fetch_project_map`` are overridden below to call
   straight through to the inner backend, bypassing the caching layer
   entirely: project config already lives in diskcache via ``ConfigBackend``,
-  and ADO enrichment (state_categories) reads a separate, already-cached
-  metadata service, so there is no remote (ADO) API call for this layer to
-  save by also caching the result.
+    and its display model reads the persisted process catalogue, so there is
+    no remote (ADO) API call for this layer to save by also caching the result.
 """
 from __future__ import annotations
 
@@ -152,7 +151,12 @@ class CachingBackend:
         self._refresh_lock = threading.Lock()
         self._refresh_inflight: set[str] = set()
         from planner_lib.backend.task_snapshot import TaskSnapshot
-        self._task_snapshot = TaskSnapshot(storage, inner, lambda: self._ttl_config.ttl_for('fetch_tasks'))
+        self._task_snapshot = TaskSnapshot(
+            storage, inner, lambda: self._ttl_config.ttl_for('fetch_tasks'),
+            lambda error, credential: self._record_stale_warning(
+                error, key='fetch_task_context__complete', user_id=credential['user_id'],
+            ),
+        )
         logger.info(
             "CachingBackend: initialised wrapping %s",
             type(inner).__name__,
@@ -172,6 +176,11 @@ class CachingBackend:
             build(self._inner, credential)
             return {'status': 'completed'}
         return self._task_snapshot.refresh(build, identity, guard, credential)
+
+    def rebuild_task_snapshot(self, build, identity, guard, credential):
+        if not self._inner_is_remote:
+            return build(self._inner, credential)
+        return self._task_snapshot.rebuild_now(build, identity, guard, credential)
 
     def task_snapshot_diagnostics(self, identity, guard):
         if not self._inner_is_remote:
@@ -315,7 +324,7 @@ class CachingBackend:
         self._record_warning(code=code, message=message, user_id=user_id)
         logger.warning(
             'CachingBackend: refresh of %s failed (%s); keeping existing cached content',
-            key, exc,
+            key, type(exc).__name__,
         )
 
     def _record_stale_no_data_warning(self, *, key: str, user_id: Optional[str]) -> None:

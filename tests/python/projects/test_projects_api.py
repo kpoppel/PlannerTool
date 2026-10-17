@@ -205,7 +205,7 @@ def test_tasks_list_and_project_param(authenticated_client):
     assert task_repo.last_read_args['project_id'] == '42'
 
 
-def test_tasks_returns_warning_headers_when_stale_fallback_used(authenticated_client):
+def test_tasks_routes_stale_pat_failure_to_credential_repair(authenticated_client):
     import json
 
     task_repo = _make_task_repository()
@@ -214,12 +214,8 @@ def test_tasks_returns_warning_headers_when_stale_fallback_used(authenticated_cl
     register_service_on_client(authenticated_client, 'backend', _make_backend_with_warning())
 
     r = authenticated_client.get('/api/tasks')
-    assert r.status_code == 200
-    diagnostic, = json.loads(r.headers['X-Backend-Diagnostics'])
-    assert diagnostic['severity'] == 'warning'
-    assert diagnostic['code'] == 'tasks_stale_invalid_pat'
-    assert 'PAT is invalid or expired' in diagnostic['message']
-    assert 'user_id' not in diagnostic
+    assert r.status_code == 403
+    assert r.json() == {'error': 'pat_invalid'}
 
 
 def test_tasks_reports_shared_snapshot_freshness(authenticated_client):
@@ -231,13 +227,11 @@ def test_tasks_reports_shared_snapshot_freshness(authenticated_client):
     }]
     register_service_on_client(authenticated_client, 'task_repository', repository)
     register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
-    register_service_on_client(authenticated_client, 'backend', _make_backend_with_warning())
-
     response = authenticated_client.get('/api/tasks')
 
     assert response.status_code == 200
     diagnostics = json.loads(response.headers['X-Backend-Diagnostics'])
-    assert {item['code'] for item in diagnostics} == {'task_cache_freshness', 'tasks_stale_invalid_pat'}
+    assert {item['code'] for item in diagnostics} == {'task_cache_freshness'}
     assert all(set(item) == {'code', 'severity', 'message'} for item in diagnostics)
 
 
@@ -286,7 +280,7 @@ def test_tasks_returns_every_diagnostic_without_private_metadata(authenticated_c
     backend.consume_diagnostics.assert_called_once_with(user_id='test-account-id')
 
 
-def test_tasks_invalid_pat_without_stale_returns_401(authenticated_client):
+def test_tasks_invalid_pat_without_stale_returns_403(authenticated_client):
     from planner_lib.backend.errors import BackendAuthError
 
     class TaskRepo:
@@ -297,8 +291,8 @@ def test_tasks_invalid_pat_without_stale_returns_401(authenticated_client):
     register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
 
     r = authenticated_client.get('/api/tasks')
-    assert r.status_code == 401
-    assert 'invalid_pat' in r.text
+    assert r.status_code == 403
+    assert r.json() == {'error': 'pat_invalid'}
 
 
 def test_tasks_backend_outage_without_stale_returns_503(authenticated_client):

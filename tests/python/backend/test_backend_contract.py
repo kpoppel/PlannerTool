@@ -22,6 +22,7 @@ import pytest
 from typing import get_protocol_members
 
 from planner_lib.backend.port import BackendPort
+from tests.python.azure.test_process_catalogue import catalogue_storage
 
 # The area path used throughout all contract tests
 AREA = 'MyOrg\\\\TeamA'
@@ -67,7 +68,7 @@ def _make_static_backend_yaml(tasks, tmp_path):
     data = {AREA: tasks}
     p = tmp_path / 'tasks.yml'
     p.write_text(yaml.safe_dump(data))
-    return StaticBackend(str(p))
+    return StaticBackend(str(p), storage=catalogue_storage(['MyOrg', 'Unknown']))
 
 
 def _make_static_backend_json(tasks, tmp_path):
@@ -76,7 +77,7 @@ def _make_static_backend_json(tasks, tmp_path):
     data = {AREA: tasks}
     p = tmp_path / 'tasks.json'
     p.write_text(json.dumps(data))
-    return StaticBackend(str(p))
+    return StaticBackend(str(p), storage=catalogue_storage(['MyOrg', 'Unknown']))
 
 
 def _make_caching_backend(tasks, tmp_path):
@@ -149,18 +150,85 @@ def test_backend_satisfies_protocol(backend):
 # ---------------------------------------------------------------------------
 
 def test_fetch_tasks_returns_list(backend):
-    result = backend.fetch_tasks(AREA)
+    result = backend.fetch_tasks(AREA, task_types=["Feature", "Epic"])
     assert isinstance(result, list)
 
 
+@pytest.mark.parametrize('kind', ['static', 'fixture', 'generator'])
+@pytest.mark.parametrize('days,expected', [(0, {'1'}), (90, {'1', '2'})])
+def test_catalogue_type_and_history_contract_across_local_backends(kind, days, expected, tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from planner_lib.backend.static import StaticBackend
+    from planner_lib.backend.mock import MockFixtureBackend, MockGeneratorBackend, _MockBackendBase
+    from planner_lib.storage.memory_backend import MemoryStorage
+    from tests.python.azure.test_process_catalogue import catalogue
+    from tests.python.azure.test_azure_clients import _linked_client, _linked_item
+
+    stored = catalogue()
+    stored['processes'][0]['projects'] = ['A']
+    stored['processes'][0]['types'][1]['states'] = [
+        {'name': 'Active', 'category': 'InProgress', 'order': 1},
+        {'name': 'Closed', 'category': 'Completed', 'order': 2},
+        {'name': 'Removed', 'category': 'Removed', 'order': 3},
+    ]
+    recent = (datetime.now(timezone.utc).date() - timedelta(days=30)).isoformat()
+    items = {identity: _linked_item(identity, item_type) for identity, item_type in
+             ((1, 'Feature'), (2, 'Feature'), (3, 'Bug'), (4, 'Feature'))}
+    items[2].fields.update({'System.State': 'Closed',
+                            'Microsoft.VSTS.Common.StateChangeDate': recent})
+    items[4].fields['System.State'] = 'Removed'
+    storage = MemoryStorage()
+    storage.save('config', 'ado_processes', stored)
+    plan = {'id': 'plan', 'name': 'Plan', 'type': 'project', 'area_path': 'A\\WrongArea',
+            'task_types': ['Feature'], 'closed_history_days': days}
+    if kind == 'static':
+        path = tmp_path / 'tasks.json'
+        path.write_text(json.dumps({plan['area_path']: [
+            {'id': str(item.id), 'type': item.fields['System.WorkItemType'],
+             'state': item.fields['System.State'], 'stateChangeDate': recent}
+            for item in items.values()
+        ]}))
+        local = StaticBackend(str(path), storage=storage)
+    else:
+        cls = MockFixtureBackend if kind == 'fixture' else MockGeneratorBackend
+        local = cls.__new__(cls)
+        _MockBackendBase.__init__(local, 'org', storage, capacity_service=MagicMock(),
+                                  team_repository=MagicMock())
+        client, wit = _linked_client(items)
+        wit.get_work_items.side_effect = lambda ids, **kwargs: [items[identity] for identity in ids]
+        wit.query_by_wiql = MagicMock(return_value=SimpleNamespace(
+            work_items=[SimpleNamespace(id=identity) for identity in items]))
+        client.get_iterations = MagicMock(return_value=[])
+        local._client = MagicMock()
+        local._client.connect.return_value.__enter__.return_value = client
+
+    tasks = local.fetch_plan_tasks(plan)
+
+    assert {task['id'] for task in tasks} == expected
+    assert all(task['process_id'] == 'agile' for task in tasks)
+
+
+def test_mock_enrichment_failure_aborts_instead_of_returning_partial_results():
+    from unittest.mock import MagicMock
+    from planner_lib.backend.mock import _MockBackendBase
+    backend = _MockBackendBase('org', catalogue_storage(['A']))
+    backend._adapter = MagicMock()
+    backend._adapter.to_domain.side_effect = ValueError('invalid source payload')
+    with pytest.raises(ValueError, match='invalid source payload'):
+        backend._enrich([{'id': '1', 'adoProject': 'A', 'type': 'Feature'}],
+                        'A\\Team', {}, project_id='plan')
+
+
 def test_fetch_tasks_returns_both_tasks(backend):
-    result = backend.fetch_tasks(AREA)
+    result = backend.fetch_tasks(AREA, task_types=["Feature", "Epic"])
     ids = {t['id'] for t in result}
     assert ids == {'10', '20'}
 
 
 def test_fetch_tasks_unknown_area_returns_empty(backend):
-    result = backend.fetch_tasks('Unknown\\\\Area')
+    result = backend.fetch_tasks('Unknown\\\\Area', task_types=["Feature", "Epic"])
     assert result == []
 
 
@@ -176,31 +244,29 @@ def test_fetch_tasks_filter_by_type_case_insensitive(backend):
     assert len(result) == 1
 
 
-def test_fetch_tasks_filter_by_state(backend):
-    result = backend.fetch_tasks(AREA, include_states=['Active'])
-    assert all(t['state'] == 'Active' for t in result)
-    assert len(result) == 1
+def test_fetch_tasks_active_categories_do_not_require_history(backend):
+    result = backend.fetch_tasks(AREA, task_types=['Epic', 'Feature'], closed_history_days=0)
+    assert {task['state'] for task in result} == {'Active', 'Resolved'}
 
 
-def test_fetch_tasks_filter_by_state_case_insensitive(backend):
-    result = backend.fetch_tasks(AREA, include_states=['active'])
-    assert len(result) == 1
+def test_fetch_tasks_history_window_keeps_active_categories(backend):
+    result = backend.fetch_tasks(AREA, task_types=['Epic', 'Feature'], closed_history_days=30)
+    assert len(result) == 2
 
 
-def test_fetch_tasks_filter_type_and_state_combined(backend):
-    """Both filters applied together — only items matching both survive."""
-    result = backend.fetch_tasks(AREA, task_types=['Feature'], include_states=['Active'])
+def test_fetch_tasks_type_filter_with_history_window(backend):
+    result = backend.fetch_tasks(AREA, task_types=['Feature'], closed_history_days=30)
     assert len(result) == 1
     assert result[0]['id'] == '10'
 
 
 def test_fetch_tasks_filter_no_match_returns_empty(backend):
-    result = backend.fetch_tasks(AREA, task_types=['UserStory'])
+    result = backend.fetch_tasks(AREA, task_types=['Bug'])
     assert result == []
 
 
 def test_fetch_tasks_each_item_has_required_keys(backend):
-    result = backend.fetch_tasks(AREA)
+    result = backend.fetch_tasks(AREA, task_types=["Feature", "Epic"])
     required = {'id', 'title', 'type', 'state', 'project'}
     for item in result:
         missing = required - item.keys()
@@ -209,13 +275,13 @@ def test_fetch_tasks_each_item_has_required_keys(backend):
 
 def test_fetch_plan_tasks_associates_seeds_without_mutating_source_records(backend):
     plan = {'id': 'configured-plan', 'area_path': AREA,
-            'task_types': ['Feature'], 'include_states': ['Active']}
+            'task_types': ['Feature'], 'closed_history_days': 0}
 
     result = backend.fetch_plan_tasks(plan=plan)
 
     assert [task['id'] for task in result] == ['10']
     assert result[0]['project'] == 'configured-plan'
-    original = backend.fetch_tasks(AREA)
+    original = backend.fetch_tasks(AREA, task_types=["Feature", "Epic"])
     assert all(task['project'] == 'project-team-a' for task in original)
 
 
@@ -274,5 +340,5 @@ def test_invalidate_cache_has_invalidated_and_errors_keys(backend):
 def test_fetch_tasks_still_works_after_invalidate(backend):
     """Invalidating the cache must not break subsequent reads."""
     backend.invalidate_cache()
-    result = backend.fetch_tasks(AREA)
+    result = backend.fetch_tasks(AREA, task_types=["Feature", "Epic"])
     assert len(result) == 2

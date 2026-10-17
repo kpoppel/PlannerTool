@@ -6,7 +6,7 @@ import threading
 import time
 from contextlib import nullcontext
 
-from planner_lib.accounts.config import AccountCredentialsPayload, _is_valid_email
+from planner_lib.accounts.config import AccountCredentialsPayload, CredentialValidationError, _is_valid_email
 from planner_lib.accounts.constants import AccountPermissions
 
 
@@ -47,10 +47,11 @@ class AuthManager:
             return False
         return record is not None
 
-    def enroll(self, email: str, name: str = '', account_key: str = ''):
+    def enroll(self, email: str, name: str = '', account_key: str = '', pat: str | None = None):
         if not _is_valid_email(email):
             raise ValueError('Valid email required')
         with self._lock, self._transaction():
+            created = False
             try:
                 account_id, record = self._record(email)
             except KeyError:
@@ -58,7 +59,10 @@ class AuthManager:
                     raise PermissionError('Invalid account key')
                 if not name.strip():
                     raise ValueError('Name required for first enrollment')
-                self._accounts.create_account(AccountCredentialsPayload(email=email))
+                status = self._accounts.create_account(AccountCredentialsPayload(email=email, pat=pat))
+                if not status['ok']:
+                    raise CredentialValidationError(status['error'])
+                created = True
                 account_id, record = self._record(email)
             if record is not None:
                 if not account_key:
@@ -69,6 +73,14 @@ class AuthManager:
                     raise PermissionError('Invalid account key')
                 if not name.strip():
                     raise ValueError('Name required for first enrollment')
+            if not created and (self._accounts.requires_pat() or pat is not None):
+                effective_pat = self._accounts.load(email)['pat'] if pat is None else pat
+                status = self._accounts.update_credentials(
+                    AccountCredentialsPayload(email=email, pat=effective_pat)
+                )
+                if not status['ok']:
+                    raise CredentialValidationError(status['error'])
+            if record is None:
                 if not self._storage.exists('auth_control', 'bootstrap_claimed'):
                     if self._accounts.count_all_with_permission(AccountPermissions.ADMIN) == 0:
                         self._accounts.set_permissions(account_id, [AccountPermissions.ADMIN])

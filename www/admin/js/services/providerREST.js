@@ -10,6 +10,10 @@ export class AdminProviderREST extends RestProviderBase {
       retry: false,
       session: false,
       defaultCredentials: 'same-origin',
+      onPatRequired: async (code) => {
+        const { showSetPat } = await import('../../../js/components/SetPat.lit.js');
+        return showSetPat(this._resolveUrl('/api'), code);
+      },
     });
   }
 
@@ -45,6 +49,10 @@ export class AdminProviderREST extends RestProviderBase {
     });
   }
 
+  async checkAccess() {
+    return this._requestJson('/admin/check');
+  }
+
   async getAreaMappings() {
     return this._getContent('/admin/v1/area-mappings', {});
   }
@@ -61,8 +69,45 @@ export class AdminProviderREST extends RestProviderBase {
     return this._getContent('/admin/v1/projects', null);
   }
 
-  async saveProjects(content) {
-    return this._saveContent('/admin/v1/projects', content);
+  async saveProjects(content, processImports = {}) {
+    const result = await this._requestWithBody('/admin/v1/projects', { content, process_imports: processImports });
+    if (!result.ok && (result.error.status === 400 || result.error.status === 422)) {
+      const validation = result.error.detail;
+      return fail({ ...result.error, code: validation.error, message: validation.message });
+    }
+    return result;
+  }
+
+  async refreshPlan(planId) {
+    return this._requestJson(`/admin/v1/projects/${encodeURIComponent(planId)}/refresh`, {
+      method: 'POST',
+    });
+  }
+
+  async getAdoProcesses() {
+    return this._getContent('/admin/v1/ado-processes');
+  }
+
+  async resolveAdoProcess(project) {
+    const result = await this._requestWithBody('/admin/v1/ado-processes/resolve', { project });
+    if (!result.ok && (result.error.status === 400 || result.error.status === 404)) {
+      const validation = result.error.detail;
+      return fail({ ...result.error, code: validation.error, message: validation.message });
+    }
+    return result;
+  }
+
+  async refreshAdoProcesses() {
+    return this._requestJson('/admin/v1/ado-processes/refresh', { method: 'POST' });
+  }
+
+  async saveAdoProcesses(content) {
+    const result = await this._saveContent('/admin/v1/ado-processes', content);
+    if (!result.ok && result.error.status === 400) {
+      const validation = result.error.detail;
+      return fail({ ...result.error, code: validation.error, message: validation.message });
+    }
+    return result;
   }
 
   async getSystem() {
@@ -147,8 +192,10 @@ export class AdminProviderREST extends RestProviderBase {
     return this._requestJson('/admin/v1/users', { method: 'GET' });
   }
 
-  async createUser(email, permissions) {
-    return this._requestWithBody('/admin/v1/users', { email, permissions });
+  async createUser(email, permissions, pat = '') {
+    const payload = { email, permissions };
+    if (pat !== '') payload.pat = pat;
+    return this._requestWithBody('/admin/v1/users', payload);
   }
 
   async setUserPermissions(accountId, permissions) {
@@ -234,36 +281,6 @@ export class AdminProviderREST extends RestProviderBase {
     return this._requestJson(url, { method: 'GET' });
   }
 
-  async getWorkItemMetadata(project) {
-    return this._requestJson(`/api/azure/work-item-metadata?project=${encodeURIComponent(project)}`, {
-      method: 'GET',
-    });
-  }
-
-  async getAreaPathMetadata(project, areaPath) {
-    return this._requestJson(
-      `/api/azure/area-path-metadata?project=${encodeURIComponent(project)}&area_path=${encodeURIComponent(areaPath)}`,
-      { method: 'GET' }
-    );
-  }
-
-  /**
-   * Prefetch and disk-cache work-item metadata for a list of area paths.
-   * Returns metadata keyed by area path each including an 'azure_project' field.
-   * Cheap to call repeatedly - the server only contacts Azure on a cache miss.
-   * @param {string[]} areaPaths
-   * @returns {Promise<{ok: boolean, data?: {results: Record<string, object>}, error?: object}>}
-   */
-  async prefetchProjectsMetadata(areaPaths) {
-    if (!areaPaths || areaPaths.length === 0) {
-      return ok({ results: {} });
-    }
-    const encoded = areaPaths.map(encodeURIComponent).join(',');
-    return this._requestJson(`/api/azure/prefetch-projects-metadata?area_paths=${encoded}`, {
-      method: 'GET',
-    });
-  }
-
   async cleanupCache() {
     return this._requestJson('/admin/v1/cache/cleanup', { method: 'POST' });
   }
@@ -286,8 +303,9 @@ export class AdminProviderREST extends RestProviderBase {
 
   async getGlobalSettings() {
     const result = await this._getContent('/admin/v1/global-settings', {
-      task_type_hierarchy: [],
-      state_display_sequence: [],
+      schema_version: 2,
+      process_order: [],
+      type_tiers: {},
     });
     if (!result.ok) return result;
     if (!result.data || typeof result.data !== 'object') {

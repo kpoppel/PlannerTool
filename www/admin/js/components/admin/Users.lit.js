@@ -3,6 +3,9 @@ import { adminProvider } from '../../services/providerREST.js';
 import { showAccountKeyDialog } from '../../../../js/components/AuthDialog.lit.js';
 
 function resultErrorMessage(result, fallback = 'Request failed') {
+  if (result.error && (result.error.code === 'pat_invalid' || result.error.code === 'pat_required')) {
+    return 'Enter a valid Azure DevOps PAT for the new account.';
+  }
   if (result?.error?.message) return result.error.message;
   if (typeof result?.error === 'string') return result.error;
   return fallback;
@@ -86,6 +89,7 @@ export class AdminUsers extends LitElement {
 
     .add-controls {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       align-items: center;
       padding: 12px;
@@ -277,6 +281,9 @@ export class AdminUsers extends LitElement {
     error: { type: String },
     newUser: { type: String },
     newAdmin: { type: String },
+    newUserPat: { type: String },
+    newAdminPat: { type: String },
+    requiresPat: { type: Boolean },
     statusMsg: { type: String },
     statusType: { type: String },
     resetting: { type: Boolean },
@@ -291,6 +298,9 @@ export class AdminUsers extends LitElement {
     this.error = '';
     this.newUser = '';
     this.newAdmin = '';
+    this.newUserPat = '';
+    this.newAdminPat = '';
+    this.requiresPat = false;
     this.current = null;
     this.statusMsg = '';
     this.statusType = '';
@@ -316,6 +326,7 @@ export class AdminUsers extends LitElement {
       this.users = data.accounts.slice().sort((left, right) => left.email.localeCompare(right.email));
       this.admins = this.users.filter((account) => account.permissions.includes('admin'));
       this.current = data.currentId;
+      this.requiresPat = data.requiresPat === true;
     } catch (e) {
       console.error(e);
       this.error = String(e);
@@ -348,12 +359,14 @@ export class AdminUsers extends LitElement {
       }, 3000);
 
       await this.load();
+      return true;
     } catch (e) {
       console.error(e);
       const message = e?.message || String(e) || 'Save failed';
       this.error = message;
       this.statusMsg = message;
       this.statusType = 'error';
+      return false;
     }
   }
 
@@ -368,8 +381,10 @@ export class AdminUsers extends LitElement {
     }
 
     if (!this.users.some((account) => account.email === v)) {
-      await this._runMutation(() => adminProvider.createUser(v, []));
-      this.newUser = '';
+      if (await this._runMutation(() => adminProvider.createUser(v, [], this.newUserPat))) {
+        this.newUser = '';
+        this.newUserPat = '';
+      }
     } else {
       this.error = 'User already exists';
     }
@@ -387,13 +402,17 @@ export class AdminUsers extends LitElement {
 
     if (!this.admins.some((account) => account.email === v)) {
       const account = this.users.find((candidate) => candidate.email === v);
+      let saved;
       if (account) {
-        await this._runMutation(() => adminProvider.setUserPermissions(account.id,
+        saved = await this._runMutation(() => adminProvider.setUserPermissions(account.id,
           [...account.permissions, 'admin']));
       } else {
-        await this._runMutation(() => adminProvider.createUser(v, ['admin']));
+        saved = await this._runMutation(() => adminProvider.createUser(v, ['admin'], this.newAdminPat));
       }
-      this.newAdmin = '';
+      if (saved) {
+        this.newAdmin = '';
+        this.newAdminPat = '';
+      }
     } else {
       this.error = 'Admin already exists';
     }
@@ -507,6 +526,10 @@ export class AdminUsers extends LitElement {
                   placeholder="user@example.com"
                   type="email"
                 />
+                ${this.requiresPat ? html`<input type="password" autocomplete="new-password"
+                  aria-label="New user's Azure DevOps PAT" placeholder="New user's PAT"
+                  data-pat="User" .value=${this.newUserPat}
+                  @input=${(event) => { this.newUserPat = event.target.value; }} />` : ''}
                 <button class="btn btn-primary" @click=${() => this.addUser()}>
                   Add User
                 </button>
@@ -578,6 +601,10 @@ export class AdminUsers extends LitElement {
                   placeholder="admin@example.com"
                   type="email"
                 />
+                ${this.requiresPat ? html`<input type="password" autocomplete="new-password"
+                  aria-label="New admin's Azure DevOps PAT" placeholder="New admin's PAT"
+                  data-pat="Admin" .value=${this.newAdminPat}
+                  @input=${(event) => { this.newAdminPat = event.target.value; }} />` : ''}
                 <button class="btn btn-primary" @click=${() => this.addAdmin()}>
                   Add Admin
                 </button>

@@ -1043,7 +1043,7 @@ export class FeatureCardLit extends LitElement {
         ? `${this.feature.state} · ${presentation.date}`
         : `${this.feature.start} → ${this.feature.end}`;
     const projectColor = this.project && this.project.color ? this.project.color : '#ccc';
-    const isCompleted = sel.filter.getFeatureStateCategory(this.feature.state) === 'Completed';
+    const isCompleted = sel.filter.getFeatureStateCategory(this.feature) === 'Completed';
 
     const cardClasses = {
       'feature-card': true,

@@ -68,6 +68,7 @@ export function formatManDays(value) {
 export function resizeAllocations(before, after, staffing) {
   const capacity = [];
   const removed = [];
+  const exceeded = [];
   const oldDays = countWorkingDays(before);
   for (const row of before.capacity) {
     const basis = getAllocationBasis(row.team, after, staffing);
@@ -79,10 +80,10 @@ export function resizeAllocations(before, after, staffing) {
     }
     const rawPercent = row.capacity * oldDays / basis.days;
     if (rawPercent > 100 + Number.EPSILON * 100 * 2) {
-      removed.push({ team: row.team, reason: 'Preserved man-days would exceed 100%' });
+      exceeded.push({ team: row.team, capacity: rawPercent });
       continue;
     }
     capacity.push({ team: row.team, capacity: Math.min(rawPercent, 100) });
   }
-  return { capacity, removed };
+  return { capacity, removed, exceeded };
 }

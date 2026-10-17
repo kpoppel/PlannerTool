@@ -170,7 +170,8 @@ on route handlers.
 - `SessionManager` tracks active sessions in a thread-safe process-local map and
   loads account credentials during session creation.
 - `CapacityService` calculates capacity from configured team data.
-- `AzureProjectMetadataService` obtains project metadata.
+- The ADO process catalogue owns project-to-process metadata, type imports and
+  synchronized display tiers; metadata loads use the acting user's PAT.
 - `WorkforceCostService` prices anonymous supplier/profile staffing with separate
   internal/external accounting and non-charged group rollups.
 - `AdminService` handles privileged configuration, account, cache, backup, and

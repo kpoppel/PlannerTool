@@ -14,6 +14,7 @@ import logging
 
 from planner_lib.storage.base import StorageBackend
 from planner_lib.admin.config_manager import ConfigManager
+from planner_lib.admin.process_catalogue import ProcessCatalogueManager
 from planner_lib.admin.reload_orchestrator import ReloadOrchestrator
 from planner_lib.admin.workforce_config import (
     DefinitionKind, WorkforceConfigManager, WorkforceConflictError, WorkforceSnapshot,
@@ -50,6 +51,7 @@ class AdminService:
         self._config_manager = ConfigManager(
             storage=storage,
         )
+        self._process_catalogue = ProcessCatalogueManager(storage, self._config_manager)
         self._workforce_config = WorkforceConfigManager(storage, task_storage=task_storage)
         # Composed account manager: owns all account / admin-marker CRUD.
         self._account_manager = account_manager # To replace accountadminservice
@@ -63,6 +65,24 @@ class AdminService:
     def get_config(self, key: str, default=None):
         """Load a key from the config namespace.  Delegates to ConfigManager."""
         return self._config_manager.get_config(key, default)
+
+    def get_ado_processes(self):
+        return self._process_catalogue.read()
+
+    def reconcile_ado_plan_imports(self):
+        return self._process_catalogue.reconcile_plan_imports()
+
+    def refresh_ado_processes(self, processes):
+        return self._process_catalogue.refresh(processes)
+
+    def load_ado_process(self, process):
+        return self._process_catalogue.load_process(process)
+
+    def save_ado_processes(self, content):
+        return self._process_catalogue.save(content)
+
+    def save_plans(self, content, process_imports):
+        return self._process_catalogue.save_plans(content, process_imports)
 
     def save_config(self, key: str, content) -> None:
         """Create a timestamped backup of *key* then persist *content*.  Delegates to ConfigManager."""

@@ -18,17 +18,17 @@ the cache-hit / no-credential fast path.)
 """
 from __future__ import annotations
 
-import calendar
 import hashlib
 import logging
 import time
 from collections import deque
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, BackendPort
+from planner_lib.azure.catalogue import imported_type_index, resolve_plan_process
 from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
 from planner_lib.backend.errors import (
     BackendAuthError,
@@ -42,16 +42,6 @@ from planner_lib.util import project_id_for_area_path
 
 
 logger = logging.getLogger(__name__)
-
-_CLOSED_RETENTION_MONTHS = 6
-
-
-def _calendar_months_before(day: date, months: int) -> date:
-    month_index = day.year * 12 + day.month - 1 - months
-    year, month_index = divmod(month_index, 12)
-    month = month_index + 1
-    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
-
 
 def _terminal_date(value: Any) -> Optional[date]:
     if isinstance(value, datetime):
@@ -111,7 +101,6 @@ class AzureDevOpsBackend(BackendPort):
             local_backend=services.get('config_backend'),
             team_repository=services.get('team_repository'),
             capacity_service=services.get('capacity_service'),
-            metadata_service=services.get('metadata_service'),
         )
 
     def __init__(
@@ -121,7 +110,6 @@ class AzureDevOpsBackend(BackendPort):
         team_repository,
         capacity_service,
         local_backend=None,
-        metadata_service: Optional[Any] = None,
     ) -> None:
         from planner_lib.azure.AzureClient import AzureClient
         self._organization_url = organization_url
@@ -132,10 +120,6 @@ class AzureDevOpsBackend(BackendPort):
         self._capacity_service = capacity_service
         self._storage = storage
         self._config = local_backend
-        # Optional: AzureProjectMetadataService — warmed as a side-effect of
-        # fetch_tasks so that /api/projects always sees state_categories even on
-        # a cold cache (e.g. after server restart).
-        self._metadata_service = metadata_service
         self._diagnostics = []
         self._diagnostics_lock = Lock()
         logger.info(
@@ -189,22 +173,10 @@ class AzureDevOpsBackend(BackendPort):
         return token
 
     def _build_type_canonical(self) -> Dict[str, str]:
-        """Build a lowercased-type \u2192 canonical-type map from project task_type_hierarchy."""
-        type_canonical: Dict[str, str] = {}
-        try:
-            if self._config is not None:
-                projects = self._config.fetch_projects()
-                # All projects share the same global hierarchy; take from first result
-                hierarchy = (projects[0].get('task_type_hierarchy') or []) if projects else []
-            else:
-                gs = self._storage.load('config', 'global_settings')
-                hierarchy = (gs.get('task_type_hierarchy', []) if isinstance(gs, dict) else [])
-            for level in hierarchy:
-                for t in (level.get('types') or []):
-                    type_canonical[str(t).lower()] = t
-        except Exception:
-            pass
-        return type_canonical
+        """Return exact catalogue casing for imported work item types."""
+        catalogue = self._storage.load('config', 'ado_processes')
+        return {item['name'].casefold(): item['name'] for process in catalogue['processes']
+                for item in process['types'] if item['imported']}
 
     def _build_iteration_map(
         self,
@@ -240,8 +212,8 @@ class AzureDevOpsBackend(BackendPort):
         """Run this plan's exact-area seed query and associate its seed items."""
         tasks = self.fetch_tasks(
             area_path=plan['area_path'],
-            task_types=plan.get('task_types'),
-            include_states=plan.get('include_states'),
+            task_types=plan['task_types'],
+            closed_history_days=plan['closed_history_days'],
             project_id=plan['id'],
             credential=credential,
         )
@@ -278,10 +250,10 @@ class AzureDevOpsBackend(BackendPort):
                 **seed, 'adoProject': metadata['adoProject'],
                 'rev': metadata['rev'], 'type': metadata['type'],
             })
-        type_canonical = self._build_type_canonical()
+        catalogue = self._storage.load('config', 'ado_processes')
+        eligible = imported_type_index(catalogue)
         tasks = {}
         iteration_maps = {}
-        categories_by_project = {}
         removed_ids = set()
         schedule_issues = {}
         try:
@@ -292,22 +264,18 @@ class AzureDevOpsBackend(BackendPort):
                         iteration_maps[key] = self._build_iteration_map(client, area, ado_project)
                     return iteration_maps[key]
 
-                raw_items = client.get_linked_work_items(raw_seeds)
+                raw_items = client.get_linked_work_items(raw_seeds, catalogue=catalogue)
                 for raw in raw_items:
                     task_id = str(raw['id'])
                     area = raw['areaPath']
                     ado_project = raw['adoProject']
-                    if ado_project not in categories_by_project:
-                        metadata = None
-                        if self._metadata_service is not None:
-                            metadata = self._metadata_service.get_cached(ado_project)
-                            if not metadata:
-                                metadata = client.get_area_path_used_metadata(ado_project, area)
-                                self._metadata_service.store(ado_project, metadata)
-                        categories_by_project[ado_project] = (
-                            metadata['state_categories'] if metadata is not None else {}
-                        )
-                    if categories_by_project[ado_project].get(raw['state']) == 'Removed':
+                    identity = (ado_project.casefold(), raw['type'].casefold())
+                    if identity not in eligible:
+                        removed_ids.add(task_id)
+                        continue
+                    process, item_type = eligible[identity]
+                    categories = {state['name']: state['category'] for state in item_type['states']}
+                    if categories[raw['state']] == 'Removed':
                         removed_ids.add(task_id)
                         continue
                     area_key = area.strip('/\\').replace('/', '\\').casefold()
@@ -338,13 +306,14 @@ class AzureDevOpsBackend(BackendPort):
                             raw_wi=raw,
                             project_id=owner,
                             team_repository=self._team_repository,
-                            type_canonical=type_canonical,
+                            type_canonical={item_type['name'].lower(): item_type['name']},
                             iteration_map=iteration_map_for(area, raw['adoProject']),
                             capacity_service=self._capacity_service,
                         )
                     task['project'] = owner
-                    if raw['state'] in categories_by_project[ado_project]:
-                        task['stateCategory'] = categories_by_project[ado_project][raw['state']]
+                    task['type'] = item_type['name']
+                    task['process_id'] = process['id']
+                    task['stateCategory'] = categories[raw['state']]
                     task['sourcePlanName'] = area.strip('/\\').replace('/', '\\').rsplit('\\', 1)[-1]
                     task['excludedChildIds'] = raw['excludedChildIds']
                     task['unresolvedChildIds'] = raw['unresolvedChildIds']
@@ -372,9 +341,6 @@ class AzureDevOpsBackend(BackendPort):
                 str(relation['id']) for relation in task['relations']
                 if relation['type'] == 'Child' and str(relation['id']) in removed_ids
             })
-        cutoff = _calendar_months_before(
-            datetime.now(timezone.utc).date(), _CLOSED_RETENTION_MONTHS,
-        )
         adjacency = {task_id: set() for task_id in tasks}
         for parent_id, task in tasks.items():
             if task['traversalBoundary']:
@@ -386,16 +352,6 @@ class AzureDevOpsBackend(BackendPort):
                         and not tasks[child_id]['traversalBoundary']):
                     adjacency[parent_id].add(child_id)
                     adjacency[child_id].add(parent_id)
-
-        def is_expired(task):
-            ado_project = task.get('backendData', {}).get('adoProject')
-            state_categories = categories_by_project.get(ado_project, {})
-            if state_categories.get(task['state']) != 'Completed':
-                return False
-            transition_date = _terminal_date(
-                task.get('backendData', {}).get('stateChangeDate')
-            )
-            return transition_date is not None and transition_date < cutoff
 
         expired_ids = set()
         visited = set()
@@ -415,7 +371,16 @@ class AzureDevOpsBackend(BackendPort):
                 member_id for member_id in component
                 if not tasks[member_id].get('ancestorOnly', False)
             ]
-            if not any(not is_expired(tasks[member_id]) for member_id in descendants):
+            if any(tasks[member_id]['stateCategory'] != 'Completed' for member_id in descendants):
+                continue
+            source_ids = {plan_id for seed in seeds if str(seed['id']) in component
+                          for plan_id in seed['sourcePlanIds']}
+            window = max((plans_by_id[plan_id]['closed_history_days'] for plan_id in source_ids),
+                         default=0)
+            cutoff = datetime.now(timezone.utc).date() - timedelta(days=window)
+            dates = [_terminal_date(tasks[member_id]['backendData'].get('stateChangeDate'))
+                     for member_id in component]
+            if window == 0 or not any(value is not None and value >= cutoff for value in dates):
                 expired_ids.update(component)
         for task in tasks.values():
             task['excludedChildIds'] = sorted(set(task['excludedChildIds']) | {
@@ -453,22 +418,16 @@ class AzureDevOpsBackend(BackendPort):
                 if plan_id not in plans_by_id:
                     continue
                 plan = plans_by_id[plan_id]
-                display_states = plan.get('display_states')
-                if display_states is not None and task['state'] not in display_states:
-                    continue
-                task_types = plan.get('task_types')
-                if task_types is None:
-                    task_types = ['Epic', 'Feature']
+                task_types = plan['task_types']
                 if task['type'].casefold() in {name.casefold() for name in task_types}:
                     task['presentationPlanIds'].append(plan_id)
         for task in tasks.values():
             ado_project = task.get('backendData', {}).get('adoProject')
-            state_categories = categories_by_project.get(ado_project, {})
             iteration_path = task.get('iterationPath')
             has_iteration = iteration_path is not None and (
                 normalize_iteration_path(iteration_path).casefold() != str(ado_project).casefold()
             )
-            if (state_categories.get(task['state']) != 'Completed'
+            if (task['stateCategory'] != 'Completed'
                     or task.get('start') or task.get('end') or has_iteration):
                 continue
             anchor_date = _terminal_date(task.get('backendData', {}).get('stateChangeDate'))
@@ -500,7 +459,7 @@ class AzureDevOpsBackend(BackendPort):
         self,
         area_path: str,
         task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        closed_history_days: int = 0,
         credential: Optional[BackendCredential] = None,
         project_id: Optional[str] = None,
         **kwargs,
@@ -513,7 +472,12 @@ class AzureDevOpsBackend(BackendPort):
         Wrap with CachingBackend to add a TTL cache in front.
         """
         pat = self._require_credential(credential, 'fetch_tasks')
-        type_canonical = self._build_type_canonical()
+        catalogue = self._storage.load('config', 'ado_processes')
+        process = resolve_plan_process({
+            'name': area_path, 'area_path': area_path, 'task_types': task_types,
+        }, catalogue)
+        type_canonical = {item['name'].lower(): item['name']
+                          for item in process['types'] if item['imported']}
         if project_id is None:
             if self._config is None:
                 raise BackendConfigError(
@@ -545,26 +509,9 @@ class AzureDevOpsBackend(BackendPort):
                 raw_items = client.get_work_items(
                     area_path,
                     task_types=task_types,
-                    include_states=include_states,
+                    catalogue=catalogue,
+                    closed_history_days=closed_history_days,
                 )
-                # Warm the metadata cache as a side-effect of the live ADO
-                # connection that is already open.  Checked first so that the
-                # extra API call only happens on a cold cache; subsequent calls
-                # are instant (disk-cache hit).  Errors are non-fatal — task
-                # data is returned regardless.
-                if self._metadata_service and not self._metadata_service.get_cached(azure_project):
-                    try:
-                        metadata = client.get_area_path_used_metadata(azure_project, area_path)
-                        self._metadata_service.store(azure_project, metadata)
-                        logger.debug(
-                            "Metadata cache warmed for Azure project '%s' as side-effect of fetch_tasks",
-                            azure_project,
-                        )
-                    except Exception as meta_exc:
-                        logger.warning(
-                            "Failed to warm metadata cache for '%s': %s",
-                            azure_project, meta_exc,
-                        )
         except Exception as exc:
             error = classify_ado_exception(exc)
             if isinstance(error, BackendConfigError):
@@ -573,21 +520,16 @@ class AzureDevOpsBackend(BackendPort):
 
         results: List[DomainTask] = []
         for raw_wi in (raw_items or []):
-            try:
-                task = self._adapter.to_domain(
-                    raw_wi=raw_wi,
-                    project_id=project_id,
-                    team_repository=self._team_repository,
-                    type_canonical=type_canonical,
-                    iteration_map=iteration_map,
-                    capacity_service=self._capacity_service,
-                )
-                results.append(task)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to enrich work item %s: %s",
-                    raw_wi.get('id', '?'), exc,
-                )
+            task = self._adapter.to_domain(
+                raw_wi=raw_wi,
+                project_id=project_id,
+                team_repository=self._team_repository,
+                type_canonical=type_canonical,
+                iteration_map=iteration_map,
+                capacity_service=self._capacity_service,
+            )
+            task['process_id'] = process['id']
+            results.append(task)
         return results
 
     # ------------------------------------------------------------------
@@ -770,19 +712,11 @@ class AzureDevOpsBackend(BackendPort):
         self,
         credential: Optional[BackendCredential] = None,
     ) -> List[Any]:
-        """Return all configured projects with state_categories enriched from metadata cache.
-
-        Delegates to the local config backend and enriches each project with
-        state_categories from the ADO metadata cache when available.
-        """
+        """Return configured projects with catalogue-owned display metadata."""
         if self._config is None:
             return []
         
-        projects = self._config.fetch_projects()
-        if self._metadata_service is None:
-            return projects
-        
-        return [self._enrich_project(p) for p in projects]
+        return self._config.fetch_projects()
 
     def fetch_project_map(
         self,
@@ -795,26 +729,6 @@ class AzureDevOpsBackend(BackendPort):
         if self._config is None:
             return []
         return self._config.fetch_project_map()
-
-    def _enrich_project(self, project: Any) -> Any:
-        """Attach state_categories from the ADO metadata cache to a project."""
-        display_states = project.get("display_states") or []
-        area_path = project.get("area_path") or ""
-        if not display_states or not area_path:
-            return project
-
-        sep = "\\" if "\\" in area_path else "/"
-        azure_project = area_path.split(sep)[0]
-        if not azure_project:
-            return project
-
-        cached = self._metadata_service.get_cached(azure_project)
-        if not cached:
-            return project
-
-        all_categories: dict = cached.get("state_categories") or {}
-        enriched_categories = {s: all_categories[s] for s in display_states if s in all_categories}
-        return {**project, "state_categories": enriched_categories}
 
     # ------------------------------------------------------------------
     # BackendPort: invalidate_cache

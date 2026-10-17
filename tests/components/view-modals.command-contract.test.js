@@ -26,7 +26,8 @@ vi.mock('../../www/js/application/imports.js', () => ({
       getSelectedProjects: () => [{ id: 'p1', name: 'Plan' }],
       getSelectedTeams: () => [{ id: 't1', name: 'Team' }],
     },
-    filter: { getSelectedTaskTypeNames: () => ['Task'] },
+    filter: { getSelectedTaskTypeNames: () => ['["process","task"]'] },
+    feature: { getTypeDisplayName: () => 'Task' },
     view: { getEffectiveCapacityViewMode: () => 'project' },
   },
   cmd: {

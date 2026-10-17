@@ -17,6 +17,7 @@ export class RestProviderBase {
     this._onNetworkError =
       typeof options.onNetworkError === 'function' ? options.onNetworkError : null;
     this._onResponse = options.onResponse === undefined ? null : options.onResponse;
+    this._onPatRequired = options.onPatRequired === undefined ? null : options.onPatRequired;
     this._fetchImpl =
       typeof options.fetchImpl === 'function'
         ? options.fetchImpl
@@ -86,7 +87,7 @@ export class RestProviderBase {
     return out;
   }
 
-  async _fetch(url, options = {}, retryAttempt = 0, allowSessionRecovery = true) {
+  async _fetch(url, options = {}, retryAttempt = 0, allowSessionRecovery = true, allowPatRecovery = true) {
     const resolvedUrl = this._resolveUrl(url);
     const fetchOptions = this._buildFetchOptions(options);
 
@@ -97,7 +98,7 @@ export class RestProviderBase {
       if (this._retry && retryAttempt < this._networkRetryCount) {
         const delay = this._networkRetryDelay * Math.pow(2, retryAttempt);
         await this._sleep(delay);
-        return this._fetch(url, options, retryAttempt + 1, allowSessionRecovery);
+        return this._fetch(url, options, retryAttempt + 1, allowSessionRecovery, allowPatRecovery);
       }
 
       if (this._onNetworkError) {
@@ -111,12 +112,28 @@ export class RestProviderBase {
       throw err;
     }
 
+    if (allowPatRecovery && this._onPatRequired !== null && response.status === 403) {
+      let payload = null;
+      try {
+        payload = await response.clone().json();
+      } catch (error) {
+        console.warn('Non-JSON access denial', { url: resolvedUrl, status: response.status });
+      }
+      if (payload !== null && (payload.error === 'pat_required' || payload.error === 'pat_invalid')) {
+        const repaired = await this._onPatRequired(payload.error);
+        const readOnly = fetchOptions.method === undefined
+          || fetchOptions.method === 'GET' || fetchOptions.method === 'HEAD';
+        if (repaired && readOnly) {
+          return this._fetch(url, options, retryAttempt, allowSessionRecovery, false);
+        }
+      }
+    }
     if (allowSessionRecovery && response && response.status === 401) {
       const recovered = await this._recoverSession({
         url: resolvedUrl, options: fetchOptions, response,
       });
       if (recovered) {
-        return this._fetch(resolvedUrl, fetchOptions, retryAttempt, false);
+        return this._fetch(url, options, retryAttempt, false, allowPatRecovery);
       }
     }
     // Observe completed responses outside retry handling so observer failures cannot replay writes.

@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { createInitialAppState } from '../../../www/js/application/createInitialAppState.js';
 import { createFilterSelectors } from '../../../www/js/application/selectors/filterSelectors.js';
 import { store } from '../../../www/js/application/store.js';
+import { displayFixture } from '../../helpers/workItemDisplay.js';
 
 describe('PluginCostV1 selector seam', () => {
   beforeEach(() => {
@@ -14,10 +15,12 @@ describe('PluginCostV1 selector seam', () => {
         ...state,
         baseline: {
           ...state.baseline,
+          projects: [{ work_item_display: displayFixture([['Feature']],
+            { New: 'Proposed', Doing: 'InProgress' }) }],
           features: [
-            { id: '1', state: 'New' },
-            { id: '2', state: 'Doing' },
-            { id: '3', state: 'Doing' },
+            { id: '1', process_id: 'process', type: 'Feature', state: 'New' },
+            { id: '2', process_id: 'process', type: 'Feature', state: 'Doing' },
+            { id: '3', process_id: 'process', type: 'Feature', state: 'Doing' },
           ],
         },
       }),

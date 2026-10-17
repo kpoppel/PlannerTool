@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from planner_lib.azure.work_items import WorkItemOperations
 from planner_lib.azure.teams_plans import TeamPlanOperations
 from planner_lib.azure.markers import MarkersOperations
+from planner_lib.azure.processes import ProcessOperations
 
 
 class AzureClient:
@@ -41,6 +42,7 @@ class AzureClient:
         self._work_item_ops = WorkItemOperations(self)
         self._team_plan_ops = TeamPlanOperations(self, cache_enabled=cache_plans)
         self._markers_ops = MarkersOperations(self, self._team_plan_ops)
+        self._process_ops = ProcessOperations(self)
 
     @property
     def _connected(self) -> bool:
@@ -91,16 +93,15 @@ class AzureClient:
         def _cm():
             try:
                 self._connect_with_pat(pat)
-                try:
-                    yield self
-                finally:
-                    try:
-                        self.close()
-                    except Exception:
-                        pass
+                yield self
+            except Exception as error:
+                from planner_lib.backend.errors import BackendAuthError, classify_ado_exception
+                classified = classify_ado_exception(error)
+                if isinstance(classified, BackendAuthError):
+                    raise classified from error
+                raise
             finally:
-                # Explicitly clear any sensitive references (none are stored)
-                pass
+                self.close()
 
         return _cm()
 
@@ -138,9 +139,15 @@ class AzureClient:
         assert self.conn is not None
         return self.conn.base_url
 
-    def get_linked_work_items(self, seeds: List[dict]) -> List[dict]:
-        """Expand already-fetched seeds through Child links above TaskCategory."""
-        return self._work_item_ops.get_linked_work_items(seeds)
+    def get_linked_work_items(self, seeds: List[dict], *, catalogue: dict) -> List[dict]:
+        """Expand seeds only through imported process types."""
+        return self._work_item_ops.get_linked_work_items(seeds, catalogue=catalogue)
+
+    def list_processes(self) -> List[dict]:
+        return self._process_ops.list_processes()
+
+    def get_process_types(self, process_id: str) -> List[dict]:
+        return self._process_ops.get_process_types(process_id)
 
     def get_work_item(self, work_item_id: int, fields=None) -> Any:
         """Fetch a single work item by ID.
@@ -370,26 +377,6 @@ class AzureClient:
         """
         return self._work_item_ops.get_work_item_description(work_item_id)
     
-    def get_work_item_metadata(self, project: str) -> dict:
-        """Retrieve work item types and states for a project.
-        
-        Delegates to WorkItemOperations.
-        
-        Args:
-            project: Azure DevOps project name
-            
-        Returns:
-            Dictionary with 'types' and 'states' lists
-        """
-        return self._work_item_ops.get_work_item_metadata(project)
-
-    def get_area_path_used_metadata(self, project: str, area_path: str) -> dict:
-        """Discover work item types and states actually present in an area path.
-
-        Delegates to WorkItemOperations.  See that method for full documentation.
-        """
-        return self._work_item_ops.get_area_path_used_metadata(project, area_path)
-
     def get_work_items_by_ids(self, ids: list) -> list:
         """Fetch minimal work-item dicts (id, type, state, relations) by explicit IDs.
 
@@ -425,14 +412,15 @@ class AzureClient:
     def get_work_items(
         self,
         area_path: str,
-        task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        task_types: List[str],
+        *, catalogue: dict, closed_history_days: int = 0,
     ) -> List[dict]:
         """Fetch work items for an area path, delegating to WorkItemOperations."""
         return self._work_item_ops.get_work_items(
             area_path,
             task_types=task_types,
-            include_states=include_states,
+            catalogue=catalogue,
+            closed_history_days=closed_history_days,
         )
 
     def invalidate_work_items(self, work_item_ids: List[int]) -> None:

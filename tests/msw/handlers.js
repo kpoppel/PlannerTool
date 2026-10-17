@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import { displayFixture } from '../helpers/workItemDisplay.js';
 
 // Minimal realistic fixtures used by many components. Tests may override handlers
 // per-test using `server.use(...)` to scope responses.
@@ -17,21 +18,24 @@ const projects = [
     id: 'project-a',
     name: 'Proj A',
     type: 'project',
-    display_states: ['New', 'Active', 'Defined', 'Resolved', 'Closed'],
+    work_item_display: displayFixture(),
+    closed_history_days: 0,
     task_types: ['epic', 'feature'],
   },
   {
     id: 'project-b',
     name: 'Proj B',
     type: 'team',
-    display_states: ['New', 'Active', 'Defined', 'Resolved', 'Closed'],
+    work_item_display: displayFixture(),
+    closed_history_days: 0,
     task_types: ['epic', 'feature'],
   },
   {
     id: 'project-c',
     name: 'Proj C',
     type: 'team',
-    display_states: ['New', 'Active', 'Defined', 'Resolved', 'Closed'],
+    work_item_display: displayFixture(),
+    closed_history_days: 0,
     task_types: ['epic', 'feature'],
   },
 ];
@@ -375,6 +379,7 @@ function randomCapacity() {
 // Prototype and factory for tasks so tests can produce targeted variations
 const taskProto = {
   id: 'T-000',
+  process_id: 'process',
   type: 'feature',
   title: 'Prototype Task Title',
   assignee: '', // Randomize by default

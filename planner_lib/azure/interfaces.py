@@ -16,8 +16,8 @@ class AzureServiceProtocol(Protocol):
     def get_work_items(
         self,
         area_path: str,
-        task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None,
+        task_types: List[str],
+        *, catalogue: dict, closed_history_days: int = 0,
     ) -> List[dict]:
         ...
 

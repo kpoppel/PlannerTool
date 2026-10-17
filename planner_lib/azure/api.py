@@ -10,7 +10,7 @@ import logging
 
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_credentials_from_request
-from planner_lib.services.resolver import resolve_service, resolve_optional_service
+from planner_lib.services.resolver import resolve_service
 
 # Namespace used by CachingBackend when storing domain objects.
 _BACKEND_DOMAIN_NS = 'backend_domain'
@@ -46,7 +46,7 @@ def _get_all_configured_areas(request: Request) -> list:
 
 
 def _get_area_project_config_map(request: Request) -> dict:
-    """Return a mapping of area_path -> {task_types, include_states} from project config.
+    """Return a mapping of area_path to its plan's types and history window.
 
     Used by the cache refresh endpoint so each area is fetched with the
     task types and state filters configured for its project rather than the
@@ -65,7 +65,7 @@ def _get_area_project_config_map(request: Request) -> dict:
                 config_map[area_path] = {
                     'project_id': project.get('id'),
                     'task_types': project.get('task_types'),
-                    'include_states': project.get('include_states'),
+                    'closed_history_days': project['closed_history_days'],
                 }
         return config_map
     except Exception as e:
@@ -211,7 +211,7 @@ async def cache_refresh(
                 area_path,
                 project_id=proj_cfg.get('project_id'),
                 task_types=proj_cfg.get('task_types'),
-                include_states=proj_cfg.get('include_states'),
+                closed_history_days=proj_cfg['closed_history_days'],
                 credential=cred,
             )
             refreshed.append(area_path)
@@ -383,123 +383,3 @@ async def azure_browse_wiki_pages(
     with _live_client_or_raise(org_url, pat) as client:
         pages = client.get_wiki_pages(project, wiki_id)
     return {'pages': pages}
-
-
-@browse_router.get("/work-item-metadata")
-@require_session
-async def azure_browse_work_item_metadata(
-    request: Request,
-    project: str = Query(..., description="Azure DevOps project name"),
-):
-    """Return work item types and states for a given Azure DevOps project.
-
-    Query params:
-        project: Azure DevOps project name (required)
-
-    Returns:
-        {
-            "types": ["Bug", "Epic", "Feature", "Task", "User Story"],
-            "states": ["Active", "Closed", "New", ...],
-            "states_by_type": { "Bug": ["Active", "Closed", "New", ...], ... }
-        }
-    """
-    pat = _get_pat_or_raise(request)
-    azure_svc = resolve_service(request, 'azure_client')
-    with azure_svc.connect(pat) as client:
-        metadata = client.get_work_item_metadata(project)
-    return metadata
-
-
-@browse_router.get("/area-path-metadata")
-@require_session
-async def azure_browse_area_path_metadata(
-    request: Request,
-    project: str = Query(..., description="Azure DevOps project name"),
-    area_path: str = Query(..., description="Area path to inspect"),
-):
-    """Return work item types, states and state categories for a specific area path.
-
-    Unlike /work-item-metadata (which returns every type/state defined for the whole
-    project), this endpoint queries the team backlog configuration for the given area
-    path and returns only the types, states and their Azure DevOps categories that are
-    configured there.
-
-    The result is also stored in the disk-backed metadata cache keyed by the Azure
-    project name so subsequent requests for the same project are served from cache.
-
-    Query params:
-        project:   Azure DevOps project name (required)
-        area_path: Area path to inspect (required); sub-areas are included via UNDER match.
-
-    Returns:
-        {
-            "types": ["Feature", "Bug"],
-            "states": ["Active", "New"],
-            "states_by_type": { "Feature": ["Active", "New"], "Bug": ["Active"] },
-            "state_categories": { "Active": "InProgress", "New": "Proposed" }
-        }
-    """
-    pat = _get_pat_or_raise(request)
-    azure_svc = resolve_service(request, 'azure_client')
-    with azure_svc.connect(pat) as client:
-        metadata = client.get_area_path_used_metadata(project, area_path)
-    # Persist in the disk-backed metadata cache so other endpoints & tab-load prefetch
-    # can reuse this without hitting Azure again.
-    metadata_svc = resolve_optional_service(request, 'azure_project_metadata_service')
-    if metadata_svc:
-        metadata_svc.store(project, metadata)
-    return metadata
-
-
-@browse_router.get("/prefetch-projects-metadata")
-@require_session
-async def azure_prefetch_projects_metadata(
-    request: Request,
-    area_paths: str = Query(..., description="Comma-separated area paths to prefetch metadata for"),
-):
-    """Fetch and cache work-item metadata for a list of area paths.
-
-    For each area path the Azure project name is derived from the first path segment.
-    The disk cache is checked first; Azure is only contacted on a cache miss so
-    repeated calls at tab-load are cheap.
-
-    Query params:
-        area_paths: Comma-separated area paths (URL-encoded).
-
-    Returns:
-        {
-            "results": {
-                "Platform\\Team": {
-                    "azure_project": "Platform",
-                    "types": [...],
-                    "states": [...],
-                    "states_by_type": {...},
-                    "state_categories": {...}
-                },
-                ...
-            }
-        }
-    """
-    pat = _get_pat_or_raise(request)
-    azure_svc = resolve_service(request, 'azure_client')
-    metadata_svc = resolve_optional_service(request, 'azure_project_metadata_service')
-
-    results: dict = {}
-    for raw_path in area_paths.split(','):
-        area_path = raw_path.strip()
-        if not area_path:
-            continue
-        sep = '\\' if '\\' in area_path else '/'
-        azure_project = area_path.split(sep)[0]
-        if not azure_project:
-            continue
-
-        if metadata_svc:
-            metadata = metadata_svc.get_or_fetch(azure_project, area_path, pat, azure_svc)
-        else:
-            with azure_svc.connect(pat) as client:
-                metadata = client.get_area_path_used_metadata(azure_project, area_path)
-
-        results[area_path] = {'azure_project': azure_project, **metadata}
-
-    return {'results': results}

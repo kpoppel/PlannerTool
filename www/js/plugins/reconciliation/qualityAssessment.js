@@ -1,21 +1,19 @@
 import { calendarDay } from './scheduleAssessment.js';
+import { displayTypes, featureTypeKey, projectDisplay, typeStateCategory } from '../../application/shared/workItemDisplay.js';
 
-export function assessQuality({ featuresById, scopeIds, today, projects, hierarchy }) {
+export function assessQuality({ featuresById, scopeIds, today, projects }) {
   const issues = [];
   const projectMap = new Map(projects.map((project) => [String(project.id), project]));
-  const levels = new Map(hierarchy.flatMap((level, index) =>
-    level.types.map((type) => [type.toLowerCase(), index])));
+  const display = projectDisplay(projects);
+  const levels = new Map(displayTypes(display).map((type) => [type.key, type.level]));
   const minimumLevels = new Map();
   for (const feature of featuresById.values()) {
-    const level = levels.get(feature.type.toLowerCase());
+    const level = levels.get(featureTypeKey(feature));
     const projectId = String(feature.project);
     if (level !== undefined && (!minimumLevels.has(projectId)
       || level < minimumLevels.get(projectId))) minimumLevels.set(projectId, level);
   }
-  const categoryFor = (feature) => {
-    const project = projectMap.get(String(feature.project));
-    return project ? project.state_categories[feature.state] : undefined;
-  };
+  const categoryFor = (feature) => typeStateCategory(display, feature);
   const todayDay = calendarDay(today);
   const add = (feature, type, title, description, severity = 'warning', relatedId = null,
     relatedIds = []) => {
@@ -44,7 +42,7 @@ export function assessQuality({ featuresById, scopeIds, today, projects, hierarc
           `"${feature.title}" is ${feature.state}, but starts ${feature.start}. Review its dates or status.`);
       }
     }
-    const level = levels.get(feature.type.toLowerCase());
+    const level = levels.get(featureTypeKey(feature));
     const projectId = String(feature.project);
     const project = projectMap.get(projectId);
     const isRoot = level === minimumLevels.get(projectId);
@@ -68,8 +66,9 @@ export function assessQuality({ featuresById, scopeIds, today, projects, hierarc
     const parentProject = projectMap.get(String(parent.project));
     const anchoredRoot = isRoot && project && parentProject
       && parentProject.container_order < project.container_order;
-    const parentLevel = levels.get(parent.type.toLowerCase());
-    if (!anchoredRoot && level !== undefined && parentLevel !== undefined && parentLevel >= level) {
+    const parentLevel = levels.get(featureTypeKey(parent));
+    if (!anchoredRoot && level !== undefined && parentLevel !== undefined
+      && (parent.process_id !== feature.process_id || parentLevel + 1 !== level)) {
       add(feature, 'hierarchy-type', 'Unexpected parent task type',
         `"${feature.title}" (${feature.type}) is linked below "${parent.title}" (${parent.type}).`, 'warning', parentId);
     }

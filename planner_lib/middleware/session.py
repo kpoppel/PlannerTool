@@ -126,14 +126,14 @@ def get_session_context_from_request(request: Request) -> dict[str, Any]:
     sid = request.cookies.get(SESSION_COOKIE)
     if not sid:
         raise HTTPException(status_code=401, detail={'error': 'missing_session_id', 'message': 'Somehow you got here without a session.'})
-    cached = getattr(request, '_planner_session', None)
+    cached = getattr(request.state, '_planner_session', None)
     if cached is not None and cached[0] == sid:
         return cached[1]
     mgr = resolve_service(request, 'session_manager')
     context = mgr.get(sid)
     if context is None:
         raise HTTPException(status_code=401, detail={'error': 'invalid_session', 'message': 'Your session is invalid or expired.'})
-    setattr(request, '_planner_session', (sid, context))
+    request.state._planner_session = (sid, context)
     return context
 
 
@@ -141,12 +141,12 @@ def get_session_credentials_from_request(request: Request) -> dict[str, Any]:
     """Read current account credentials once, isolated to this request's session."""
     context = get_session_context_from_request(request)
     sid = request.cookies[SESSION_COOKIE]
-    cached = getattr(request, '_planner_credentials', None)
+    cached = getattr(request.state, '_planner_credentials', None)
     if cached is not None and cached[0] == sid:
         return cached[1]
     accounts = resolve_service(request, 'account_manager')
     credentials = {**context, 'pat': accounts.load(context['email'])['pat']}
-    setattr(request, '_planner_credentials', (sid, credentials))
+    request.state._planner_credentials = (sid, credentials)
     return credentials
 
 
@@ -191,6 +191,22 @@ class SessionMiddleware(BaseHTTPMiddleware):
             ):
                 return JSONResponse(status_code=403, content={'error': 'cross_origin_request'})
         path = request.scope.get('root_path', '').rstrip('/') + '/'
+        route_path = request.url.path.removeprefix(request.scope.get('root_path', ''))
+        credential_routes = {
+            '/api/config', '/api/session', '/api/auth/me', '/api/auth/logout',
+            '/api/auth/enroll', '/api/auth/enrollment-status', '/api/auth/delete-account',
+        }
+        protected_api = route_path.startswith(('/api/', '/admin/v1/')) or route_path == '/admin/check'
+        if protected_api and route_path not in credential_routes and request.cookies.get(SESSION_COOKIE):
+            try:
+                context = get_session_context_from_request(request)
+            except HTTPException:
+                context = None
+            if context is not None:
+                accounts = resolve_service(request, 'account_manager')
+                error = accounts.pat_error(context['email'])
+                if error:
+                    return JSONResponse(status_code=403, content={'error': error})
         response: Response = await call_next(request)
 
         # If the app set our helper header, convert it into a cookie
@@ -214,6 +230,8 @@ class SessionMiddleware(BaseHTTPMiddleware):
                 response.set_cookie(DEVICE_COOKIE, device, path=path, httponly=True,
                                     samesite='lax', max_age=90 * 86400,
                                     secure=request.url.scheme == 'https')
+        request.scope['state'].pop('_planner_session', None)
+        request.scope['state'].pop('_planner_credentials', None)
         return response
 
 

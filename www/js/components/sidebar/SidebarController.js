@@ -4,6 +4,7 @@ import { StoreController } from '../../core/StoreController.js';
 import { bus } from '../../core/EventBus.js';
 import { BoardEvents, FeatureEvents } from '../../core/EventRegistry.js';
 import { SIDEBAR_FILTER_DIMENSIONS } from './SidebarTaskFilters.lit.js';
+import { featureTypeKey } from '../../application/shared/workItemDisplay.js';
 
 function selectDependencies(state) {
   return { baseline: state.baseline, selection: state.selection, view: state.view,
@@ -78,14 +79,14 @@ export class SidebarController {
   getPresentationModel(teams) {
     const taskTypes = sel.feature.getAvailableTaskTypesOrdered();
     const features = sel.scope.getPresentableContextFeatures();
-    const scopedTypes = new Set(features.map((feature) => feature.type.toLowerCase()));
+    const scopedTypes = new Set(features.map(featureTypeKey));
     const scopedStates = new Set(features.map((feature) => feature.state));
     const filters = sel.filter.getTaskFilters();
     const colors = sel.filter.getFeatureStateColors();
     const selectedStates = sel.filter.getSelectedFeatureStateSet();
     const teamCounts = new Map(teams.map((team) => [team.id, sel.feature.getCountsForTeam(team.id)]));
     const nonemptyTypes = taskTypes.filter((type) =>
-      teams.some((team) => teamCounts.get(team.id).get(type.toLowerCase()) > 0));
+      teams.some((team) => teamCounts.get(team.id).get(type) > 0));
     const visibleTypes = nonemptyTypes.slice(0, this.host.teamCountsOpen ? nonemptyTypes.length : 2);
     return {
       teams: {
@@ -94,12 +95,13 @@ export class SidebarController {
           return { ...team, name: team.name ? team.name : team.id,
             color: team.color ? team.color : '#999',
             counts: visibleTypes.map((type) => {
-              const count = counts.get(type.toLowerCase());
+              const count = counts.get(type);
               return count === undefined ? 0 : count;
             }),
           };
         }),
-        allSelected: teams.every((team) => team.selected), taskTypes: visibleTypes,
+        allSelected: teams.every((team) => team.selected),
+        taskTypes: visibleTypes.map((key) => sel.feature.getTypeDisplayName(key)),
         countsOpen: this.host.teamCountsOpen,
         hasMoreCounts: nonemptyTypes.length > 2,
         taskViewMode: sel.view.getTaskViewMode(),
@@ -117,8 +119,9 @@ export class SidebarController {
           name, color: colors[name].background, active: selectedStates.has(name),
           disabled: sel.filter.isSidebarControlDisabled('state', name),
         })),
-        types: taskTypes.filter((name) => scopedTypes.has(name.toLowerCase())).map((name) => ({ name, active: sel.view.isTypeVisible(name),
-          disabled: sel.filter.isSidebarControlDisabled('taskType', name) })),
+        types: sel.feature.getTaskTypeOptions().filter((type) => scopedTypes.has(type.key))
+          .map((type) => ({ ...type, active: sel.view.isTypeVisible(type.key),
+            disabled: sel.filter.isSidebarControlDisabled('taskType', type.key) })),
       },
     };
   }

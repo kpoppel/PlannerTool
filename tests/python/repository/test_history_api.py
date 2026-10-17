@@ -99,7 +99,7 @@ def _make_fake_session_manager(authenticated_client):
     """Create a fake session manager for tests."""
     from types import SimpleNamespace
     register_service_on_client(authenticated_client, 'account_manager',
-                               SimpleNamespace(load=lambda email: {'pat': 'test-token'}))
+                               SimpleNamespace(load=lambda email: {'pat': 'test-token'}, pat_error=lambda email: None))
     class FakeSessionMgr:
         def get(self, sid):
             return {'account_id': '11111111-1111-4111-8111-111111111111',
@@ -229,7 +229,7 @@ def test_history_api_no_pat(authenticated_client):
 
     register_service_on_client(authenticated_client, 'session_manager', NoPATSessionMgr())
     register_service_on_client(authenticated_client, 'account_manager',
-                               SimpleNamespace(load=lambda email: {'pat': None}))
+                               SimpleNamespace(load=lambda email: {'pat': None}, pat_error=lambda email: None))
 
     # Create a client that doesn't raise server exceptions.
     c = TestClient(authenticated_client.app, raise_server_exceptions=False,

@@ -58,12 +58,14 @@ from planner_lib.admin.workforce_routes import (
     admin_save_workforce,
     admin_create_workforce_definition,
 )
+from planner_lib.admin.process_routes import router as _process_router
 
 router = APIRouter()
 router.include_router(_setup_router)
 router.include_router(_config_router)
 router.include_router(_users_router)
 router.include_router(_workforce_router)
+router.include_router(_process_router)
 
 __all__ = [
     'router',

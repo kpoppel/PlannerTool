@@ -47,6 +47,27 @@ def test_cli_enrollment_saves_rotated_key_without_printing_it(tmp_path, monkeypa
     assert session.post.call_args.kwargs['json']['accountKey'] == 'current-secret'
 
 
+def test_cli_enrollment_privately_requests_pat_only_when_required(tmp_path, monkeypatch, capsys):
+    session = MagicMock()
+    rejected = MagicMock(status_code=400)
+    rejected.json.return_value = {'error': 'pat_required'}
+    accepted = MagicMock(status_code=200)
+    accepted.json.return_value = {'accountKey': 'replacement-key'}
+    session.post.side_effect = [rejected, accepted]
+    session.cookies = MozillaCookieJar(str(tmp_path / 'cookies.txt'))
+    monkeypatch.setattr(api_cli.requests, 'Session', lambda: session)
+    answers = iter(['current-key', 'private-fixture-pat'])
+    monkeypatch.setattr(api_cli, 'getpass', lambda prompt: next(answers))
+    args = SimpleNamespace(email='user@example.com', name='', cookies=str(tmp_path / 'cookies.txt'),
+                           key_output=str(tmp_path / 'account-key.txt'))
+
+    api_cli.cmd_enroll(args)
+
+    assert session.post.call_args.kwargs['json']['pat'] == 'private-fixture-pat'
+    assert 'private-fixture-pat' not in capsys.readouterr().out
+    assert (tmp_path / 'account-key.txt').read_text().strip() == 'replacement-key'
+
+
 def test_backup_restore_can_skip_accounts_and_authentication(tmp_path):
     snapshot = tmp_path / 'backup.json'
     snapshot.write_text(json.dumps({

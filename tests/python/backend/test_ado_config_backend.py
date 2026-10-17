@@ -3,13 +3,20 @@ from contextlib import AbstractContextManager, nullcontext
 import pytest
 from planner_lib.backend.config import ConfigBackend, WorkforceConfigBackend
 from planner_lib.storage.base import StorageBackend
+from tests.python.azure.test_process_catalogue import catalogue_storage
 
 
 class _MemStore(StorageBackend):
     def __init__(self):
-        self._data = {}
+        defaults = catalogue_storage(['Org'])
+        self._data = {'config': {key: defaults.load('config', key)
+                                for key in ('ado_processes', 'global_settings')}}
 
     def save(self, namespace, key, value, ttl_seconds=None):
+        if namespace == 'config' and key == 'projects':
+            value = {**value, 'project_map': [
+                {'task_types': ['Feature'], 'closed_history_days': 0, **plan}
+                for plan in value['project_map']]}
         self._data.setdefault(namespace, {})[key] = value
 
     def load(self, namespace, key):
@@ -97,16 +104,13 @@ def test_fetch_projects_reads_from_storage():
              'task_types': ['Feature'], 'iteration_uuid': 'set-alpha'}
         ]
     })
-    storage.save('config', 'global_settings', {
-        'task_type_hierarchy': [],
-        'state_display_sequence': ['New', 'Active', 'Closed'],
-    })
     cb = ConfigBackend(storage=storage)
     projects = cb.fetch_projects()
     assert len(projects) == 1
     assert projects[0]['id'] == '11111111-1111-4111-8111-111111111111'
     assert projects[0]['name'] == 'Alpha'
-    assert projects[0]['state_display_sequence'] == ['New', 'Active', 'Closed']
+    assert projects[0]['work_item_display'][0]['process_id'] == 'test-process'
+    assert projects[0]['closed_history_days'] == 0
     assert projects[0]['iteration_uuid'] == 'set-alpha'
 
 
@@ -417,10 +421,12 @@ def test_canonical_projects_expose_defaults_and_explicit_empty_override(canonica
     projects[0]['allocation_defaults']['Plan'].clear()
     assert backend.fetch_projects()[0]['allocation_defaults']['Plan'] == ['team-alpha']
     config['project_map'][1]['allocatable_ids'] = ['missing']
+    storage.save('config', 'projects', config)
     with pytest.raises(ValueError, match='Unknown allocation availability'):
         backend.fetch_projects()
     config['project_map'][1]['allocatable_ids'] = []
     del config['allocation_defaults']['Program']
+    storage.save('config', 'projects', config)
     with pytest.raises(ValueError, match='container types'):
         backend.fetch_projects()
 

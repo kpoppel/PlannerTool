@@ -8,6 +8,7 @@ from planner_lib.services.resolver import resolve_service
 from planner_lib.session.auth import DEVICE_AGE
 from planner_lib.middleware.admin import require_admin_session
 from planner_lib.accounts.constants import AccountPermissions
+from planner_lib.accounts.config import CredentialValidationError
 
 router = APIRouter()
 
@@ -20,6 +21,7 @@ class Enrollment(BaseModel):
     email: str
     name: str = ''
     accountKey: str = ''
+    pat: str | None = None
 
 
 class AccountDeletion(BaseModel):
@@ -58,7 +60,8 @@ async def enrollment_status(payload: EnrollmentEmail, response: Response, reques
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     response.headers['Cache-Control'] = 'no-store'
-    return {'requiresKey': requires_key}
+    return {'requiresKey': requires_key,
+            'requiresPat': resolve_service(request, 'account_manager').requires_pat()}
 
 
 @router.post('/auth/enroll')
@@ -67,8 +70,10 @@ async def enroll(payload: Enrollment, response: Response, request: Request):
     initial_setup = initial_setup and resolve_service(request, 'account_manager').count_all_with_permission('admin') == 0
     try:
         device, account_key, session = resolve_service(request, 'auth_manager').enroll(
-            payload.email, payload.name, payload.accountKey
+            payload.email, payload.name, payload.accountKey, payload.pat
         )
+    except CredentialValidationError as error:
+        raise HTTPException(status_code=400, detail={'error': error.code}) from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
     except PermissionError as error:
@@ -102,6 +107,7 @@ async def current_account(request: Request):
     storage = resolve_service(request, 'storage')
     record = storage.load('account_auth', accounts.get_account_id(email))
     return {'email': email, 'name': record['name'],
+            'patRequired': accounts.requires_pat(), 'patError': accounts.pat_error(email),
             'permissions': [permission for permission in AccountPermissions.ALL
                             if accounts.has_permission(email, permission)],
             'currentDeviceId': get_session_context_from_request(request)['device_id'],

@@ -35,6 +35,9 @@ const METHOD_ARGS = {
   } }],
   saveAreaMappings: [{ a: 1 }],
   saveProjects: [{ projects: [] }],
+  refreshPlan: ['plan/one'],
+  saveAdoProcesses: [{ schema_version: 1, processes: [] }],
+  resolveAdoProcess: ['Platform'],
   saveSystem: [{ system: true }],
   saveAdo: [{ org: 'https://example' }],
   saveEventsConfig: [{ events: [] }],
@@ -58,11 +61,8 @@ const METHOD_ARGS = {
   browseAreaPaths: ['Project A'],
   browseWikis: ['Project A', 'https://dev.azure.com/example'],
   browseWikiPages: ['Project A', 'wiki-1', 'https://dev.azure.com/example'],
-  getWorkItemMetadata: ['Project A'],
-  getAreaPathMetadata: ['Project A', 'Area\\Path'],
-  prefetchProjectsMetadata: [['Area\\One', 'Area\\Two']],
   restoreBackup: [{ snapshot: { version: 1 } }],
-  saveGlobalSettings: [{ state_display_sequence: [] }],
+  saveGlobalSettings: [{ schema_version: 2, process_order: [], type_tiers: {} }],
   savePluginsConfig: [{ plugins: [] }],
 };
 
@@ -71,6 +71,11 @@ const SUCCESS_JSON_METHODS = [
   'saveAreaMappings',
   'getProjects',
   'saveProjects',
+  'refreshPlan',
+  'getAdoProcesses',
+  'resolveAdoProcess',
+  'refreshAdoProcesses',
+  'saveAdoProcesses',
   'getSystem',
   'saveSystem',
   'getAdo',
@@ -104,9 +109,6 @@ const SUCCESS_JSON_METHODS = [
   'browseAreaPaths',
   'browseWikis',
   'browseWikiPages',
-  'getWorkItemMetadata',
-  'getAreaPathMetadata',
-  'prefetchProjectsMetadata',
   'cleanupCache',
   'invalidateCache',
   'reloadConfig',
@@ -130,6 +132,70 @@ describe('AdminProviderREST Result contract', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete window.APP_BASE_URL;
+  });
+
+  it('saves explicit type imports with plans without adding them to stored content', async () => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { ok: true } }));
+    const content = { project_map: [] };
+    await provider.saveProjects(content, { agile: ['Bug'] });
+    expect(provider._fetch).toHaveBeenCalledWith('/admin/v1/projects', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ content, process_imports: { agile: ['Bug'] } }),
+    }));
+    expect(content).toEqual({ project_map: [] });
+  });
+
+  it('refreshes a saved plan synchronously through its own endpoint', async () => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { plan_id: 'plan/one', item_count: 2 } }));
+    const result = await provider.refreshPlan('plan/one');
+    expect(result.data.item_count).toBe(2);
+    expect(provider._fetch).toHaveBeenCalledWith('/admin/v1/projects/plan%2Fone/refresh',
+      expect.objectContaining({ method: 'POST' }));
+  });
+
+  it.each([400, 422])('preserves plan validation messages for HTTP %s', async (status) => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ ok: false, status, jsonData: {
+      error: 'invalid_plan', message: 'Select an imported type for Platform',
+    } }));
+    const result = await provider.saveProjects({ project_map: [] });
+    expect(result.error.message).toBe('Select an imported type for Platform');
+    expect(result.error.code).toBe('invalid_plan');
+  });
+
+  it('resolves process metadata with an explicit project request', async () => {
+    const provider = makeProvider();
+    const process = { id: 'agile', projects: ['Platform'] };
+    provider._fetch.mockResolvedValue(mockResponse({ jsonData: { content: process } }));
+    const result = await provider.resolveAdoProcess('Platform');
+    expect(result.data.content).toEqual(process);
+    expect(provider._fetch).toHaveBeenCalledWith('/admin/v1/ado-processes/resolve',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ project: 'Platform' }) }));
+  });
+
+  it.each([400, 404])('preserves process resolution errors for HTTP %s', async (status) => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ ok: false, status, jsonData: {
+      error: 'project_process_not_found', message: 'No accessible process for Platform',
+    } }));
+    const result = await provider.resolveAdoProcess('Platform');
+    expect(result.ok).toBe(false);
+    expect(result.error.code).toBe('project_process_not_found');
+    expect(result.error.message).toBe('No accessible process for Platform');
+    expect(result.error.status).toBe(status);
+  });
+
+  it('preserves catalogue validation messages and codes from FastAPI', async () => {
+    const provider = makeProvider();
+    provider._fetch.mockResolvedValue(mockResponse({ ok: false, status: 400, jsonData: {
+      error: 'type_in_use', message: 'Required by Platform roadmap',
+    } }));
+    const result = await provider.saveAdoProcesses({ schema_version: 1, processes: [] });
+    expect(result.ok).toBe(false);
+    expect(result.error.code).toBe('type_in_use');
+    expect(result.error.message).toBe('Required by Platform roadmap');
+    expect(result.error.status).toBe(400);
   });
 
   it('_fetch prefixes APP_BASE_URL for absolute paths', async () => {
@@ -200,13 +266,11 @@ describe('AdminProviderREST Result contract', () => {
     expect(out.error.detail).toEqual({ error: 'referenced_by_projects' });
   });
 
-  it('prefetchProjectsMetadata returns Result success without fetch for empty areaPaths', async () => {
+  it('does not expose retired project metadata methods', () => {
     const provider = makeProvider();
-    const out = await provider.prefetchProjectsMetadata([]);
-
-    expect(out.ok).toBe(true);
-    expect(out.data).toEqual({ results: {} });
-    expect(provider._fetch).not.toHaveBeenCalled();
+    for (const method of ['getWorkItemMetadata', 'getAreaPathMetadata', 'prefetchProjectsMetadata']) {
+      expect(method in provider).toBe(false);
+    }
   });
 
   it('encodes deletion team IDs and preserves the review receipt and post-commit warnings', async () => {

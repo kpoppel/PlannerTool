@@ -18,8 +18,9 @@ async function mountEditor(page, options = {}) {
     const state = createInitialAppState();
     const project = { id: 'plan', name: 'Delivery', type: 'project', container_order: 0,
       container_types: ['project'], allocation_defaults: { project: ['alpha', 'beta'] },
-      state_categories: { Active: 'InProgress' }, state_display_sequence: [], color: '#167d69',
-      iteration_uuid: 'schedules', task_type_hierarchy: [{ types: ['Feature'] }] };
+      work_item_display: [{ process_id: 'process', process_name: 'Delivery process', tiers: [[{
+        name: 'Feature', states: [{ name: 'Active', category: 'InProgress' }],
+      }]] }], color: '#167d69', iteration_uuid: 'schedules' };
     state.lifecycle.status = 'ready';
     state.baseline.projects = [project];
     state.baseline.teams = [
@@ -28,7 +29,7 @@ async function mountEditor(page, options = {}) {
     ];
     const capacity = fixture.capacity === undefined ? [{ team: 'alpha', capacity: 20 }] : fixture.capacity;
     state.baseline.features = [{ id: 'task', project: 'plan', title: 'Customer acceptance',
-      type: 'Feature', state: 'Active', start: '2026-10-05', end: '2026-10-16', parentId: null,
+      process_id: 'process', type: 'Feature', state: 'Active', start: '2026-10-05', end: '2026-10-16', parentId: null,
       capacity, relations: [], tags: '', description: '' }];
     if (fixture.childEnd !== undefined) {
       state.baseline.features.push({ ...state.baseline.features[0], id: 'child', parentId: 'task',
@@ -164,7 +165,7 @@ test.describe('Man-day allocation desktop', () => {
     expect(errors).toEqual([]);
   });
 
-  test('add-team input uses selected staffing and scheduling removes only invalid rows', async ({ page }) => {
+  test('add-team input uses selected staffing and over-capacity scheduling preserves all rows', async ({ page }) => {
     await mountEditor(page);
     await enableManDays(page);
     await page.locator('details-panel .add-team-btn').click();
@@ -180,14 +181,76 @@ test.describe('Man-day allocation desktop', () => {
     const end = page.locator('details-panel input[type="date"]').nth(1);
     await end.fill('2026-10-09');
     await end.press('Tab');
-    await expect(page.locator('details-panel .capacity-bar-row')).toHaveCount(1);
-    expect((await overrides(page)).task.capacity).toEqual([{ team: 'alpha', capacity: 40 }]);
+    await expect(end).toHaveValue('2026-10-16');
+    await expect(page.locator('details-panel .capacity-bar-row')).toHaveCount(2);
+    expect((await overrides(page)).task.capacity).toEqual([
+      { team: 'alpha', capacity: 20 }, { team: 'beta', capacity: 80 },
+    ]);
     const notices = await page.evaluate(async () => {
       const { store } = await import('/js/application/store.js');
       return store.getState().notifications;
     });
     expect(notices.some((entry) => entry.message.includes('beta') && entry.message.includes('100%'))).toBe(true);
   });
+
+  test('pointer shrinking above 100 percent keeps the task and restores its original size', async ({ page }, testInfo) => {
+    await mountEditor(page, { capacity: [{ team: 'alpha', capacity: 100 }] });
+    await enableManDays(page);
+    await page.locator('details-panel .details-close').click();
+    const card = page.locator('feature-card-lit');
+    const handle = await card.locator('.drag-handle').boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x - 170, handle.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(card).toBeVisible();
+    await expect(card).toHaveCSS('width', '200px');
+    expect(await overrides(page)).toEqual({});
+    const result = await page.evaluate(async () => {
+      const { store } = await import('/js/application/store.js');
+      const { sel } = await import('/js/application/imports.js');
+      return { feature: sel.feature.getEffectiveFeatureById('task'),
+        notices: store.getState().notifications.filter((entry) => entry.code === 'allocation-resize-limit') };
+    });
+    expect(result.feature).toMatchObject({ start: '2026-10-05', end: '2026-10-16',
+      capacity: [{ team: 'alpha', capacity: 100 }] });
+    expect(result.notices).toHaveLength(1);
+    expect(result.notices[0].message).toContain('100%');
+    await page.screenshot({ path: testInfo.outputPath('man-days-blocked-resize-desktop.png') });
+  });
+
+  for (const unit of ['percent', 'man-days']) {
+    test(`${unit} wheel bursts paint each step before committing the final allocation once`, async ({ page }) => {
+      await mountEditor(page);
+      if (unit === 'man-days') await enableManDays(page);
+      const feedback = await page.evaluate(async () => {
+        const { store } = await import('/js/application/store.js');
+        const panel = document.querySelector('details-panel');
+        const input = panel.shadowRoot.querySelector('.capacity-bar-input');
+        window.wheelAllocationCommits = 0;
+        store.subscribe((state, previous) => {
+          if (state.scenarios.items !== previous.scenarios.items) window.wheelAllocationCommits++;
+        });
+        const values = [];
+        for (let step = 0; step < 3; step++) {
+          input.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, cancelable: true }));
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          values.push(input.value);
+        }
+        return { values, commitsBeforePaint: window.wheelAllocationCommits };
+      });
+      expect(feedback.values).toEqual(unit === 'percent' ? ['30', '40', '50'] : ['11', '12', '13']);
+      expect(feedback.commitsBeforePaint).toBe(0);
+      await expect.poll(async () => {
+        const current = await overrides(page);
+        return Object.hasOwn(current, 'task') ? current.task.capacity : [];
+      }).toEqual([{ team: 'alpha', capacity: unit === 'percent' ? 50 : 26 }]);
+      await expect(page.locator('details-panel .capacity-bar-label')).toHaveText(unit === 'percent' ? '50%' : '26%');
+      await page.locator('details-panel .capacity-bar-input').focus();
+      await page.locator('details-panel .capacity-bar-input').press('Tab');
+      expect(await page.evaluate(() => window.wheelAllocationCommits)).toBe(1);
+    });
+  }
 
   test('previous percent submissions do not suppress man-day edits after switching units', async ({ page }) => {
     await mountEditor(page);

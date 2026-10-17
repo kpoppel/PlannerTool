@@ -163,7 +163,10 @@ bounded batches. Ancestors reached only by this second pass have `ancestorOnly: 
 Their Child links never trigger sibling expansion. An independently seeded or
 descendant-reached item remains ordinary imported work, even when it is also an
 ancestor. Parent traversal deduplicates IDs to terminate cycles and reports omitted
-ADO parent targets in `unresolvedParentIds`; TaskCategory boundaries still apply.
+ADO parent targets in `unresolvedParentIds`. Catalogue import boundaries apply
+to descendants and ancestors alike: unimported types and projects without an
+imported process are excluded and are not traversed. Task-level types cannot
+be imported.
 Existing context caches acquire the new records on task refresh or cache expiry.
 These are backend-neutral `DomainTask` properties, not ADO metadata. Backends
 also provide `sourcePlanName` as the display label for a source owner; the ADO
@@ -190,8 +193,8 @@ an empty `presentationPlanIds` list: they are loaded to preserve linked hierarch
 and calculation inputs, but no configured plan presents them as cards. They remain
 in the resolved graph for inspection, capacity and cost, independently of sidebar
 type/state/team filtering of otherwise presentable cards. Category-excluded references
-remain inspectable but are not calculation edges, including independently seeded
-Task-category endpoints. Shared tasks contribute once to organization totals and
+remain inspectable but are not calculation edges, including unimported type
+endpoints. Shared tasks contribute once to organization totals and
 once to each associated plan rollup. Cost reports retain all context types and
 apply the same team-aware child precedence, without inventing source-owner plans.
 Ancestor-only records are an explicit presentation exception: Parent Context can
@@ -203,6 +206,42 @@ its highest available ancestor lane without altering ownership or import provena
 Ancestor types are available in
 the task-type menu. Ancestor-only allocations and owners do not create cost rollups,
 and their empty import provenance keeps them out of plan capacity totals.
+
+### Plan Contract and Process Catalogue
+
+Revision 39 removes per-plan fetch/display state lists. Each plan configures a
+non-empty `task_types` selection and an integer `closed_history_days >= 0`.
+The ADO adapter resolves the process from the area path's project through the
+persisted `ado_processes` catalogue. Missing imports fail explicitly with
+`process_not_imported` or `type_not_imported`; task fetching never imports metadata.
+Type comparisons are case-insensitive, and plan saves canonicalize type casing.
+
+Selecting a project in Plans administration resolves its process and loads only
+that process's types, states and backlog behaviors on a cache miss, using the
+acting user's PAT. Additional types remain unimported until explicitly selected.
+Eligible types used by existing plans, including archived plans, are imported
+and locked. Plan saves atomically commit plans, requested imports and synchronized
+global display settings. Catalogue refresh reloads known processes only and drops
+those with neither configured plans nor imported types; failed refreshes commit
+nothing. There is no separate project/area metadata cache or metadata-prefetch API.
+
+Seed queries select the plan's types and Proposed, InProgress and Resolved states.
+Completed states are seeded only within a positive `closed_history_days` window;
+the default `0` excludes Completed seeds. All WIQL literals are escaped. Linked
+Completed items remain in active hierarchies. An all-Completed component is kept
+only when an item falls within the largest history window of its source plans.
+Removed items are excluded. Presentation uses plan types, not per-plan state lists.
+
+`global_settings` schema version 2 stores `process_order` and per-process
+`type_tiers`, synchronized with catalogue imports. Project responses expose the
+normalized `work_item_display` model: processes in configured order, sibling types
+in tiers and states in ADO sequence. Each display entry contains only `process_id`
+and `tiers`; ADO process names stay in the ADO catalogue and administration, not
+in runtime project payloads or generic task-type models. Tasks carry opaque
+`process_id` values; frontend type identity combines that ID and the task-type
+name. Only adjacent tiers define
+parent/child type relations; siblings never do. Repositories and generic consumers
+do not interpret ADO paths, type references or backlog definitions.
 
 ### Dependency-Injection Keys
 
@@ -297,10 +336,17 @@ expands their context once, then atomically commits the complete list and
 metadata. It bypasses independent seed/context cache reads. Freshness uses the
 existing task TTL, measured from successful completion. Failed or empty refreshes
 retain a populated snapshot; automatic retries have a 60-second cooldown.
-Missing or incompatible snapshots require a synchronous first complete fetch
-and preserve existing authentication/configuration/availability errors.
+Missing or incompatible snapshots require a synchronous first complete fetch.
+An unreadable seed area or linked item aborts the entire build with
+`AreaNotReadableError`; omitted linked IDs are checked against the recycle bin
+to distinguish deleted items from unreadable ones. No partial forest commits.
+After a configuration change, that specific access failure serves the previous
+snapshot with `stale_reason='configuration_changed'`; other errors propagate.
+The requesting user receives a `task_cache_access` warning. A later successful
+build clears the error and stale reason. Refreshes always use the acting user's
+PAT; no server scheduler or alternate account credential is involved.
 
-Configuration fingerprints include project, team, ADO, global normalization,
+Configuration fingerprints include project, team, ADO, process catalogue, global display,
 iteration and area-plan settings. A configuration guard and task-cache mutation
 epoch prevent refreshes from publishing over changed configuration, hard
 invalidation, or successful writes. Configuration storage is locked before task
@@ -316,6 +362,14 @@ snapshot. `X-Backend-Diagnostics` reports snapshot age, updating state, failures
 and refresh acceptance through the existing notification log. There is no polling,
 push notification or automatic baseline replacement. Publication's reviewed-source
 checks retain their explicit hard-invalidation and hydration path.
+
+`POST /admin/v1/projects/{plan_id}/refresh` calls `TaskRepository.rebuild_now`
+under the same build lock as background refreshes, rebuilding the complete forest
+synchronously and returning the plan's presentation item count. The Plans editor
+calls it after creation, data-affecting edits and restore. Saving precedes loading:
+a load failure leaves the plan saved and offers Retry without discarding the
+serving snapshot. Access failures return 403, missing imports 409, archived plans
+400 and superseded builds 503.
 
 Other remote operations retain the generic per-method cache path:
 
@@ -353,7 +407,7 @@ under `data/remote_cache`.
 
 | Store | Contents | Operational meaning |
 |---|---|---|
-| `storage` | Accounts, sessions, server config, projects, teams, workforce and iteration config, ADO config, scenarios, views, events, groups | Durable system of record. Never delete as a cache cleanup operation. |
+| `storage` | Accounts, sessions, server config, plans, process catalogue, global display settings, teams, workforce and iteration config, ADO config, scenarios, views, events, groups | Durable system of record. Never delete as a cache cleanup operation. |
 | `remote_cache_storage` | Cached remote `fetch_*` results and freshness sidecars | Disposable. Clearing it forces provider reads but does not delete user work or configuration. |
 
 Default cache freshness windows are configured by `cache.ttls` in

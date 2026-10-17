@@ -1,3 +1,4 @@
+import { displayFixture } from '../../helpers/workItemDisplay.js';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { store } from '../../../www/js/application/store.js';
 import { createInitialAppState } from '../../../www/js/application/createInitialAppState.js';
@@ -153,11 +154,11 @@ describe('application/commands/dataCommands', () => {
         teams: [{ id: 't1' }, { id: 't2' }],
         projects: [planConfig('p1'), planConfig('p2')],
         features: [
-          {
+          { process_id: 'process',
             id: 'visible', project: 'p1', state: 'Active', type: 'Feature',
             start: '2025-01-01', end: '2025-01-01', capacity: [{ team: 't1', capacity: 20 }],
           },
-          {
+          { process_id: 'process',
             id: 'hidden-context', project: 'p2', state: 'Done', type: 'Bug',
             start: '2025-01-01', end: '2025-01-01', capacity: [{ team: 't2', capacity: 110 }],
           },
@@ -206,8 +207,8 @@ describe('application/commands/dataCommands', () => {
     const dataService = makeDataServiceMock({
       getProjects: {
         ok: true,
-        data: [{ ...planConfig('p1'), state_display_sequence: [] },
-          { ...planConfig('p2'), state_display_sequence: [] }],
+        data: [{ ...planConfig('p1'), work_item_display: displayFixture(undefined, undefined) },
+          { ...planConfig('p2'), work_item_display: displayFixture(undefined, undefined) }],
       },
       getTeams: { ok: true, data: [{ id: 't1' }, { id: 't2' }] },
       getFeatures: {
@@ -243,8 +244,8 @@ describe('application/commands/dataCommands', () => {
 
     expect(result.ok).toBe(true);
     expect(store.getState().baseline.projects).toEqual([
-      { ...planConfig('p1'), color: '#3498db', state_display_sequence: [] },
-      { ...planConfig('p2'), color: '#2980b9', state_display_sequence: [] },
+      { ...planConfig('p1'), color: '#3498db', work_item_display: displayFixture(undefined, undefined) },
+      { ...planConfig('p2'), color: '#2980b9', work_item_display: displayFixture(undefined, undefined) },
     ]);
     expect(store.getState().baseline.teams).toEqual([
       { id: 't1', color: '#3498db' },
@@ -295,14 +296,7 @@ describe('application/commands/dataCommands', () => {
         ok: true,
         data: [{
           id: 'p1',
-          display_states: ['Closed', 'New', 'Resolved', 'Active', 'Defined'],
-          state_display_sequence: [
-            { types: ['New'] },
-            { types: ['Defined'] },
-            { types: ['Active'] },
-            { types: ['Resolved'] },
-            { types: ['Closed'] },
-          ],
+          work_item_display: displayFixture(undefined, undefined, ['New', 'Defined', 'Active', 'Resolved', 'Closed']),
         }],
       },
       getTeams: { ok: true, data: [] },
@@ -492,7 +486,7 @@ describe('application/commands/dataCommands', () => {
 
     const result = await commands.hydrateBaseline({
       preloaded: {
-        projects: [{ id: 'p10', state_display_sequence: [] }],
+        projects: [{ id: 'p10', work_item_display: displayFixture(undefined, undefined) }],
         teams: [{ id: 't10' }],
         features: [{ id: 'f10' }],
         iterationsByProject: { p10: [{ id: 'iter-10' }] },
@@ -505,7 +499,7 @@ describe('application/commands/dataCommands', () => {
     expect(dataService.getFeatures).not.toHaveBeenCalled();
     expect(dataService.getIterationsConfig).not.toHaveBeenCalled();
     expect(store.getState().baseline.projects).toEqual([
-      { id: 'p10', color: expect.any(String), state_display_sequence: [] },
+      { id: 'p10', color: expect.any(String), work_item_display: displayFixture(undefined, undefined) },
     ]);
     expect(store.getState().baseline.features).toEqual([{ id: 'f10', originalRank: 0 }]);
   });
@@ -581,7 +575,7 @@ describe('application/commands/dataCommands', () => {
     const beforeLifecycle = structuredClone(store.getState().lifecycle);
     const result = await commands.hydrateBaseline({
       preloaded: {
-        projects: [{ id: 'p10', state_display_sequence: [] }],
+        projects: [{ id: 'p10', work_item_display: displayFixture(undefined, undefined) }],
         teams: [{ id: 't10' }],
         features: [{ id: 'f10' }],
         iterationSetsById: null,

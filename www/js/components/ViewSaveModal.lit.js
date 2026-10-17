@@ -95,7 +95,8 @@ export class ViewSaveModal extends LitElement {
       };
     }
 
-    this.previewData.taskTypes = sel.filter.getSelectedTaskTypeNames();
+    this.previewData.taskTypes = sel.filter.getSelectedTaskTypeNames()
+      .map((key) => sel.feature.getTypeDisplayName(key));
     this.previewData.graphType = sel.view.getEffectiveCapacityViewMode();
 
     this.requestUpdate();
