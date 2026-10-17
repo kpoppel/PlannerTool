@@ -141,6 +141,46 @@ describe('application/commands/featureCommands', () => {
     return state;
   }
 
+  for (const unit of ['percent', 'man-days']) {
+    for (const [end, expected] of [['2026-10-09', 40], ['2026-10-30', 10]]) {
+      for (const policy of ['keep-allocation', 'keep-effort']) {
+        it(`${unit} resize ${policy} to ${end} uses the gesture policy`, () => {
+          const state = prepareManDayState();
+          state.allocation.unit = unit;
+          store.setState(state, true);
+          const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), vi.fn());
+          commands.resizeFeatureDates([{ id: 'f1', end }], policy);
+          const override = store.getState().scenarios.items[0].overrides.f1;
+          expect(override.end).toBe(end);
+          if (policy === 'keep-effort') {
+            expect(override.capacity).toEqual([{ team: 'A', capacity: expected }]);
+          } else {
+            expect(override.capacity).toBeUndefined();
+          }
+        });
+      }
+    }
+  }
+
+  it('rejects explicit effort preservation above 100% in percent display atomically', () => {
+    const state = prepareManDayState([{ team: 'A', capacity: 60 }]);
+    state.allocation.unit = 'percent';
+    store.setState(state, true);
+    const notify = vi.fn();
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), notify);
+    expect(commands.resizeFeatureDates([{ id: 'f1', end: '2026-10-09' }], 'keep-effort')).toEqual([]);
+    expect(store.getState()).toBe(state);
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ code: 'allocation-resize-limit' }));
+  });
+
+  it('rejects an invalid resize policy before making changes', () => {
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), vi.fn());
+    const before = store.getState();
+    expect(() => commands.resizeFeatureDates([{ id: 'f1', end: '2026-10-09' }], 'invalid'))
+      .toThrow('Invalid resize policy');
+    expect(store.getState()).toBe(before);
+  });
+
   it('preserves man-days once per final task schedule and commits dates with integer allocations', () => {
     store.setState(prepareManDayState(), true);
     const notify = vi.fn();

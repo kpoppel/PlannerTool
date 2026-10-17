@@ -15,6 +15,8 @@ Template - do not change :
 ---
 
 ## [v5.0.0] - unreleased
+- Expand the illustrated v5 release notes with planner and administrator benefits, scenario and resize workflows, portability guidance and Git change statistics.
+- Add a two-color task resize handle to keep allocation or effort constant in either display unit, with delayed explanations and full-handle drag confirmation.
 - Allow group creation from the plan swimlane under the cursor when multiple plans are selected.
 - Bump plugin versions to reflect the v5 feature, compatibility, and calculation changes.
 - Remove the obsolete Show Onboarding action from the Help modal.

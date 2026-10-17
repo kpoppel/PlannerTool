@@ -10,6 +10,40 @@ import sinon from 'sinon';
 import { cmd, sel } from '../../www/js/application/imports.js';
 
 describe('dragManager helpers', () => {
+  it('does not commit a resize without movement and finishes exactly once', () => {
+    const feature = { id: 'click', start: '2026-10-05', end: '2026-10-16' };
+    const card = { style: { width: '200px' }, setLiveDates() {}, clearLiveDates() {} };
+    const commit = sinon.spy();
+    const finish = sinon.spy();
+    const cancel = startResize({ clientX: 100 }, feature, card, null, commit, finish);
+    window.dispatchEvent(new MouseEvent('mouseup'));
+    cancel();
+    expect(commit.called).to.be.false;
+    expect(finish.calledOnce).to.be.true;
+    expect(card.style.width).to.equal('200px');
+  });
+
+  it('cancels preview on Escape or window blur without committing', () => {
+    for (const event of [new KeyboardEvent('keydown', { key: 'Escape' }), new Event('blur')]) {
+      const features = sinon.stub(sel.feature, 'getEffectiveFeatures').returns([]);
+      const card = { style: { width: '200px' }, setLiveDates() {}, clearLiveDates() {} };
+      const commit = sinon.spy();
+      const finish = sinon.spy();
+      try {
+        startResize({ clientX: 100 }, { id: 'cancel', start: '2026-10-05', end: '2026-10-16' },
+          card, null, commit, finish);
+        window.dispatchEvent(new MouseEvent('mousemove', { clientX: 180 }));
+        window.dispatchEvent(event);
+        window.dispatchEvent(new MouseEvent('mouseup'));
+        expect(commit.called).to.be.false;
+        expect(finish.calledOnce).to.be.true;
+        expect(card.style.width).to.equal('200px');
+      } finally {
+        features.restore();
+      }
+    }
+  });
+
   it('explains a descendant-limited man-day resize once on release, not on every move', () => {
     const feature = { id: '795708', start: '2026-06-17', end: '2026-08-03' };
     const child = { id: '750624', parentId: '795708', start: '2026-07-21', end: '2026-08-03' };
@@ -21,7 +55,7 @@ describe('dragManager helpers', () => {
     card.setLiveDates = sinon.spy();
     card.clearLiveDates = sinon.spy();
     try {
-      startResize({ clientX: 0 }, feature, card, null, () => []);
+      startResize({ clientX: 0 }, feature, card, null, () => [], () => {});
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: -10000 }));
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: -10001 }));
       expect(notify.called).to.be.false;
@@ -44,7 +78,7 @@ describe('dragManager helpers', () => {
     card.setLiveDates = sinon.spy();
     card.clearLiveDates = sinon.spy();
     try {
-      startResize({ clientX: 0 }, feature, card, null, () => []);
+      startResize({ clientX: 0 }, feature, card, null, () => [], () => {});
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100 }));
       expect(card.style.width).not.to.equal('100px');
       window.dispatchEvent(new MouseEvent('mouseup'));

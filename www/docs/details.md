@@ -29,6 +29,8 @@ Every work item needs its own start and end dates to be planned. Dates are not i
 
 Choosing a preset or an alignment button is an explicit action that sets dates; it is not implicit date resolution.
 
+Date fields, presets and alignment buttons retain allocation percentages in **Percent** mode and preserve effort in **Man-days** mode. To choose either behavior for an individual resize without changing entry units, use the card's [two-part resize handle](card_workflows.md#resizing-a-task): upper teal keeps allocation; lower ochre keeps effort. The whole handle takes the chosen color for the duration of the drag.
+
 ## Allocated Capacity
 
 - One row per allocated team with a bar and a value field. Bars are always percentages.

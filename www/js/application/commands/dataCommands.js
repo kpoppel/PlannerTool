@@ -102,7 +102,7 @@ export function createDataCommands(store, bus, dataService) {
       // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
       const unit = stored === undefined ? 'percent' : stored;
       applyAllocationUnit(unit);
-      if (unit === 'man-days' && store.getState().allocation.staffing.status !== 'ready') {
+      if (store.getState().allocation.staffing.status !== 'ready') {
         await commands.refreshAllocationStaffing();
       }
     },
@@ -111,7 +111,7 @@ export function createDataCommands(store, bus, dataService) {
       if (unit !== 'percent' && unit !== 'man-days') throw new Error(`Invalid allocation unit: ${unit}`);
       await dataService.setLocalPref('allocation.unit', unit);
       applyAllocationUnit(unit);
-      if (unit === 'man-days' && store.getState().allocation.staffing.status !== 'ready') {
+      if (store.getState().allocation.staffing.status !== 'ready') {
         return commands.refreshAllocationStaffing();
       }
       return { ok: true };
@@ -205,7 +205,7 @@ export function createDataCommands(store, bus, dataService) {
     },
 
     async hydrateBaseline(options = {}) {
-      if (store.getState().allocation.unit === 'man-days') commands.clearAllocationStaffing();
+      commands.clearAllocationStaffing();
       const preloaded = options.preloaded;
       const hasPreloaded = preloaded !== undefined && preloaded !== null;
 
@@ -370,7 +370,7 @@ export function createDataCommands(store, bus, dataService) {
       bus.emit(DataEvents.LOADED);
       bus.emit(DataCommandEvents.BASELINE_HYDRATED, { revision });
 
-      if (store.getState().allocation.unit === 'man-days') await commands.refreshAllocationStaffing();
+      await commands.refreshAllocationStaffing();
 
       return {
         ok: true,

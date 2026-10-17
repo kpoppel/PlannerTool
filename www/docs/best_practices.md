@@ -78,6 +78,8 @@ Configuration lets you enter allocations in Percent or Man-days. This changes th
 
 A man-day represents one person's average project working day on the allocated team, not a standard eight-hour day. The conversion uses that team's FTE and the task's inclusive Monday-Friday dates. It does not model individual assignments, holidays or leave calendars.
 
+When changing a task's timeline, decide whether you are changing the estimate or rescheduling the same work. The card's [split resize handle](card_workflows.md#resizing-a-task) lets you choose for each drag, in either entry unit: **Keep allocation** changes effort with working-day duration; **Keep effort** changes allocation to preserve the estimate. Shortening a schedule is not, by itself, evidence that the work has become smaller.
+
 **Man-day estimates are team-specific, not interchangeable between teams.** Different project-hour assumptions, skills, experience, dependencies and working contexts mean that equal man-day estimates do not imply equal output, elapsed time, cost or likelihood of delivery. Do not use them to rank team productivity or compare estimate accuracy. For cross-team budgeting, use the configured project hours and rates and make the assumptions explicit rather than treating every team's man-day as equivalent.
 
 ### Review forecasts and commitments separately

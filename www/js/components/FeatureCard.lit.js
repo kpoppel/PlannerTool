@@ -5,7 +5,8 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { FeatureEvents, DragEvents, UIEvents, BoardEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { cmd, sel } from '../application/imports.js';
-import { startDragMove, startResize } from './dragManager.js';
+import { startDragMove, startResize, computeResizeUpdates } from './dragManager.js';
+import { addDays, parseDate } from './util.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { getBoardZoom, findInBoard } from './board-utils.js';
 import { hasTimelinePlacement, isAnchorPresentation } from '../application/shared/featurePresentation.js';
@@ -37,6 +38,8 @@ export class FeatureCardLit extends LitElement {
     hideGhostTitle: { type: Boolean },
     foldCount: { type: Number },
     folded: { type: Boolean },
+    _resizePolicy: { state: true },
+    _resizeTooltip: { state: true },
   };
 
   static styles = css`
@@ -503,10 +506,50 @@ export class FeatureCardLit extends LitElement {
       background: rgba(0, 0, 0, 0.06);
       opacity: 0;
       transition: opacity 0.2s;
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      z-index: 5;
     }
 
-    .feature-card:hover .drag-handle {
+    .feature-card:hover .drag-handle,
+    .drag-handle:focus-within,
+    .drag-handle[data-active-policy='keep-effort'],
+    .drag-handle[data-active-policy='keep-allocation'] {
       opacity: 1;
+    }
+
+    .resize-zone {
+      display: block;
+      min-height: 0;
+      padding: 0;
+      border: 0;
+      cursor: ew-resize;
+      background: transparent;
+    }
+
+    .resize-zone:first-child { border-radius: 0 5px 0 0; background: #176d6840; }
+    .resize-zone:last-child { border-radius: 0 0 5px 0; background: #a9681740; }
+    .resize-zone[data-resize-policy='keep-allocation']:hover,
+    .resize-zone[data-resize-policy='keep-allocation']:focus-visible { background: #176d68; }
+    .resize-zone[data-resize-policy='keep-effort']:hover,
+    .resize-zone[data-resize-policy='keep-effort']:focus-visible { background: #a96817; }
+    .drag-handle[data-active-policy='keep-allocation'] .resize-zone { background: #176d68; }
+    .drag-handle[data-active-policy='keep-effort'] .resize-zone { background: #a96817; }
+    .resize-zone:focus-visible { outline: 2px solid #202d30; outline-offset: 2px; }
+    .resize-tooltip {
+      position: absolute;
+      z-index: 130;
+      top: 0;
+      right: 16px;
+      width: 230px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      background: #263238;
+      color: white;
+      font-size: 12px;
+      line-height: 1.4;
+      pointer-events: none;
+      box-shadow: 0 2px 8px #0003;
     }
 
     /* Inline ghost title placed to the left of the card. Rendered inside
@@ -569,6 +612,9 @@ export class FeatureCardLit extends LitElement {
     super();
     this._scenarioAccess = new StoreController(this, () => sel.scenario.isActiveScenarioMutable());
     this._cancelGesture = null;
+    this._resizePolicy = '';
+    this._resizeTooltip = '';
+    this._resizeTooltipTimer = null;
     this.feature = {};
     this.bus = null;
     this.teams = [];
@@ -877,14 +923,25 @@ export class FeatureCardLit extends LitElement {
     const rh = this.shadowRoot.querySelector('.drag-handle');
     if (path.includes(rh)) {
       e.stopPropagation();
+      e.preventDefault();
+      if (e.button !== 0) return;
+      const zone = path.find((element) => element instanceof Element
+        && element.hasAttribute('data-resize-policy'));
+      if (zone === undefined) return;
+      const policy = zone.dataset.resizePolicy;
+      this._hideResizeTooltip();
+      this._resizePolicy = policy;
       const datesEl = this.shadowRoot.querySelector('.feature-dates');
       this._cancelGesture = startResize(
         e,
         this.feature,
         this,
         datesEl,
-        (updates) => cmd.feature.updateFeatureDates(updates),
-        sel.feature.getEffectiveFeatures()
+        (updates) => cmd.feature.resizeFeatureDates(updates, policy),
+        () => {
+          this._resizePolicy = '';
+          this._cancelGesture = null;
+        }
       );
       return;
     }
@@ -924,6 +981,8 @@ export class FeatureCardLit extends LitElement {
   }
 
   _cancelEditingGesture() {
+    this._hideResizeTooltip();
+    this._resizePolicy = '';
     if (this._cancelGesture !== null) {
       this._cancelGesture();
       this._cancelGesture = null;
@@ -941,6 +1000,7 @@ export class FeatureCardLit extends LitElement {
   }
 
   _handleClick(e) {
+    e.stopPropagation();
     if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
     const path = e.composedPath();
     if (path.includes(this.shadowRoot.querySelector('.drag-handle'))) return;
@@ -964,6 +1024,7 @@ export class FeatureCardLit extends LitElement {
 
   _handleContextMenu(e) {
     e.preventDefault();
+    if (e.composedPath().includes(this.shadowRoot.querySelector('.drag-handle'))) return;
     this.dispatchEvent(new CustomEvent('feature-context-menu', {
       detail: { feature: this.feature, clientX: e.clientX, clientY: e.clientY },
       bubbles: true,
@@ -976,6 +1037,40 @@ export class FeatureCardLit extends LitElement {
     const path = e.composedPath();
     if (path.includes(this.shadowRoot.querySelector('.drag-handle'))) return;
     cmd.feature.revertFeature(this.feature.id);
+  }
+
+  _showResizeTooltip(event) {
+    this._hideResizeTooltip();
+    if (this._resizePolicy !== '') return;
+    const policy = event.currentTarget.dataset.resizePolicy;
+    this._resizeTooltipTimer = setTimeout(() => {
+      this._resizeTooltip = policy === 'keep-effort'
+        ? 'Keep effort: allocation changes as you resize; effort stays fixed.'
+        : 'Keep allocation: effort changes as you resize; allocation stays fixed.';
+    }, 650);
+  }
+
+  _hideResizeTooltip() {
+    clearTimeout(this._resizeTooltipTimer);
+    this._resizeTooltipTimer = null;
+    this._resizeTooltip = '';
+  }
+
+  _onResizeKeyDown(event) {
+    if (event.key === 'Escape') {
+      this._cancelEditingGesture();
+      return;
+    }
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!sel.scenario.isActiveScenarioMutable()) return;
+    if (!this.feature.start || !this.feature.end) return;
+    const end = addDays(parseDate(this.feature.end), event.key === 'ArrowRight' ? 1 : -1);
+    if (end < parseDate(this.feature.start)) return;
+    const updates = computeResizeUpdates(this.feature, end, sel.feature.getEffectiveFeatures());
+    cmd.feature.resizeFeatureDates(updates, event.currentTarget.dataset.resizePolicy);
+    this._hideResizeTooltip();
   }
 
   _renderTeamLoadRow() {
@@ -1138,9 +1233,25 @@ export class FeatureCardLit extends LitElement {
             </div>
           `
         : ''}
-        ${sel.scenario.isActiveScenarioMutable() ? html`<div class="drag-handle" data-drag-handle part="drag-handle"></div>` : ''}
+        ${sel.scenario.isActiveScenarioMutable() ? html`<div class="drag-handle"
+          data-active-policy=${this._resizePolicy} data-drag-handle part="drag-handle">
+          <button class="resize-zone" type="button" data-resize-policy="keep-allocation"
+            aria-label="Keep allocation: resize duration and effort"
+            aria-describedby="resize-tooltip"
+            @mouseenter=${this._showResizeTooltip} @mouseleave=${this._hideResizeTooltip}
+            @focus=${this._showResizeTooltip} @blur=${this._hideResizeTooltip}
+            @keydown=${this._onResizeKeyDown}></button>
+          <button class="resize-zone" type="button" data-resize-policy="keep-effort"
+            aria-label="Keep effort: resize duration and allocation"
+            aria-describedby="resize-tooltip"
+            @mouseenter=${this._showResizeTooltip} @mouseleave=${this._hideResizeTooltip}
+            @focus=${this._showResizeTooltip} @blur=${this._hideResizeTooltip}
+            @keydown=${this._onResizeKeyDown}></button>
+        </div>` : ''}
       </div>
       <reconciliation-task-marker .featureId=${this.feature.id}></reconciliation-task-marker>
+      ${this._resizeTooltip !== '' ? html`<div class="resize-tooltip" id="resize-tooltip"
+        role="tooltip">${this._resizeTooltip}</div>` : ''}
       <div
         class="ghost-title"
         aria-hidden="true"

@@ -21,6 +21,7 @@ function makeDataServiceMock(overrides = {}) {
     getFeatures: { ok: true, data: [] },
     getIterationsConfig: { ok: true, data: { iterationSetsById: {} } },
     loadAllScenarios: { ok: true, data: [] },
+    getCostTeams: { ok: true, data: { teams: {}, groups: {} } },
   };
   const resultFor = (methodName) =>
     Object.prototype.hasOwnProperty.call(overrides, methodName)
@@ -32,6 +33,7 @@ function makeDataServiceMock(overrides = {}) {
     getFeatures: vi.fn(async () => resultFor('getFeatures')),
     getIterationsConfig: vi.fn(async () => resultFor('getIterationsConfig')),
     loadAllScenarios: vi.fn(async () => resultFor('loadAllScenarios')),
+    getCostTeams: vi.fn(async () => resultFor('getCostTeams')),
     getColorMappings,
   };
 }
@@ -50,11 +52,10 @@ describe('application/commands/dataCommands', () => {
     } }));
     const commands = createDataCommands(store, { emit: vi.fn() }, service);
     const scenarios = store.getState().scenarios;
-    const allocation = store.getState().allocation;
     await commands.initializeAllocationPreferences();
-    expect(store.getState().allocation).toBe(allocation);
     expect(store.getState().allocation.unit).toBe('percent');
-    expect(service.getCostTeams).not.toHaveBeenCalled();
+    expect(service.getCostTeams).toHaveBeenCalledTimes(1);
+    expect(store.getState().allocation.staffing).toMatchObject({ status: 'ready', fteById: { alpha: 5 } });
     await commands.setAllocationUnit('man-days');
     expect(service.setLocalPref).toHaveBeenCalledWith('allocation.unit', 'man-days');
     expect(store.getState().allocation.staffing).toMatchObject({ status: 'ready', fteById: { alpha: 5 } });
@@ -67,6 +68,15 @@ describe('application/commands/dataCommands', () => {
     expect(store.getState().allocation.unit).toBe('man-days');
     expect(service.getCostTeams).toHaveBeenCalledTimes(1);
     await expect(commands.setAllocationUnit('hours')).rejects.toThrow('allocation unit');
+  });
+
+  it('reports a failed staffing load when saving percent configuration', async () => {
+    const service = makeDataServiceMock();
+    service.setLocalPref = vi.fn(async () => {});
+    service.getCostTeams.mockResolvedValue({ ok: false, error: { message: 'Offline' } });
+    const commands = createDataCommands(store, { emit: vi.fn() }, service);
+    expect(await commands.setAllocationUnit('percent')).toEqual({ ok: false, error: { message: 'Offline' } });
+    expect(store.getState().allocation.staffing.status).toBe('error');
   });
 
   it('shares staffing loads, clears stale account data and distinguishes errors from absent teams', async () => {
@@ -93,13 +103,13 @@ describe('application/commands/dataCommands', () => {
     expect(store.getState().allocation.staffing.status).toBe('error');
   });
 
-  it('refreshes staffing with the baseline only in man-day mode', async () => {
+  it('refreshes staffing with the baseline in both units for effort-preserving resizing', async () => {
     const service = makeDataServiceMock();
     service.setLocalPref = vi.fn(async () => {});
     service.getCostTeams = vi.fn(async () => ({ ok: true, data: { teams: {}, groups: {} } }));
     const commands = createDataCommands(store, { emit: vi.fn() }, service);
     await commands.hydrateBaseline();
-    expect(service.getCostTeams).not.toHaveBeenCalled();
+    expect(service.getCostTeams).toHaveBeenCalledTimes(1);
     await commands.setAllocationUnit('man-days');
     await commands.hydrateBaseline();
     expect(service.getCostTeams).toHaveBeenCalledTimes(2);

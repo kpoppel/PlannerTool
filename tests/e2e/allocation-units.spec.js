@@ -135,6 +135,141 @@ test.describe('Man-day allocation desktop', () => {
     });
   }
 
+  for (const unit of ['percent', 'man-days']) {
+    for (const policy of ['keep-allocation', 'keep-effort']) {
+      for (const delta of [-80, 80]) {
+        test(`${unit} ${policy} handle ${delta < 0 ? 'shortens' : 'extends'} the task`, async ({ page }, testInfo) => {
+          await mountEditor(page);
+          if (unit === 'man-days') await enableManDays(page);
+          await page.locator('details-panel .details-close').click();
+          await page.evaluate(async () => {
+            const { TIMELINE_CONFIG } = await import('/js/components/Timeline.lit.js');
+            TIMELINE_CONFIG.monthWidth = 620;
+            document.querySelector('feature-card-lit').style.width = '240px';
+          });
+          const card = page.locator('feature-card-lit');
+          const handle = card.locator('.drag-handle');
+          const zone = card.locator(`[data-resize-policy="${policy}"]`);
+          await card.hover();
+          const box = await zone.boundingBox();
+          const startX = box.x + box.width / 2;
+          const startY = box.y + box.height / 2;
+          await page.mouse.move(startX, startY);
+          await page.mouse.down();
+          await expect(handle).toHaveAttribute('data-active-policy', policy);
+          const color = policy === 'keep-effort' ? 'rgb(169, 104, 23)' : 'rgb(23, 109, 104)';
+          await expect(card.locator('.resize-zone').nth(0)).toHaveCSS('background-color', color);
+          await expect(card.locator('.resize-zone').nth(1)).toHaveCSS('background-color', color);
+          const opposite = await card.locator('.resize-zone').nth(policy === 'keep-effort' ? 0 : 1).boundingBox();
+          await page.mouse.move(startX, opposite.y + opposite.height / 2);
+          await expect(handle).toHaveAttribute('data-active-policy', policy);
+          await expect(card.locator('.resize-zone').nth(0)).toHaveCSS('background-color', color);
+          await expect(card.locator('.resize-zone').nth(1)).toHaveCSS('background-color', color);
+          await page.mouse.move(startX + delta, startY, { steps: 8 });
+          await page.mouse.up();
+          await expect(handle).toHaveAttribute('data-active-policy', '');
+          const result = await page.evaluate(async () => {
+            const { sel } = await import('/js/application/imports.js');
+            const { countWorkingDays } = await import('/js/application/shared/allocationUnits.js');
+            const feature = sel.feature.getEffectiveFeatureById('task');
+            return { days: countWorkingDays(feature), percent: feature.capacity[0].capacity,
+              end: feature.end };
+          });
+          expect(result.end < '2026-10-16').toBe(delta < 0);
+          expect(result.percent).toBeCloseTo(policy === 'keep-effort' ? 20 * 10 / result.days : 20, 12);
+          expect((await overrides(page)).task.end).toBe(result.end);
+          await page.screenshot({ path: testInfo.outputPath(`${unit}-${policy}-${delta}.png`) });
+        });
+      }
+    }
+  }
+
+  test('split zones remain usable in normal and condensed desktop cards at board zoom levels', async ({ page }, testInfo) => {
+    await mountEditor(page);
+    await page.locator('details-panel .details-close').click();
+    const card = page.locator('feature-card-lit');
+    for (const condensed of [false, true]) {
+      for (const zoom of [0.75, 1, 1.5]) {
+        await card.evaluate(async (element, settings) => {
+          element.condensed = settings.condensed;
+          element.style.setProperty('--board-zoom', String(settings.zoom));
+          await element.updateComplete;
+        }, { condensed, zoom });
+        await card.hover();
+        const zones = card.locator('.resize-zone');
+        const upper = await zones.nth(0).boundingBox();
+        const lower = await zones.nth(1).boundingBox();
+        expect(upper.width).toBe(10);
+        expect(lower.width).toBe(10);
+        expect(upper.height).toBeGreaterThan(8);
+        expect(lower.height).toBeGreaterThan(8);
+        expect(lower.y).toBeCloseTo(upper.y + upper.height, 1);
+        await zones.nth(0).click();
+        expect(await overrides(page)).toEqual({});
+        await expect(card.locator('.drag-handle')).toHaveAttribute('data-active-policy', '');
+        await zones.nth(1).hover();
+        await page.mouse.down();
+        await page.mouse.move(lower.x + 50, lower.y + lower.height / 2, { steps: 4 });
+        await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+        await page.mouse.up();
+        await expect(card.locator('.drag-handle')).toHaveAttribute('data-active-policy', '');
+        await expect(card).toHaveCSS('width', '200px');
+        expect(await overrides(page)).toEqual({});
+        await page.screenshot({ path: testInfo.outputPath(`handle-${condensed}-${zoom}.png`) });
+      }
+    }
+  });
+
+  test('percent effort resize can recover staffing in Configuration without changing units', async ({ page }) => {
+    await page.route('**/api/cost/teams', (route) => route.fulfill({ status: 503, json: { detail: 'Offline' } }));
+    await mountEditor(page);
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      cmd.feature.resizeFeatureDates([{ id: 'task', end: '2026-10-23' }], 'keep-effort');
+    });
+    expect(await overrides(page)).toEqual({});
+    await page.evaluate(() => document.body.appendChild(document.createElement('config-modal')));
+    const config = page.locator('config-modal');
+    await expect(config.locator('#allocationUnit')).toHaveValue('percent');
+    await expect(config.locator('#retryStaffingBtn')).toBeVisible();
+    await page.route('**/api/cost/teams', (route) => route.fulfill({ json: {
+      teams: { alpha: { internal: { fte: 5 }, external: { fte: 0 } } }, groups: {},
+    } }));
+    await config.locator('#retryStaffingBtn').click();
+    await expect(config.locator('#configStatus')).toHaveText('Staffing loaded.');
+    await config.locator('#closeConfigBtn').click();
+    await page.evaluate(async () => {
+      const { cmd } = await import('/js/application/imports.js');
+      cmd.feature.resizeFeatureDates([{ id: 'task', end: '2026-10-23' }], 'keep-effort');
+    });
+    expect((await overrides(page)).task.capacity[0].capacity).toBeCloseTo(200 / 15, 12);
+  });
+
+  test('split handle explains hover, supports keyboard resizing and cancels cleanly', async ({ page }) => {
+    await mountEditor(page);
+    await page.locator('details-panel .details-close').click();
+    const card = page.locator('feature-card-lit');
+    const handle = card.locator('.drag-handle');
+    const zone = card.getByRole('button', { name: 'Keep effort: resize duration and allocation' });
+    await card.hover();
+    await zone.hover();
+    await expect(card.getByRole('tooltip')).toHaveText('Keep effort: allocation changes as you resize; effort stays fixed.');
+    const box = await zone.boundingBox();
+    await page.mouse.down();
+    await expect(card.getByRole('tooltip')).toHaveCount(0);
+    await page.mouse.move(box.x + 100, box.y + box.height / 2, { steps: 8 });
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(handle).toHaveAttribute('data-active-policy', '');
+    await expect(card).toHaveCSS('width', '200px');
+    expect(await overrides(page)).toEqual({});
+    await zone.focus();
+    await expect(handle).toHaveCSS('opacity', '1');
+    await page.keyboard.press('ArrowRight');
+    expect((await overrides(page)).task.end).toBe('2026-10-17');
+    expect((await overrides(page)).task.capacity).toBeUndefined();
+  });
+
   test('switching away and back cancels wheel drafts and an in-progress resize', async ({ page }) => {
     await mountEditor(page);
     await page.evaluate(async () => {
@@ -151,7 +286,7 @@ test.describe('Man-day allocation desktop', () => {
     expect(await overrides(page)).toEqual({});
     await page.locator('details-panel .details-close').click();
     const card = page.locator('feature-card-lit');
-    const handle = await card.locator('.drag-handle').boundingBox();
+    const handle = await card.locator('[data-resize-policy="keep-effort"]').boundingBox();
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
     await page.mouse.down();
     await page.mouse.move(handle.x + 80, handle.y, { steps: 8 });
@@ -273,7 +408,7 @@ test.describe('Man-day allocation desktop', () => {
     await enableManDays(page);
     await page.locator('details-panel .details-close').click();
     const card = page.locator('feature-card-lit');
-    const handle = await card.locator('.drag-handle').boundingBox();
+    const handle = await card.locator('[data-resize-policy="keep-effort"]').boundingBox();
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
     await page.mouse.down();
     await page.mouse.move(handle.x - 170, handle.y, { steps: 8 });
@@ -373,7 +508,7 @@ test.describe('Man-day allocation desktop', () => {
     await expect(page.locator('details-panel .capacity-bar-row')).toHaveCount(2);
     await page.locator('details-panel .details-close').click();
     const card = page.locator('feature-card-lit');
-    const handle = await card.locator('.drag-handle').boundingBox();
+    const handle = await card.locator('[data-resize-policy="keep-effort"]').boundingBox();
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
     await page.mouse.down();
     await page.mouse.move(handle.x + 100, handle.y, { steps: 8 });
@@ -395,7 +530,7 @@ test.describe('Man-day allocation desktop', () => {
     await expect(end).toHaveValue('2026-10-15');
     await page.locator('details-panel .details-close').click();
     const card = page.locator('feature-card-lit');
-    const handle = await card.locator('.drag-handle').boundingBox();
+    const handle = await card.locator('[data-resize-policy="keep-effort"]').boundingBox();
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
     await page.mouse.down();
     await page.mouse.move(0, handle.y, { steps: 8 });
@@ -415,7 +550,7 @@ test.describe('Man-day allocation desktop', () => {
     await enableManDays(page);
     await page.locator('details-panel .details-close').click();
     const card = page.locator('feature-card-lit');
-    const handle = await card.locator('.drag-handle').boundingBox();
+    const handle = await card.locator('[data-resize-policy="keep-effort"]').boundingBox();
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
     await page.mouse.down();
     await page.mouse.move(handle.x + 100, handle.y, { steps: 8 });

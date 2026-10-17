@@ -102,249 +102,261 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null, noti
     }
   }
 
-  return {
-    updateFeatureDates(updates) {
-      const safeUpdates = updates;
-      if (!safeUpdates.length) return [];
+  function applyFeatureDates(updates, policy, explicitResize) {
+    const safeUpdates = updates;
+    if (!safeUpdates.length) return [];
 
-      const snapshot = store.getState();
-      if (!getScenarioAccess(snapshot, getActiveScenarioId(snapshot)).canEdit) return [];
-      const baselineById = getBaselineFeatureMap(snapshot);
-      const childrenByParent = buildChildrenByParentMap(snapshot.baseline.features);
-      const changedIds = new Set();
-      const scheduleLimits = [];
+    const snapshot = store.getState();
+    if (!getScenarioAccess(snapshot, getActiveScenarioId(snapshot)).canEdit) return [];
+    const baselineById = getBaselineFeatureMap(snapshot);
+    const childrenByParent = buildChildrenByParentMap(snapshot.baseline.features);
+    const changedIds = new Set();
+    const scheduleLimits = [];
 
-      const activeScenario = getActiveScenario(snapshot);
-      const mergedOverrides = {
-        ...activeScenario.overrides,
+    const activeScenario = getActiveScenario(snapshot);
+    const mergedOverrides = {
+      ...activeScenario.overrides,
+    };
+
+    for (const entry of safeUpdates) {
+      if (!entry.id) continue;
+      const id = String(entry.id);
+      const base = baselineById.get(id);
+      if (!base) continue;
+
+      const existing = mergedOverrides[id] === undefined ? {} : mergedOverrides[id];
+      const existingStart = existing.start !== undefined ? existing.start : (base.start !== undefined ? base.start : null);
+      const existingEnd = existing.end !== undefined ? existing.end : (base.end !== undefined ? base.end : null);
+      mergedOverrides[id] = {
+        ...existing,
+        start: entry.start !== undefined ? entry.start : existingStart,
+        end: entry.end !== undefined ? entry.end : existingEnd,
       };
+    }
 
+    const mutation = withActiveScenario(snapshot, (scenario) => {
+      let nextScenario = scenario;
       for (const entry of safeUpdates) {
         if (!entry.id) continue;
         const id = String(entry.id);
         const base = baselineById.get(id);
         if (!base) continue;
 
-        const existing = mergedOverrides[id] === undefined ? {} : mergedOverrides[id];
-        const existingStart = existing.start !== undefined ? existing.start : (base.start !== undefined ? base.start : null);
-        const existingEnd = existing.end !== undefined ? existing.end : (base.end !== undefined ? base.end : null);
+        const existingOverride = nextScenario.overrides[id] === undefined ? {} : nextScenario.overrides[id];
+        const currentStart = existingOverride.start !== undefined ? existingOverride.start : (base.start !== undefined ? base.start : null);
+        const currentEnd = existingOverride.end !== undefined ? existingOverride.end : (base.end !== undefined ? base.end : null);
+        const requestedStart = entry.start !== undefined ? entry.start : currentStart;
+        let requestedEnd = entry.end !== undefined ? entry.end : currentEnd;
+
+        const childIds = childrenByParent.get(id);
+        if (entry.shiftChildren !== false && childIds !== undefined && childIds.length > 0) {
+          let maxChildEnd = null;
+          let limitingChildId = null;
+          for (const childId of childIds) {
+            const childBase = baselineById.get(String(childId));
+            if (!childBase) continue;
+            const childOverride = mergedOverrides[String(childId)] === undefined ? {} : mergedOverrides[String(childId)];
+            const effectiveChildEnd = childOverride.end !== undefined ? childOverride.end : (childBase.end !== undefined ? childBase.end : null);
+            if (!effectiveChildEnd) continue;
+            if (maxChildEnd === null) {
+              maxChildEnd = effectiveChildEnd;
+              limitingChildId = childId;
+            } else if (effectiveChildEnd > maxChildEnd) {
+              maxChildEnd = effectiveChildEnd;
+              limitingChildId = childId;
+            }
+          }
+          if (maxChildEnd && requestedEnd && requestedEnd < maxChildEnd) {
+            requestedEnd = maxChildEnd;
+            if (explicitResize || snapshot.allocation.unit === 'man-days') {
+              scheduleLimits.push({ featureId: id, childId: limitingChildId, end: maxChildEnd });
+            }
+          }
+        }
+
+        if (requestedStart === currentStart && requestedEnd === currentEnd) {
+          continue;
+        }
+
+        nextScenario = withFeatureOverride(nextScenario, id, (current) => ({
+          ...current,
+          start: requestedStart,
+          end: requestedEnd,
+        }));
+        changedIds.add(id);
         mergedOverrides[id] = {
-          ...existing,
-          start: entry.start !== undefined ? entry.start : existingStart,
-          end: entry.end !== undefined ? entry.end : existingEnd,
+          ...(mergedOverrides[id] === undefined ? {} : mergedOverrides[id]),
+          start: requestedStart,
+          end: requestedEnd,
         };
-      }
 
-      const mutation = withActiveScenario(snapshot, (scenario) => {
-        let nextScenario = scenario;
-        for (const entry of safeUpdates) {
-          if (!entry.id) continue;
-          const id = String(entry.id);
-          const base = baselineById.get(id);
-          if (!base) continue;
-
-          const existingOverride = nextScenario.overrides[id] === undefined ? {} : nextScenario.overrides[id];
-          const currentStart = existingOverride.start !== undefined ? existingOverride.start : (base.start !== undefined ? base.start : null);
-          const currentEnd = existingOverride.end !== undefined ? existingOverride.end : (base.end !== undefined ? base.end : null);
-          const requestedStart = entry.start !== undefined ? entry.start : currentStart;
-          let requestedEnd = entry.end !== undefined ? entry.end : currentEnd;
-
-          const childIds = childrenByParent.get(id);
-          if (entry.shiftChildren !== false && childIds !== undefined && childIds.length > 0) {
-            let maxChildEnd = null;
-            let limitingChildId = null;
+        if (entry.shiftChildren !== false && childIds !== undefined && childIds.length > 0) {
+          const priorStart = currentStart;
+          const newStart = requestedStart;
+          const deltaMs = Date.parse(newStart) - Date.parse(priorStart);
+          if (!Number.isNaN(deltaMs) && deltaMs !== 0) {
             for (const childId of childIds) {
-              const childBase = baselineById.get(String(childId));
+              const childKey = String(childId);
+              const childBase = baselineById.get(childKey);
               if (!childBase) continue;
-              const childOverride = mergedOverrides[String(childId)] === undefined ? {} : mergedOverrides[String(childId)];
-              const effectiveChildEnd = childOverride.end !== undefined ? childOverride.end : (childBase.end !== undefined ? childBase.end : null);
-              if (!effectiveChildEnd) continue;
-              if (maxChildEnd === null) {
-                maxChildEnd = effectiveChildEnd;
-                limitingChildId = childId;
-              } else if (effectiveChildEnd > maxChildEnd) {
-                maxChildEnd = effectiveChildEnd;
-                limitingChildId = childId;
-              }
-            }
-            if (maxChildEnd && requestedEnd && requestedEnd < maxChildEnd) {
-              requestedEnd = maxChildEnd;
-              if (snapshot.allocation.unit === 'man-days') {
-                scheduleLimits.push({ featureId: id, childId: limitingChildId, end: maxChildEnd });
-              }
-            }
-          }
-
-          if (requestedStart === currentStart && requestedEnd === currentEnd) {
-            continue;
-          }
-
-          nextScenario = withFeatureOverride(nextScenario, id, (current) => ({
-            ...current,
-            start: requestedStart,
-            end: requestedEnd,
-          }));
-          changedIds.add(id);
-          mergedOverrides[id] = {
-            ...(mergedOverrides[id] === undefined ? {} : mergedOverrides[id]),
-            start: requestedStart,
-            end: requestedEnd,
-          };
-
-          if (entry.shiftChildren !== false && childIds !== undefined && childIds.length > 0) {
-            const priorStart = currentStart;
-            const newStart = requestedStart;
-            const deltaMs = Date.parse(newStart) - Date.parse(priorStart);
-            if (!Number.isNaN(deltaMs) && deltaMs !== 0) {
-              for (const childId of childIds) {
-                const childKey = String(childId);
-                const childBase = baselineById.get(childKey);
-                if (!childBase) continue;
-                const childCurrent = nextScenario.overrides[childKey] === undefined ? {} : nextScenario.overrides[childKey];
-                const hasExplicitOverride = Object.prototype.hasOwnProperty.call(nextScenario.overrides, childKey);
-                if (hasExplicitOverride) {
-                  changedIds.add(childKey);
-                  continue;
-                }
-                const shiftedStart = shiftIsoByMs(childBase.start, deltaMs);
-                const shiftedEnd = shiftIsoByMs(childBase.end, deltaMs);
-                nextScenario = withFeatureOverride(nextScenario, childKey, (current) => ({
-                  ...current,
-                  start: shiftedStart,
-                  end: shiftedEnd,
-                }));
-                mergedOverrides[childKey] = {
-                  ...(mergedOverrides[childKey] === undefined ? {} : mergedOverrides[childKey]),
-                  start: shiftedStart,
-                  end: shiftedEnd,
-                };
+              const childCurrent = nextScenario.overrides[childKey] === undefined ? {} : nextScenario.overrides[childKey];
+              const hasExplicitOverride = Object.prototype.hasOwnProperty.call(nextScenario.overrides, childKey);
+              if (hasExplicitOverride) {
                 changedIds.add(childKey);
+                continue;
               }
-            } else {
-              for (const childId of childIds) changedIds.add(String(childId));
+              const shiftedStart = shiftIsoByMs(childBase.start, deltaMs);
+              const shiftedEnd = shiftIsoByMs(childBase.end, deltaMs);
+              nextScenario = withFeatureOverride(nextScenario, childKey, (current) => ({
+                ...current,
+                start: shiftedStart,
+                end: shiftedEnd,
+              }));
+              mergedOverrides[childKey] = {
+                ...(mergedOverrides[childKey] === undefined ? {} : mergedOverrides[childKey]),
+                start: shiftedStart,
+                end: shiftedEnd,
+              };
+              changedIds.add(childKey);
             }
+          } else {
+            for (const childId of childIds) changedIds.add(String(childId));
           }
+        }
 
-          if (base.parentId) {
-            const parentKey = String(base.parentId);
-            const parentBase = baselineById.get(parentKey);
-            if (parentBase) {
-              const parentCurrent = mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey];
-              const parentStart = parentCurrent.start !== undefined ? parentCurrent.start : (parentBase.start !== undefined ? parentBase.start : null);
-              const parentEnd = parentCurrent.end !== undefined ? parentCurrent.end : (parentBase.end !== undefined ? parentBase.end : null);
-              const nextParentStart =
-                requestedStart && parentStart && requestedStart < parentStart ?
-                  requestedStart
-                : parentStart;
-              const nextParentEnd =
-                requestedEnd && parentEnd && requestedEnd > parentEnd ? requestedEnd : parentEnd;
+        if (base.parentId) {
+          const parentKey = String(base.parentId);
+          const parentBase = baselineById.get(parentKey);
+          if (parentBase) {
+            const parentCurrent = mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey];
+            const parentStart = parentCurrent.start !== undefined ? parentCurrent.start : (parentBase.start !== undefined ? parentBase.start : null);
+            const parentEnd = parentCurrent.end !== undefined ? parentCurrent.end : (parentBase.end !== undefined ? parentBase.end : null);
+            const nextParentStart =
+              requestedStart && parentStart && requestedStart < parentStart ?
+                requestedStart
+              : parentStart;
+            const nextParentEnd =
+              requestedEnd && parentEnd && requestedEnd > parentEnd ? requestedEnd : parentEnd;
 
-              if (nextParentStart !== parentStart) {
-                nextScenario = withFeatureOverride(nextScenario, parentKey, (current) => ({
-                  ...current,
-                  start: nextParentStart,
-                  end: nextParentEnd,
-                }));
-                mergedOverrides[parentKey] = {
-                  ...(mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey]),
-                  start: nextParentStart,
-                  end: nextParentEnd,
-                };
-                changedIds.add(parentKey);
-              } else if (nextParentEnd !== parentEnd) {
-                nextScenario = withFeatureOverride(nextScenario, parentKey, (current) => ({
-                  ...current,
-                  start: nextParentStart,
-                  end: nextParentEnd,
-                }));
-                mergedOverrides[parentKey] = {
-                  ...(mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey]),
-                  start: nextParentStart,
-                  end: nextParentEnd,
-                };
-                changedIds.add(parentKey);
-              }
+            if (nextParentStart !== parentStart) {
+              nextScenario = withFeatureOverride(nextScenario, parentKey, (current) => ({
+                ...current,
+                start: nextParentStart,
+                end: nextParentEnd,
+              }));
+              mergedOverrides[parentKey] = {
+                ...(mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey]),
+                start: nextParentStart,
+                end: nextParentEnd,
+              };
+              changedIds.add(parentKey);
+            } else if (nextParentEnd !== parentEnd) {
+              nextScenario = withFeatureOverride(nextScenario, parentKey, (current) => ({
+                ...current,
+                start: nextParentStart,
+                end: nextParentEnd,
+              }));
+              mergedOverrides[parentKey] = {
+                ...(mergedOverrides[parentKey] === undefined ? {} : mergedOverrides[parentKey]),
+                start: nextParentStart,
+                end: nextParentEnd,
+              };
+              changedIds.add(parentKey);
             }
           }
         }
-        return nextScenario;
-      });
-
-      if (!mutation) {
-        reportScheduleLimits(scheduleLimits);
-        const ids = safeUpdates.map((entry) => String(entry.id)).filter((id) => id !== '');
-        recomputeAndEmitCapacity(ids.length ? ids : null);
-        emitFeatureMutation({ ids });
-        return scheduleLimits.length > 0 ? [] : safeUpdates;
       }
+      return nextScenario;
+    });
 
-      const removalMessages = [];
-      if (snapshot.allocation.unit === 'man-days') {
-        const candidate = { ...snapshot, scenarios: { ...snapshot.scenarios, items: mutation.items } };
-        const before = buildFeatureMap(deriveEffectiveFeatures(snapshot, { includeDirtyMetadata: false }));
-        const after = deriveEffectiveFeatures(candidate, { includeDirtyMetadata: false });
-        const knownIds = new Set(snapshot.baseline.teams.map((team) => team.id));
-        let scenario = getActiveScenario(candidate);
-        for (const feature of after) {
-          const original = before.get(String(feature.id));
-          if (original.start === feature.start && original.end === feature.end) continue;
-          if (original.capacity.length === 0) continue;
-          if (snapshot.allocation.staffing.status !== 'ready') {
-            notify({ source: 'Allocation', code: 'staffing-unavailable', severity: 'warning',
-              message: 'Schedule unchanged: staffing is unavailable. Retry staffing in Configuration.' });
-            return [];
-          }
-          const converted = resizeAllocations(original, feature, snapshot.allocation.staffing.fteById);
-          if (converted.exceeded.length > 0) {
-            const allocations = converted.exceeded.map((row) => `${feature.id}/${row.team}`).join(', ');
-            notify({ source: 'Allocation', code: 'allocation-resize-limit', severity: 'warning',
-              message: `Schedule unchanged: preserving man-days would exceed 100% for ${allocations}. Extend the schedule or reduce the allocation first.` });
-            return [];
-          }
-          const unknownIds = original.capacity.filter((row) => !knownIds.has(row.team))
-            .map((row) => row.team);
-          if (unknownIds.length !== new Set(unknownIds).size) {
-            notify({ source: 'Allocation', code: 'protected-duplicates', severity: 'warning',
-              message: `Schedule unchanged: task ${feature.id} has protected duplicate unknown-team allocations.` });
-            return [];
-          }
-          if (converted.capacity.length !== original.capacity.length
-            || converted.capacity.some((row, index) => row.team !== original.capacity[index].team
-              || row.capacity !== original.capacity[index].capacity)) {
-            scenario = withFeatureOverride(scenario, feature.id, (current) => ({
-              ...current, capacity: converted.capacity,
-            }));
-          }
-          for (const row of converted.removed) {
-            removalMessages.push(`${feature.id}/${row.team}: ${row.reason}`);
-          }
-        }
-        mutation.items = mutation.items.map((item) => item.id === mutation.activeId ? scenario : item);
-      }
-
-      assertScenarioAllocationMutation(snapshot, mutation);
-      store.setState(
-        (state) => ({
-          ...state,
-          scenarios: {
-            ...state.scenarios,
-            changedIds: addActiveScenarioToChangedIds(state),
-            items: mutation.items,
-          },
-        }),
-        false,
-        'feature.updateFeatureDates'
-      );
-
+    if (!mutation) {
       reportScheduleLimits(scheduleLimits);
-      if (removalMessages.length > 0) {
-        notify({ source: 'Allocation', code: 'removed-on-resize', severity: 'warning',
-          message: `Allocations removed: ${removalMessages.join('; ')}. Scenario changes can be reverted.` });
-      }
-      const ids = Array.from(changedIds);
+      const ids = safeUpdates.map((entry) => String(entry.id)).filter((id) => id !== '');
       recomputeAndEmitCapacity(ids.length ? ids : null);
       emitFeatureMutation({ ids });
-      return safeUpdates;
+      return scheduleLimits.length > 0 ? [] : safeUpdates;
+    }
+
+    const removalMessages = [];
+    if (policy === 'keep-effort') {
+      const candidate = { ...snapshot, scenarios: { ...snapshot.scenarios, items: mutation.items } };
+      const before = buildFeatureMap(deriveEffectiveFeatures(snapshot, { includeDirtyMetadata: false }));
+      const after = deriveEffectiveFeatures(candidate, { includeDirtyMetadata: false });
+      const knownIds = new Set(snapshot.baseline.teams.map((team) => team.id));
+      let scenario = getActiveScenario(candidate);
+      for (const feature of after) {
+        const original = before.get(String(feature.id));
+        if (original.start === feature.start && original.end === feature.end) continue;
+        if (original.capacity.length === 0) continue;
+        if (snapshot.allocation.staffing.status !== 'ready') {
+          notify({ source: 'Allocation', code: 'staffing-unavailable', severity: 'warning',
+            message: 'Schedule unchanged: staffing is unavailable. Retry staffing in Configuration.' });
+          return [];
+        }
+        const converted = resizeAllocations(original, feature, snapshot.allocation.staffing.fteById);
+        if (converted.exceeded.length > 0) {
+          const allocations = converted.exceeded.map((row) => `${feature.id}/${row.team}`).join(', ');
+          notify({ source: 'Allocation', code: 'allocation-resize-limit', severity: 'warning',
+            message: `Schedule unchanged: preserving effort would exceed 100% for ${allocations}. Extend the schedule or reduce the allocation first.` });
+          return [];
+        }
+        const unknownIds = original.capacity.filter((row) => !knownIds.has(row.team))
+          .map((row) => row.team);
+        if (unknownIds.length !== new Set(unknownIds).size) {
+          notify({ source: 'Allocation', code: 'protected-duplicates', severity: 'warning',
+            message: `Schedule unchanged: task ${feature.id} has protected duplicate unknown-team allocations.` });
+          return [];
+        }
+        if (converted.capacity.length !== original.capacity.length
+          || converted.capacity.some((row, index) => row.team !== original.capacity[index].team
+            || row.capacity !== original.capacity[index].capacity)) {
+          scenario = withFeatureOverride(scenario, feature.id, (current) => ({
+            ...current, capacity: converted.capacity,
+          }));
+        }
+        for (const row of converted.removed) {
+          removalMessages.push(`${feature.id}/${row.team}: ${row.reason}`);
+        }
+      }
+      mutation.items = mutation.items.map((item) => item.id === mutation.activeId ? scenario : item);
+    }
+
+    assertScenarioAllocationMutation(snapshot, mutation);
+    store.setState(
+      (state) => ({
+        ...state,
+        scenarios: {
+          ...state.scenarios,
+          changedIds: addActiveScenarioToChangedIds(state),
+          items: mutation.items,
+        },
+      }),
+      false,
+      'feature.updateFeatureDates'
+    );
+
+    reportScheduleLimits(scheduleLimits);
+    if (removalMessages.length > 0) {
+      notify({ source: 'Allocation', code: 'removed-on-resize', severity: 'warning',
+        message: `Allocations removed: ${removalMessages.join('; ')}. Scenario changes can be reverted.` });
+    }
+    const ids = Array.from(changedIds);
+    recomputeAndEmitCapacity(ids.length ? ids : null);
+    emitFeatureMutation({ ids });
+    return safeUpdates;
+  }
+
+  return {
+    updateFeatureDates(updates) {
+      const policy = store.getState().allocation.unit === 'man-days' ? 'keep-effort' : 'keep-allocation';
+      return applyFeatureDates(updates, policy, false);
+    },
+
+    resizeFeatureDates(updates, policy) {
+      if (policy !== 'keep-effort' && policy !== 'keep-allocation') {
+        throw new Error(`Invalid resize policy: ${policy}`);
+      }
+      return applyFeatureDates(updates, policy, true);
     },
 
     updateFeatureField(id, field, value) {

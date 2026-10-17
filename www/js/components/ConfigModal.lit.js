@@ -187,13 +187,12 @@ class ConfigModal extends LitElement {
             </div>
             <div id="configStatus" class="status" aria-live="polite"></div>
             <button id="retryStaffingBtn" type="button"
-              ?hidden=${sel.capacity.getAllocationSettings().unit !== 'man-days'
-                || sel.capacity.getAllocationSettings().staffing.status === 'ready'}
+              ?hidden=${sel.capacity.getAllocationSettings().staffing.status === 'ready'}
               @click=${async () => {
               const result = await cmd.data.refreshAllocationStaffing();
               this._qs('#retryStaffingBtn').hidden = result.ok;
               this._qs('#configStatus').textContent = result.ok ? 'Staffing loaded.'
-                : 'Could not load staffing. Man-day edits are unavailable.';
+                : 'Could not load staffing. Man-day edits and effort-preserving resizing are unavailable.';
             }}>Retry staffing</button>
           </form>
         </div>
@@ -219,8 +218,8 @@ class ConfigModal extends LitElement {
     const autosaveInput = this._qs('#autosaveInterval');
 
     const allocation = sel.capacity.getAllocationSettings();
-    if (allocation.unit === 'man-days' && allocation.staffing.status !== 'ready') {
-      status.textContent = 'Could not load staffing. Man-day edits are unavailable.';
+    if (allocation.staffing.status !== 'ready') {
+      status.textContent = 'Could not load staffing. Man-day edits and effort-preserving resizing are unavailable.';
     }
 
     // Save handler wired to Save button so the footer button can trigger form submit
@@ -286,7 +285,7 @@ class ConfigModal extends LitElement {
         }
         this._qs('#retryStaffingBtn').hidden = allocationResult.ok;
         if (!allocationResult.ok) {
-          status.textContent += ' Could not load staffing. Man-day edits are unavailable.';
+          status.textContent += ' Could not load staffing. Man-day edits and effort-preserving resizing are unavailable.';
         }
         bus.emit(ConfigEvents.AUTOSAVE, { autosaveInterval });
       });

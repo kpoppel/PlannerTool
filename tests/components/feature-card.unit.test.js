@@ -4,6 +4,61 @@ import '../../www/js/components/FeatureCard.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 
 describe('FeatureCardLit basic behaviors', () => {
+  it('offers two named resize zones and locks the whole handle color until cancellation', async () => {
+    sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(true);
+    const el = await fixture('<feature-card-lit style="width:200px"></feature-card-lit>');
+    el.feature = { id: 'resize', title: 'Resize', start: '2026-10-05', end: '2026-10-16' };
+    await el.updateComplete;
+    const zones = el.shadowRoot.querySelectorAll('.resize-zone');
+    expect(zones.length).to.equal(2);
+    expect(zones[0].getAttribute('aria-label')).to.include('Keep allocation');
+    expect(zones[1].getAttribute('aria-label')).to.include('Keep effort');
+    zones[1].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, composed: true,
+      button: 0, clientX: 100 }));
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.drag-handle').getAttribute('data-active-policy'))
+      .to.equal('keep-effort');
+    zones[0].dispatchEvent(new MouseEvent('mouseenter'));
+    expect(el._resizePolicy).to.equal('keep-effort');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.drag-handle').getAttribute('data-active-policy')).to.equal('');
+  });
+
+  it('explains a resize zone after a delay and clears the tooltip on leave', async () => {
+    sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(true);
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    const clock = sinon.useFakeTimers();
+    try {
+      const zone = el.shadowRoot.querySelector('.resize-zone');
+      zone.dispatchEvent(new MouseEvent('mouseenter'));
+      clock.tick(649);
+      await el.updateComplete;
+      expect(el.shadowRoot.querySelector('[role="tooltip"]')).to.be.null;
+      clock.tick(1);
+      await el.updateComplete;
+      expect(el.shadowRoot.querySelector('[role="tooltip"]').textContent).to.include('effort changes');
+      zone.dispatchEvent(new MouseEvent('mouseleave'));
+      await el.updateComplete;
+      expect(el.shadowRoot.querySelector('[role="tooltip"]')).to.be.null;
+    } finally {
+      clock.restore();
+    }
+  });
+
+  it('resizes from the keyboard using the focused zone policy', async () => {
+    sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(true);
+    sinon.stub(sel.feature, 'getEffectiveFeatures').returns([]);
+    const resize = sinon.stub(cmd.feature, 'resizeFeatureDates').returns([]);
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'key', title: 'Keyboard', start: '2026-10-05', end: '2026-10-16' };
+    await el.updateComplete;
+    el.shadowRoot.querySelector('[data-resize-policy="keep-allocation"]')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(resize.calledOnceWithExactly([{ id: 'key', start: '2026-10-05', end: '2026-10-17' }],
+      'keep-allocation')).to.be.true;
+  });
+
   it('omits resize handles and ignores revert gestures when scenario access denies editing', async () => {
     sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(false);
     const revert = sinon.stub(cmd.feature, 'revertFeature');

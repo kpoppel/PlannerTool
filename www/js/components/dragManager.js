@@ -189,7 +189,8 @@ export function startResize(
   feature,
   card,
   datesEl,
-  updateDatesCb = cmd.feature.updateFeatureDates.bind(cmd.feature)
+  updateDatesCb,
+  onFinish
 ) {
   const monthWidth = getMonthWidth();
 
@@ -201,6 +202,7 @@ export function startResize(
   const startX = e.clientX;
   const origWidth = parseInt(card.style.width, 10);
   let limitingDescendant = null;
+  let moved = false;
 
   function endDateFromWidth(width) {
     let remaining = width;
@@ -257,6 +259,8 @@ export function startResize(
 
   function onMove(ev) {
     const dx = ev.clientX - startX;
+    if (dx === 0 && !moved) return;
+    moved = true;
     let tentativeWidth = Math.max(10, origWidth + dx);
     let tentativeEnd = endDateFromWidth(tentativeWidth);
     limitingDescendant = null;
@@ -283,25 +287,31 @@ export function startResize(
     const snappedWidth = widthForSpan(startDate, tentativeEnd);
     card.style.width = snappedWidth + 'px';
     const liveDatesTextR = feature.start + ' → ' + formatDate(tentativeEnd);
-    if (card && typeof card.setLiveDates === 'function')
-      card.setLiveDates(liveDatesTextR);
-    else if (datesEl) datesEl.textContent = liveDatesTextR;
+    card.setLiveDates(liveDatesTextR);
     bus.emit(DragEvents.MOVE, { featureId: feature.id });
   }
 
   function onUp() {
     if (finished) return;
     finished = true;
-    unsubscribe();
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
+    removeListeners();
+    try {
+      if (!moved) return;
+      commitResize();
+    } finally {
+      card.clearLiveDates();
+      onFinish();
+    }
+  }
+
+  function commitResize() {
     const finalWidth = parseInt(card.style.width, 10);
     const finalEnd = endDateFromWidth(finalWidth);
     const adjustedFinalEnd = finalEnd;
     const newStartStr = formatDate(startDate);
     const newEndStr = formatDate(adjustedFinalEnd);
 
-    if (limitingDescendant !== null && sel.capacity.getAllocationSettings().unit === 'man-days') {
+    if (limitingDescendant !== null) {
       cmd.ui.addNotification({ source: 'Scheduling', code: 'schedule-child-boundary', severity: 'info',
         message: `Schedule limited: task ${feature.id} cannot end before child ${limitingDescendant.id} (${limitingDescendant.end}).` });
     }
@@ -347,23 +357,36 @@ export function startResize(
     }
     // Clear any live-date overlay left from a drag/resize so the
     // lit-rendered default dates (bound to `feature.start/end`) become visible.
-    card.clearLiveDates();
   }
 
   let finished = false;
   const unsubscribe = watchGestureScenario(cancel);
-  function cancel() {
-    if (finished) return;
-    finished = true;
+  function removeListeners() {
     unsubscribe();
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('blur', cancel);
+  }
+  function onKeyDown(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancel();
+    }
+  }
+  function cancel() {
+    if (finished) return;
+    finished = true;
+    removeListeners();
     card.style.width = origWidth + 'px';
     card.clearLiveDates();
+    onFinish();
     bus.emit(DragEvents.END, { featureId: feature.id, end: feature.end });
   }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('blur', cancel);
   return cancel;
 }
 

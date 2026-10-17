@@ -14,7 +14,7 @@ describe('startResize interactive', () => {
     const card = { style: { width: '200px' }, setLiveDates() {}, clearLiveDates() {} };
     try {
       startResize({ clientX: 100 }, { id: 'task', start: '2026-10-05', end: '2026-10-16' },
-        card, null, (value) => updates.push(value));
+        card, null, (value) => updates.push(value), () => {});
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: 170 }));
       store.setState((current) => ({ ...current, scenarios: { ...current.scenarios, activeId: 'baseline' } }));
       window.dispatchEvent(new MouseEvent('mouseup'));
@@ -47,9 +47,7 @@ describe('startResize interactive', () => {
 
     // startResize expects an event with clientX
     const startEvent = { clientX: 100 };
-    startResize(startEvent, feature, card, null, updateDatesCb, [
-      { id: 'Fz', start: '2025-01-01', end: '2025-01-05' },
-    ]);
+    startResize(startEvent, feature, card, null, updateDatesCb, () => {});
 
     // Simulate a mousemove to increase width
     const move = new MouseEvent('mousemove', { clientX: 200 });
@@ -61,7 +59,8 @@ describe('startResize interactive', () => {
 
     return new Promise((resolve) =>
       setTimeout(() => {
-        expect(updatesReceived.length).to.be.at.least(0);
+        expect(updatesReceived).to.have.lengthOf(1);
+        expect(updatesReceived[0][0].id).to.equal('Fz');
         resolve();
       }, 10)
     );
@@ -86,13 +85,14 @@ describe('startResize interactive', () => {
       clearLiveDates: () => {},
     };
     const updates = [];
-    startResize({ clientX: 0 }, epic, card, null, (u) => updates.push(u), [epic, child]);
+    startResize({ clientX: 0 }, epic, card, null, (u) => updates.push(u), () => {});
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 500 }));
     window.dispatchEvent(new MouseEvent('mouseup'));
     return new Promise((resolve) =>
       setTimeout(() => {
         // For epic, when resized earlier than child end, clamp should cause an update
-        expect(updates.length).to.be.at.least(0);
+        expect(updates).to.have.lengthOf(1);
+        expect(updates[0][0].id).to.equal('E');
         resolve();
       }, 10)
     );
