@@ -8,7 +8,7 @@ const baseURL = `http://127.0.0.1:${playwrightPort}`;
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['reconciliation.spec.js', 'admin-workforce.spec.js', 'admin-plans.spec.js', 'allocation-units.spec.js',
+  testMatch: ['reconciliation.spec.js', 'admin-workforce.spec.js', 'admin-plans.spec.js', 'admin-users.spec.js', 'allocation-units.spec.js',
     'keyboard-shortcuts.spec.js'],
   workers: 1,
   use: { baseURL, viewport: { width: 1366, height: 900 } },

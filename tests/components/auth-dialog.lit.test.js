@@ -212,7 +212,7 @@ describe('account enrollment dialog', () => {
   });
 
   it('hands an account reset key to the shared modal without reloading user data', async () => {
-    const account = { id: 'account-id', email: 'user@example.com', permissions: [] };
+    const account = { id: 'account-id', email: 'user@example.com', permissions: [], lastActive: null };
     const getUsers = vi.spyOn(adminProvider, 'getUsers').mockResolvedValue({
       ok: true, data: { accounts: [account], currentId: 'admin-id' },
     });

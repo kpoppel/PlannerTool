@@ -260,10 +260,13 @@ class AccountManager:
         accounts = []
         for email in self._storage.list_keys(self.DEFAULT_NS):
             record = self._storage.load(self.DEFAULT_NS, email)
+            activity = (self._storage.load('account_activity', record['account_id'])
+                        if self._storage.exists('account_activity', record['account_id']) else None)
             accounts.append({
                 'id': record['account_id'],
                 'email': email,
                 'permissions': list(record.get('permissions') or []),
+                'lastActive': activity['last_active'] if activity is not None else None,
             })
         return sorted(accounts, key=lambda account: account['email'])
 
@@ -293,6 +296,8 @@ class AccountManager:
                 self._storage.delete('account_auth', account_id)
             if self._storage.exists('release_acknowledgements', account_id):
                 self._storage.delete('release_acknowledgements', account_id)
+            if self._storage.exists('account_activity', account_id):
+                self._storage.delete('account_activity', account_id)
             self._storage.delete(self.DEFAULT_NS, email)
         logger.info('Deleted account %s', email)
 

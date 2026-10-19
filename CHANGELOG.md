@@ -13,6 +13,12 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
+## [v5.1.0] - unreleased
+### Added
+- Add sortable last-active dates to user administration, retaining recorded activity after session expiry and distinguishing unavailable history.
+### Changed
+- Consolidate user administration into a searchable permission table with multi-user selection, reviewed bulk permission changes, and mailing-list copy/CSV export for selected, filtered, or all users.
+### Fixed
 
 ## [v5.0.3] - 2026-10-20
 ### Fixed

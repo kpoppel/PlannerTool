@@ -47,7 +47,8 @@ Sources and enters their PAT in account configuration. Do not publish the servic
 the administrator completes configuration. Initial admin claiming happens once,
 not whenever the installation happens to have no administrators.
 
-Administrators can pre-create regular or admin accounts in User Management.
+Administrators can pre-create accounts in **Admin > Users > Add user**, then use
+the account's permission editor to grant delegated or full administrator access.
 The account ID and permissions are assigned immediately, while browser
 enrollment remains pending. The user then enters that email and their name in
 the normal enrollment dialog, receives their own device and account key, and
@@ -101,8 +102,12 @@ fields, and never persisted in browser preferences or exposed in error messages.
 
 ## Delegated administration
 
-Administrators grant independent permissions in **Admin > Users > Delegated
-Administration**. Create a regular account first, then select the required grants;
+Administrators grant independent permissions in **Admin > Users** by selecting an
+email address or selecting accounts and choosing **Edit permissions**. Bulk edits
+use **Keep unchanged**, **Grant**, and **Revoke** for each permission, followed by
+a review of the affected accounts. Saves occur per account, not as one atomic
+operation; failed accounts remain selected and are reported individually for retry.
+Create a regular account first, then select the required grants;
 existing accounts need no re-enrollment. Users open `/admin/` with their normal
 browser session and see only permitted sections. The top-bar settings gear has
 a dropdown chevron. Its **Administration** group lists the screens the account
@@ -135,6 +140,34 @@ No data migration or additional account enrollment is required.
 `GET /admin/check` returns `{ "ok": true, "permissions": [...] }` for an
 administrator or delegate. Unauthenticated requests are rejected; an authenticated
 delegate attempting another administration area receives HTTP 403.
+
+## User activity and mailing lists
+
+The Users screen lists each account once, including administrators. Search,
+access views, and permission filters narrow the list. Permission filters use
+effective access, so administrators match every delegated permission. Selection
+can span pages; changing a filter clears the selection to prevent hidden edits.
+
+**Mailing list** supports selected accounts, all matching accounts, or all users.
+Addresses can be copied with semicolons or one address per line, or downloaded as
+an email-only CSV. These operations do not send mail. Use BCC when distributing
+mail to users who should not see one another's addresses.
+
+The sortable **Last active** column shows the date of recorded authenticated
+activity in the browser's local timezone; its tooltip contains the full timestamp.
+The first click sorts oldest recorded activity first. Unknown dates remain last
+in either sort direction. `GET /admin/v1/users` includes `lastActive` as Unix seconds,
+or `null` when no activity has been recorded. Unknown history is displayed as
+**Not recorded**, not evidence that an account has never been used.
+
+New sessions and authenticated session reads update activity, including automatic
+requests from an open browser. Updates are coalesced to at most once per minute.
+This is not a measure of keyboard or mouse activity, nor an audit log. Tracking
+begins with this release; historical dates are not reconstructed. Activity is
+stored by account ID in `account_activity`, independently of expiring sessions.
+Sign-out, access reset, and session expiry do not clear it; account deletion does.
+Full filesystem backups preserve it; selective logical account exports do not
+promise to preserve activity history. No account schema migration is required.
 
 ## Remembered browsers and sessions
 

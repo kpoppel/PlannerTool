@@ -58,7 +58,15 @@ class SessionManager:
             'account_id': account_id,
             'device_id': device_id, 'created': now, 'last_seen': now,
         }, ttl_seconds=SESSION_MAX)
+        self._record_activity(account_id, now)
         return sid
+
+    def _record_activity(self, account_id: str, now: float) -> None:
+        if self._storage.exists('account_activity', account_id):
+            previous = self._storage.load('account_activity', account_id)['last_active']
+            if now - previous < 60:
+                return
+        self._storage.save('account_activity', account_id, {'last_active': now})
 
     def get(self, sid: str) -> Optional[dict[str, Any]]:
         cache = getattr(self._storage, '_cache', None)
@@ -100,6 +108,7 @@ class SessionManager:
         if refresh:
             record['last_seen'] = now
             self._storage.save('auth_sessions', key, record, ttl_seconds=SESSION_MAX - (now - record['created']))
+            self._record_activity(account_id, now)
         return {'account_id': account_id, 'email': email, 'device_id': record['device_id']}
 
     def is_valid(self, sid: str) -> bool:

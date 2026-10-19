@@ -189,6 +189,7 @@ class TestPatEncryption:
             'id': result['id'],
             'email': 'admin@example.com',
             'permissions': ['admin'],
+            'lastActive': None,
         }]
 
     def test_restore_preserves_account_ids(self):
