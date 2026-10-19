@@ -5,7 +5,7 @@ import './components/admin/Users.lit.js';
 import './components/admin/plans/AdminPlans.lit.js';
 import './components/admin/Workforce.lit.js';
 import './components/admin/AreaMappingsNew.lit.js';
-import './components/admin/Iterations.lit.js';
+import './components/admin/IterationSets.lit.js';
 import './components/admin/Utilities.lit.js';
 import './components/admin/BackupSnapshots.lit.js';
 import { dataService } from '/static/js/services/dataService.js';

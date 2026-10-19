@@ -174,40 +174,15 @@ def _normalize_iterations_content(raw: object) -> dict:
 
 
 def _validate_iteration_set_payload(content: object) -> dict:
-    """Validate payload shape for iteration-set config writes."""
-    if not isinstance(content, dict):
-        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Content must be an object'})
+    """Validate provider-neutral snapshots at the API boundary."""
+    from planner_lib.domain.iteration_sets import validate_iteration_sets
 
-    sets = content.get('iteration_sets')
-    if not isinstance(sets, list):
-        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'iteration_sets must be a list'})
-
-    ids: set[str] = set()
-    normalized_sets = []
-    for idx, item in enumerate(sets):
-        if not isinstance(item, dict):
-            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': f'iteration_sets[{idx}] must be an object'})
-        sid = str(item.get('id') or '').strip()
-        source_project = str(item.get('source_project') or '').strip()
-        if not sid:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': f'iteration_sets[{idx}].id is required'})
-        if sid in ids:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': f'duplicate iteration set id: {sid}'})
-        ids.add(sid)
-        if not source_project:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': f'iteration_sets[{idx}].source_project is required'})
-
-        values = item.get('values') if isinstance(item.get('values'), list) else []
-        normalized_sets.append({
-            'id': sid,
-            'name': str(item.get('name') or sid),
-            'source_project': source_project,
-            'root_path': str(item.get('root_path') or '').strip() or None,
-            'values': values,
-            'cached_at': item.get('cached_at'),
-        })
-
-    return {'iteration_sets': normalized_sets}
+    try:
+        return validate_iteration_sets(content)
+    except (ValueError, TypeError, KeyError, OverflowError) as error:
+        raise HTTPException(status_code=400, detail={
+            'error': 'invalid_payload', 'message': f'Invalid iteration data or dates: {error}',
+        }) from error
 
 @router.get('/admin/v1/iterations')
 @require_permission(AccountPermissions.MANAGE_ITERATIONS, AccountPermissions.MANAGE_PROJECTS)
@@ -216,7 +191,13 @@ async def admin_get_iterations(request: Request):
     try:
         admin_svc = resolve_service(request, 'admin_service')
         cfg = admin_svc.get_config('iterations', default={'iteration_sets': []})
-        return {'content': _normalize_iterations_content(cfg)}
+        projects = admin_svc.get_config('projects', default={'project_map': []})
+        usage = {}
+        for project in projects['project_map']:
+            association = project.get('iteration_uuid')
+            if association:
+                usage.setdefault(association, []).append({'id': project.get('id'), 'name': project['name']})
+        return {'content': {**_normalize_iterations_content(cfg), 'usage': usage}}
     except Exception as e:
         logger.exception('Failed to load iterations config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -234,6 +215,23 @@ async def admin_save_iterations(request: Request):
 
         normalized_content = _validate_iteration_set_payload(content)
         admin_svc = resolve_service(request, 'admin_service')
+        ids = {item['id'] for item in normalized_content['iteration_sets']}
+        projects = admin_svc.get_config('projects', default={'project_map': []})
+        referenced = [project for project in projects['project_map']
+                      if project.get('iteration_uuid') and project['iteration_uuid'] not in ids]
+        if referenced:
+            raise HTTPException(status_code=409, detail={
+                'error': 'referenced_by_projects',
+                'message': 'Reassign plans before removing their iteration set',
+            })
+        current = admin_svc.get_config('iterations', default={'iteration_sets': []})
+        previous = {item['id']: item for item in current['iteration_sets']}
+        for item in normalized_content['iteration_sets']:
+            old = previous.get(item['id'])
+            if old is not None and (old['source_type'], old.get('source_project')) != (item['source_type'], item['source_project']):
+                raise HTTPException(status_code=400, detail={
+                    'error': 'immutable_source', 'message': 'Create a new set to use a different source',
+                })
         admin_svc.save_config('iterations', normalized_content)
         return {'ok': True}
     except HTTPException:

@@ -510,14 +510,14 @@ describe('application/selectors/scopeSelectors', () => {
     expect(selectors.getContextFeatures()).toEqual([]);
   });
 
-  it('keeps imported context inspectable but presents only configured types', () => {
+  it('makes loaded descendant types available through the existing filters', () => {
     const state = baseState({ selection: { teamIds: ['team-a'] } });
     state.baseline.features = [
       { process_id: 'process', id: 'seed', project: 'selected', type: 'Epic', state: 'Active',
         sourcePlanIds: ['selected'], presentationPlanIds: ['selected'],
         parentId: null, relations: [], capacity: [] },
       { process_id: 'process', id: 'linked', project: 'internal-owner', type: 'Requirement', state: 'Active',
-        sourcePlanIds: ['selected', 'other'], presentationPlanIds: [],
+        sourcePlanIds: ['selected', 'other'], presentationPlanIds: ['selected', 'other'],
         parentId: 'seed', relations: [], capacity: [{ team: 'team-a', capacity: 50 }] },
       { process_id: 'process', id: 'shared', project: 'internal-owner', type: 'Feature', state: 'Active',
         sourcePlanIds: ['selected', 'other'], presentationPlanIds: ['selected', 'other'],
@@ -534,14 +534,25 @@ describe('application/selectors/scopeSelectors', () => {
     expect(selectors.getContextFeatures().map((feature) => feature.id)).toEqual([
       'seed', 'linked', 'shared',
     ]);
-    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed', 'shared']);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed', 'linked', 'shared']);
     const featureSelectors = createFeatureSelectors(createStore(state));
-    expect(featureSelectors.getAvailableTaskTypes()).toEqual(['Epic', 'Feature'].map((name) => taskTypeKey('process', name)));
+    expect(featureSelectors.getAvailableTaskTypes()).toEqual(
+      ['Epic', 'Feature', 'Requirement'].map((name) => taskTypeKey('process', name))
+    );
     expect(featureSelectors.getCountsForProject('selected')).toEqual(
-      new Map([[taskTypeKey('process', 'Epic'), 1], [taskTypeKey('process', 'Feature'), 1]])
+      new Map(['Epic', 'Requirement', 'Feature'].map((name) => [taskTypeKey('process', name), 1]))
     );
     expect(createSelectionSelectors(createStore(state)).getProjects()
       .some((plan) => plan.id === 'internal-owner')).toBe(false);
+
+    state.selection.taskTypeNames = [taskTypeKey('process', 'Epic')];
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed']);
+    state.selection.taskTypeNames.push(taskTypeKey('process', 'Requirement'));
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed', 'linked']);
+    state.view.options = { ...state.view.options, hiddenTypes: [taskTypeKey('process', 'Requirement')] };
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['seed']);
+    state.view.options = { ...state.view.options, hiddenTypes: [] };
+    state.selection.taskTypeNames = [];
 
     state.selection.projectIds = ['other'];
     expect(selectors.getContextFeatures()).toEqual([]);

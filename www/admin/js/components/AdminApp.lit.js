@@ -125,6 +125,12 @@ export class AdminApp extends LitElement {
     const section = getAdminSections(this.permissions, this.manageBackupSnapshots)
       .find((entry) => `#${entry.id}` === window.location.hash);
     if (section !== undefined && this.sections.includes(section.label)) {
+      if (!this._mayLeaveSection(section.label)) {
+        const url = new URL(window.location.href);
+        url.hash = 'iterations';
+        window.history.replaceState(null, '', url.href);
+        return;
+      }
       this.activeSection = section.label;
     }
   }
@@ -153,8 +159,15 @@ export class AdminApp extends LitElement {
     }
   }
 
+  _mayLeaveSection(section) {
+    if (this.activeSection !== 'Iterations' || section === 'Iterations') return true;
+    const editor = this.shadowRoot.querySelector('admin-iterations');
+    return editor === null || editor.mayLeave();
+  }
+
   _onSelect(section) {
     if (!this.sections.includes(section)) return;
+    if (!this._mayLeaveSection(section)) return;
     this.activeSection = section;
     const target = getAdminSections(this.permissions, this.manageBackupSnapshots)
       .find((entry) => entry.label === section);

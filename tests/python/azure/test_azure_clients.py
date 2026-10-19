@@ -763,7 +763,7 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
     assert tasks['2']['state'] == 'Closed'
     assert tasks['2']['sourcePlanIds'] == ['plan-a', 'plan-b']
     assert tasks['2']['excludedChildIds'] == ['3']
-    assert tasks['2']['presentationPlanIds'] == []
+    assert tasks['2']['presentationPlanIds'] == ['plan-a', 'plan-b']
     assert tasks['5']['project'].startswith('context-')
     assert tasks['5']['sourcePlanIds'] == ['plan-a', 'plan-b']
     assert tasks['5']['presentationPlanIds'] == ['plan-a', 'plan-b']

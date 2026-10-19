@@ -240,7 +240,11 @@ export class AdminProviderREST extends RestProviderBase {
   }
 
   async saveIterations(content) {
-    return this._saveContent('/admin/v1/iterations', content);
+    const result = await this._saveContent('/admin/v1/iterations', content);
+    if (!result.ok && [400, 409].includes(result.error.status)) {
+      return fail({ ...result.error, message: result.error.detail.message });
+    }
+    return result;
   }
 
   async browseIterations(payload) {

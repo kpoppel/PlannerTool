@@ -333,7 +333,8 @@ Task records distinguish ownership, provenance, and presentation:
 - `project` is the backend-provided domain owner and anchors base board membership.
 - `sourcePlanIds` identifies importing plans and governs import-scoped reads and
     per-plan calculation attribution.
-- `presentationPlanIds` identifies plans whose configuration permits presentation.
+- `presentationPlanIds` identifies plans permitting presentation; ADO loaded
+    descendants are eligible regardless of the plan's configured seed types.
     An empty list denotes hidden graph context, not an ordinary filtered card.
 - `parentId`, relations, `excludedChildIds`, and `traversalBoundary` describe
     hierarchy and which edges are eligible for traversal and calculations.

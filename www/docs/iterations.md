@@ -1,6 +1,6 @@
 # Iterations (timeboxes)
 
-Iterations from Azure DevOps can be used as schedule presets to set a task's start and end dates in one step.
+Iterations can be used as schedule presets to set a task's start and end dates in one step.
 
 ## How to use
 
@@ -12,8 +12,8 @@ The list shows "No date presets available" when no iteration set is configured f
 
 ## Where iterations come from
 
-- Administrators create iteration sets from Azure DevOps iteration paths in [Admin - Iterations](admin_iterations.md) and assign a set to each plan in [Admin - Plans](admin_plans.md) (the plan's **Iteration set** field).
+- Administrators create iteration sets using Azure DevOps, a date generator, or manual dates in [Admin - Iterations](admin_iterations.md), then assign a set to each plan in [Admin - Plans](admin_plans.md) (the plan's **Iteration set** field).
 - Only iterations with complete start and end dates are offered.
-- Reading iterations from Azure DevOps requires a valid Personal Access Token; see [Getting Started](getting_started.md).
+- Only reading the Azure DevOps source requires a valid Personal Access Token; see [Getting Started](getting_started.md). Saved sets are fixed snapshots until an administrator reviews and saves changes.
 
 Choosing a preset is an explicit action. PlannerTool never infers task dates from the iteration path recorded on a work item.

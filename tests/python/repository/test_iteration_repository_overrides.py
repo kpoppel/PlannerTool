@@ -55,7 +55,7 @@ class _SetBasedIterationConfig:
         }
 
 
-def test_list_iterations_uses_project_iteration_uuid_when_iteration_sets_present():
+def test_list_iterations_uses_saved_snapshot_without_a_live_fetch():
     backend = _FakeBackend()
     repo = IterationRepository(
         backend=backend,
@@ -70,7 +70,8 @@ def test_list_iterations_uses_project_iteration_uuid_when_iteration_sets_present
     assert result["project-a"]["iterationSetId"] == "set-a"
     assert result["project-a"]["sourceProject"] == "TeamA"
     assert result["project-a"]["roots"] == ["RootA"]
-    assert backend.calls == [("TeamA", ["RootA"], None)]
+    assert result['project-a']['iterations'] == []
+    assert backend.calls == []
 
 
 def test_list_iterations_with_iteration_sets_has_no_implicit_default():
@@ -218,3 +219,16 @@ def test_schedule_presets_use_date_only_values_and_omit_incomplete_nodes():
     preset, = repo.list_iteration_sets()['set-a']['presets']
     assert preset['start'] == '2026-02-01'
     assert preset['end'] == '2026-02-14'
+
+
+def test_local_snapshots_resolve_for_plans_without_ado_project() -> None:
+    config = _SetWithValuesIterationConfig().fetch_iterations_config()
+    config['iteration_sets'][0]['source_type'] = 'manual'
+    config['iteration_sets'][0]['source_project'] = None
+    config['iteration_sets'][0]['root_path'] = None
+    iteration_config = type('Config', (), {'fetch_iterations_config': lambda self: config})()
+    backend = _FakeBackend()
+    repo = IterationRepository(backend, _SetBasedProjectRepo(), _FakeCredProvider(), iteration_config)
+    assert len(repo.list_iterations()['project-a']['iterations']) == 1
+    assert len(repo.list_iteration_sets()['set-a']['presets']) == 1
+    assert backend.calls == []

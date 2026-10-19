@@ -12,7 +12,7 @@ const SECTIONS = [
   ['ado-processes', 'Azure DevOps Processes', 'admin_ado_processes'],
   ['global-project-settings', 'Global Project Settings', 'admin_global_settings'],
   ['area-mappings', 'Area Mappings', 'admin_area_mappings'],
-  ['iterations', 'Iterations Configuration', 'admin_iterations'],
+  ['iterations', 'Iteration sets', 'admin_iterations'],
   ['utilities', 'Utilities', 'admin_utilities'],
 ];
 

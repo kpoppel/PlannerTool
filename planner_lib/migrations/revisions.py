@@ -559,6 +559,24 @@ def upgrade_42(storage):
                 storage.save(namespace, key, migrated)
 
 
+def upgrade_43(storage) -> None:
+    """Preserve existing ADO sets as explicit, dated snapshots."""
+    from planner_lib.domain.iteration_sets import validate_iteration_sets
+
+    with storage.transaction():
+        content = storage.load('config', 'iterations') if storage.exists('config', 'iterations') else {}
+        sets = []
+        for old in content.get('iteration_sets', []):
+            values = old.get('values', [])
+            sets.append({
+                **old, 'source_type': 'ado', 'generator': None,
+                'selected_paths': [value['path'] for value in values],
+                'values': [value for value in values
+                           if value.get('startDate') and value.get('finishDate')],
+            })
+        storage.save('config', 'iterations', validate_iteration_sets({'iteration_sets': sets}))
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -567,7 +585,7 @@ REGISTRY = tuple(
         (32, 31, upgrade_32), (33, 32, upgrade_33), (34, 33, upgrade_34),
         (35, 34, upgrade_35), (36, 35, upgrade_36), (37, 36, upgrade_37),
         (38, 37, upgrade_38), (39, 38, upgrade_39), (40, 39, upgrade_40),
-        (41, 40, upgrade_41), (42, 41, upgrade_42),
+        (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
     )
 )
 
@@ -584,6 +602,7 @@ def initialize(storage):
         'ado_processes': {'schema_version': 1, 'processes': []},
         'global_settings': {'schema_version': 2, 'process_order': [], 'type_tiers': {}},
         'plugin_runtime_config': {'schema_version': 2, 'plugins': []},
+        'iterations': {'iteration_sets': []},
     }
     for key, value in defaults.items():
         if not storage.exists('config', key):
@@ -695,6 +714,9 @@ def validate_records(storage, revision, *, server_config=None):
                                   if item['backlog_level'] == 'task'}
                     if any(name.casefold() in task_types for name in project['task_types']):
                         raise SchemaError('Invalid revision 41 task-level plan selection')
+        if revision >= 43:
+            from planner_lib.domain.iteration_sets import validate_iteration_sets
+            validate_iteration_sets(storage.load('config', 'iterations'))
         account_ids = set()
         for email in storage.list_keys('accounts'):
             account = storage.load('accounts', email)

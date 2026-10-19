@@ -16,9 +16,13 @@ Template - do not change :
 ## [v5.1.0] - unreleased
 ### Added
 - Add sortable last-active dates to user administration, retaining recorded activity after session expiry and distinguishing unavailable history.
+- Add generated and manual iteration sets alongside Azure DevOps, including configurable iteration lengths, inclusive date ranges, and shortened final iterations.
 ### Changed
 - Consolidate user administration into a searchable permission table with multi-user selection, reviewed bulk permission changes, and mailing-list copy/CSV export for selected, filtered, or all users.
+- Replace iteration configuration with a set-first editor, exact membership previews, explicit draft saving, plan usage, and read-only source identifiers. Browse ADO paths in a collapsible, searchable tree with independent subtree selection. Preserve existing ADO sets as snapshots and require plan reassignment before deletion.
 ### Fixed
+- Make loaded Azure DevOps descendants available through the existing task-type filters even when their types are not configured as plan loader seeds, so children that constrain parent schedules can be shown.
+- Present Azure DevOps items with only one resolved date as one-day tasks without writing the inferred boundary back to Azure DevOps.
 
 ## [v5.0.3] - 2026-10-20
 ### Fixed

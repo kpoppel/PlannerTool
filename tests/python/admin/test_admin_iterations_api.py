@@ -39,7 +39,7 @@ def test_admin_get_iterations_defaults_to_iteration_sets():
 
     result = asyncio.run(admin_api.admin_get_iterations.__wrapped__(req))
 
-    assert result == {'content': {'iteration_sets': []}}
+    assert result == {'content': {'iteration_sets': [], 'usage': {}}}
 
 
 def test_admin_get_iterations_ignores_legacy_shape():
@@ -56,7 +56,7 @@ def test_admin_get_iterations_ignores_legacy_shape():
 
     result = asyncio.run(admin_api.admin_get_iterations.__wrapped__(req))
 
-    assert result == {'content': {'iteration_sets': []}}
+    assert result == {'content': {'iteration_sets': [], 'usage': {}}}
 
 
 def test_admin_save_iterations_validates_required_fields():
@@ -84,6 +84,7 @@ def test_admin_save_iterations_persists_normalized_payload():
                 {
                     'id': 'set-1',
                     'name': 'Set 1',
+                    'source_type': 'ado',
                     'source_project': 'MyProject',
                     'root_path': 'Platform',
                     'values': [],
@@ -148,3 +149,55 @@ def test_admin_unassociate_all_iterations_clears_project_map_links():
     assert pmap[0]['iteration_uuid'] is None
     assert pmap[1]['iteration_uuid'] is None
     assert pmap[2]['iteration_uuid'] == 'set-2'
+
+
+@pytest.mark.parametrize('source_type', ['manual', 'generated'])
+def test_local_iteration_sets_do_not_require_an_ado_project(source_type: str) -> None:
+    settings = {
+        'mode': 'until', 'start': '2026-10-19', 'end': '2026-11-20',
+        'length': 2, 'unit': 'weeks', 'count': 3, 'prefix': 'Cycle', 'firstNumber': 1,
+    }
+    item = {
+        'id': 'local-set', 'name': 'Delivery cycles', 'source_type': source_type,
+        'source_project': None, 'root_path': None, 'selected_paths': [],
+        'generator': settings if source_type == 'generated' else None,
+        'values': [{'path': 'cycle-1', 'name': 'Cycle 1',
+                    'startDate': '2026-10-19', 'finishDate': '2026-11-01'}],
+        'cached_at': None,
+    }
+    admin_svc = _FakeAdminService()
+    req = _Req(_container(admin_svc), {'content': {'iteration_sets': [item]}})
+
+    result = asyncio.run(admin_api.admin_save_iterations.__wrapped__(req))
+
+    assert result == {'ok': True}
+    saved = admin_svc.get_config('iterations')['iteration_sets'][0]
+    assert saved['source_type'] == source_type
+    assert saved['source_project'] is None
+    assert saved['generator'] == item['generator']
+
+
+def test_iteration_save_rejects_invalid_calendar_ranges() -> None:
+    item = {
+        'id': 'local-set', 'name': 'Cycles', 'source_type': 'manual',
+        'values': [{'path': 'one', 'name': 'One', 'startDate': '2026-02-30',
+                    'finishDate': '2026-03-01'}],
+    }
+    req = _Req(_container(_FakeAdminService()), {'content': {'iteration_sets': [item]}})
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(admin_api.admin_save_iterations.__wrapped__(req))
+    assert error.value.status_code == 400
+    assert 'date' in error.value.detail['message'].lower()
+
+
+def test_saving_configuration_cannot_remove_a_referenced_set() -> None:
+    service = _FakeAdminService({'iterations': {'iteration_sets': [
+        {'id': 'used', 'name': 'Used', 'source_type': 'ado', 'source_project': 'ADO',
+         'values': [], 'root_path': None, 'cached_at': None,
+         'selected_paths': [], 'generator': None},
+    ]}, 'projects': {'project_map': [{'id': 'plan', 'name': 'Plan', 'iteration_uuid': 'used'}]}})
+    req = _Req(_container(service), {'content': {'iteration_sets': []}})
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(admin_api.admin_save_iterations.__wrapped__(req))
+    assert error.value.status_code == 409
+    assert service.get_config('iterations')['iteration_sets'][0]['id'] == 'used'

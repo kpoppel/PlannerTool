@@ -1,7 +1,7 @@
 """Domain types for sprint / iteration data."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from typing_extensions import TypedDict
 
 
@@ -17,7 +17,10 @@ class DomainIterationSet(TypedDict):
     """A configured iteration set stored under ``config/iterations``."""
     id: str
     name: str
-    source_project: str
+    source_type: Literal['ado', 'manual', 'generated']
+    source_project: Optional[str]
+    selected_paths: List[str]
+    generator: Optional[Dict[str, Any]]
     values: List[DomainIteration]
     cached_at: Optional[str]
     root_path: Optional[str]

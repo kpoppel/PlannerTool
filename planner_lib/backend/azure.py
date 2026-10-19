@@ -331,6 +331,12 @@ class AzureDevOpsBackend(BackendPort):
                         code = 'schedule_metadata_missing' if iteration is None else 'schedule_dates_missing'
                         key = (ado_project, code)
                         schedule_issues[key] = schedule_issues.get(key, 0) + 1
+                    if task.get('start') and not task.get('end'):
+                        task['end'] = task['start']
+                        task['_inferred_end'] = True
+                    elif task.get('end') and not task.get('start'):
+                        task['start'] = task['end']
+                        task['_inferred_start'] = True
                     task['sourcePlanIds'] = []
                     tasks[task_id] = task
         except Exception as exc:
@@ -417,10 +423,7 @@ class AzureDevOpsBackend(BackendPort):
             for plan_id in sorted(set(task['sourcePlanIds']) | {task['project']}):
                 if plan_id not in plans_by_id:
                     continue
-                plan = plans_by_id[plan_id]
-                task_types = plan['task_types']
-                if task['type'].casefold() in {name.casefold() for name in task_types}:
-                    task['presentationPlanIds'].append(plan_id)
+                task['presentationPlanIds'].append(plan_id)
         for task in tasks.values():
             ado_project = task.get('backendData', {}).get('adoProject')
             iteration_path = task.get('iterationPath')

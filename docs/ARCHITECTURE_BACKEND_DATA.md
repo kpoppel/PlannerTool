@@ -136,9 +136,10 @@ fills missing boundaries from the exact assigned iteration in the work item's
 native ADO project. Date resolution reads that project's full iteration tree,
 independently of configured picker presets or their roots. Context enrichment
 shares one iteration map per native project and recalculates missing or previously
-inferred seed boundaries without replacing explicit dates. Unmatched or undated
-iterations leave unavailable boundaries unset; no parent or name-based inference
-is performed. Existing task/context snapshots acquire these dates on task refresh
+inferred seed boundaries without replacing explicit dates. After iteration resolution,
+a task with exactly one date uses that date for both boundaries as a one-day task;
+the copied boundary is marked inferred. Tasks with neither date remain unplanned;
+no parent or name-based inference is performed. Existing task/context snapshots acquire these dates on task refresh
 or cache expiry. This preparation does not write inferred dates back to ADO.
 
 Published date boundaries become explicit in every affected task cache, while
@@ -198,11 +199,13 @@ and ancestor eligibility using the organization team roster in plan mode, before
 sidebar Team Drill-down. Hidden context-only records are not counted as cards.
 Participating teams are derived from base-plan allocations, not sidebar selection.
 Ordinary presentation is restricted to tasks with configured presentation plans;
-internal source owners do not become selectable plans. Hidden context records have
-an empty `presentationPlanIds` list: they are loaded to preserve linked hierarchy
-and calculation inputs, but no configured plan presents them as cards. They remain
-in the resolved graph for inspection, capacity and cost, independently of sidebar
-type/state/team filtering of otherwise presentable cards. Category-excluded references
+internal source owners do not become selectable plans. Loaded descendants receive
+`presentationPlanIds` for their source plans and configured owner regardless of type.
+Plan task types select loader seeds, not which loaded descendant types can be shown.
+Descendant types are available through the ordinary sidebar filters; board context
+options still determine whether cross-owner descendants are in scope. Existing cached
+snapshots receive this presentation metadata on task refresh.
+Category-excluded references
 remain inspectable but are not calculation edges, including unimported type
 endpoints. Shared tasks contribute once to organization totals and
 once to each associated plan rollup. Cost reports retain all context types and
@@ -240,7 +243,8 @@ Completed states are seeded only within a positive `closed_history_days` window;
 the default `0` excludes Completed seeds. All WIQL literals are escaped. Linked
 Completed items remain in active hierarchies. An all-Completed component is kept
 only when an item falls within the largest history window of its source plans.
-Removed items are excluded. Presentation uses plan types, not per-plan state lists.
+Removed items are excluded. Presentation of loaded descendants is independent of
+plan seed types; sidebar type and state filters control their visibility.
 
 `global_settings` schema version 2 stores `process_order` and per-process
 `type_tiers`, synchronized with catalogue imports. Project responses expose the
@@ -455,8 +459,9 @@ outage-safe refresh.
   protocols, allowing Azure, static, and mock providers to be swapped without
   changing application code.
 - **Interface segregation:** each domain has a focused protocol rather than one
-  broad backend interface. `PlanRepository` and `IterationRepository` may
-  combine remote and local configuration ports when that is the domain contract.
+  broad backend interface. `PlanRepository` may combine remote and local
+  configuration ports. `IterationRepository` serves reviewed local snapshots;
+  admin source browsing and task-date enrichment remain separate remote operations.
 - **Strategy plus registry:** `BackendRegistry` selects the provider strategy at
   startup/reload from feature flags.
 - **Decorator/proxy:** `CachingBackend` preserves the inner backend protocol and
@@ -526,6 +531,28 @@ reuse `AzureAdapter`; for a source that already emits domain data, follow
 - Warm cache reads are not a substitute for authorization. Cold remote reads and
   all remote writes still follow credential rules in `planner_lib/backend/port.py`.
 
+### Iteration Set Snapshots
+
+Schema revision 43 adds explicit `source_type` (`ado`, `generated`, or `manual`)
+to records in `config/iterations.iteration_sets`. Every set retains its `id`,
+`name`, dated `values`, and `cached_at` save time. ADO sets retain
+`source_project`, `root_path`, and exact `selected_paths`; local sets have a null
+ADO project. Generated sets persist a `generator` recipe containing `mode`,
+`start`, `end`, `length`, `unit`, `count`, `prefix`, and `firstNumber`.
+Server validation derives the canonical generated values from that recipe.
+
+`GET /admin/v1/iterations` returns `content.iteration_sets` and a read-only
+`content.usage` map from set IDs to assigned plan IDs/names.
+`POST /admin/v1/iterations` accepts `{content: {iteration_sets: [...]}}` and
+rejects removing a referenced set or changing an existing source identity.
+The dedicated delete endpoint also blocks referenced sets. Expansion and search
+state belong only to the admin browser, not to persisted membership.
+
+Plan-facing `/api/iterations` retains its opaque preset IDs and
+`{id, label, start, end}` payload. Neither empty snapshots nor missing ADO
+credentials trigger an implicit live fetch. Revision 43 preserves existing ADO
+set identities and plan associations, retaining only complete dated members.
+
 ### Testing Strategy
 
 Run the backend-focused Python tests with the repository virtual environment
@@ -583,7 +610,7 @@ the adapter. Its required core fields are `id`, `title`, `type`, `state`, and
 `project`; optional fields include `start`, `end`, `iterationPath`, `parentId`,
 `relations`, `capacity`, `description`, `assignee`, `tags`, `areaPath`, and
 `url`. `_inferred_start` and `_inferred_end` record dates inferred from an
-iteration when explicit dates are absent.
+iteration or the task's sole resolved date when explicit dates are absent.
 
 `DomainRelation` contains `type`, `id`, and optional `url`.
 `DomainCapacity` contains a team identifier and fractional `capacity` from 0 to

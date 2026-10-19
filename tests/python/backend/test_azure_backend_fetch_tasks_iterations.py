@@ -111,6 +111,47 @@ def test_build_iteration_map_fetches_native_project_without_picker_association()
     assert result['MyADO\\Sprint']['startDate'] == '2026-01-01'
 
 
+@pytest.mark.parametrize('linked', [False, True])
+@pytest.mark.parametrize('start_date,end_date', [
+    ('2026-03-01', None),
+    (None, '2026-03-14'),
+    ('2026-03-01', '2026-03-14'),
+    (None, None),
+])
+def test_context_completes_single_date_schedules_without_writing(
+    start_date: str | None, end_date: str | None, linked: bool,
+) -> None:
+    seed = _context_seed(1, 'plan-a')
+    seed.update({'start': start_date, 'end': end_date})
+    backend, client = _context_backend([seed])
+    if linked:
+        seed['relations'] = [{'type': 'Child', 'id': '2'}]
+        child = {
+            **_context_seed(2, 'plan-a', item_type='User Story'),
+            'adoProject': 'A', 'rev': 1, 'parentId': '1',
+            'startDate': start_date, 'finishDate': end_date,
+            'excludedChildIds': [], 'unresolvedChildIds': [], 'traversalBoundary': False,
+        }
+        client.get_linked_work_items.side_effect = lambda roots, **kwargs: [
+            {**roots[0], 'excludedChildIds': [], 'unresolvedChildIds': [],
+             'traversalBoundary': False}, child,
+        ]
+
+    tasks = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+    task = next(task for task in tasks if task['id'] == ('2' if linked else '1'))
+
+    assert task['start'] == (start_date if start_date is not None else end_date)
+    assert task['end'] == (end_date if end_date is not None else start_date)
+    assert task.get('_inferred_start', False) is (start_date is None and end_date is not None)
+    assert task.get('_inferred_end', False) is (end_date is None and start_date is not None)
+    assert seed['start'] == start_date
+    assert seed['end'] == end_date
+    if linked:
+        assert child['startDate'] == start_date
+        assert child['finishDate'] == end_date
+    client.update_work_item_dates.assert_not_called()
+
+
 @pytest.mark.parametrize('previous_start', [None, '1999-01-01'])
 def test_context_repairs_same_owner_missing_or_inferred_dates(previous_start):
     seed = _context_seed(1, 'plan-a')
@@ -139,7 +180,7 @@ def test_context_repairs_same_owner_missing_or_inferred_dates(previous_start):
     (None, '2026-03-14'),
     (None, None),
 ])
-def test_context_leaves_unavailable_iteration_boundaries_unset(start_date, end_date):
+def test_context_completes_partial_iteration_boundaries(start_date, end_date):
     seed = cast(BackendTask, _context_seed(1, 'plan-a'))
     seed.update({'iterationPath': 'A\\Sprint', 'start': None, 'end': None})
     backend, client = _context_backend([seed])
@@ -151,10 +192,10 @@ def test_context_leaves_unavailable_iteration_boundaries_unset(start_date, end_d
     task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
 
     task = cast(dict[str, Any], task)
-    assert task['start'] == start_date
-    assert task['end'] == end_date
-    assert task['_inferred_start'] is (start_date is not None)
-    assert task['_inferred_end'] is (end_date is not None)
+    assert task['start'] == (start_date if start_date is not None else end_date)
+    assert task['end'] == (end_date if end_date is not None else start_date)
+    assert task['_inferred_start'] is (start_date is not None or end_date is not None)
+    assert task['_inferred_end'] is (start_date is not None or end_date is not None)
 
 
 def test_context_removes_stale_inference_when_assigned_schedule_is_missing():
@@ -169,8 +210,8 @@ def test_context_removes_stale_inference_when_assigned_schedule_is_missing():
     task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
 
     task = cast(dict[str, Any], task)
-    assert task['start'] is None
-    assert task['_inferred_start'] is False
+    assert task['start'] == '2026-03-31'
+    assert task['_inferred_start'] is True
     assert task['end'] == '2026-03-31'
     assert task['_inferred_end'] is False
     assert seed.get('start') == '1999-01-01'
@@ -414,7 +455,7 @@ def test_fetch_task_context_preserves_source_owner_and_unions_seed_provenance():
     assert tasks['3']['start'] == '2026-01-01'
     assert tasks['3']['end'] == '2026-01-14'
     assert tasks['3']['sourcePlanIds'] == ['plan-a', 'plan-b']
-    assert tasks['3']['presentationPlanIds'] == []
+    assert tasks['3']['presentationPlanIds'] == ['plan-a', 'plan-b']
     assert tasks['3']['excludedChildIds'] == ['5']
     assert tasks['3']['backendData'] == {'adoProject': 'ADOB', 'rev': 7, 'type': 'Requirement'}
     assert tasks['4']['project'].startswith('context-')
