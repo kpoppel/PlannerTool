@@ -45,10 +45,11 @@ def _remap_legacy_team_references(value: Any, aliases: Mapping[str, list[str]]) 
 def _remap_legacy_team_reference(value: Any, aliases: Mapping[str, list[str]]) -> Any:
     if not isinstance(value, str) or value not in aliases:
         return value
-    matches = aliases[value]
-    if len(matches) != 1:
-        raise ValueError(f'Ambiguous legacy team reference: {value}')
-    return matches[0]
+    return aliases[value[0]]
+#    matches = aliases[value]
+#    if len(matches) != 1:
+#        raise ValueError(f'Ambiguous legacy team reference: {value}')
+#    return matches[0]
 
 
 def build_workforce_candidate(

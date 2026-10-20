@@ -14,6 +14,10 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v5.0.3] - 2026-10-20
+### Fixed
+- Keep saved team references on the first configured team when legacy team names normalize to the same handle during Workforce migration, while retaining duplicate teams for administrator review.
+
 ## [v5.0.2] - 2026-10-20
 ### Fixed
 - Allow the v5.0.0 Workforce migration to preserve duplicate legacy team short names while assigning unique allocation tokens for administrator review.
