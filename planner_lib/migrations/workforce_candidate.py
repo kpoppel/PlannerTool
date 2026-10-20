@@ -76,10 +76,16 @@ def build_workforce_candidate(
                 return identity
 
     definitions = []
+    allocation_tokens = set()
     teams_by_name: dict[str, list[dict[str, Any]]] = {}
     for team in teams_config['teams']:
+        identity = issue()
+        allocation_token = team['short_name']
+        if allocation_token.strip().lower() in allocation_tokens:
+            allocation_token = identity
+        allocation_tokens.add(allocation_token.strip().lower())
         definition = {
-            'id': issue(), 'allocation_token': team['short_name'], 'name': team['name'],
+            'id': identity, 'allocation_token': allocation_token, 'name': team['name'],
             'short_name': team['short_name'], 'archived': bool(team.get('exclude', False)),
             'group_id': None,
         }

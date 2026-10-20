@@ -93,12 +93,21 @@ def test_candidate_archives_incomplete_items_and_preserves_anonymous_basis() -> 
     assert all('last_updated' not in record for record in teams.definitions())
 
 
-def test_candidate_rejects_collision_instead_of_renaming_ado_tokens() -> None:
-    """Legacy token uniqueness remains a preflight gate across archived definitions."""
+def test_candidate_preserves_duplicate_short_names_with_unique_tokens() -> None:
+    """Existing teams with colliding short names remain available for admin review."""
     source = legacy_fixture()
-    source['teams']['teams'][1]['short_name'] = ' alpha '
-    with pytest.raises(ValueError, match='token'):
-        build_workforce_candidate(source['teams'], source['people'], source['cost'], source['projects'])
+    source['teams']['teams'][0]['short_name'] = 'SHARED'
+    source['teams']['teams'][1]['short_name'] = ' shared '
+    identities = count()
+
+    candidate = build_workforce_candidate(
+        source['teams'], source['people'], source['cost'], source['projects'],
+        id_issuer=lambda: f'opaque-{next(identities)}',
+    )
+
+    teams = candidate['teams']['teams'][:2]
+    assert [team['short_name'] for team in teams] == ['SHARED', ' shared ']
+    assert [team['allocation_token'] for team in teams] == ['SHARED', teams[1]['id']]
 
 
 def test_candidate_assigns_distinct_ids_to_same_name_teams() -> None:
@@ -143,11 +152,14 @@ def test_candidate_store_upgrade_is_atomic_and_remaps_legacy_team_handles(
 
     cache_storage = candidate_storage
     source = legacy_fixture()
+    source['teams']['teams'][0]['short_name'] = 'SHARED'
+    source['teams']['teams'][1]['short_name'] = ' shared '
     for key in ('teams', 'people', 'projects'):
         cache_storage.save('config', key, source[key])
     cache_storage.save('config', 'cost_config', source['cost'])
     retained = {'overrides': {'task': {'capacity': [
-        {'team': 'team-alpha', 'capacity': 50}, {'team': 'None', 'capacity': 20},
+        {'team': 'team-alpha', 'capacity': 50}, {'team': 'team-beta', 'capacity': 25},
+        {'team': 'None', 'capacity': 20},
         {'team': 'None', 'capacity': 20}, {'team': 'team-unconfigured', 'capacity': 15},
     ]}}}
     cache_storage.save('scenarios', 'fixture', retained)
@@ -164,17 +176,20 @@ def test_candidate_store_upgrade_is_atomic_and_remaps_legacy_team_handles(
     assert not cache_storage.exists('config', 'people_backup_fixture')
     assert not cache_storage.exists('config', 'cost_config_backup_fixture')
     assert list(cache_storage.list_keys('cost_cache')) == []
-    alpha_id = next(
-        team['id'] for team in cache_storage.load('config', 'teams')['teams']
-        if team['allocation_token'] == 'ALPHA'
-    )
+    migrated_teams = cache_storage.load('config', 'teams')['teams']
+    alpha_id = next(team['id'] for team in migrated_teams if team['name'] == 'Alpha')
+    beta_id = next(team['id'] for team in migrated_teams if team['name'] == 'Beta')
+    assert [team['short_name'] for team in migrated_teams[:2]] == ['SHARED', ' shared ']
+    assert migrated_teams[0]['allocation_token'] == 'SHARED'
+    assert migrated_teams[1]['allocation_token'] == beta_id
     unconfigured_id = next(
-        team['id'] for team in cache_storage.load('config', 'teams')['teams']
+        team['id'] for team in migrated_teams
         if team.get('migration_incomplete', False) and team['name'] == 'Unconfigured'
     )
     assert cache_storage.load('scenarios', 'fixture') == {
         'overrides': {'task': {'capacity': [
-            {'team': alpha_id, 'capacity': 50}, {'team': 'None', 'capacity': 20},
+            {'team': alpha_id, 'capacity': 50}, {'team': beta_id, 'capacity': 25},
+            {'team': 'None', 'capacity': 20},
             {'team': 'None', 'capacity': 20}, {'team': unconfigured_id, 'capacity': 15},
         ]}},
     }
