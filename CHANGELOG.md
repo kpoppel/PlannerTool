@@ -14,6 +14,10 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v5.0.1] - 2026-10-20
+### Fixed
+- Allow the v5.0.0 Workforce migration to preserve duplicate legacy team short names while assigning unique allocation tokens for administrator review.
+
 ## [v5.0.0] - 2026-10-17
 Note, this is a major update. Backup the physical data directory.  JSON backups do not transfer.
 
