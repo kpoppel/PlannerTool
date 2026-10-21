@@ -34,6 +34,39 @@ export function hasFeatureTeamId(feature, teamId) {
   return hasFeatureTeamAllocation(feature, selectedTeamIds);
 }
 
+export function buildDescendantAllocationTeams(features, childrenByParent, catalogue) {
+  const featuresById = new Map(features.map((feature) => [String(feature.id), feature]));
+  const groups = new Map(catalogue.filter((team) => team.kind === 'team'
+    && team.group_id !== null).map((team) => [team.id, team.group_id]));
+  const descendants = new Map();
+  const visiting = new Set();
+  function collect(featureId) {
+    if (descendants.has(featureId)) return descendants.get(featureId);
+    if (visiting.has(featureId)) throw new Error('Allocation hierarchy contains a cycle');
+    visiting.add(featureId);
+    const covered = new Set();
+    const feature = featuresById.get(featureId);
+    const childIds = childrenByParent.get(featureId);
+    if (childIds !== undefined && feature.type !== 'Task' && feature.stateCategory !== 'Removed') {
+      for (const childId of childIds) {
+        const child = featuresById.get(String(childId));
+        if (child.type === 'Task' || child.stateCategory === 'Removed') continue;
+        for (const teamId of collect(String(childId))) covered.add(teamId);
+        if (!child.start || !child.end || child.start > child.end) continue;
+        for (const allocation of child.capacity) {
+          covered.add(allocation.team);
+          if (groups.has(allocation.team)) covered.add(groups.get(allocation.team));
+        }
+      }
+    }
+    visiting.delete(featureId);
+    descendants.set(featureId, covered);
+    return covered;
+  }
+  for (const feature of features) collect(String(feature.id));
+  return descendants;
+}
+
 /**
  * Organisational load of a feature: every allocation spread evenly across the
  * full organization roster. Team Drill-down only changes presentation.

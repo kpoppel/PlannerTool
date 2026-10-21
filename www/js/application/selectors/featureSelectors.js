@@ -6,7 +6,9 @@ import {
   featureMatchesPlans,
 } from '../shared/featureProjection.js';
 import { deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
-import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
+import {
+  buildDescendantAllocationTeams, hasFeatureTeamAllocation, hasFeatureTeamId,
+} from '../shared/teamAllocation.js';
 import { projectAllocationAvailability } from '../shared/allocationAvailability.js';
 import { displayTypes, featureTypeKey, projectDisplay, taskTypeKey } from '../shared/workItemDisplay.js';
 
@@ -84,6 +86,7 @@ function makeCountsMap(features, predicate) {
 export function createFeatureSelectors(store) {
   // Every FeatureCard reads this per render; deriving it per call made board re-renders O(N²).
   const childrenByParentCache = new WeakMap();
+  const descendantAllocationCache = new WeakMap();
   const selectors = {
     getBaselineFeatures() {
       return store.getState().baseline.features;
@@ -118,6 +121,18 @@ export function createFeatureSelectors(store) {
         childrenByParentCache.set(state, map);
       }
       return map;
+    },
+
+    getDescendantAllocationTeams(featureId) {
+      const state = store.getState();
+      let map = descendantAllocationCache.get(state);
+      if (map === undefined) {
+        map = buildDescendantAllocationTeams(deriveEffectiveFeatures(state),
+          selectors.getChildrenByParentMap(), state.baseline.teams);
+        descendantAllocationCache.set(state, map);
+      }
+      const teams = map.get(String(featureId));
+      return teams === undefined ? new Set() : teams;
     },
 
     getSchedulePresetsForProject(projectId) {

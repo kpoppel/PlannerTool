@@ -1075,9 +1075,10 @@ export class FeatureCardLit extends LitElement {
 
   _renderTeamLoadRow() {
     if (this.condensed) return '';
-    const childrenByParent = sel.feature.getChildrenByParentMap();
-    const childIds = childrenByParent.get(String(this.feature.id));
-    const hasChildren = childIds !== undefined && childIds.length > 0;
+    const descendantTeams = sel.feature.getDescendantAllocationTeams(this.feature.id);
+    const allocations = this.feature.capacity === undefined ? [] : this.feature.capacity;
+    const supersededCount = allocations.filter((item) => descendantTeams.has(item.team)).length;
+    const allSuperseded = allocations.length > 0 && supersededCount === allocations.length;
 
     const orgBox = html`
       <span class="team-load-box" style="background: #23344d;" title="Organization load">
@@ -1086,13 +1087,12 @@ export class FeatureCardLit extends LitElement {
     `;
 
     // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
-    const teamBoxes = this.feature.capacity === undefined ? [] :
-      this.feature.capacity.map((tl) => {
+    const teamBoxes = allocations.map((tl) => {
           const team = this.teams.find((t) => t.id === tl.team);
           if (!team) return null;
           return html`
             <span
-              class="team-load-box ${team.selected ? '' : 'team-load-box--dimmed'}"
+              class="team-load-box ${team.selected && !descendantTeams.has(tl.team) ? '' : 'team-load-box--dimmed'}"
               style="background: ${team.color};"
               title="${team.name}: ${ceilAllocation(tl.capacity)}"
             >
@@ -1103,12 +1103,12 @@ export class FeatureCardLit extends LitElement {
 
     return html`
       <div
-        class="team-load-row ${hasChildren ? 'dimmed' : ''}"
-        title=${hasChildren ?
-          'This feature has child items; using allocations from children in calculations'
+        class="team-load-row ${allSuperseded ? 'dimmed' : ''}"
+        title=${supersededCount > 0 ?
+          'Dimmed team allocations are replaced by descendant allocations in calculations'
         : ''}
       >
-        ${hasChildren ?
+        ${supersededCount > 0 ?
           html`<span class="dim-info" role="img">ℹ️</span>`
         : ''}
         ${orgBox} ${teamBoxes}

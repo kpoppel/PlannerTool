@@ -23,6 +23,7 @@ Template - do not change :
 ### Fixed
 - Make loaded Azure DevOps descendants available through the existing task-type filters even when their types are not configured as plan loader seeds, so children that constrain parent schedules can be shown.
 - Present Azure DevOps items with only one resolved date as one-day tasks without writing the inferred boundary back to Azure DevOps.
+- Dim parent team allocations only when eligible dated descendant allocations replace them, keeping allocations active when children have none.
 
 ## [v5.0.3] - 2026-10-20
 ### Fixed

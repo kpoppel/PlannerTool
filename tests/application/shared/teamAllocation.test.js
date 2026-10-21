@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDescendantAllocationTeams,
   computeFeatureOrgLoad,
   expandAllocationFocusIds,
   getCapacityTeamId,
@@ -8,6 +9,46 @@ import {
 } from '../../../www/js/application/shared/teamAllocation.js';
 
 describe('application/shared/teamAllocation', () => {
+  it.each([
+    ['unallocated child', { capacity: [] }, []],
+    ['allocated child', {}, ['A', 'G']],
+    ['another team', { capacity: [{ team: 'B', capacity: 25 }] }, ['B']],
+    ['undated child', { start: null, end: null }, []],
+    ['partially dated child', { end: null }, []],
+    ['reversed dates', { start: '2026-02-01' }, []],
+    ['removed child', { stateCategory: 'Removed' }, []],
+    ['task child', { type: 'Task' }, []],
+  ])('collects eligible descendant allocations: %s', (label, overrides, expected) => {
+    const features = [
+      { id: 'parent', capacity: [] },
+      { id: 'child', type: 'Feature', start: '2026-01-01', end: '2026-01-15',
+        capacity: [{ team: 'A', capacity: 25 }], ...overrides },
+    ];
+    const catalogue = [{ id: 'A', kind: 'team', group_id: 'G' }];
+    const result = buildDescendantAllocationTeams(features,
+      new Map([['parent', ['child']]]), catalogue);
+    expect([...result.get('parent')]).toEqual(expected);
+  });
+
+  it('finds allocations through unallocated intermediate descendants', () => {
+    const features = [
+      { id: 'parent', capacity: [] },
+      { id: 'child', capacity: [] },
+      { id: 'grandchild', start: '2026-01-01', end: '2026-01-15',
+        capacity: [{ team: 'A', capacity: 25 }] },
+    ];
+    const result = buildDescendantAllocationTeams(features,
+      new Map([['parent', ['child']], ['child', ['grandchild']]]), []);
+    expect([...result.get('parent')]).toEqual(['A']);
+    expect([...result.get('child')]).toEqual(['A']);
+  });
+
+  it('rejects a cyclic allocation hierarchy', () => {
+    expect(() => buildDescendantAllocationTeams([{ id: 'parent' }, { id: 'child' }],
+      new Map([['parent', ['child']], ['child', ['parent']]]), []))
+      .toThrow('Allocation hierarchy contains a cycle');
+  });
+
   it('computes organization load from member expansion and does not charge unknown or empty groups', () => {
     const roster = new Set(['A', 'B']);
     const groups = new Map([['G', ['A', 'B']], ['empty', []]]);

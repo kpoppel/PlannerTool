@@ -2,8 +2,55 @@ import { expect, fixture } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/FeatureCard.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
+import { buildDescendantAllocationTeams } from '../../www/js/application/shared/teamAllocation.js';
 
 describe('FeatureCardLit basic behaviors', () => {
+  it('keeps parent allocations active when children have no allocations', async () => {
+    const features = [
+      { id: '925622', capacity: [{ team: 'rangers', capacity: 50 }] },
+      { id: 'child', capacity: [] },
+    ];
+    const descendants = buildDescendantAllocationTeams(features,
+      new Map([['925622', ['child']]]), []);
+    sinon.stub(sel.feature, 'getDescendantAllocationTeams')
+      .callsFake((id) => descendants.has(String(id)) ? descendants.get(String(id)) : new Set());
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.teams = [{ id: 'rangers', name: 'Rangers', color: '#123456', selected: true }];
+    el.feature = { id: '925622', title: 'Parent', capacity: [{ team: 'rangers', capacity: 50 }] };
+    await el.updateComplete;
+
+    const row = el.shadowRoot.querySelector('.team-load-row');
+    expect(row.classList.contains('dimmed')).to.be.false;
+    expect(row.getAttribute('title')).to.equal('');
+    expect(row.querySelector('.dim-info')).to.be.null;
+    expect(row.textContent).to.include('50');
+  });
+
+  it('dims only parent teams replaced by descendant allocations', async () => {
+    sinon.stub(sel.feature, 'getDescendantAllocationTeams').returns(new Set(['rangers']));
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.teams = [
+      { id: 'rangers', name: 'Rangers', color: '#123456', selected: true },
+      { id: 'other', name: 'Other', color: '#654321', selected: true },
+    ];
+    el.feature = { id: 'parent', title: 'Parent', capacity: [
+      { team: 'rangers', capacity: 50 }, { team: 'other', capacity: 25 },
+    ] };
+    await el.updateComplete;
+
+    const row = el.shadowRoot.querySelector('.team-load-row');
+    expect(row.classList.contains('dimmed')).to.be.false;
+    expect(row.querySelector('.dim-info')).to.exist;
+    expect(row.title).to.include('descendant allocations');
+    const boxes = row.querySelectorAll('.team-load-box');
+    expect(boxes[1].classList.contains('team-load-box--dimmed')).to.be.true;
+    expect(boxes[2].classList.contains('team-load-box--dimmed')).to.be.false;
+
+    el.feature = { ...el.feature, capacity: [{ team: 'rangers', capacity: 50 }] };
+    await el.updateComplete;
+    expect(row.classList.contains('dimmed')).to.be.true;
+  });
+
   it('offers two named resize zones and locks the whole handle color until cancellation', async () => {
     sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(true);
     const el = await fixture('<feature-card-lit style="width:200px"></feature-card-lit>');
