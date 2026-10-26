@@ -13,6 +13,16 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
+## [v5.2.0] - unreleased
+This version adds EntraID authentication.
+
+### Added
+- Option to configure EntraID authentication
+- Option to enable automatic HTTPS in generated multi-instance Docker deployments
+
+### Changed
+### Fixed
+
 ## [v5.1.0] - 2026-10-26
 ### Added
 - Add sortable last-active dates to user administration, retaining recorded activity after session expiry and distinguishing unavailable history.

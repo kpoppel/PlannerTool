@@ -1,0 +1,3 @@
+{$POC_HOSTNAME} {
+	reverse_proxy entra-id:8000
+}

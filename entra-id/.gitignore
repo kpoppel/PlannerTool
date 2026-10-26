@@ -1,0 +1,6 @@
+.env
+entra-client-secret
+certificates/
+.venv/
+__pycache__/
+.pytest_cache/
