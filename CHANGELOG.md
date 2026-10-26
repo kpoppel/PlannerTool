@@ -13,7 +13,7 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
-## [v5.1.0] - unreleased
+## [v5.1.0] - 2026-10-26
 ### Added
 - Add sortable last-active dates to user administration, retaining recorded activity after session expiry and distinguishing unavailable history.
 - Add generated and manual iteration sets alongside Azure DevOps, including configurable iteration lengths, inclusive date ranges, and shortened final iterations.
