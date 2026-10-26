@@ -115,6 +115,28 @@ Run the tool without parameters to get more options.  `--apply` builds the files
 
 The script creates a `deployment/` directory, creates a docker-compose file and Caddyfile, and an index.html file to serve as a landing page for the instances.
 
+### Optional HTTPS
+
+The generated stack uses HTTP on port 80 by default. To enable Caddy-managed HTTPS,
+provide the DNS hostname users will browse to when generating the deployment:
+
+```bash
+python3 scripts/deploy.py --config instances.yml --https-hostname planner.example.com --apply
+```
+
+The generated Caddy site uses that hostname, publishes ports 80 and 443 (TCP and
+UDP), and stores Caddy's certificate/account data in named volumes so certificates
+survive container recreation. Start or update the stack with the usual
+`cd deployment && docker compose up -d` command. Caddy obtains and renews its
+certificate automatically and redirects HTTP to HTTPS.
+
+For public ACME issuance, the hostname must resolve to this server and inbound
+ports 80 and 443 must be available to Caddy. Re-run the generator with the same
+`--https-hostname` option after changing instance configuration; omitting the
+option restores the default HTTP-only generated configuration. If another proxy
+already owns ports 80/443, keep this Caddy service HTTP-only and configure that
+proxy to terminate HTTPS and forward to the application containers instead.
+
 **Set the encryption key**: Before starting the containers, you must set the `PLANNER_SECRET_KEY` environment variable. 
 
    ```bash

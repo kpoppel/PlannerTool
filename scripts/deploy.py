@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import sys
 import subprocess
 import argparse
@@ -44,8 +45,17 @@ def generate_index_html(instances):
     html.extend(["</ul>", "</body>", "</html>"])
     return "\n".join(html)
 
-def generate_caddyfile(instances):
-    lines = [":80 {"]
+def validate_https_hostname(value):
+    label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    if len(value) > 253 or not re.fullmatch(rf"{label}(?:\.{label})*", value):
+        raise argparse.ArgumentTypeError(
+            "HTTPS hostname must be a DNS hostname without a scheme, port, or path."
+        )
+    return value.lower()
+
+def generate_caddyfile(instances, https_hostname=None):
+    site_address = https_hostname if https_hostname else ":80"
+    lines = [f"{site_address} {{"]
     for inst in instances:
         name = inst['name']
         lines.extend([
@@ -64,20 +74,28 @@ def generate_caddyfile(instances):
     lines.append("}")
     return "\n".join(lines)
 
-def generate_docker_compose(instances, version):
+def generate_docker_compose(instances, version, https_hostname=None):
+    caddy_ports = ["80:80"]
+    caddy_volumes = [
+        "./Caddyfile:/etc/caddy/Caddyfile",
+        "./index.html:/srv/index.html"
+    ]
+    volumes = {}
+    if https_hostname:
+        caddy_ports.extend(["443:443", "443:443/udp"])
+        caddy_volumes.extend(["caddy_data:/data", "caddy_config:/config"])
+        volumes.update({"caddy_data": {}, "caddy_config": {}})
+
     compose = {
         "services": {
             "caddy": {
                 "image": "caddy:2-alpine",
-                "ports": ["80:80"],
-                "volumes": [
-                    "./Caddyfile:/etc/caddy/Caddyfile",
-                    "./index.html:/srv/index.html"
-                ],
+                "ports": caddy_ports,
+                "volumes": caddy_volumes,
                 "depends_on": [f"planner-{inst['name']}" for inst in instances]
             }
         },
-        "volumes": {}
+        "volumes": volumes
     }
     
     for inst in instances:
@@ -132,6 +150,12 @@ def main():
         help="Start the docker containers after generating the files."
     )
     parser.add_argument(
+        '--https-hostname',
+        type=validate_https_hostname,
+        metavar='HOSTNAME',
+        help="Enable Caddy automatic HTTPS for this DNS hostname (requires public DNS and ports 80/443)."
+    )
+    parser.add_argument(
         '-b', '--build-images',
         action='store_true',
         help="Build required Docker images after generating files (uses top-level VERSION)."
@@ -166,8 +190,8 @@ def main():
     
     # Generate file contents (always performed) then either print as a dry-run
     # or write them into `deployment/` when --apply is specified.
-    caddy_contents = generate_caddyfile(instances)
-    compose_obj = generate_docker_compose(instances, version)
+    caddy_contents = generate_caddyfile(instances, args.https_hostname)
+    compose_obj = generate_docker_compose(instances, version, args.https_hostname)
     index_contents = generate_index_html(instances)
 
     if not args.apply:
@@ -183,6 +207,8 @@ def main():
         print(index_contents)
         print('\nTo write files, build images and start the stack run with --apply. Example:')
         print('  python scripts/deploy.py --apply --start')
+        if not args.https_hostname:
+            print('  Add --https-hostname planner.example.com to enable automatic HTTPS.')
         sys.exit(0)
 
     # Apply: write files into deployment/ and optionally build/start
