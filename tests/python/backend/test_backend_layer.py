@@ -128,6 +128,69 @@ def test_credential_provider_returns_none_on_load_exception():
     assert provider.get_credential('22222222-2222-4222-8222-222222222222') is None
 
 
+@pytest.mark.parametrize('user_id,email', [
+    ('11111111-1111-4111-8111-111111111111', 'first@example.com'),
+    ('22222222-2222-4222-8222-222222222222', 'second@example.com'),
+])
+def test_pat_policy_resolves_only_the_acting_account(user_id, email):
+    from planner_lib.backend.credential import PatCredentialPolicy
+
+    accounts = MagicMock()
+    accounts.get_account_by_id.return_value = {'email': email}
+    accounts.pat_error.return_value = 'pat_required'
+    policy = PatCredentialPolicy(accounts)
+    credential = {'kind': 'pat', 'token': 'operation-pat', 'user_id': user_id}
+
+    assert policy.credential_error(user_id) == 'pat_required'
+    accounts.pat_error.assert_called_once_with(email)
+    assert policy.authentication_failed(credential) == 'pat_invalid'
+    accounts.reject_pat.assert_called_once_with(email, 'operation-pat')
+    assert accounts.get_account_by_id.call_args_list == [((user_id,),), ((user_id,),)]
+
+
+def test_pat_policy_does_not_reject_another_credential_kind():
+    from planner_lib.backend.credential import PatCredentialPolicy
+
+    accounts = MagicMock()
+    policy = PatCredentialPolicy(accounts)
+    credential = {'kind': 'unsupported', 'token': 'never-expose-this', 'user_id': 'account-id'}
+
+    with pytest.raises(ValueError) as error:
+        policy.authentication_failed(credential)
+
+    assert credential['token'] not in str(error.value)
+    accounts.get_account_by_id.assert_not_called()
+    accounts.reject_pat.assert_not_called()
+
+
+def test_pat_policy_missing_credential_does_not_mutate_account():
+    from planner_lib.backend.credential import PatCredentialPolicy
+
+    accounts = MagicMock()
+    assert PatCredentialPolicy(accounts).authentication_failed(None) == 'pat_invalid'
+    accounts.reject_pat.assert_not_called()
+    accounts.load.assert_not_called()
+
+
+@pytest.mark.parametrize('status_code', [401, 403])
+@pytest.mark.parametrize('location', ['exception', 'response'])
+def test_auth_classification_preserves_status_without_changing_pat_semantics(status_code, location):
+    from types import SimpleNamespace
+    from planner_lib.backend.errors import classify_ado_exception
+
+    failure = RuntimeError(f'{status_code} access denied')
+    if location == 'exception':
+        failure.status_code = status_code
+    else:
+        failure.response = SimpleNamespace(status_code=status_code)
+
+    classified = classify_ado_exception(failure)
+
+    assert isinstance(classified, BackendAuthError)
+    assert classified.status_code == status_code
+    assert classify_ado_exception(classified) is classified
+
+
 # ---------------------------------------------------------------------------
 # StaticBackend
 # ---------------------------------------------------------------------------

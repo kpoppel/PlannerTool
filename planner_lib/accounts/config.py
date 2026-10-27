@@ -144,17 +144,9 @@ class AccountManager:
         self._storage = storage
 
     def requires_pat(self) -> bool:
-        from planner_lib.backend.azure import AzureDevOpsBackend
-        from planner_lib.backend.registry import get_active_class
+        from planner_lib.backend.credential import PatCredentialPolicy
 
-        if not self._storage.exists('config', 'ado_config'):
-            return False
-        ado = self._storage.load('config', 'ado_config')
-        flags = {}
-        if self._storage.exists('config', 'server_config'):
-            flags.update(self._storage.load('config', 'server_config')['feature_flags'])
-        flags.update(ado['feature_flags'])
-        return get_active_class(flags) is AzureDevOpsBackend
+        return PatCredentialPolicy.requires_credential(self._storage)
 
     def validate_pat(self, pat: str | None) -> str | None:
         from planner_lib.azure.AzureClient import AzureClient

@@ -192,7 +192,7 @@ def _build_services(
         EventRepository,
         GroupRepository,
     )
-    from planner_lib.backend.credential import AccountManagerCredentialProvider
+    from planner_lib.backend.credential import AccountManagerCredentialProvider, PatCredentialPolicy
 
     # project_repository uses the active backend (which handles enrichment).
     # The backend's fetch_projects() is responsible for returning the correct
@@ -203,6 +203,8 @@ def _build_services(
         ))
     container.register_factory("credential_provider",
         lambda: AccountManagerCredentialProvider(container.get("account_manager")))
+    container.register_factory("credential_policy",
+        lambda: PatCredentialPolicy(container.get("account_manager")))
 
     container.register_factory("history_repository",
         lambda: HistoryRepository(
@@ -408,22 +410,20 @@ def _build_app(
 
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-    def pat_invalid_response(request):
-        from planner_lib.middleware.session import (
-            get_session_context_from_request, get_session_credential_from_request,
-        )
+    def backend_auth_response(request, exc):
+        from planner_lib.middleware.session import get_session_credential_from_request
         from planner_lib.services.resolver import resolve_service
-        context = get_session_context_from_request(request)
-        credential = get_session_credential_from_request(request)
-        if credential is not None:
-            resolve_service(request, 'account_manager').reject_pat(context['email'], credential['token'])
-        return JSONResponse(status_code=403, content={'error': 'pat_invalid'})
+        credential = get_session_credential_from_request(request, acquire=False)
+        if isinstance(exc, BackendAuthError) and exc.credential is not None:
+            credential = exc.credential
+        error = resolve_service(request, 'credential_policy').authentication_failed(credential)
+        return JSONResponse(status_code=403, content={'error': error})
 
     from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError
 
     @app.exception_handler(BackendAuthError)
     async def backend_auth_exception_handler(request, exc):
-        return pat_invalid_response(request)
+        return backend_auth_response(request, exc)
 
     @app.exception_handler(BackendUnavailableError)
     async def backend_unavailable_exception_handler(request, exc):
@@ -433,7 +433,7 @@ def _build_app(
     async def http_exception_handler(request, exc):
         if exc.status_code in (401, 403) and isinstance(exc.detail, dict):
             if exc.detail.get('error') in ('invalid_pat', 'pat_invalid'):
-                return pat_invalid_response(request)
+                return backend_auth_response(request, exc)
         if exc.status_code == 401:
             return access_denied_response(request, exc.detail)
         # For non-401 HTTP exceptions, return the error detail as JSON

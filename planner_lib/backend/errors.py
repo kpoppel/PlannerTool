@@ -17,17 +17,27 @@ cached content, and uses the concrete subclass to pick the user-facing message.
 """
 from __future__ import annotations
 
+from planner_lib.backend.port import BackendCredential
+
 
 class BackendError(Exception):
     """Base class for recoverable failures contacting a remote data backend."""
 
 
 class BackendAuthError(BackendError):
-    """Authentication/authorization failed.
+    """The acting user's backend credential or permissions were rejected.
 
-    Raised when the credential is missing, empty, invalid, or expired — i.e.
-    the user must fix their Personal Access Token.
+    Recovery and credential mutation belong to the selected credential policy.
+    Status metadata does not change the current ADO 401/403 classification.
     """
+
+    def __init__(
+        self, message: str, *, status_code: int | None = None,
+        credential: BackendCredential | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.credential = credential
 
 
 class BackendUnavailableError(BackendError):
@@ -96,5 +106,8 @@ def classify_ado_exception(exc: Exception) -> BackendError:
     if any(marker in txt for marker in _CONFIG_MARKERS):
         return BackendConfigError(str(exc))
     if any(marker in txt for marker in _AUTH_MARKERS):
-        return BackendAuthError(str(exc))
+        status_code = getattr(exc, 'status_code', None)
+        if status_code is None:
+            status_code = getattr(getattr(exc, 'response', None), 'status_code', None)
+        return BackendAuthError(str(exc), status_code=status_code)
     return BackendUnavailableError(str(exc))

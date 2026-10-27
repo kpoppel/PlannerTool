@@ -18,6 +18,39 @@ from planner_lib.backend.port import BackendCredential, CredentialProvider
 logger = logging.getLogger(__name__)
 
 
+class PatCredentialPolicy:
+    """Own the current PAT requirement and rejection semantics."""
+
+    def __init__(self, account_manager) -> None:
+        self._account_manager = account_manager
+
+    @staticmethod
+    def requires_credential(storage) -> bool:
+        from planner_lib.backend.azure import AzureDevOpsBackend
+        from planner_lib.backend.registry import get_active_class
+
+        if not storage.exists('config', 'ado_config'):
+            return False
+        ado = storage.load('config', 'ado_config')
+        flags = {}
+        if storage.exists('config', 'server_config'):
+            flags.update(storage.load('config', 'server_config')['feature_flags'])
+        flags.update(ado['feature_flags'])
+        return get_active_class(flags) is AzureDevOpsBackend
+
+    def credential_error(self, user_id: str) -> str | None:
+        email = self._account_manager.get_account_by_id(user_id)['email']
+        return self._account_manager.pat_error(email)
+
+    def authentication_failed(self, credential: Optional[BackendCredential]) -> str:
+        if credential is not None:
+            if credential['kind'] != 'pat':
+                raise ValueError('PAT policy cannot reject an unsupported credential kind')
+            email = self._account_manager.get_account_by_id(credential['user_id'])['email']
+            self._account_manager.reject_pat(email, credential['token'])
+        return 'pat_invalid'
+
+
 class AccountManagerCredentialProvider:
     """CredentialProvider implementation backed by AccountManager.
 

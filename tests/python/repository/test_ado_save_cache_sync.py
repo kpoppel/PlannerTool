@@ -23,7 +23,11 @@ def _make_task_repository(updated=2, errors=None):
 def _make_session_mgr(authenticated_client):
     from tests.helpers import register_service_on_client
     register_service_on_client(authenticated_client, 'account_manager',
-                               SimpleNamespace(load=lambda email: {'pat': 'fake-pat'}, pat_error=lambda email: None))
+                               SimpleNamespace(
+                                   get_account_by_id=lambda user_id: {'email': 'test@example.com'},
+                                   load=lambda email: {'pat': 'fake-pat'},
+                                   pat_error=lambda email: None,
+                               ))
     mgr = MagicMock()
     mgr.get.return_value = {'account_id': 'test-account-id',
                             'email': 'test@example.com'}

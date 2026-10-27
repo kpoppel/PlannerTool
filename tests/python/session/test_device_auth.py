@@ -173,6 +173,52 @@ def test_invalid_pat_keeps_local_admin_and_cached_task_reads_available(
     assert rejected_browse.json()['error'] == 'pat_invalid'
 
 
+@pytest.mark.parametrize('status_code', [401, 403])
+@pytest.mark.parametrize('acquisition', ['request', 'operation'])
+def test_auth_rejection_preserves_replacement_pat(
+    client, app, monkeypatch, status_code, acquisition,
+):
+    from fastapi import Request
+    from unittest.mock import Mock
+    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.azure.AzureClient import AzureClient
+    from planner_lib.backend.errors import BackendAuthError
+    from planner_lib.middleware.session import get_session_credential_from_request
+
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
+    storage = app.state.container.get('storage')
+    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    accounts = app.state.container.get('account_manager')
+    client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'original-pat'})
+    provider = app.state.container.get('credential_provider')
+    acquire = Mock(wraps=provider.get_credential)
+    monkeypatch.setattr(provider, 'get_credential', acquire)
+
+    @app.get('/api/test-auth-rejection')
+    async def reject_original(request: Request):
+        if acquisition == 'request':
+            credential = get_session_credential_from_request(request)
+        else:
+            credential = provider.get_credential(accounts.get_account_id('owner@example.com'))
+        assert credential['token'] == 'original-pat'
+        accounts.update_credentials(AccountCredentialsPayload(
+            email='owner@example.com', pat='replacement-pat',
+        ))
+        raise BackendAuthError(
+            'ADO rejected the operation', status_code=status_code,
+            credential=credential if acquisition == 'operation' else None,
+        )
+
+    response = client.get('/api/test-auth-rejection')
+
+    assert response.status_code == 403
+    assert response.json() == {'error': 'pat_invalid'}
+    acquire.assert_called_once_with(accounts.get_account_id('owner@example.com'))
+    assert accounts.load('owner@example.com')['pat'] == 'replacement-pat'
+    assert accounts.pat_error('owner@example.com') is None
+
+
 @pytest.mark.parametrize('operation', ['repair', 'create'])
 def test_pat_validation_outage_preserves_credentials_and_returns_503(client, app, monkeypatch, operation):
     from planner_lib.azure.AzureClient import AzureClient

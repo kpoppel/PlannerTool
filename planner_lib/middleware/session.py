@@ -147,7 +147,9 @@ def get_session_context_from_request(request: Request) -> dict[str, Any]:
     return context
 
 
-def get_session_credential_from_request(request: Request, *, backend=None) -> Optional[BackendCredential]:
+def get_session_credential_from_request(
+    request: Request, *, backend=None, acquire: bool = True,
+) -> Optional[BackendCredential]:
     """Resolve the authenticated UUID's credential once within this request."""
     context = get_session_context_from_request(request)
     if backend is not None and not backend.is_remote:
@@ -156,6 +158,8 @@ def get_session_credential_from_request(request: Request, *, backend=None) -> Op
     cached = getattr(request.state, '_planner_credential', None)
     if cached is not None and cached[0] == sid:
         return cached[1]
+    if not acquire:
+        return None
 
     provider = resolve_service(request, 'credential_provider')
     credential = provider.get_credential(context['account_id'])
@@ -239,8 +243,8 @@ class SessionMiddleware(BaseHTTPMiddleware):
             except HTTPException:
                 context = None
             if context is not None:
-                accounts = resolve_service(request, 'account_manager')
-                error = accounts.pat_error(context['email'])
+                policy = resolve_service(request, 'credential_policy')
+                error = policy.credential_error(context['account_id'])
                 if error:
                     return JSONResponse(status_code=403, content={'error': error})
         response: Response = await call_next(request)

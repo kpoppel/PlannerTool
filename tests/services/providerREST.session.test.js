@@ -8,9 +8,13 @@ import { bus } from '../../www/js/core/EventBus.js';
 import { SessionEvents } from '../../www/js/core/EventRegistry.js';
 import { dataService } from '../../www/js/services/dataService.js';
 
-vi.mock('../../www/js/components/AuthDialog.lit.js', () => ({
-  showAuthDialog: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock('../../www/js/components/AuthDialog.lit.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    showAuthDialog: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 describe('ProviderREST /api/session tests', () => {
   it('notifies account changes but not renewal for the same account', async () => {

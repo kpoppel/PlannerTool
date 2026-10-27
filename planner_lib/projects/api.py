@@ -9,7 +9,7 @@ from planner_lib.middleware.session import (
 )
 from planner_lib.services.resolver import resolve_service
 from planner_lib.backend.port import DiagnosticBackend
-from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
+from planner_lib.backend.errors import BackendConfigError, BackendUnavailableError
 import logging
 
 router = APIRouter()
@@ -55,11 +55,6 @@ async def api_tasks(request: Request, response: Response):
 
     try:
         tasks, diagnostics = await asyncio.to_thread(read_tasks)
-    except BackendAuthError:
-        raise HTTPException(
-            status_code=401,
-            detail={'error': 'invalid_pat', 'message': 'Personal Access Token is invalid or expired'},
-        )
     except BackendUnavailableError:
         raise HTTPException(
             status_code=503,
@@ -95,10 +90,6 @@ async def api_tasks_refresh(request: Request, response: Response):
     repository = resolve_service(request, 'task_repository')
     try:
         result = await asyncio.to_thread(repository.request_refresh, credential)
-    except BackendAuthError:
-        raise HTTPException(status_code=401, detail={
-            'error': 'invalid_pat', 'message': 'A valid Personal Access Token is required to refresh tasks',
-        })
     except BackendUnavailableError:
         raise HTTPException(status_code=503, detail={
             'error': 'backend_unavailable', 'message': 'Task refresh is currently unavailable',
@@ -137,8 +128,6 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
         result = await asyncio.to_thread(task_repo.write, payload or [], user_id=account_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={'error': 'invalid_allocation', 'message': str(exc)}) from exc
-    except BackendAuthError as exc:
-        raise HTTPException(status_code=401, detail={'error': 'invalid_pat', 'message': 'Publication requires valid credentials'}) from exc
     except BackendUnavailableError as exc:
         raise HTTPException(status_code=503, detail={'error': 'backend_unavailable', 'message': 'Publication requires the complete task forest'}) from exc
     except BackendConfigError as exc:

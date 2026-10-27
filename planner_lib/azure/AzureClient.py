@@ -90,7 +90,7 @@ class AzureClient:
     def connect(self, credential: BackendCredential) -> ContextManager["AzureClient"]:
         """Context-manager that connects with a validated operation credential."""
         pat = pat_from_credential(credential)
-        return self._connection_context(pat)
+        return self._connection_context(pat, credential=credential)
 
     def connect_pat(self, pat: str) -> ContextManager["AzureClient"]:
         """Context-manager for an explicit PAT-only connection outside a user credential."""
@@ -98,7 +98,9 @@ class AzureClient:
             raise ValueError("PAT must be a non-empty string")
         return self._connection_context(pat)
 
-    def _connection_context(self, pat: str) -> ContextManager["AzureClient"]:
+    def _connection_context(
+        self, pat: str, *, credential: BackendCredential | None = None,
+    ) -> ContextManager["AzureClient"]:
         """Connect with a PAT already selected by the credential contract and
         yield a connected client for the duration of the context.
         """
@@ -111,6 +113,7 @@ class AzureClient:
                 from planner_lib.backend.errors import BackendAuthError, classify_ado_exception
                 classified = classify_ado_exception(error)
                 if isinstance(classified, BackendAuthError):
+                    classified.credential = credential
                     raise classified from error
                 raise
             finally:
