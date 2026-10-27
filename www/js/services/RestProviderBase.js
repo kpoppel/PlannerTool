@@ -4,6 +4,8 @@ import { ok, fail } from './result.js';
 
 export class RestProviderBase {
   constructor(options = {}) {
+    this._identityInvalidated = false;
+    this._authentication = options.authentication === undefined ? null : options.authentication;
     this._retry = !!options.retry;
     this._session = !!options.session;
     this._networkRetryCount = Number.isInteger(options.networkRetryCount)
@@ -89,15 +91,23 @@ export class RestProviderBase {
   }
 
   async _fetch(url, options = {}, retryAttempt = 0, allowSessionRecovery = true) {
+    const authentication = this._authentication;
+    if (this._identityInvalidated || (authentication !== null && authentication.blocked)) {
+      throw Object.assign(new Error('Account changed; reload before continuing'), { code: 'account_changed' });
+    }
+    const generation = authentication === null ? 0 : authentication.generation;
     const resolvedUrl = this._resolveUrl(url);
-    const fetchOptions = this._buildFetchOptions(options);
+    const { safeRead = true, ...requestOptions } = options;
+    const method = requestOptions.method === undefined ? 'GET' : requestOptions.method.toUpperCase();
+    const canReplay = safeRead && (method === 'GET' || method === 'HEAD');
+    const fetchOptions = this._buildFetchOptions(requestOptions);
 
     let response;
     let credentialFailure = false;
     try {
       response = await this._fetchImpl(resolvedUrl, fetchOptions);
     } catch (err) {
-      if (this._retry && retryAttempt < this._networkRetryCount) {
+      if (canReplay && this._retry && retryAttempt < this._networkRetryCount) {
         const delay = this._networkRetryDelay * Math.pow(2, retryAttempt);
         await this._sleep(delay);
         return this._fetch(url, options, retryAttempt + 1, allowSessionRecovery);
@@ -114,6 +124,10 @@ export class RestProviderBase {
       throw err;
     }
 
+    if (this._identityInvalidated
+      || (authentication !== null && (authentication.blocked || authentication.generation !== generation))) {
+      throw Object.assign(new Error('Account changed during request'), { code: 'account_changed' });
+    }
     if (this._onCredentialFailure !== null) {
       credentialFailure = await this._onCredentialFailure(response, {
         url: resolvedUrl, options: fetchOptions,
@@ -123,7 +137,7 @@ export class RestProviderBase {
       const recovered = await this._recoverSession({
         url: resolvedUrl, options: fetchOptions, response,
       });
-      if (recovered) {
+      if (recovered && canReplay) {
         return this._fetch(url, options, retryAttempt, false);
       }
     }

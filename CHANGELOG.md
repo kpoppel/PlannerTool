@@ -23,7 +23,9 @@ This version adds EntraID authentication.
 - Option to enable automatic HTTPS in generated multi-instance Docker deployments
 
 ### Changed
+- Share frontend authentication client contracts and typed recovery across planner and administration, with mocked Entra HTTP flows while real activation remains disabled.
 ### Fixed
+- Prevent automatic replay of writes after session repair or ambiguous network failures; preserve partial results and discard old-account drafts when recovery changes identity.
 - Keep authenticated administrators' local configuration access available without an Azure DevOps PAT, and make PAT recovery nonblocking and explicitly actionable.
 - Serve local configuration and cached user data when a PAT is invalid; keep live Azure DevOps reads and refreshes gated.
 - Allow saving and deleting local views, scenarios, groups, events and event categories with a missing or invalid PAT; retain credential checks for wiki-backed events.

@@ -95,7 +95,7 @@ synthetic settings without an authentication service. The production model repor
 PAT; this presentation-only contract cannot authenticate users or enable activation.
 No configuration API or stored data shape changes are introduced by this preview.
 
-### Isolated Authentication UI Mocks (Phase B)
+### Isolated Authentication Clients (Phases B-C)
 
 The Data Sources editor, enrollment dialog, account Settings and Users editor
 accept an explicit, non-attribute `authentication` dependency for isolated tests.
@@ -103,14 +103,16 @@ It is `null` in production. No query parameter, persisted preference, network
 failure or configuration save selects a mock identity. The sole scenario model
 lives in `tests/helpers/mockAuth.js`; it is not shipped with application assets.
 
-This temporary presentation contract exposes `state`, `subscribe(listener)` and
-mock actions. State contains `mode` (`pat`, `local` or `entra`), `status`, a synthetic
+The shared frontend client exposes `state`, `subscribe(listener)` and
+authentication actions. State contains `mode` (`pat`, `local` or `entra`), `status`, an
 `account` (`uuid`, `email`, `name`) or `null`, and boolean capabilities for `pat`,
 `enrollment`, `reauthenticate`, `logout` and `deleteAccount`. Actions are `select`,
 `signIn`, `saveSettings`, `logout` and `deleteAccount`. A subscription returns its
 unsubscribe function. No field is sent to existing APIs or persisted as auth
-configuration. Phase C will define the shared HTTP adapter and recovery contract;
-this mock is not a new server API or authentication policy.
+configuration. Fixture-only `select` and `setSignInOutcome` are not HTTP client
+operations. Data Sources emits `authentication-mode-preview` with `{mode}`;
+only the test composition maps that event to scenarios. Application components
+do not select fixture identities.
 
 The injected Entra presentation hides PAT editing, remembered-browser management,
 enrollment and key reset. Admin account creation is hidden because Entra
@@ -130,8 +132,69 @@ Selecting an admin draft updates only an injected preview, never the active mode
 Cancel or reopening resets the preview. Tests supply the same model to dependent
 components explicitly. Browser tests inject the test helper from Playwright,
 without exposing a fixture route in the application. This is UI coverage only:
-server-side endpoint restrictions, real sessions, safe request replay, account
-switch isolation and broker integration remain later phase gates.
+server-side endpoint restrictions, real Entra sessions and broker integration
+remain later phase gates.
+
+### Frontend Adapter Contract (Phase C)
+
+`www/js/services/authClient.js` owns the observable client and Entra HTTP adapter.
+Clients expose `discover`, `status`, `signIn`, `completeLogin`, `recover`,
+`handleDecision`, `saveSettings`, `logout` and `deleteAccount` alongside state and
+subscriptions. The existing enrollment adapter retains the current session route
+and enrollment dialog; production does not discover or activate Entra. Both REST
+providers accept the same explicitly injected `authentication` client. Their
+default composition remains enrollment/PAT, including the admin cookie behavior.
+
+The following is a provisional PlannerTool HTTP contract, exercised only with
+mocked responses. It is not a broker protocol or a set of implemented server
+routes. URLs are relative to the instance API URL, including its subpath.
+
+| Operation | Request | Successful response |
+| --- | --- | --- |
+| Public discovery | `GET /auth/config` | `{mode: 'entra', capabilities}`; no account or credential acquisition |
+| Common profile/status | `GET /auth/me` | Client state, including UUID profile or `account: null`; no ADO token acquisition |
+| Begin sign-in/reauthentication | `POST /auth/login/begin` | Browser transaction passed to the injected login presenter |
+| Complete sign-in | `POST /auth/login/complete` | Client state; presenter supplies the browser-bound completion object |
+| Instance logout | `POST /auth/logout` | Signed-out client state |
+
+State and discovery responses must declare Entra mode; a PAT response is rejected,
+not used as a fallback. Authenticated profiles require a string `uuid`. No token
+is acquired, stored, logged or attached to browser requests by this client. The
+HTTP adapter uses same-origin cookies and never retries its authentication writes.
+The presenter returns `false` on cancellation, without completing login. Entra
+PAT editing is rejected, and real Entra account deletion remains unavailable until
+its policy is approved. Mock account deletion remains synthetic only.
+
+Failures use `{error: code}` with these frozen frontend decisions:
+
+| HTTP | Code | Permitted recovery |
+| --- | --- | --- |
+| 401 | `session_expired`, `invalid_session` | Login; safe reads may be retried once for the same account |
+| 409 | `interaction_required` | Explicit reauthentication; no automatic login or request replay |
+| 403 | `access_denied` | None; do not loop through login |
+| 503 | `auth_unavailable`, `auth_configuration_error` | None; retry later or repair configuration |
+| 403 | `pat_required`, `pat_invalid` | Explicit PAT repair in a PAT-capable composition only |
+
+These status/code choices do not change existing backend classification in Phase C.
+Unknown or mismatched HTTP auth decisions fail closed. Denial, interaction and
+outage notifications preserve the local identity. Claims challenges and broker
+secrets are not part of this browser contract.
+
+Recovery is single-flight on the shared client, scoped by its instance, fixed
+source and current account UUID. Same-account repair preserves drafts. A different
+UUID, logout or sign-in from an unknown previous identity increments the generation,
+blocks subsequent operations and invokes
+the account-context invalidator before publishing the identity. Its default clears
+PlannerTool browser data and reloads, discarding in-memory drafts. Tests inject an
+explicit invalidator instead. Old in-flight responses and late login completions
+are rejected. This is isolation, not draft transfer or a production logout policy.
+An eventual real composition must initialize the client from its authoritative
+startup profile before loading local work; it must not repeatedly construct a
+signed-out client over an authenticated session after the invalidator reloads.
+Enrollment currently receives email rather than UUID from existing routes; known
+email changes use the same clear/reload boundary, and successful interactive
+enrollment re-reads the profile before deciding whether a read may be replayed.
+Source-bound UUID sessions remain Phase D work.
 
 PATs are required only when the live Azure DevOps backend is selected. Enrollment
 and User Management require a PAT for each new live-ADO account. Selecting live
@@ -176,18 +239,22 @@ authentication service, or credential-mode selection.
 | PAT policy and storage | `PatCredentialPolicy` selects the current requirement and handles credential rejection. `AccountManager` owns PAT validation, encryption, save and token-comparison rejection, so a failed operation cannot reject a replacement PAT. |
 | Wire authentication | `planner_lib/azure/authentication.py` selects PAT Basic authentication for both the SDK and wiki clients from explicit `BackendCredential.kind`. Unsupported kinds fail explicitly without including the secret. |
 | Backend failures | `BackendAuthError` retains operation credential/status context until the HTTP boundary in `main.py` maps it through the selected policy to existing public errors. Existing PAT 401/403 classification is unchanged. |
-| Browser recovery | Both REST providers compose `createAuthRecovery` from `authRecovery.js`. `RestProviderBase` invokes injected callbacks, without importing enrollment or PAT dialogs. Session recovery is single-flight; PAT repair is notification-driven. |
+| Browser recovery | Both REST providers compose `createAuthRecovery` from `authRecovery.js`. `RestProviderBase` invokes injected callbacks, without importing enrollment or PAT dialogs. Injected clients share source/account-scoped recovery; PAT repair is notification-driven. |
 
 PAT-specific public endpoints and UI may still use `pat_required`, `pat_invalid`
 and PAT fields. Logical backup/restore and migrations also handle PATs explicitly;
 they are persistence owners, not alternative live credential acquisition paths.
 Wiki access can target an organization independently of the work-item backend.
 
-Session 401 recovery retains the existing one-time request replay, including
-writes; configured network retries also retain their existing policy. This is
-distinct from PAT 403 repair, which does not replay the failed request. Safe write
-replay/idempotency and separating ADO authorization denials from invalid
-credentials require separate policy decisions.
+Automatic session and network replay is restricted to GET/HEAD reads. An operation
+can prohibit even read replay with `{safeRead: false}`; this option is stripped
+before fetch. POST, PUT, PATCH and DELETE are never automatically replayed, even
+after successful repair or an ambiguous network failure. Response/notification
+observer errors cannot replay a completed operation. Original failure bodies and
+partial-success results remain available for explicit reconciliation/resubmission.
+PAT 403 repair and backend interaction/denial/outage never replay requests.
+Separating real ADO permission denials from credential rejection remains backend
+policy work for subsequent phases.
 
 A future login adapter can establish identity and issue a local session; a future
 credential provider and transport can supply delegated ADO credentials. External

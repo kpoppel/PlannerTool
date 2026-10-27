@@ -5,13 +5,15 @@ import { ok, fail } from '../../../js/services/result.js';
 import { createAuthRecovery } from '../../../js/services/authRecovery.js';
 
 export class AdminProviderREST extends RestProviderBase {
-  constructor() {
-    const recovery = createAuthRecovery();
+  constructor({ authentication = null } = {}) {
+    const recovery = createAuthRecovery({ authentication });
     // Admin UI uses same-origin credentials (cookie/session managed by server).
     super({
+      authentication,
       retry: false,
-      session: false,
+      session: authentication !== null,
       defaultCredentials: 'same-origin',
+      onSessionExpired: recovery.onSessionExpired,
       onCredentialFailure: recovery.onCredentialFailure,
     });
   }

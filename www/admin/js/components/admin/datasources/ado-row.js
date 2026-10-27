@@ -106,10 +106,7 @@ export function renderAdoSubForm(comp, type, errs) {
             aria-describedby="ado-authentication-status"
             @change=${(event) => {
               comp._draftAuthMode = event.target.value;
-              if (comp.authentication !== null) {
-                comp.authentication.select(comp._draftAuthMode === 'pat'
-                  ? 'pat_current' : 'entra_signed_out');
-              }
+              comp._onAuthenticationPreview(comp._draftAuthMode);
             }}
           >
             <option value="pat">PAT</option>

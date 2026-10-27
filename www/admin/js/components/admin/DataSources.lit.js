@@ -334,11 +334,13 @@ export class DataSources extends LitElement {
   // Data loading
   // ------------------------------------------------------------------
 
+  _onAuthenticationPreview(mode) {
+    this.dispatchEvent(new CustomEvent('authentication-mode-preview', { detail: { mode } }));
+  }
+
   async _load() {
     this._draftAuthMode = this.authenticationSettings.activeMode;
-    if (this.authentication !== null) {
-      this.authentication.select(this._draftAuthMode === 'pat' ? 'pat_current' : 'entra_signed_out');
-    }
+    this._onAuthenticationPreview(this._draftAuthMode);
     this._loading = true;
     try {
       const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult] = await Promise.all([

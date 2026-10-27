@@ -1,3 +1,5 @@
+import { createAuthClient } from '../../www/js/services/authClient.js';
+
 export const MOCK_ACCOUNT = Object.freeze({
   uuid: '00000000-0000-4000-8000-000000000001',
   email: 'alex@example.com',
@@ -23,7 +25,7 @@ export const AUTH_SCENARIOS = Object.freeze({
   unavailable: { mode: 'entra', status: 'unavailable' },
 });
 
-export function createMockAuth(scenario) {
+export function createMockAuth(scenario, options = {}) {
   const listeners = new Set();
   let state;
   let signInOutcome = {};
@@ -72,5 +74,45 @@ export function createMockAuth(scenario) {
     async deleteAccount() { await model.logout(); },
   };
   model.select(scenario);
+  const select = model.select;
+  const signIn = model.signIn;
+  const logout = model.logout;
+  const deleteAccount = model.deleteAccount;
+  let client;
+  const resetClient = () => createAuthClient({
+    initialState: model.state,
+    instance: 'mock-instance',
+    onAccountChanged: options.onAccountChanged === undefined ? async () => {} : options.onAccountChanged,
+    adapter: {
+      discover: async () => ({ mode: model.state.mode, capabilities: model.state.capabilities }),
+      status: async () => model.state,
+      signIn: async outcome => await signIn(outcome) ? model.state : false,
+      completeLogin: async outcome => await signIn(outcome) ? model.state : false,
+      saveSettings: async settings => {
+        const result = await model.saveSettings(settings);
+        await client.status();
+        return result;
+      },
+      logout: async () => { await logout(); return model.state; },
+      deleteAccount: async () => { await deleteAccount(); return model.state; },
+    },
+  });
+  client = resetClient();
+  model.select = name => { select(name); client = resetClient(); };
+  model.signIn = outcome => client.signIn(outcome);
+  model.recover = () => client.recover();
+  model.discover = () => client.discover();
+  model.status = () => client.status();
+  model.completeLogin = completion => client.completeLogin(completion);
+  model.handleDecision = async code => {
+    await client.handleDecision(code);
+    state = client.state;
+    for (const listener of listeners) listener();
+  };
+  Object.defineProperties(model, {
+    instance: { get: () => client.instance },
+    generation: { get: () => client.generation },
+    blocked: { get: () => client.blocked },
+  });
   return model;
 }

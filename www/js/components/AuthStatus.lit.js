@@ -1,4 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
+import { AUTH_DECISIONS } from '../services/authClient.js';
 
 export class AuthPresentationController {
   constructor(host) {
@@ -74,6 +75,10 @@ export class AuthStatus extends LitElement {
       const completed = await this.authentication.signIn();
       if (!completed) this._message = 'Sign-in cancelled.';
       this.dispatchEvent(new CustomEvent('auth-complete', { detail: completed }));
+    } catch (error) {
+      if (AUTH_DECISIONS[error.code] === undefined) throw error;
+      await this.authentication.handleDecision(error.code);
+      this._message = STATUS_MESSAGES[this.authentication.state.status];
     } finally {
       this._busy = false;
     }

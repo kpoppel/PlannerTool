@@ -10,6 +10,20 @@ import { AUTH_SCENARIOS, createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/m
 const uiCommands = createUiCommands(store, bus);
 
 describe('isolated authentication scenarios', () => {
+  it.each(['auth_unavailable', 'access_denied'])('presents typed sign-in failure %s without losing the account', async code => {
+    const model = createMockAuth('interaction_required');
+    vi.spyOn(model, 'signIn').mockRejectedValue(Object.assign(new Error(code), { code }));
+    const status = document.createElement('auth-status');
+    status.authentication = model;
+    document.body.append(status);
+    await status.updateComplete;
+    await status._onSignIn();
+    await status.updateComplete;
+    expect(status.shadowRoot.textContent).toContain(code === 'auth_unavailable' ? 'service unavailable' : 'access denied');
+    expect(model.state.account).not.toBeNull();
+    expect(status._busy).toBe(false);
+    status.remove();
+  });
   it.each([
     ['pat_current', 'Connected', false],
     ['pat_missing', 'PAT is required', true],

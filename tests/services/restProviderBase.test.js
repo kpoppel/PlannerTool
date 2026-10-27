@@ -211,21 +211,35 @@ describe('RestProviderBase', () => {
     expect(onSessionExpired).toHaveBeenCalledTimes(1);
   });
 
-  it('currently replays a write after successful 401 session recovery (deferred policy)', async () => {
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('does not replay %s after successful session recovery', async (method) => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(response({ ok: false, status: 401, jsonData: { error: 'invalid_session' } }))
       .mockResolvedValueOnce(response({ ok: true, status: 200, jsonData: { saved: true } }));
     const onSessionExpired = vi.fn().mockResolvedValue(true);
     const base = new RestProviderBase({ session: true, fetchImpl, onSessionExpired });
-    const options = { method: 'POST', body: JSON.stringify({ title: 'New task' }) };
+    const options = { method, body: JSON.stringify({ title: 'New task' }) };
 
     await base._fetch('/api/tasks', options);
 
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0][1]).toEqual(expect.objectContaining(options));
-    expect(fetchImpl.mock.calls[1][1]).toEqual(expect.objectContaining(options));
     expect(onSessionExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('does not retry ambiguous %s network failures', async (method) => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('Connection lost'));
+    const base = new RestProviderBase({ retry: true, fetchImpl });
+    await expect(base._fetch('/api/tasks', { method })).rejects.toThrow('Connection lost');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows individual reads to prohibit replay without leaking policy into fetch', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('Connection lost'));
+    const base = new RestProviderBase({ retry: true, fetchImpl });
+    await expect(base._fetch('/api/tasks', { safeRead: false })).rejects.toThrow('Connection lost');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][1]).not.toHaveProperty('safeRead');
   });
 
   it('does not retry 401 when session recovery hook returns false', async () => {

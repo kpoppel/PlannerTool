@@ -42,6 +42,9 @@ describe('Data Sources authentication preview', () => {
     const element = await mount();
     const model = createMockAuth('pat_current');
     element.authentication = model;
+    element.addEventListener('authentication-mode-preview', event => {
+      model.select(event.detail.mode === 'pat' ? 'pat_current' : 'entra_signed_out');
+    });
     await element.updateComplete;
     const fetch = vi.spyOn(globalThis, 'fetch');
     await select(element, '#ado-authentication-mode', 'entra');

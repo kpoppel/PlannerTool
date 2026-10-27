@@ -7,6 +7,9 @@ import { showAuthDialog } from '../../www/js/components/AuthDialog.lit.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { SessionEvents } from '../../www/js/core/EventRegistry.js';
 import { dataService } from '../../www/js/services/dataService.js';
+import { createAuthClient, createEntraHttpAdapter, AUTH_DECISIONS } from '../../www/js/services/authClient.js';
+import { createMockAuth, MOCK_ACCOUNT, OTHER_MOCK_ACCOUNT, AUTH_SCENARIOS } from '../helpers/mockAuth.js';
+import { AdminProviderREST } from '../../www/admin/js/services/providerREST.js';
 
 vi.mock('../../www/js/components/AuthDialog.lit.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -17,8 +20,131 @@ vi.mock('../../www/js/components/AuthDialog.lit.js', async (importOriginal) => {
 });
 
 describe('ProviderREST /api/session tests', () => {
+  it('shares single-flight recovery across app and admin for one client', async () => {
+    const state = createMockAuth('entra_signed_in').state;
+    const signIn = vi.fn(async () => state);
+    const authentication = createAuthClient({ initialState: state, instance: '/team_1',
+      adapter: { signIn }, onAccountChanged: vi.fn() });
+    const app = new ProviderREST({ authentication });
+    const admin = new AdminProviderREST({ authentication });
+    for (const provider of [app, admin]) {
+      provider._fetchImpl = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'session_expired' }), { status: 401 }))
+        .mockResolvedValueOnce(new Response('{}'));
+    }
+    const results = await Promise.all([app._fetch('/api/tasks'), admin._fetch('/admin/check')]);
+    expectVitest(results.every(result => result.ok)).toBe(true);
+    expectVitest(signIn).toHaveBeenCalledTimes(1);
+    expectVitest(authentication.generation).toBe(0);
+  });
+
+  itVitest.each([ProviderREST, AdminProviderREST])('fences switched accounts and stale responses in %s', async Provider => {
+    const invalidate = vi.fn();
+    const authentication = createMockAuth('entra_signed_in', { onAccountChanged: invalidate });
+    const provider = new Provider({ authentication });
+    let finish;
+    const pending = new Promise(resolve => { finish = resolve; });
+    provider._fetchImpl = vi.fn().mockReturnValueOnce(pending);
+    const stale = provider._fetch('/api/tasks');
+    authentication.setSignInOutcome({ account: OTHER_MOCK_ACCOUNT });
+    expectVitest(await authentication.recover()).toBe(false);
+    finish(new Response('{}'));
+    await expectVitest(stale).rejects.toMatchObject({ code: 'account_changed' });
+    await expectVitest(provider._fetch('/api/tasks')).rejects.toMatchObject({ code: 'account_changed' });
+    expectVitest(provider._fetchImpl).toHaveBeenCalledTimes(1);
+    expectVitest(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  itVitest.each([ProviderREST, AdminProviderREST])('preserves partial write results in %s', async Provider => {
+    const provider = new Provider({ authentication: createMockAuth('entra_signed_in') });
+    const partial = { ok: false, updated: ['synthetic-task-1'], errors: ['synthetic-task-2 denied'] };
+    provider._fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(partial)));
+    const result = await provider._requestJson('/api/tasks', { method: 'POST' });
+    expectVitest(result).toEqual({ ok: true, data: partial });
+    expectVitest(provider._fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  itVitest.each([ProviderREST, AdminProviderREST])('does not repair backend denial, outage or interaction automatically in %s', async Provider => {
+    const authentication = createMockAuth('entra_signed_in');
+    const recover = vi.spyOn(authentication, 'recover');
+    const provider = new Provider({ authentication });
+    for (const code of ['access_denied', 'auth_unavailable', 'interaction_required']) {
+      provider._fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: code }), {
+        status: AUTH_DECISIONS[code].status,
+      }));
+      await provider._fetch('/api/tasks');
+      expectVitest(provider._fetchImpl).toHaveBeenCalledTimes(1);
+      expectVitest(authentication.state.account).toEqual(MOCK_ACCOUNT);
+    }
+    expectVitest(recover).not.toHaveBeenCalled();
+    expectVitest(authentication.state.capabilities.reauthenticate).toBe(true);
+  });
+  itVitest.each(Object.keys(AUTH_SCENARIOS).filter(name => AUTH_SCENARIOS[name].mode === 'entra'))('uses the shared client contract for %s mocks and HTTP', async scenario => {
+    const mock = createMockAuth(scenario);
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(mock.state)));
+    const adapter = createEntraHttpAdapter({ apiUrl: '/team_1/api', fetchImpl,
+      presentLogin: async () => ({ code: 'one-use-fixture', state: 'browser-bound-fixture' }) });
+    const client = createAuthClient({ adapter, initialState: mock.state,
+      instance: '/team_1', onAccountChanged: vi.fn() });
+    expectVitest(await client.status()).toEqual(mock.state);
+    expectVitest(fetchImpl).toHaveBeenCalledWith('/team_1/api/auth/me', expectVitest.objectContaining({
+      credentials: 'same-origin', method: 'GET',
+    }));
+    expectVitest(await client.discover()).toEqual(mock.state);
+  });
+
+  it('shares same-account repair without changing drafts, and fences a different returning UUID', async () => {
+    const drafts = { title: 'Unsubmitted work' };
+    const invalidate = vi.fn(async () => { delete drafts.title; });
+    const client = createMockAuth('interaction_required', { onAccountChanged: invalidate });
+    expectVitest(await Promise.all([client.recover(), client.recover()])).toEqual([true, true]);
+    expectVitest(drafts.title).toBe('Unsubmitted work');
+    client.setSignInOutcome({ account: OTHER_MOCK_ACCOUNT });
+    expectVitest(await client.recover()).toBe(false);
+    expectVitest(invalidate).toHaveBeenCalledWith({ previous: MOCK_ACCOUNT, next: OTHER_MOCK_ACCOUNT });
+    expectVitest(drafts).toEqual({});
+    expectVitest(client.blocked).toBe(true);
+  });
+
+  it('invalidates old work when signing in without a known previous identity', async () => {
+    const invalidate = vi.fn();
+    const client = createMockAuth('session_expired', { onAccountChanged: invalidate });
+    client.setSignInOutcome({ account: OTHER_MOCK_ACCOUNT });
+    expectVitest(await client.recover()).toBe(false);
+    expectVitest(invalidate).toHaveBeenCalledWith({ previous: null, next: OTHER_MOCK_ACCOUNT });
+    expectVitest(client.blocked).toBe(true);
+  });
+
+  it('supports HTTP begin/complete, cancellation and logout without retrying writes', async () => {
+    const state = createMockAuth('entra_signed_in').state;
+    const fetchImpl = vi.fn(async url => new Response(JSON.stringify(
+      url.endsWith('/begin') ? { transaction: 'synthetic' } : state)));
+    const presentLogin = vi.fn().mockResolvedValueOnce(false)
+      .mockResolvedValueOnce({ code: 'synthetic', state: 'browser-bound' });
+    const adapter = createEntraHttpAdapter({ apiUrl: '/team_1/api', fetchImpl, presentLogin });
+    expectVitest(await adapter.signIn()).toBe(false);
+    expectVitest(fetchImpl).toHaveBeenCalledTimes(1);
+    expectVitest(await adapter.signIn()).toEqual(state);
+    expectVitest(fetchImpl.mock.calls[2][0]).toBe('/team_1/api/auth/login/complete');
+    await adapter.logout();
+    expectVitest(fetchImpl.mock.calls[3][0]).toBe('/team_1/api/auth/logout');
+  });
+
+  it('rejects a PAT response in the Entra HTTP adapter instead of selecting PAT', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(createMockAuth('pat_current').state)));
+    const adapter = createEntraHttpAdapter({ apiUrl: '/api', fetchImpl, presentLogin: vi.fn() });
+    await expectVitest(adapter.status()).rejects.toThrow('incompatible authentication mode');
+  });
+
+  itVitest.each(Object.entries(AUTH_DECISIONS))('freezes typed HTTP decision %s', async (code, decision) => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: code }), { status: decision.status }));
+    const adapter = createEntraHttpAdapter({ apiUrl: '/api', fetchImpl, presentLogin: vi.fn() });
+    await expectVitest(adapter.status()).rejects.toMatchObject({ code, ...decision });
+    expectVitest(fetchImpl).toHaveBeenCalledTimes(1);
+  });
   it('notifies account changes but not renewal for the same account', async () => {
-    const provider = new ProviderREST();
+    const invalidate = vi.fn();
+    const provider = new ProviderREST({ onAccountChanged: invalidate });
     const emit = vi.spyOn(bus, 'emit');
     const fetch = vi.spyOn(provider, '_fetch');
     fetch.mockResolvedValueOnce(new Response(JSON.stringify({ email: 'first@example.com' })));
@@ -31,6 +157,8 @@ describe('ProviderREST /api/session tests', () => {
       expectVitest(emit).not.toHaveBeenCalledWith(SessionEvents.CHANGED);
       await provider.acquireSession();
       expectVitest(emit).toHaveBeenCalledWith(SessionEvents.CHANGED);
+      expectVitest(invalidate).toHaveBeenCalledWith({ previous: 'first@example.com', next: 'second@example.com' });
+      await expectVitest(provider._fetch('/api/tasks')).rejects.toMatchObject({ code: 'account_changed' });
     } finally {
       emit.mockRestore();
       fetch.mockRestore();
@@ -117,13 +245,31 @@ describe('ProviderREST /api/session tests', () => {
 
   it('opens enrollment when startup renewal rejects a legacy session', async () => {
     vi.mocked(showAuthDialog).mockClear();
-    server.use(http.post('/api/session', () =>
-      HttpResponse.json({ detail: 'Device authentication required' }, { status: 401 })
-    ));
+    server.use(
+      http.post('/api/session', () =>
+        HttpResponse.json({ detail: 'Device authentication required' }, { status: 401 })),
+      http.get('/api/auth/me', () => HttpResponse.json({ email: 'enrolled@example.com' })),
+    );
 
     await new ProviderREST().init();
 
     expect(vi.mocked(showAuthDialog).mock.calls.length).to.equal(1);
+  });
+
+  itVitest.each(['entra_signed_in', 'entra_signed_out'])('rejects late login completion after logout from %s', async scenario => {
+    const state = createMockAuth(scenario).state;
+    let complete;
+    const adapter = {
+      signIn: () => new Promise(resolve => { complete = resolve; }),
+      logout: async () => createMockAuth('entra_signed_out').state,
+    };
+    const client = createAuthClient({ adapter, initialState: state,
+      instance: '/team_1', onAccountChanged: vi.fn() });
+    const pending = client.signIn();
+    await client.logout();
+    complete(state);
+    await expectVitest(pending).rejects.toThrow('Stale authentication response');
+    expectVitest(client.state.account).toBeNull();
   });
 
   it('handles 401 invalid_session by calling acquireSession and retrying', async () => {

@@ -8,6 +8,7 @@ import { store } from '../application/store.js';
 import { createUiCommands } from '../application/commands/uiCommands.js';
 import { isMutableScenario } from '../application/shared/scenarioMutations.js';
 import { clearPatRecoveryNotifications, createAuthRecovery } from './authRecovery.js';
+import { createEnrollmentClientAdapter, resetAccountContext } from './authClient.js';
 
 const uiCommands = createUiCommands(store, bus);
 
@@ -17,17 +18,23 @@ const uiCommands = createUiCommands(store, bus);
  */
 
 export class ProviderREST extends RestProviderBase {
-  constructor() {
+  constructor({ authentication = null, onAccountChanged = resetAccountContext } = {}) {
     const recovery = createAuthRecovery({
-      acquireSession: () => this.acquireSession(),
+      authentication,
+      acquireSession: async () => {
+        const previous = this._accountEmail;
+        await this.acquireSession();
+        return previous === null || previous === this._accountEmail;
+      },
       onSessionError: (error) => bus.emit(SessionEvents.EXPIRED, {
         ok: false,
         error: String(error),
         message:
-          'Session could not be reacquired. Please check if the server is up and your PAT is valid.',
+          'Session could not be reacquired. Please sign in again or contact your administrator.',
       }),
     });
     super({
+      authentication,
       retry: true,
       session: true,
       networkRetryCount: 2,
@@ -42,6 +49,12 @@ export class ProviderREST extends RestProviderBase {
     });
     this._recovery = recovery;
     this._accountEmail = null;
+    this._onAccountChanged = onAccountChanged;
+    this._loginAdapter = createEnrollmentClientAdapter({
+      acquireSession: () => this._acquireEnrollmentSession(),
+      login: apiUrl => recovery.login(apiUrl),
+      logout: () => this._signOutEnrollment(),
+    });
   }
   // Initialize provider and acquire a session. Init should only perform
   // overall initialization; actual session acquisition is factored into
@@ -52,6 +65,11 @@ export class ProviderREST extends RestProviderBase {
   }
 
   async signOut() {
+    if (this._authentication !== null) return this._authentication.logout();
+    return this._loginAdapter.logout();
+  }
+
+  async _signOutEnrollment() {
     const response = await this._fetch('/api/auth/logout', { method: 'POST' }, 0, false);
     if (!response.ok) throw new Error(`Sign out failed: ${response.status}`);
     this._accountEmail = null;
@@ -76,18 +94,31 @@ export class ProviderREST extends RestProviderBase {
 
   // Renew from the remembered device before loading any application data.
   async acquireSession() {
-    const response = await this._fetch('/api/session', { method: 'POST' }, 0, false);
+    if (this._authentication !== null) {
+      const state = await this._authentication.status();
+      if (state.status === 'signed_out' || state.status === 'session_expired') {
+        return this._authentication.signIn();
+      }
+      return true;
+    }
+    return this._loginAdapter.acquireSession();
+  }
+
+  async _acquireEnrollmentSession() {
+    let response = await this._fetch('/api/session', { method: 'POST' }, 0, false);
     if (response.status === 401) {
-      this._accountEmail = null;
-      bus.emit(SessionEvents.CHANGED);
-      await this._recovery.login(this._resolveUrl('/api'));
-      return;
+      await this._loginAdapter.signIn(this._resolveUrl('/api'));
+      response = await this._fetch('/api/auth/me', { safeRead: false }, 0, false);
     }
     if (!response.ok) {
       throw new Error(`Session renewal failed: ${response.status}`);
     }
     const account = await response.json();
     if (this._accountEmail !== account.email) {
+      if (this._accountEmail !== null) {
+        this._identityInvalidated = true;
+        await this._onAccountChanged({ previous: this._accountEmail, next: account.email });
+      }
       this._accountEmail = account.email;
       clearPatRecoveryNotifications();
       bus.emit(SessionEvents.CHANGED);

@@ -1,8 +1,115 @@
 import { test, expect } from '@playwright/test';
 import { fulfillAccountApi } from './helpers.js';
 import { readFileSync } from 'node:fs';
+import { createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/mockAuth.js';
 
 const mockAuthSource = readFileSync(new URL('../helpers/mockAuth.js', import.meta.url), 'utf8');
+
+test('HTTP authentication clients preserve same-account drafts and fence changed accounts on desktop', async ({ page }, testInfo) => {
+  const connected = createMockAuth('entra_signed_in').state;
+  let account = connected.account;
+  let failure = null;
+  const requests = [];
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/**', route => fulfillAccountApi(route, {
+    email: 'administrator@example.test', permissions: ['admin'],
+  }));
+  await page.route('**/admin/check', route => route.fulfill({ json: { ok: true, permissions: ['admin'] } }));
+  await page.route('**/admin/v1/**', route => route.fulfill({ json: { content: {} } }));
+  await page.goto('/admin/#data-sources');
+  await expect(page.locator('admin-data-sources')).toBeVisible();
+  await page.route('**/api/auth/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    requests.push(path);
+    if (path.endsWith('/config')) return route.fulfill({ json: {
+      mode: 'entra', capabilities: connected.capabilities,
+    } });
+    if (path.endsWith('/begin')) return route.fulfill({ json: { transaction: 'synthetic-browser-transaction' } });
+    if (path.endsWith('/logout')) return route.fulfill({ json: createMockAuth('entra_signed_out').state });
+    return route.fulfill({ json: { ...connected, account } });
+  });
+  let operationRequests = 0;
+  await page.route('**/api/phase-c-operation', route => {
+    operationRequests += 1;
+    if (failure !== null) {
+      const current = failure;
+      failure = null;
+      return route.fulfill({ status: current.status, json: { error: current.code } });
+    }
+    return route.fulfill({ json: { value: 'synthetic-result' } });
+  });
+  await page.locator('admin-data-sources').evaluate(async (editor, initialState) => {
+    const { createAuthClient, createEntraHttpAdapter } = await import('/static/js/services/authClient.js');
+    const { ProviderREST } = await import('/static/js/services/providerREST.js');
+    const { AdminProviderREST } = await import('/static/admin/js/services/providerREST.js');
+    const { ProviderLocalStorage } = await import('/static/js/services/providerLocalStorage.js');
+    window.phaseCCancel = false;
+    const adapter = createEntraHttpAdapter({ apiUrl: '/api', fetchImpl: fetch,
+      presentLogin: async () => window.phaseCCancel ? false : { code: 'synthetic', state: 'synthetic' } });
+    const authentication = createAuthClient({ adapter, initialState, instance: '/',
+      onAccountChanged: async () => { await new ProviderLocalStorage().clearBrowserData(); } });
+    window.phaseCAuth = authentication;
+    window.phaseCApp = new ProviderREST({ authentication });
+    window.phaseCAdmin = new AdminProviderREST({ authentication });
+    const status = document.createElement('auth-status');
+    status.id = 'phaseCStatus';
+    status.authentication = authentication;
+    editor.shadowRoot.prepend(status);
+    localStorage.setItem('az_planner:phase-c-draft', 'Unsubmitted work');
+    await authentication.discover();
+    await authentication.status();
+  }, connected);
+  const status = page.locator('#phaseCStatus');
+  await expect(status).toContainText('Connected');
+  failure = { status: 409, code: 'interaction_required' };
+  await page.evaluate(() => window.phaseCAdmin._fetch('/api/phase-c-operation').then(response => response.status));
+  await expect(status.getByRole('button', { name: 'Reauthenticate', exact: true })).toBeVisible();
+  await page.evaluate(() => { window.phaseCCancel = true; });
+  const completions = requests.filter(path => path.endsWith('/complete')).length;
+  await status.getByRole('button', { name: 'Reauthenticate', exact: true }).click();
+  await expect(status).toContainText('Sign-in cancelled.');
+  expect(requests.filter(path => path.endsWith('/complete'))).toHaveLength(completions);
+  await page.evaluate(() => { window.phaseCCancel = false; });
+  await status.getByRole('button', { name: 'Reauthenticate', exact: true }).click();
+  await expect(status).toContainText('Connected');
+  expect(await page.evaluate(() => localStorage.getItem('az_planner:phase-c-draft'))).toBe('Unsubmitted work');
+  failure = { status: 401, code: 'session_expired' };
+  const beforeRead = operationRequests;
+  expect(await page.evaluate(() => window.phaseCApp._fetch('/api/phase-c-operation').then(response => response.status))).toBe(200);
+  expect(operationRequests - beforeRead).toBe(2);
+  failure = { status: 401, code: 'session_expired' };
+  const beforeWrite = operationRequests;
+  expect(await page.evaluate(() => window.phaseCAdmin._fetch('/api/phase-c-operation', {
+    method: 'POST', body: 'synthetic-draft',
+  }).then(response => response.status))).toBe(401);
+  expect(operationRequests - beforeWrite).toBe(1);
+  expect(await page.evaluate(() => localStorage.getItem('az_planner:phase-c-draft'))).toBe('Unsubmitted work');
+  for (const [code, responseStatus, message] of [
+    ['access_denied', 403, 'access denied'], ['auth_unavailable', 503, 'service unavailable'],
+  ]) {
+    failure = { status: responseStatus, code };
+    const begins = requests.filter(path => path.endsWith('/begin')).length;
+    await page.evaluate(() => window.phaseCApp._fetch('/api/phase-c-operation').then(response => response.status));
+    await expect(status).toContainText(message);
+    expect(requests.filter(path => path.endsWith('/begin'))).toHaveLength(begins);
+  }
+  account = OTHER_MOCK_ACCOUNT;
+  failure = { status: 401, code: 'session_expired' };
+  const beforeSwitch = operationRequests;
+  await page.evaluate(() => window.phaseCApp._fetch('/api/phase-c-operation').then(response => response.status));
+  expect(operationRequests - beforeSwitch).toBe(1);
+  expect(await page.evaluate(() => localStorage.getItem('az_planner:phase-c-draft'))).toBeNull();
+  expect(await page.evaluate(async () => {
+    try { await window.phaseCAdmin._fetch('/api/phase-c-operation'); }
+    catch (error) { return error.code; }
+  })).toBe('account_changed');
+  await expect(status.locator('[data-auth-account]')).toHaveText(OTHER_MOCK_ACCOUNT.email);
+  await page.screenshot({ path: testInfo.outputPath('http-authentication-desktop.png'), fullPage: true });
+  await page.evaluate(() => window.phaseCAuth.logout());
+  await expect(status).toContainText('Signed out');
+  expect(errors).toEqual([]);
+});
 
 test('authentication capability mocks cover desktop sign-in, recovery and logout', async ({ page }, testInfo) => {
   const errors = [];
@@ -34,10 +141,14 @@ test('authentication capability mocks cover desktop sign-in, recovery and logout
   const cookies = await page.context().cookies();
   await editor.evaluate(async (element, source) => {
     const { createMockAuth, OTHER_MOCK_ACCOUNT } = await import(
-      'data:text/javascript,' + encodeURIComponent(source));
+      'data:text/javascript,' + encodeURIComponent(source.replace(
+        '../../www/js/services/authClient.js', `${location.origin}/static/js/services/authClient.js`)));
     window.phaseBAuth = createMockAuth('pat_current');
     window.phaseBOtherAccount = OTHER_MOCK_ACCOUNT;
     element.authentication = window.phaseBAuth;
+    element.addEventListener('authentication-mode-preview', event => {
+      window.phaseBAuth.select(event.detail.mode === 'pat' ? 'pat_current' : 'entra_signed_out');
+    });
   }, mockAuthSource);
   await editor.getByLabel('Authentication mode (preview)').selectOption('entra');
   const preview = editor.locator('auth-status');
