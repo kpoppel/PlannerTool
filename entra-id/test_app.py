@@ -50,28 +50,88 @@ def setup(request):
     ado = Mock(return_value=httpx.Response(200, json={'value': [{'name': 'Project'}]}))
     app = create_app(Settings(TENANT, CLIENT, 'test-secret', 'example',
                               origin + '/auth/callback'), factory, ado)
-    with TestClient(app, base_url=origin, follow_redirects=False) as browser:
+    with TestClient(app, base_url=origin + '/auth/', follow_redirects=False) as browser:
         yield browser, clients, ado, app
 
 
 def sign_in(browser):
     assert browser.get('/login').status_code == 303
-    assert browser.get('/auth/callback?state=expected&code=test-code').status_code == 303
+    assert browser.get('/callback?state=expected&code=test-code').status_code == 303
 
 
 def test_signed_out_and_unconfigured():
     app = create_app(Settings('', '', '', ''))
-    with TestClient(app, base_url=ORIGIN) as browser:
+    with TestClient(app, base_url=ORIGIN + '/auth/') as browser:
         assert 'ENTRA_CLIENT_SECRET' in browser.get('/').text
         assert browser.get('/login').status_code == 503
         assert browser.get('/ado/projects').status_code == 401
+
+
+def test_local_mock_sign_in_and_ado_fixtures_never_use_live_services():
+    settings = Settings('', '', '', '', ORIGIN + '/auth/callback', auth_mode='mock')
+    client_factory = Mock(side_effect=AssertionError('MSAL must not run in mock mode'))
+    ado_get = Mock(side_effect=AssertionError('Live ADO must not run in mock mode'))
+    app = create_app(settings, client_factory, ado_get)
+    with TestClient(app, base_url=ORIGIN + '/auth/', follow_redirects=False) as browser:
+        landing = browser.get('/')
+        assert 'Sign in with mock identity' in landing.text
+        assert 'Local mock mode' in landing.text
+
+        login = browser.get('/login')
+        assert login.status_code == 303
+        state = parse_qs(urlsplit(login.headers['location']).query)['state'][0]
+        authorize = browser.get('/mock/authorize', params={'state': state})
+        assert authorize.status_code == 303
+        callback_query = parse_qs(urlsplit(authorize.headers['location']).query)
+        callback = browser.get('/callback', params={
+            key: values[0] for key, values in callback_query.items()
+        })
+        assert callback.status_code == 303
+
+        home = browser.get('/')
+        assert 'Alex Mock' in home.text
+        assert '11111111-1111-1111-1111-111111111111' in home.text
+        assert '33333333-3333-3333-3333-333333333333' in home.text
+
+        projects = browser.get('/ado/projects')
+        assert projects.status_code == 200
+        assert 'Mock Project' in projects.text
+        assert 'mock-ado-token' not in projects.text
+        identity = browser.get('/ado/identity')
+        assert identity.status_code == 200
+        assert 'Alex Mock' in identity.text
+
+    client_factory.assert_not_called()
+    ado_get.assert_not_called()
+
+
+def test_local_mock_authentication_cannot_be_exposed_remotely():
+    with pytest.raises(ValueError, match='localhost'):
+        Settings('', '', '', '', 'https://poc.example.com/auth/callback',
+                 listen_host='0.0.0.0', auth_mode='mock')
+
+
+def test_mock_mode_does_not_read_a_client_secret_file(monkeypatch, tmp_path):
+    monkeypatch.setenv('ENTRA_AUTH_MODE', 'mock')
+    monkeypatch.setenv('ENTRA_REDIRECT_URI', ORIGIN + '/auth/callback')
+    monkeypatch.setenv('ENTRA_CLIENT_SECRET_FILE', str(tmp_path / 'not-created'))
+    monkeypatch.delenv('ENTRA_CLIENT_SECRET', raising=False)
+    monkeypatch.delenv('ENTRA_TENANT_ID', raising=False)
+    monkeypatch.delenv('ENTRA_CLIENT_ID', raising=False)
+    monkeypatch.delenv('ADO_ORGANIZATION', raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.auth_mode == 'mock'
+    assert settings.client_secret == ''
+    assert settings.missing == []
 
 
 def test_login_callback_rotation_and_no_token_disclosure(setup):
     browser, clients, ado, app = setup
     assert browser.get('/login').status_code == 303
     old_cookie = browser.cookies.get(COOKIE)
-    response = browser.get('/auth/callback?state=expected&code=test-code')
+    response = browser.get('/callback?state=expected&code=test-code')
     assert response.status_code == 303
     assert browser.cookies.get(COOKIE) != old_cookie
     assert 'HttpOnly' in response.headers['set-cookie']
@@ -84,14 +144,14 @@ def test_login_callback_rotation_and_no_token_disclosure(setup):
         scopes=SCOPES, redirect_uri=ORIGIN + '/auth/callback',
         prompt='select_account', response_mode='query',
     )
-    assert browser.get('/auth/callback?state=expected&code=test-code').status_code == 400
+    assert browser.get('/callback?state=expected&code=test-code').status_code == 400
 
 
 def test_missing_and_mismatched_state_rejected(setup):
     browser, clients, ado, app = setup
-    assert browser.get('/auth/callback?state=expected').status_code == 400
+    assert browser.get('/callback?state=expected').status_code == 400
     browser.get('/login')
-    assert browser.get('/auth/callback?state=wrong&code=test-code').status_code == 400
+    assert browser.get('/callback?state=wrong&code=test-code').status_code == 400
     assert browser.get('/ado/projects').status_code == 401
     ado.assert_not_called()
 
@@ -155,7 +215,7 @@ def test_refresh_failure_requires_reauthentication(setup):
 def test_separate_browsers_never_share_clients_or_credentials(setup):
     browser, clients, ado, app = setup
     sign_in(browser)
-    with TestClient(app, base_url=ORIGIN, follow_redirects=False) as other:
+    with TestClient(app, base_url=ORIGIN + '/auth/', follow_redirects=False) as other:
         assert other.get('/ado/projects').status_code == 401
         sign_in(other)
         assert len(clients) == 2
@@ -196,7 +256,7 @@ def test_real_msal_generates_pkce_and_rejects_wrong_state_without_token_exchange
 
     app = create_app(Settings(TENANT, CLIENT, 'secret', 'example',
                               origin + '/auth/callback'), factory)
-    with TestClient(app, base_url=origin, follow_redirects=False) as browser:
+    with TestClient(app, base_url=origin + '/auth/', follow_redirects=False) as browser:
         response = browser.get('/login')
         assert response.status_code == 303
         query = parse_qs(urlsplit(response.headers['location']).query)
@@ -209,9 +269,9 @@ def test_real_msal_generates_pkce_and_rejects_wrong_state_without_token_exchange
         assert all(scope in scopes for scope in SCOPES + ['openid', 'offline_access'])
         if origin.startswith('https:'):
             assert query['response_mode'] == ['form_post']
-            response = browser.post('/auth/callback', data={'state': 'wrong', 'code': 'code'})
+            response = browser.post('/callback', data={'state': 'wrong', 'code': 'code'})
         else:
-            response = browser.get('/auth/callback?state=wrong&code=code')
+            response = browser.get('/callback?state=wrong&code=code')
         assert response.status_code == 400
         transport.post.assert_not_called()
 
@@ -224,7 +284,7 @@ def test_wrong_tenant_is_not_authorized(setup):
         'access_token': 'wrong-tenant-token',
         'id_token_claims': {'tid': CLIENT, 'oid': 'user'},
     }
-    assert browser.get('/auth/callback?state=expected&code=code').status_code == 403
+    assert browser.get('/callback?state=expected&code=code').status_code == 403
     assert browser.get('/ado/projects').status_code == 401
     ado.assert_not_called()
 
@@ -241,8 +301,8 @@ def test_https_flow_behind_caddy_uses_secure_cookies_and_post_callback(setup):
         scopes=SCOPES, redirect_uri='https://poc.example.com/auth/callback',
         prompt='select_account', response_mode='form_post',
     )
-    assert browser.get('/auth/callback?code=secret-code').status_code == 405
-    response = browser.post('/auth/callback', data={'state': 'expected', 'code': 'secret-code'})
+    assert browser.get('/callback?code=secret-code').status_code == 405
+    response = browser.post('/callback', data={'state': 'expected', 'code': 'secret-code'})
     assert response.status_code == 303
     assert browser.cookies.get(COOKIE) != old_cookie
     assert '; Secure' in response.headers['set-cookie']
@@ -267,36 +327,47 @@ def test_https_flow_behind_caddy_uses_secure_cookies_and_post_callback(setup):
 def test_https_callback_rejects_invalid_forms(setup, body, content_type, status):
     browser, clients, ado, app = setup
     browser.get('/login')
-    response = browser.post('/auth/callback', content=body, headers={'Content-Type': content_type})
+    response = browser.post('/callback', content=body, headers={'Content-Type': content_type})
     assert response.status_code == status
     assert browser.get('/ado/projects').status_code == 401
     ado.assert_not_called()
 
 
-def test_subpath_routing_uses_configured_public_prefix_not_forwarded_headers():
+@pytest.mark.parametrize('strip_prefix', [False, True])
+def test_auth_service_path_uses_configured_public_prefix_not_forwarded_headers(strip_prefix):
     settings = Settings(TENANT, CLIENT, 'secret', 'example',
-                        'https://planner.example.com/entra-poc/auth/callback')
+                        'https://planner.example.com/auth/callback')
     client = Mock()
     client.initiate_auth_code_flow.return_value = {'auth_uri': 'https://login.microsoftonline.com'}
     client.acquire_token_by_auth_code_flow.return_value = {
         'access_token': 'token', 'id_token_claims': {'tid': TENANT, 'oid': 'user'},
     }
     app = create_app(settings, Mock(return_value=client))
-    with TestClient(app, base_url='https://planner.example.com', follow_redirects=False) as browser:
-        assert 'href="/entra-poc/login"' in browser.get('/entra-poc/').text
-        response = browser.get('/entra-poc/login', headers={
+    public_origin = 'https://planner.example.com'
+    backend_origin = 'http://planner.example.com' if strip_prefix else public_origin
+    with TestClient(app, base_url=backend_origin, follow_redirects=False) as browser:
+        prefix = '' if strip_prefix else '/auth'
+        assert settings.root_path == '/auth'
+        assert 'href="/auth/login"' in browser.get(prefix + '/').text
+        response = browser.get(prefix + '/login', headers={
             'X-Forwarded-Host': 'attacker.example', 'X-Forwarded-Proto': 'http',
         })
-        assert 'Path=/entra-poc/' in response.headers['set-cookie']
+        assert 'Path=/auth/' in response.headers['set-cookie']
         assert client.initiate_auth_code_flow.call_args.kwargs['redirect_uri'] == settings.redirect_uri
-        response = browser.post('/entra-poc/auth/callback', data={'code': 'code', 'state': 'state'})
+        assert 'response_mode' in client.initiate_auth_code_flow.call_args.kwargs
+        response = browser.post(prefix + '/callback',
+                                data={'code': 'code', 'state': 'state'},
+                                headers={'Cookie': f'{COOKIE}={browser.cookies.get(COOKIE)}'})
         assert response.status_code == 303
-        assert response.headers['location'] == '/entra-poc/'
-        home = browser.get('/entra-poc/').text
-        assert 'action="/entra-poc/logout"' in home
-        assert 'href="/entra-poc/ado/identity"' in home
-        response = browser.post('/entra-poc/logout', headers={'Origin': settings.origin})
-        assert 'Path=/entra-poc/' in response.headers['set-cookie']
+        assert response.headers['location'] == '/auth/'
+        cookie_header = {'Cookie': f'{COOKIE}={browser.cookies.get(COOKIE)}'}
+        home = browser.get(prefix + '/', headers=cookie_header).text
+        assert 'action="/auth/logout"' in home
+        assert 'action="/auth/refresh"' in home
+        assert 'href="/auth/ado/identity"' in home
+        response = browser.post(prefix + '/logout',
+                                headers={**cookie_header, 'Origin': settings.origin})
+        assert 'Path=/auth/' in response.headers['set-cookie']
 
 
 def test_secret_file_and_independent_listening_port(monkeypatch, tmp_path):

@@ -1,6 +1,14 @@
 .env
+.env.*
+!.env.example
+compose.override.yaml
+compose.override.yml
 entra-client-secret
 certificates/
+*.pem
+*.key
+*.pfx
+*.p12
 .venv/
 __pycache__/
 .pytest_cache/

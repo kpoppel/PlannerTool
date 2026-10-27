@@ -8,14 +8,19 @@ outbound HTTPS to Microsoft Entra and Azure DevOps.
 
 The PoC signs in individual users through MSAL authorization code flow with PKCE,
 reads their ADO identity/projects, and tests token refresh. It never writes to ADO.
+It is deployed at `/auth/`, with its single Entra callback at `/auth/callback`.
+It is the starting point for a shared token service; the instance-facing API,
+secure handoff, encrypted persistent storage, and service authentication are not
+implemented yet. Planner instances are not connected to this PoC.
 
 ## 1. Get the registration and hostname
 
-Use a dedicated hostname, for example `entra-poc.company.example`, resolving to
-this server from users' browsers. In the tenant connected to the ADO organization:
+Use your configured server hostname, for example `planner.example.com`, resolving
+from users' browsers. The `/auth/` path can share the hostname with other Planner
+instances. In the tenant connected to the ADO organization:
 
 1. Register a **single-tenant Web application**.
-2. Register the exact callback `https://entra-poc.company.example/auth/callback`.
+2. Register the exact callback `https://planner.example.com/auth/callback`.
    Substitute your actual hostname. Leave implicit grants/public-client flows off.
 3. Add **Azure DevOps > Delegated permissions > user_impersonation** and obtain
    consent according to tenant policy. No Graph or app-only permissions are needed.
@@ -40,6 +45,9 @@ mkdir -p certificates
 Edit `.env` with your hostname (no scheme, port, or path), tenant/client GUIDs,
 and ADO organization name (not its URL). The callback is derived from the hostname.
 `POC_BACKEND_PORT` is a loopback-only diagnostic port; it is not the public port.
+Keep real hostnames, tenant/client IDs, organization names, and credentials only
+in ignored local configuration, not in tracked examples, tests, or documentation.
+The committed examples use reserved example domains and dummy values.
 
 Store the secret directly in a file without putting it in shell history:
 
@@ -104,10 +112,12 @@ If Caddy already owns ports 80/443, **do not start this folder's `https` profile
 docker compose up -d --build
 ```
 
-For a Caddy process running directly on the same host, add this site to its config:
+For a Caddy process running directly on the same host, add this route to its
+existing HTTPS hostname site, before catch-all handlers:
 
 ```caddyfile
-entra-poc.company.example {
+redir /auth /auth/
+handle_path /auth/* {
     reverse_proxy 127.0.0.1:8767
 }
 ```
@@ -122,7 +132,7 @@ backend. Connect that Caddy container to the PoC's network instead:
 docker network connect entra-id-poc YOUR_EXISTING_CADDY_CONTAINER
 ```
 
-Then use `reverse_proxy entra-id:8000` in the site block. To retain that network
+Then use `reverse_proxy entra-id:8000` inside the `/auth/*` handler. To retain that network
 membership across container recreation, declare the `entra-id-poc` network as
 external in the existing Caddy Compose setup and attach its service to it. Preserve
 all existing Planner routes. Validate and reload Caddy using its normal procedure.
@@ -132,7 +142,7 @@ hostname site and ensure its container publishes port 443 and persists TLS state
 
 ## 4. Check the deployment
 
-Open `https://YOUR_HOSTNAME/`, then:
+Open `https://YOUR_HOSTNAME/auth/`, then:
 
 1. Sign in, complete tenant MFA/consent, and return to the HTTPS PoC.
 2. Check the Entra tenant/object identity, then **ADO identity** to see the actual
@@ -157,7 +167,8 @@ Avoid `down -v` unless intentionally deleting Caddy's saved certificates/state.
 
 If registration redirects do not match, check the actual public HTTPS hostname
 and registered callback, not the internal HTTP backend port. This standalone
-Compose setup serves the PoC at the hostname root, independently of Planner paths.
+Compose setup serves the PoC only under `/auth/`, independently of Planner instance
+paths. The configured callback is `https://YOUR_HOSTNAME/auth/callback`.
 
 ## Security and PoC boundaries
 
@@ -182,23 +193,23 @@ Compose setup serves the PoC at the hostname root, independently of Planner path
 - Reads verify identity/access, **not write audit attribution**. A later approved
   write against a disposable work item is needed to verify Changed By/history.
 
-## Optional path prefix with an existing proxy
+## Existing Docker Caddy route
 
-The app also supports a callback such as
-`https://planner.company.example/entra-id/auth/callback`. To use it, create
-`compose.override.yaml` with an explicit `ENTRA_REDIRECT_URI` override for the
-`entra-id` service, register that URI, and configure existing Caddy as follows:
+Inside the existing HTTPS hostname site, use:
 
 ```caddyfile
-redir /entra-id /entra-id/
-handle_path /entra-id/* {
+redir /auth /auth/
+handle_path /auth/* {
     reverse_proxy entra-id:8000
 }
 ```
 
-Place this inside the existing HTTPS hostname site, before its other catch-all
-handlers. The app derives its public links and cookie path from the callback.
-Do not use the bundled dedicated-host Caddy configurations for path-prefix mode.
+Place this before other catch-all handlers and retain the existing Planner routes.
+The app derives its `/auth/` public links and cookie path from the configured
+callback. Caddy strips `/auth` before proxying; the app's internal callback route
+is `/callback`, so the public URL is `/auth/callback`, not `/auth/auth/callback`.
+There is no per-instance Entra callback in this target design. A future token
+service must register and authenticate allowed Planner clients itself.
 
 ## Local Python development and tests
 
@@ -215,6 +226,22 @@ python -m pytest -q
 Tests mock Entra/ADO, including an actual MSAL PKCE/state test with offline
 metadata. No credentials or Microsoft network calls are required by the tests.
 
+To run the PoC without an app registration, start its local-only authentication
+and ADO fixtures:
+
+```bash
+ENTRA_AUTH_MODE=mock \
+ENTRA_REDIRECT_URI=http://localhost:8766/auth/callback \
+ENTRA_LISTEN_PORT=8766 \
+.venv/bin/python app.py
+```
+
+Open `http://localhost:8766/auth/` and use **Sign in with mock identity**. This
+mode uses fixed test `tid`/`oid` claims and a deliberately invalid mock access
+token; its ADO identity and project responses are local fixtures. It never calls
+Entra or Azure DevOps, and it refuses non-localhost callback/listener settings.
+The default `ENTRA_AUTH_MODE=entra` continues to use MSAL and real ADO requests.
+
 For direct Python launch, export `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`,
 `ADO_ORGANIZATION`, `ENTRA_CLIENT_SECRET_FILE` (or `ENTRA_CLIENT_SECRET`), and
 `ENTRA_REDIRECT_URI`, then run `python app.py`. Direct Python execution does not
@@ -222,6 +249,7 @@ read `.env`; that file is consumed by Docker Compose. `ENTRA_LISTEN_HOST` defaul
 to `127.0.0.1`; HTTPS mode's internal port defaults to 8765 and can be overridden
 with `ENTRA_LISTEN_PORT`. For local HTTP development only, an explicit
 `http://localhost:8766/auth/callback` is allowed and derives its listening port.
+Open `http://localhost:8766/auth/` when running that local configuration.
 Local HTTP uses query callbacks with non-Secure cookies; access logging stays off.
 
 ## Microsoft references

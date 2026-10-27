@@ -1,4 +1,10 @@
 {$POC_HOSTNAME} {
 	tls /certificates/fullchain.pem /certificates/privkey.pem
-	reverse_proxy entra-id:8000
+	redir /auth /auth/
+	handle_path /auth/* {
+		reverse_proxy entra-id:8000
+	}
+	handle {
+		respond 404
+	}
 }

@@ -8,7 +8,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import UUID
 
 import httpx
@@ -22,6 +22,15 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 SCOPES = ['https://app.vssps.visualstudio.com/.default']
 COOKIE = 'entra_poc_session'
 ENV_NAMES = ('ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'ADO_ORGANIZATION')
+MOCK_TENANT_ID = '11111111-1111-1111-1111-111111111111'
+MOCK_USER_OID = '33333333-3333-3333-3333-333333333333'
+MOCK_ADO_ACCESS_TOKEN = 'mock-ado-token-not-valid-outside-local-mock'
+MOCK_USER_CLAIMS = {
+    'name': 'Alex Mock',
+    'preferred_username': 'alex.mock@example.test',
+    'tid': MOCK_TENANT_ID,
+    'oid': MOCK_USER_OID,
+}
 
 
 @dataclass(frozen=True)
@@ -33,8 +42,11 @@ class Settings:
     redirect_uri: str = 'http://localhost:8765/auth/callback'
     listen_host: str = '127.0.0.1'
     listen_port: int = 8765
+    auth_mode: str = 'entra'
 
     def __post_init__(self):
+        if self.auth_mode not in ('entra', 'mock'):
+            raise ValueError('ENTRA_AUTH_MODE must be "entra" or "mock"')
         for value in (self.tenant_id, self.client_id):
             if value:
                 if str(UUID(value)) != value:
@@ -52,16 +64,23 @@ class Settings:
             raise ValueError('The callback must use a lowercase DNS hostname')
         if parsed.port == 0 or not 1 <= self.listen_port <= 65535:
             raise ValueError('Ports must be between 1 and 65535')
+        if self.auth_mode == 'mock' and (
+                parsed.scheme != 'http' or parsed.hostname != 'localhost'
+                or self.listen_host not in ('127.0.0.1', 'localhost', '::1')):
+            raise ValueError('Mock authentication is allowed only on localhost')
 
     @classmethod
     def from_env(cls):
+        auth_mode = os.environ.get('ENTRA_AUTH_MODE', 'entra')
         redirect_uri = os.environ.get('ENTRA_REDIRECT_URI', 'http://localhost:8765/auth/callback')
-        secret = os.environ.get('ENTRA_CLIENT_SECRET', '')
-        secret_file = os.environ.get('ENTRA_CLIENT_SECRET_FILE', '')
-        if secret_file:
-            if secret:
-                raise ValueError('Set ENTRA_CLIENT_SECRET or ENTRA_CLIENT_SECRET_FILE, not both')
-            secret = Path(secret_file).read_text().strip()
+        secret = ''
+        if auth_mode != 'mock':
+            secret = os.environ.get('ENTRA_CLIENT_SECRET', '')
+            secret_file = os.environ.get('ENTRA_CLIENT_SECRET_FILE', '')
+            if secret_file:
+                if secret:
+                    raise ValueError('Set ENTRA_CLIENT_SECRET or ENTRA_CLIENT_SECRET_FILE, not both')
+                secret = Path(secret_file).read_text().strip()
         parsed = urlsplit(redirect_uri)
         default_port = parsed.port if parsed.scheme == 'http' else 8765
         return cls(
@@ -72,10 +91,13 @@ class Settings:
             redirect_uri=redirect_uri,
             listen_host=os.environ.get('ENTRA_LISTEN_HOST', '127.0.0.1'),
             listen_port=int(os.environ.get('ENTRA_LISTEN_PORT', str(default_port))),
+            auth_mode=auth_mode,
         )
 
     @property
     def missing(self):
+        if self.auth_mode == 'mock':
+            return []
         values = (self.tenant_id, self.client_id, self.client_secret, self.organization)
         return [name for name, value in zip(ENV_NAMES, values) if not value]
 
@@ -86,7 +108,7 @@ class Settings:
 
     @property
     def root_path(self):
-        return urlsplit(self.redirect_uri).path[:-len('/auth/callback')]
+        return urlsplit(self.redirect_uri).path[:-len('/callback')]
 
     @property
     def secure(self):
@@ -104,6 +126,67 @@ class BrowserSession:
     expires_at: float
     claims: dict = field(default_factory=dict)
     lock: object = field(default_factory=threading.RLock)
+
+
+class MockIdentityClient:
+    def __init__(self, root_path):
+        self.root_path = root_path
+        self.state = None
+
+    def initiate_auth_code_flow(self, scopes, redirect_uri, prompt, response_mode):
+        self.state = secrets.token_urlsafe(32)
+        query = urlencode({'state': self.state})
+        return {
+            'auth_uri': f'{self.root_path}/mock/authorize?{query}',
+            'state': self.state,
+        }
+
+    def acquire_token_by_auth_code_flow(self, flow, response):
+        if (flow.get('state') != self.state or response.get('state') != self.state
+                or response.get('code') != 'mock-code'):
+            raise ValueError('Invalid local mock sign-in response')
+        return {
+            'access_token': MOCK_ADO_ACCESS_TOKEN,
+            'id_token_claims': dict(MOCK_USER_CLAIMS),
+        }
+
+    def get_accounts(self):
+        return [{'username': MOCK_USER_CLAIMS['preferred_username']}]
+
+    def acquire_token_silent_with_error(self, scopes, account, force_refresh=False):
+        return {'access_token': MOCK_ADO_ACCESS_TOKEN, 'expires_in': 3600}
+
+
+def mock_ado_get(url, headers, timeout, follow_redirects):
+    if headers.get('Authorization') != f'Bearer {MOCK_ADO_ACCESS_TOKEN}':
+        return httpx.Response(401)
+    if url.endswith('/_apis/connectionData?api-version=7.1-preview.1'):
+        identity = {
+            'id': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'descriptor': 'mock.ado.user',
+            'subjectDescriptor': 'mock.ado.subject',
+            'providerDisplayName': MOCK_USER_CLAIMS['name'],
+        }
+        return httpx.Response(200, json={
+            'authenticatedUser': identity,
+            'authorizedUser': identity,
+        })
+    if url.endswith('/_apis/projects?api-version=7.1&$top=100'):
+        return httpx.Response(200, json={
+            'count': 1,
+            'value': [{
+                'id': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                'name': 'Mock Project',
+                'description': 'Local-only Azure DevOps fixture',
+                'url': 'https://dev.azure.com/mock-organization/_apis/projects/'
+                       'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                'state': 'wellFormed',
+                'revision': 1,
+                'visibility': 'private',
+                'lastUpdateTime': '2026-01-01T00:00:00Z',
+            }],
+        })
+    return httpx.Response(404)
 
 
 def render(title, body, status_code=200):
@@ -132,6 +215,7 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
         settings = Settings.from_env()
     app = FastAPI(root_path=settings.root_path, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlsplit(settings.redirect_uri).hostname])
+    request_ado = mock_ado_get if settings.auth_mode == 'mock' else ado_get
     sessions = {}
     registry_lock = threading.RLock()
 
@@ -192,18 +276,28 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
         if settings.missing:
             missing = html.escape(', '.join(settings.missing))
             return render('Configuration required', f'<p>Missing environment variables: {missing}</p>')
+        mode_notice = (
+            '<p><strong>Local mock mode:</strong> no Microsoft service is contacted.</p>'
+            if settings.auth_mode == 'mock' else ''
+        )
         session = current_session(request)
         if session is None or not session.claims:
+            login_label = (
+                'Sign in with mock identity'
+                if settings.auth_mode == 'mock' else 'Sign in with Entra ID'
+            )
             return render('Azure DevOps',
-                          f'<nav><a href="{public_path("/login")}">Sign in with Entra ID</a></nav>')
+                          f'{mode_notice}<nav><a href="{public_path("/login")}">'
+                          f'{login_label}</a></nav>')
         claims = session.claims
         identity = ''.join(
             f'<dt>{html.escape(label)}</dt><dd>{html.escape(str(claims[key]))}</dd>'
             for label, key in [('Name', 'name'), ('Tenant ID', 'tid'), ('Object ID', 'oid')]
             if key in claims
         )
-        return render('Azure DevOps', f'''<dl>{identity}
-<dt>Organization</dt><dd>{html.escape(settings.organization)}</dd></dl><nav>
+        organization = settings.organization or 'Local Mock Organization'
+        return render('Azure DevOps', f'''{mode_notice}<dl>{identity}
+<dt>Organization</dt><dd>{html.escape(organization)}</dd></dl><nav>
 <a href="{public_path('/ado/identity')}">ADO identity</a>
 <a href="{public_path('/ado/projects')}">Projects</a>
 <form method="post" action="{public_path('/refresh')}"><button>Refresh token</button></form>
@@ -214,11 +308,14 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
         if settings.missing:
             raise HTTPException(503, 'Configure the Entra application and ADO organization first.')
         current_session(request)
-        client = client_factory(
-            settings.client_id, client_credential=settings.client_secret,
-            authority=f'https://login.microsoftonline.com/{settings.tenant_id}',
-            token_cache=msal.TokenCache(), timeout=20,
-        )
+        if settings.auth_mode == 'mock':
+            client = MockIdentityClient(settings.root_path)
+        else:
+            client = client_factory(
+                settings.client_id, client_credential=settings.client_secret,
+                authority=f'https://login.microsoftonline.com/{settings.tenant_id}',
+                token_cache=msal.TokenCache(), timeout=20,
+            )
         flow = client.initiate_auth_code_flow(
             scopes=SCOPES, redirect_uri=settings.redirect_uri,
             prompt='select_account', response_mode=settings.response_mode,
@@ -233,7 +330,21 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
         set_session_cookie(response, session_id, max_age=600, pending=True)
         return response
 
-    @app.api_route('/auth/callback', methods=['GET', 'POST'])
+    @app.get('/mock/authorize')
+    def mock_authorize(request: Request):
+        if settings.auth_mode != 'mock':
+            raise HTTPException(404, 'Unknown authentication route.')
+        session = current_session(request)
+        states = request.query_params.getlist('state')
+        if (session is None or not session.flow or len(states) != 1
+                or states[0] != session.flow.get('state')):
+            raise HTTPException(400, 'Local mock sign-in session is missing or invalid.')
+        callback = public_path('/callback') + '?' + urlencode({
+            'state': states[0], 'code': 'mock-code',
+        })
+        return RedirectResponse(callback, status_code=303)
+
+    @app.api_route('/callback', methods=['GET', 'POST'])
     async def callback(request: Request):
         if settings.secure:
             if request.method != 'POST':
@@ -278,7 +389,10 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
             if 'access_token' not in result:
                 raise HTTPException(401, 'Entra denied authorization. Check consent and sign in again.')
             claims = result['id_token_claims']
-            if claims['tid'] != settings.tenant_id or not claims.get('oid'):
+            expected_tenant_id = (
+                MOCK_TENANT_ID if settings.auth_mode == 'mock' else settings.tenant_id
+            )
+            if claims['tid'] != expected_tenant_id or not claims.get('oid'):
                 raise HTTPException(403, 'The signed-in identity is not in the configured tenant.')
             session.claims = {key: claims[key] for key in ('name', 'tid', 'oid') if key in claims}
             session.expires_at = time.monotonic() + 3600
@@ -299,9 +413,10 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
         if resource not in paths:
             raise HTTPException(404, 'Unknown ADO operation.')
         token = acquire_token(require_session(request))
+        organization = settings.organization or 'mock-organization'
         try:
-            response = ado_get(
-                f'https://dev.azure.com/{settings.organization}{paths[resource]}',
+            response = request_ado(
+                f'https://dev.azure.com/{organization}{paths[resource]}',
                 headers={'Authorization': f'Bearer {token}', 'Accept': 'application/json'},
                 timeout=20, follow_redirects=False,
             )
