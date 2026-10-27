@@ -1,0 +1,61 @@
+flowchart TD
+    Start(["User opens /team_1/"]) --> Session{"Valid PlannerTool<br/>session?"}
+    Session -->|Yes| Ready
+    Session -->|No| Mode{"Instance authentication mode"}
+
+    Mode -->|"Local backend or ADO / PAT"| Enrollment["Browser enrollment<br/>or remembered-browser renewal"]
+    Enrollment --> LocalAccount["Resolve instance account"]
+    LocalAccount --> CreateSession
+
+    Mode -->|"ADO / Entra"| Begin["Instance starts browser-bound login<br/>Records transaction and intended return page"]
+    Begin --> Broker["Redirect to central auth service<br/>/auth/"]
+    Broker --> Entra["Redirect to Microsoft Entra ID<br/>Existing Microsoft SSO may avoid prompting"]
+    Entra --> Authenticate["User signs in if required<br/>MFA, consent and Conditional Access"]
+    Authenticate --> Callback["Return to ONE registered Entra callback<br/>/auth/callback"]
+    Callback --> Validate["Validate state, nonce and PKCE<br/>Exchange authorization code through MSAL"]
+    Validate --> Store["Store tokens in encrypted server-side cache<br/>Refresh tokens remain in central service"]
+    Store --> Handoff["Redirect to originating instance<br/>with a short-lived, single-use handoff code"]
+    Handoff --> Redeem["Instance redeems code server-to-server<br/>Authenticate instance and validate browser binding"]
+    Redeem --> Identity["Map verified Entra identity<br/>to stable instance account UUID"]
+    Identity --> Linked{"Existing identity link?"}
+    Linked -->|Yes| CreateSession
+    Linked -->|No| Admission["Apply account admission policy<br/>Provision or explicitly link an account<br/>Never merge by email alone"]
+    Admission --> CreateSession["Create instance-scoped session<br/>HttpOnly cookie; no ADO tokens in browser"]
+    CreateSession --> Ready["Load PlannerTool<br/>Apply instance permissions"]
+
+    Ready --> Action["User views data or performs an operation"]
+    Action --> Authorize{"Session and local<br/>permissions permit it?"}
+    Authorize -->|No| Deny["Deny operation<br/>Sign in again only if session requires it"]
+    Authorize -->|Yes| Route{"Data path"}
+
+    Route -->|Local database| Local["Read or write local data"]
+    Route -->|Shared cached ADO read| Cache["Read instance-wide task snapshot<br/>Shared visibility is intentional"]
+    Route -->|"Live ADO operation or cache refresh"| Credential{"Configured ADO credential mode"}
+
+    Credential -->|PAT| PAT["Load acting account's encrypted PAT"]
+    Credential -->|Entra| Request["Request acting account's token<br/>Authenticated instance-to-broker call"]
+    Request --> Token{"Usable access token<br/>in central cache?"}
+    Token -->|Yes| Bearer["Return short-lived access token<br/>to instance server only"]
+    Token -->|No| Refresh["MSAL attempts silent renewal"]
+    Refresh --> Renewal{"Renewal outcome"}
+    Renewal -->|Success| Update["Persist updated token cache"]
+    Update --> Bearer
+    Renewal -->|User interaction required| Preserve["Preserve unsaved work<br/>Do not automatically replay writes"]
+    Preserve --> Begin
+    Renewal -->|Service unavailable| Outage["Report temporary outage<br/>Do not create a login loop"]
+
+    PAT --> Call["Call Azure DevOps as the acting user<br/>PAT: Basic · Entra: Bearer"]
+    Bearer --> Call
+    Call --> Result{"ADO response"}
+    Result -->|Success| Data["Return result<br/>Update shared snapshot if refreshing"]
+    Result -->|Permission denied| Forbidden["Explain missing ADO access<br/>Do not repeatedly sign in"]
+    Result -->|Authentication rejected| Recovery["Classify rejection and challenge<br/>Bounded credential recovery"]
+    Recovery --> Next{"Required action"}
+    Next -->|Entra interaction| Preserve
+    Next -->|PAT replacement| Replace["Ask acting user to replace PAT"]
+    Next -->|Cannot recover| Error["Report authentication failure<br/>No automatic switch to another credential mode"]
+    Result -->|Network or service failure| Outage
+
+    Local --> Display(["Show result to user"])
+    Cache --> Display
+    Data --> Display
