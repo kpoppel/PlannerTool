@@ -16,7 +16,7 @@ from tests.helpers import register_service_on_client
 
 
 BASE_URL = 'https://dev.azure.com/publication-contract'
-CREDENTIAL = {'token': 'fixture-pat', 'user_id': 'fixture-user'}
+CREDENTIAL = {'kind': 'pat', 'token': 'fixture-pat', 'user_id': 'fixture-user'}
 
 
 @pytest.fixture

@@ -18,7 +18,7 @@ class _FakeBackend:
 
 class _FakeCredProvider:
     def get_credential(self, _user_id):
-        return {"token": "x"}
+        return {'kind': 'pat', "token": "x", 'user_id': 'test'}
 
 
 class _SetBasedProjectRepo:

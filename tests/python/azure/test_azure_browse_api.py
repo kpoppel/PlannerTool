@@ -29,7 +29,7 @@ class FakeSessionMgr:
 
 
 class FakeAzureClient:
-    """Stand-in for the AzureClient returned by azure_svc.connect(pat)."""
+    """Stand-in for the AzureClient returned by azure_svc.connect(credential)."""
 
     def __init__(self, projects=None, area_paths=None):
         self._projects = projects or ['ProjectA', 'ProjectB']

@@ -7,6 +7,7 @@ events-config (event backend selection).
 import asyncio
 from datetime import datetime, timezone
 from planner_lib.backend.errors import AreaNotReadableError, BackendAuthError, BackendUnavailableError
+from planner_lib.backend.port import BackendCredential
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -104,7 +105,11 @@ async def admin_refresh_plan(request: Request, plan_id: str):
     if plan.get('archived') is True:
         raise HTTPException(status_code=400, detail={'error': 'plan_archived', 'plan_id': plan_id})
     context = get_session_credentials_from_request(request)
-    credential = {'token': context['pat'], 'user_id': context['account_id']}
+    credential = BackendCredential(
+        kind='pat',
+        token=context['pat'],
+        user_id=context['account_id'],
+    )
     repository = resolve_service(request, 'task_repository')
     try:
         tasks = await asyncio.to_thread(repository.rebuild_now, credential)
@@ -339,15 +344,20 @@ async def admin_browse_iterations(request: Request):
         root_path = payload.get('root_path')
         depth = payload.get('depth', 10)
 
-        pat = get_session_credentials_from_request(request)['pat']
-        if not pat:
+        context = get_session_credentials_from_request(request)
+        if not context['pat']:
             raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
+        credential = BackendCredential(
+            kind='pat',
+            token=context['pat'],
+            user_id=context['account_id'],
+        )
 
         azure_svc = resolve_service(request, 'azure_client')
 
         def fetch_iterations():
             """Keep the thread-local Azure connection on the worker."""
-            with azure_svc.connect(pat) as client:
+            with azure_svc.connect(credential) as client:
                 return client.get_iterations(project, root_path=root_path, depth=depth)
 
         iterations = await asyncio.to_thread(fetch_iterations)
@@ -408,12 +418,17 @@ async def admin_refresh_area_mapping(request: Request):
         if not area_path or not isinstance(area_path, str):
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing or invalid area_path'})
 
-        pat = get_session_credentials_from_request(request)['pat']
+        context = get_session_credentials_from_request(request)
+        credential = BackendCredential(
+            kind='pat',
+            token=context['pat'],
+            user_id=context['account_id'],
+        )
         azure_svc = resolve_service(request, 'azure_client')
         admin_svc = resolve_service(request, 'admin_service')
         try:
             return await asyncio.to_thread(
-                area_mapping_service.refresh_single, area_path, pat, azure_svc, admin_svc
+                area_mapping_service.refresh_single, area_path, credential, azure_svc, admin_svc
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail={'error': 'invalid_request', 'message': str(e)})
@@ -429,12 +444,17 @@ async def admin_refresh_area_mapping(request: Request):
 async def admin_refresh_all_area_mappings(request: Request):
     """Refresh mappings for all configured area_paths.  PAT from session."""
     try:
-        pat = get_session_credentials_from_request(request)['pat']
+        context = get_session_credentials_from_request(request)
+        credential = BackendCredential(
+            kind='pat',
+            token=context['pat'],
+            user_id=context['account_id'],
+        )
         azure_svc = resolve_service(request, 'azure_client')
         admin_svc = resolve_service(request, 'admin_service')
         try:
             return await asyncio.to_thread(
-                area_mapping_service.refresh_all, pat, azure_svc, admin_svc
+                area_mapping_service.refresh_all, credential, azure_svc, admin_svc
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail={'error': 'invalid_request', 'message': str(e)})
@@ -889,7 +909,4 @@ async def admin_save_plugins_config(request: Request):
     except Exception as e:
         logger.exception('Failed to save plugin runtime config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
-
-
-
 

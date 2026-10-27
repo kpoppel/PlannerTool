@@ -246,7 +246,7 @@ def test_task_refresh_queues_work_without_reading_or_invalidating(authenticated_
     assert response.status_code == 202
     assert response.json() == {'status': 'queued'}
     assert repository.last_read_args is None
-    assert repository.last_refresh_credential == {'token': 'token', 'user_id': 'test-account-id'}
+    assert repository.last_refresh_credential == {'kind': 'pat', 'token': 'token', 'user_id': 'test-account-id'}
     diagnostic, = json.loads(response.headers['X-Backend-Diagnostics'])
     assert diagnostic['code'] == 'task_refresh_requested'
     assert 'reload' in diagnostic['message'].lower()

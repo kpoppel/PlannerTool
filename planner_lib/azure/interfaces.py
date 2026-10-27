@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol, Any, List, Optional, ContextManager, runtime_checkable
 
+from planner_lib.backend.port import BackendCredential
+
 
 @runtime_checkable
 class AzureServiceProtocol(Protocol):
@@ -9,7 +11,7 @@ class AzureServiceProtocol(Protocol):
 
     This protocol mirrors other `*ServiceProtocol` types in the project and
     describes the minimal surface required by consumers (e.g. `TaskService`).
-    The composed `AzureService` exposes `connect(pat)` which yields a
+    The composed `AzureService` exposes `connect(credential)` which yields a
     short-lived connected client that implements the same methods.
     """
 
@@ -89,11 +91,11 @@ class AzureServiceProtocol(Protocol):
         """Clean up orphaned index entries for cache files that no longer exist."""
         ...
 
-    def connect(self, pat: str) -> ContextManager["AzureServiceProtocol"]:
-        """Return a context manager that yields a connected per-PAT client.
+    def connect(self, credential: BackendCredential) -> ContextManager["AzureServiceProtocol"]:
+        """Return a context manager that yields a connected per-credential client.
 
         The composed/stateless client registered at app composition time
-        exposes `connect(pat)` which yields a short-lived connected client
+        exposes `connect(credential)` which yields a short-lived connected client
         for the duration of the `with` block. Typing this as a
         `ContextManager[AzureServiceProtocol]` lets callers use `with`.
         """

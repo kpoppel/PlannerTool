@@ -4,8 +4,8 @@ Extracted from ``admin_refresh_area_mapping`` and
 ``admin_refresh_all_area_mappings`` in ``admin/api.py``.
 
 Public API:
-- ``refresh_single(area_path, pat, azure_client, admin_svc)``
-- ``refresh_all(pat, azure_client, admin_svc)``
+- ``refresh_single(area_path, credential, azure_client, admin_svc)``
+- ``refresh_all(credential, azure_client, admin_svc)``
 
 Both functions are pure business logic (no HTTP dependency) that return
 dicts suitable for inclusion in FastAPI responses.
@@ -18,22 +18,29 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from planner_lib.azure.authentication import pat_from_credential
+from planner_lib.backend.port import BackendCredential
 from planner_lib.util import project_id_for_area_path
 
 logger = logging.getLogger(__name__)
 
 
-def refresh_single(area_path: str, pat: str, azure_client, admin_svc) -> dict:
+def refresh_single(
+    area_path: str,
+    credential: BackendCredential,
+    azure_client,
+    admin_svc,
+) -> dict:
     """Resolve area → plan mapping for one *area_path*, persist and return result.
 
     Parameters
     ----------
     area_path:
         Azure DevOps area path, e.g. ``Project\\\\Team\\\\SubArea``.
-    pat:
-        Personal access token.
+    credential:
+        Operation credential for the current user.
     azure_client:
-        ``AzureService`` instance (context manager ``connect(pat)``).
+        ``AzureService`` instance (context manager ``connect(credential)``).
     admin_svc:
         ``AdminService`` instance (``get_config`` / ``save_config_raw``).
     """
@@ -43,7 +50,7 @@ def refresh_single(area_path: str, pat: str, azure_client, admin_svc) -> dict:
     project_name = area_path.split('\\')[0] if '\\' in area_path else area_path.split('/')[0]
     plan_dict: dict = {}
 
-    with azure_client.connect(pat) as client:
+    with azure_client.connect(credential) as client:
         client.invalidate_plans(project_name)
         owner_team_ids = client.get_team_from_area_path(project_name, area_path)  # type: ignore
         logger.info("Found %d teams owning area %s: %s", len(owner_team_ids), area_path, owner_team_ids)
@@ -95,18 +102,20 @@ def refresh_single(area_path: str, pat: str, azure_client, admin_svc) -> dict:
     }
 
 
-def refresh_all(pat: str, azure_client, admin_svc) -> dict:
+def refresh_all(credential: BackendCredential, azure_client, admin_svc) -> dict:
     """Refresh mappings for all configured area paths, persist and return results.
 
     Parameters mirror :func:`refresh_single` except no ``area_path`` argument.
     """
-    if not pat:
-        raise ValueError('A PAT is required to query Azure for mappings')
+    try:
+        pat_from_credential(credential)
+    except ValueError as error:
+        raise ValueError('A PAT is required to query Azure for mappings') from error
 
     project_map: list = admin_svc.get_project_map() or []
     existing: dict = admin_svc.get_config('area_plan_map') or {}
 
-    with azure_client.connect(pat) as client:
+    with azure_client.connect(credential) as client:
         # Cache plans per Azure project to avoid redundant API calls
         project_plans: dict = {}
         for entry in project_map:

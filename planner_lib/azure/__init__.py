@@ -1,21 +1,24 @@
 """Public azure module.
 
 This package exposes the `AzureService` stateless service which should be
-registered at application composition time. Use `with service.connect(pat)`
+registered at application composition time. Use `with service.connect(credential)`
 to obtain a short-lived concrete client for the duration of a request.
 """
 import logging
+from typing import ContextManager
 
 logger = logging.getLogger(__name__)
 
+from planner_lib.backend.port import BackendCredential
 from planner_lib.storage.base import StorageBackend
+from planner_lib.azure.interfaces import AzureServiceProtocol
 
 
 class AzureService:
     """Azure service configured at app composition time.
 
     One ``AzureClient`` instance is created in ``__init__`` and reused across
-    requests. Use ``with service.connect(pat) as client:`` to obtain a
+    requests. Use ``with service.connect(credential) as client:`` to obtain a
     connected client for the duration of a request.
 
     Client selection (first match wins):
@@ -71,12 +74,15 @@ class AzureService:
         cache_plans = bool(self.feature_flags.get('cache_azure_plans', True))
         return AzureClient(self.organization_url, storage=self.storage, cache_plans=cache_plans)
 
-    def connect(self, pat: str):
-        """Return the concrete client's context-manager bound to `pat`.
+    def connect(
+        self,
+        credential: BackendCredential,
+    ) -> ContextManager[AzureServiceProtocol]:
+        """Return the concrete client's context-manager bound to a credential.
 
-        Callers should use ``with service.connect(pat) as client:``.
+        Callers should use ``with service.connect(credential) as client:``.
         """
-        return self._client.connect(pat)
+        return self._client.connect(credential)
 
     @property
     def requires_pat(self) -> bool:
@@ -106,4 +112,4 @@ class AzureService:
         return {'ok': True, 'orphaned_cleaned': 0}
 
 
-# `get_client()` removed: use `AzureService.connect(pat)` instead.
+# `get_client()` removed: use `AzureService.connect(credential)` instead.

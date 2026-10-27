@@ -20,7 +20,7 @@ def _get_credential(request: Request):
     account_id = context['account_id']
     if not pat:
         return None, account_id
-    return BackendCredential(token=pat, user_id=account_id), account_id
+    return BackendCredential(kind='pat', token=pat, user_id=account_id), account_id
 
 
 @router.get('/teams')

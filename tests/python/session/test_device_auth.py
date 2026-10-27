@@ -360,7 +360,7 @@ def test_credential_provider_resolves_account_id(tmp_path):
         accounts.create_account(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
         account_id = accounts.get_account_id('owner@example.com')
         provider = AccountManagerCredentialProvider(accounts)
-        assert provider.get_credential(account_id) == {'token': 'azure-pat', 'user_id': account_id}
+        assert provider.get_credential(account_id) == {'kind': 'pat', 'token': 'azure-pat', 'user_id': account_id}
         assert provider.get_credential('owner@example.com') is None
     finally:
         storage.close()

@@ -15,7 +15,7 @@ class ProcessOperations:
 
     def _sdk(self):
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):'.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):'.")
         return self.client.conn.clients.get_work_item_tracking_process_client()
 
     def list_processes(self) -> list[dict]:

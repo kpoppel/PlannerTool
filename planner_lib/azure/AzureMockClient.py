@@ -709,23 +709,6 @@ class AzureMockClient(AzureClient):
         self._fixture_dir = fixture_dir
         self._persist_enabled = persist_enabled
 
-    def connect(self, pat: str):
-        """Override: skip PAT validation — no live Azure connection is made."""
-        from contextlib import contextmanager
-
-        @contextmanager
-        def _cm():
-            self._connect_with_pat(pat or "")
-            try:
-                yield self
-            finally:
-                try:
-                    self.close()
-                except Exception:
-                    pass
-
-        return _cm()
-
     def _connect_with_pat(self, pat: str) -> None:
         """Override: inject a MockConnection instead of the real Azure SDK."""
         if self._connected:

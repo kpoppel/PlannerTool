@@ -35,6 +35,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential
+from planner_lib.azure.authentication import (
+    azure_devops_pat_authentication,
+    pat_from_credential,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +91,7 @@ class AzureWikiEventBackend:
 
     def _get_wiki_client(self, credential: BackendCredential):
         """Return a live ADO wiki client connected with the supplied credential."""
-        from azure.devops.connection import Connection
-        from msrest.authentication import BasicAuthentication
-
+        pat = pat_from_credential(credential)
         org_url = self._organization_url
         if not org_url:
             raise RuntimeError("Azure DevOps organization URL is not configured")
@@ -104,7 +106,9 @@ class AzureWikiEventBackend:
                 "Set it under Admin → Events Configuration → Azure DevOps Wiki Settings."
             )
 
-        creds = BasicAuthentication("", credential["token"])
+        from azure.devops.connection import Connection
+
+        creds = azure_devops_pat_authentication(pat)
         conn = Connection(
             base_url=f"https://dev.azure.com/{org_url}",
             creds=creds,

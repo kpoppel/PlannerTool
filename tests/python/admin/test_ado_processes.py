@@ -39,7 +39,7 @@ def setup(monkeypatch):
     monkeypatch.setattr(permissions, 'get_session_context_from_request',
                         lambda request: {'email': 'acting@example.test'})
     monkeypatch.setattr(process_routes, 'get_session_credentials_from_request',
-                        lambda request: {'pat': 'acting-pat'})
+                        lambda request: {'pat': 'acting-pat', 'account_id': 'acting-account'})
     monkeypatch.setattr(config_routes, 'get_session_credentials_from_request',
                         lambda request: {'pat': 'acting-pat', 'account_id': 'acting-account'})
     with TestClient(app) as client:
@@ -59,7 +59,7 @@ def test_plan_refresh_counts_presented_items_with_acting_credentials(setup):
     assert response.json()['plan_id'] == 'plan'
     assert response.json()['item_count'] == 2
     assert response.json()['completed_at']
-    repository.rebuild_now.assert_called_once_with({'token': 'acting-pat', 'user_id': 'acting-account'})
+    repository.rebuild_now.assert_called_once_with({'kind': 'pat', 'token': 'acting-pat', 'user_id': 'acting-account'})
 
 
 @pytest.mark.parametrize('code,status', [
@@ -223,7 +223,11 @@ def test_catalogue_get_save_and_refresh_with_acting_pat(setup):
     assert store.load('config', 'global_settings')['type_tiers']['agile'][-1] == ['User Story', 'Bug']
     response = client.post('/admin/v1/ado-processes/refresh')
     assert response.status_code == 200
-    azure.connect.assert_called_once_with('acting-pat')
+    azure.connect.assert_called_once_with({
+        'kind': 'pat',
+        'token': 'acting-pat',
+        'user_id': 'acting-account',
+    })
     assert response.json()['content']['processes'][0]['types'][3]['imported'] is True
 
 
@@ -321,7 +325,11 @@ def test_resolve_loads_only_selected_process_and_preserves_unrelated_metadata(se
     assert not any(item['imported'] for item in process['types'])
     assert store.load('config', 'ado_processes')['processes'][0] == catalogue()['processes'][0]
     connected.get_process_types.assert_called_once_with('scrum')
-    azure.connect.assert_called_once_with('acting-pat')
+    azure.connect.assert_called_once_with({
+        'kind': 'pat',
+        'token': 'acting-pat',
+        'user_id': 'acting-account',
+    })
     azure.reset_mock()
     second = client.post('/admin/v1/ado-processes/resolve', json={'project': 'Second'})
     assert second.json()['content'] == process

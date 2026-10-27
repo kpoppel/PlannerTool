@@ -248,7 +248,7 @@ def main(argv: Sequence[str] | None = None):
         sys.exit(0)
 
     # Keep all ADO calls inside the connected context.
-    with client_mgr.connect(pat) as client:
+    with client_mgr.connect_pat(pat) as client:
         wit_client = client.wit_client
 
         for entry in entries:

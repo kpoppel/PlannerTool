@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 import threading
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from planner_lib.azure.AzureClient import AzureClient
 from planner_lib.backend.azure import AzureDevOpsBackend
@@ -71,11 +71,54 @@ def test_process_catalogue_requires_acting_connection(method, args):
         getattr(client, method)(*args)
 
 
+@pytest.mark.parametrize('credential, message', [
+    ({'token': 'secret', 'user_id': 'user'}, 'Unsupported backend credential kind'),
+    ({'kind': 'oauth', 'token': 'secret', 'user_id': 'user'},
+     'Unsupported backend credential kind'),
+    ({'kind': 'pat', 'token': '', 'user_id': 'user'}, 'non-empty token'),
+    ({'kind': 'pat', 'token': 'secret', 'user_id': ''}, 'user ID'),
+    (None, 'must be a mapping'),
+])
+def test_connect_rejects_malformed_or_unsupported_credentials(credential, message):
+    client = AzureClient('org', DummyStorage())
+    with pytest.raises(ValueError, match=message) as raised:
+        client.connect(credential)
+    assert 'secret' not in str(raised.value)
+
+
+def test_connect_uses_shared_pat_authentication_builder():
+    client = AzureClient('org', DummyStorage())
+    authentication = object()
+    credential = {'kind': 'pat', 'token': 'private-pat', 'user_id': 'user'}
+
+    with patch('planner_lib.azure.AzureClient.azure_devops_pat_authentication',
+               return_value=authentication) as build_authentication, \
+            patch('azure.devops.connection.Connection') as connection:
+        with client.connect(credential):
+            pass
+
+    build_authentication.assert_called_once_with('private-pat')
+    connection.assert_called_once_with(
+        base_url='https://dev.azure.com/org',
+        creds=authentication,
+    )
+
+
+def test_shared_pat_authentication_uses_basic_auth_with_empty_username():
+    from planner_lib.azure.authentication import azure_devops_pat_authentication
+
+    with patch('msrest.authentication.BasicAuthentication') as basic_authentication:
+        result = azure_devops_pat_authentication('private-pat')
+
+    assert result is basic_authentication.return_value
+    basic_authentication.assert_called_once_with('', 'private-pat')
+
+
 def test_recorded_mock_process_catalogue():
     from planner_lib.azure.AzureMockClient import AzureMockClient
     from planner_lib.storage import create_storage
     client = AzureMockClient('org', create_storage(backend='memory'))
-    with client.connect('fixture-pat'):
+    with client.connect({'kind': 'pat', 'token': 'fixture-pat', 'user_id': 'test'}):
         processes = client.list_processes()
         process = next(item for item in processes if 'MyProject' in item['projects'])
         assert process['parent_name'] == 'Agile'
@@ -338,14 +381,14 @@ def test_overlapping_connection_contexts_do_not_disconnect_each_other():
     client._connect_with_pat = connect_for_test
 
     def first_request():
-        with client.connect('first-pat'):
+        with client.connect({'kind': 'pat', 'token': 'first-pat', 'user_id': 'test'}):
             first_connected.set()
             second_connected.wait(timeout=1)
         first_closed.set()
 
     def second_request():
         first_connected.wait(timeout=1)
-        with client.connect('second-pat') as connected_client:
+        with client.connect({'kind': 'pat', 'token': 'second-pat', 'user_id': 'test'}) as connected_client:
             second_connected.set()
             first_closed.wait(timeout=1)
             try:
@@ -732,7 +775,7 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
         seed['sourcePlanIds'] = [plan_id]
         seeds.append(seed)
 
-    credential = {'token': 'test', 'user_id': 'test'}
+    credential = {'kind': 'pat', 'token': 'test', 'user_id': 'test'}
     if through_repository:
         from planner_lib.repository.task_repository import TaskRepository
 
@@ -1195,8 +1238,7 @@ class TestAzureMockClientPersistence:
     # Empty PAT
     # ------------------------------------------------------------------
 
-    def test_empty_pat_no_error_with_persist_enabled(self):
-        """An empty PAT must not raise ValueError when mock client is active."""
+    def test_mock_client_rejects_malformed_empty_credential(self):
         from planner_lib.azure.AzureMockClient import AzureMockClient
         from planner_lib.storage import create_storage
         client = AzureMockClient(
@@ -1205,6 +1247,5 @@ class TestAzureMockClientPersistence:
             fixture_dir=FIXTURE_DIR,
             persist_enabled=True,
         )
-        with client.connect("") as c:
-            teams = c.get_all_teams("MyProject")
-        assert isinstance(teams, list)
+        with pytest.raises(ValueError, match='Backend credential'):
+            client.connect("")

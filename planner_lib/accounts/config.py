@@ -168,7 +168,7 @@ class AccountManager:
         if not ado['organization_url'].strip():
             return 'ado_organization_required'
         try:
-            with AzureClient(ado['organization_url'], self._storage).connect(pat) as client:
+            with AzureClient(ado['organization_url'], self._storage).connect_pat(pat) as client:
                 client.get_projects()
         except Exception as error:
             classified = classify_ado_exception(error)

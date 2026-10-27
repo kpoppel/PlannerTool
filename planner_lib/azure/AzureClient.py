@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Optional, Any
+from typing import List, Optional, Any, ContextManager
 from planner_lib.storage.base import StorageBackend
 import logging
 import re
@@ -13,6 +13,11 @@ from planner_lib.azure.work_items import WorkItemOperations
 from planner_lib.azure.teams_plans import TeamPlanOperations
 from planner_lib.azure.markers import MarkersOperations
 from planner_lib.azure.processes import ProcessOperations
+from planner_lib.azure.authentication import (
+    azure_devops_pat_authentication,
+    pat_from_credential,
+)
+from planner_lib.backend.port import BackendCredential
 
 
 class AzureClient:
@@ -67,9 +72,10 @@ class AzureClient:
         """
         try:
             from azure.devops.connection import Connection
-            from msrest.authentication import BasicAuthentication
-        except Exception:
-            raise RuntimeError("azure-devops package not installed. Install 'azure-devops' to use Azure features")
+        except ImportError as error:
+            raise RuntimeError(
+                "azure-devops package not installed. Install 'azure-devops' to use Azure features"
+            ) from error
 
         # If already connected, we can reuse the SDK connection for this
         # instance only for the duration of the current context. Do not
@@ -77,18 +83,25 @@ class AzureClient:
         if self._connected:
             return
 
-        creds = BasicAuthentication('', pat)
+        creds = azure_devops_pat_authentication(pat)
         self.conn = Connection(base_url=f"https://dev.azure.com/{self.organization_url}", creds=creds)
         self._connected = True
 
-    def connect(self, pat: str):
-        """Context-manager that connects with the supplied PAT and yields
-        a connected client for the duration of the context. The client will
-        always raise if SDK operations are attempted while not connected.
-        """
+    def connect(self, credential: BackendCredential) -> ContextManager["AzureClient"]:
+        """Context-manager that connects with a validated operation credential."""
+        pat = pat_from_credential(credential)
+        return self._connection_context(pat)
+
+    def connect_pat(self, pat: str) -> ContextManager["AzureClient"]:
+        """Context-manager for an explicit PAT-only connection outside a user credential."""
         if not isinstance(pat, str) or not pat:
             raise ValueError("PAT must be a non-empty string")
+        return self._connection_context(pat)
 
+    def _connection_context(self, pat: str) -> ContextManager["AzureClient"]:
+        """Connect with a PAT already selected by the credential contract and
+        yield a connected client for the duration of the context.
+        """
         @contextmanager
         def _cm():
             try:
@@ -156,7 +169,7 @@ class AzureClient:
         retrieve a work item without reaching through conn.clients directly.
         """
         if not self._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         assert self.conn is not None
         if fields:
             return self.wit_client.get_work_item(work_item_id, fields=fields)
@@ -188,7 +201,7 @@ class AzureClient:
 
     def get_projects(self) -> List[str]:
         if not self._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         assert self.conn is not None
         core_client = self.conn.clients.get_core_client()
         projects = core_client.get_projects()
@@ -208,7 +221,7 @@ class AzureClient:
         and connection as all other ADO operations.
         """
         if not self._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         assert self.conn is not None
         wiki_client = self.conn.clients_v7_0.get_wiki_client()
         wikis = wiki_client.get_all_wikis(project=project)
@@ -239,7 +252,7 @@ class AzureClient:
             Retained for backward-compatibility; ignored.
         """
         if not self._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         assert self.conn is not None
         wiki_client = self.conn.clients_v7_0.get_wiki_client()
         response = wiki_client.get_page(
@@ -269,7 +282,7 @@ class AzureClient:
             TODO: route this through to the admin interface because the setup is disabled.
         """
         if not self._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         assert self.conn is not None
         wit = self.conn.clients.get_work_item_tracking_client()
         try:

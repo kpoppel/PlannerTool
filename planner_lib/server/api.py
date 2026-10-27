@@ -50,7 +50,7 @@ async def api_config_tasks(request):
     account_id = context['account_id']
     if not pat:
         raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
-    cred = BackendCredential(token=pat, user_id=account_id)
+    cred = BackendCredential(kind='pat', token=pat, user_id=account_id)
     return _deprecated_response(await asyncio.to_thread(task_repo.read, credential=cred))
 
 

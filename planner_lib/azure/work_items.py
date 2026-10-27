@@ -121,7 +121,7 @@ class WorkItemOperations:
             List of work item dictionaries
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         wit_client = self.client.wit_client
@@ -258,7 +258,7 @@ class WorkItemOperations:
     def get_linked_work_items(self, seeds: List[dict], *, catalogue: dict) -> List[dict]:
         """Expand descendants, then load ancestor paths without sibling branches."""
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         wit = self.client.wit_client
         eligible = imported_type_index(catalogue)
         excluded = set()
@@ -363,7 +363,7 @@ class WorkItemOperations:
             Azure SDK response object, or None when nothing changed.
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
 
         assert self.client.conn is not None
         wit = self.client.wit_client
@@ -415,7 +415,7 @@ class WorkItemOperations:
             Azure SDK response object.
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
 
         assert self.client.conn is not None
         wit = self.client.wit_client
@@ -443,7 +443,7 @@ class WorkItemOperations:
             Azure SDK response object
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         wit = self.client.wit_client
@@ -466,7 +466,7 @@ class WorkItemOperations:
             Azure SDK response object
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
 
         assert self.client.conn is not None
         wit = self.client.wit_client
@@ -489,7 +489,7 @@ class WorkItemOperations:
             Azure SDK response object
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
 
         assert self.client.conn is not None
         wit = self.client.wit_client
@@ -513,7 +513,7 @@ class WorkItemOperations:
         Returns the Azure SDK response object or raises on failure.
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
 
         assert self.client.conn is not None
         wit = self.client.wit_client
@@ -598,7 +598,7 @@ class WorkItemOperations:
         """
         if not self.client._connected:
             raise RuntimeError(
-                "Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client."
+                "Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client."
             )
         assert self.client.conn is not None
         wit = self.client.wit_client
@@ -618,7 +618,7 @@ class WorkItemOperations:
             Current revision number or None if work item not found
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         wit = self.client.wit_client
@@ -647,7 +647,7 @@ class WorkItemOperations:
             Dictionary mapping work item ID to revision number (or None if not found)
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         if not work_item_ids:
             return {}
@@ -699,7 +699,7 @@ class WorkItemOperations:
         returned by the area-path WIQL query.
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         if not ids:
             return []
 
@@ -761,7 +761,7 @@ class WorkItemOperations:
                 - changes: List of field changes with field, old_value, new_value
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         wit_client = self.client.wit_client

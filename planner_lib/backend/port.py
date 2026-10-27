@@ -67,7 +67,7 @@ never require a credential at all.
 """
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from typing_extensions import TypedDict, Protocol, runtime_checkable
 
 from planner_lib.domain.tasks import BackendTask, WriteResult
@@ -83,11 +83,13 @@ from planner_lib.domain.views import DomainView
 # ---------------------------------------------------------------------------
 
 class BackendCredential(TypedDict):
-    """An opaque credential token scoped to one user session.
+    """A credential scoped to one user session.
 
-    token   — PAT or other backend auth token (never logged)
+    kind    — the authentication mechanism used by the backend transport
+    token   — PAT value (never logged)
     user_id — the session / user identifier; used for auditing only
     """
+    kind: Literal['pat']
     token: str
     user_id: str
 

@@ -10,6 +10,7 @@ import logging
 
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_credentials_from_request
+from planner_lib.backend.port import BackendCredential
 from planner_lib.services.resolver import resolve_service
 
 # Namespace used by CachingBackend when storing domain objects.
@@ -192,8 +193,7 @@ async def cache_refresh(
     # Invalidate all cached task entries so the next fetch bypasses diskcache.
     backend.invalidate_cache()
 
-    from planner_lib.backend.port import BackendCredential
-    cred = BackendCredential(token=pat, user_id=credentials['account_id'])
+    cred = BackendCredential(kind='pat', token=pat, user_id=credentials['account_id'])
 
     refreshed: list = []
     errors: list = []
@@ -265,19 +265,20 @@ async def cache_metrics(request: Request):
 # session (no admin privilege required).
 # ---------------------------------------------------------------------------
 
-def _get_pat_or_raise(request: Request) -> str:
-    """Return PAT from session or raise HTTP 401."""
-    pat = get_session_credentials_from_request(request)['pat']
+def _get_credential_or_raise(request: Request) -> BackendCredential:
+    """Return the session's PAT credential or raise HTTP 401."""
+    context = get_session_credentials_from_request(request)
+    pat = context['pat']
     if not pat:
         raise HTTPException(
             status_code=401,
             detail={'error': 'missing_pat', 'message': 'Personal Access Token required in session'}
         )
-    return pat
+    return BackendCredential(kind='pat', token=pat, user_id=context['account_id'])
 
 
-def _live_client_or_raise(org_url: str, pat: str):
-    """Return a context-manager yielding a live AzureClient for *org_url* + *pat*.
+def _live_client_or_raise(org_url: str, credential: BackendCredential):
+    """Return a context-manager yielding a live AzureClient for *org_url*.
 
     Always uses the live ``AzureClient`` — never a mock.  This is intentional:
     browse endpoints are used to configure live ADO resources (projects, wikis,
@@ -295,7 +296,7 @@ def _live_client_or_raise(org_url: str, pat: str):
             },
         )
     from planner_lib.azure.AzureClient import AzureClient
-    return AzureClient(org_url.strip(), storage=None, cache_plans=False).connect(pat)
+    return AzureClient(org_url.strip(), storage=None, cache_plans=False).connect(credential)
 
 
 @browse_router.get("/projects")
@@ -312,8 +313,8 @@ async def azure_browse_projects(
     Returns:
         { "projects": ["ProjectA", "ProjectB", ...] }
     """
-    pat = _get_pat_or_raise(request)
-    with _live_client_or_raise(org_url, pat) as client:
+    credential = _get_credential_or_raise(request)
+    with _live_client_or_raise(org_url, credential) as client:
         projects = client.get_projects()
     return {'projects': projects}
 
@@ -332,9 +333,9 @@ async def azure_browse_area_paths(
     Returns:
         { "area_paths": ["Project\\Team", "Project\\Team\\SubTeam", ...] }
     """
-    pat = _get_pat_or_raise(request)
+    credential = _get_credential_or_raise(request)
     azure_svc = resolve_service(request, 'azure_client')
-    with azure_svc.connect(pat) as client:
+    with azure_svc.connect(credential) as client:
         area_paths = client.get_area_paths(project)
     return {'area_paths': area_paths}
 
@@ -355,8 +356,8 @@ async def azure_browse_wikis(
     Returns:
         { "wikis": [{"id": "...", "name": "MyProject.wiki", "type": "projectWiki"}, ...] }
     """
-    pat = _get_pat_or_raise(request)
-    with _live_client_or_raise(org_url, pat) as client:
+    credential = _get_credential_or_raise(request)
+    with _live_client_or_raise(org_url, credential) as client:
         wikis = client.get_wikis(project)
     return {'wikis': wikis}
 
@@ -379,7 +380,7 @@ async def azure_browse_wiki_pages(
     Returns:
         { "pages": ["/Home", "/PlannerTool", "/PlannerTool/Events", ...] }
     """
-    pat = _get_pat_or_raise(request)
-    with _live_client_or_raise(org_url, pat) as client:
+    credential = _get_credential_or_raise(request)
+    with _live_client_or_raise(org_url, credential) as client:
         pages = client.get_wiki_pages(project, wiki_id)
     return {'pages': pages}

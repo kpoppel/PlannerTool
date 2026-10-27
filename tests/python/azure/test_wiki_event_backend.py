@@ -12,7 +12,7 @@ import pytest
 from planner_lib.azure.wiki_events import AzureWikiEventBackend
 
 
-_CRED = {'token': 'test-pat', 'user_id': 'user@example.com'}
+_CRED = {'kind': 'pat', 'token': 'test-pat', 'user_id': 'user@example.com'}
 
 _ORG = 'my-org'
 _PROJECT = 'MyProject'
@@ -68,6 +68,25 @@ class TestMissingConfig:
         b = _make_backend(project='', wiki_id='')
         with pytest.raises(PermissionError):
             b.fetch_events(credential=None)
+
+
+def test_wiki_connection_uses_shared_pat_authentication_builder():
+    backend = _make_backend()
+    authentication = object()
+
+    with patch(
+        'planner_lib.azure.wiki_events.azure_devops_pat_authentication',
+        return_value=authentication,
+    ) as build_authentication, patch(
+        'azure.devops.connection.Connection'
+    ) as connection:
+        backend._get_wiki_client(_CRED)
+
+    build_authentication.assert_called_once_with('test-pat')
+    connection.assert_called_once_with(
+        base_url='https://dev.azure.com/my-org',
+        creds=authentication,
+    )
 
 
 def _page_response(content: str, etag: str = '"abc123"'):

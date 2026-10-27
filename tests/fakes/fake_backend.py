@@ -255,7 +255,7 @@ class FakeCredentialProvider:
         token: str = 'fake-pat',
         extra_users: Optional[Dict[str, BackendCredential]] = None,
     ) -> None:
-        self._default = BackendCredential(token=token, user_id=user_id)
+        self._default = BackendCredential(kind='pat', token=token, user_id=user_id)
         self._users: Dict[str, BackendCredential] = {user_id: self._default}
         if extra_users:
             self._users.update(extra_users)

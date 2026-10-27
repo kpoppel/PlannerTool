@@ -16,7 +16,7 @@ from planner_lib.storage.memory_backend import MemoryStorage
 
 AREA = 'MyOrg\\\\TeamA'
 AREA_B = 'MyOrg\\\\TeamB'
-CRED = {'token': 'tok', 'user_id': 'u@example.com'}
+CRED = {'kind': 'pat', 'token': 'tok', 'user_id': 'u@example.com'}
 
 _TASK = {'id': '1', 'title': 'T', 'type': 'Feature', 'state': 'Active',
          'project': 'p', 'relations': [], 'capacity': []}
@@ -81,7 +81,7 @@ def test_repository_serves_complete_snapshot_when_seed_payload_changes(inner, tm
         })
         store.save('backend_domain', plan_key, [dict(_TASK, title='Changed in ADO')])
 
-        assert repository.read(credential={'token': 'other', 'user_id': 'other'}) == original
+        assert repository.read(credential={'kind': 'pat', 'token': 'other', 'user_id': 'other'}) == original
         assert len(inner.fetch_tasks_calls) == 1
         restarted_backend = CachingBackend(inner, store)
         restarted_repository = TaskRepository(restarted_backend, projects, MagicMock())
@@ -229,7 +229,7 @@ def test_access_failure_after_configuration_change_preserves_snapshot_and_recove
     assert AREA_B in diagnostic['message']
 
     inner.fetch_task_context = context
-    assert len(repository.read(credential={'token': 'other', 'user_id': 'other'})) == 2
+    assert len(repository.read(credential={'kind': 'pat', 'token': 'other', 'user_id': 'other'})) == 2
     assert all(item['code'] != 'task_cache_access' for item in repository.snapshot_diagnostics())
     assert storage.load(NAMESPACE, META_KEY)['error'] is None
     assert 'stale_reason' not in storage.load(NAMESPACE, META_KEY)
@@ -260,7 +260,7 @@ def test_access_failure_during_background_refresh_is_scoped_to_acting_user(
     assert repository.request_refresh(CRED) == {'status': 'queued'}
     backend.close()
 
-    assert repository.read(credential={'token': 'other', 'user_id': 'other'}) == original
+    assert repository.read(credential={'kind': 'pat', 'token': 'other', 'user_id': 'other'}) == original
     assert all(item['code'] != 'task_cache_access' for item in repository.snapshot_diagnostics())
     assert repository.read(credential=CRED) == original
     assert any(item['code'] == 'task_cache_access' for item in repository.snapshot_diagnostics())
@@ -313,7 +313,7 @@ def test_rebuild_now_serializes_with_background_refresh(snapshot_repository, inn
 
     def rebuild():
         try:
-            result.extend(repository.rebuild_now({'token': 'other', 'user_id': 'admin'}))
+            result.extend(repository.rebuild_now({'kind': 'pat', 'token': 'other', 'user_id': 'admin'}))
         except Exception as error:
             errors.append(error)
 
@@ -417,8 +417,8 @@ def test_different_area_is_separate_cache_key(caching, inner):
 
 def test_credential_excluded_from_cache_key(caching, inner):
     """Task cache entries are shared across users for the same query args."""
-    cred_a = {'token': 'aaa', 'user_id': 'a@example.com'}
-    cred_b = {'token': 'bbb', 'user_id': 'b@example.com'}
+    cred_a = {'kind': 'pat', 'token': 'aaa', 'user_id': 'a@example.com'}
+    cred_b = {'kind': 'pat', 'token': 'bbb', 'user_id': 'b@example.com'}
     caching.fetch_tasks(AREA, credential=cred_a)
     caching.fetch_tasks(AREA, credential=cred_b)
     assert len(inner.fetch_tasks_calls) == 1
@@ -488,7 +488,7 @@ def test_repository_private_context_reuses_cached_seeds_and_forest(storage):
     repo = TaskRepository(caching, projects, MagicMock())
 
     repo._fetch_context(CRED)
-    cached = repo._fetch_context({'token': 'different', 'user_id': 'other'})
+    cached = repo._fetch_context({'kind': 'pat', 'token': 'different', 'user_id': 'other'})
 
     assert cached[1] == linked
     inner.fetch_task_context.assert_called_once_with([
@@ -568,7 +568,7 @@ def test_invalid_pat_serves_stale_tasks_snapshot_and_records_warning(storage):
     inner = _CredentialSensitiveBackend()
     caching = CachingBackend(inner=inner, storage=storage)
 
-    warm = caching.fetch_tasks(AREA, credential={'token': 'valid-token', 'user_id': 'u1@example.com'})
+    warm = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid-token', 'user_id': 'u1@example.com'})
     assert len(warm) == 1
 
     # Force a soft-expiry without deleting the cached data (no shadow copy).
@@ -581,7 +581,7 @@ def test_invalid_pat_serves_stale_tasks_snapshot_and_records_warning(storage):
     stale_keys = [k for k in storage.list_keys('backend_domain') if k.startswith('stale__')]
     assert stale_keys == []
 
-    second = caching.fetch_tasks(AREA, credential={'token': 'expired-token', 'user_id': 'u2@example.com'})
+    second = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'expired-token', 'user_id': 'u2@example.com'})
     assert len(second) == 1
     assert inner.refresh_attempted.wait(timeout=1.0)
     assert len(inner.fetch_tasks_calls) == 2
@@ -622,13 +622,13 @@ def test_api_outage_serves_stale_tasks_and_records_outage_warning(storage):
     inner = _OutageBackend()
     caching = CachingBackend(inner=inner, storage=storage)
 
-    warm = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    warm = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
     assert len(warm) == 1
 
     meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
     storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
 
-    again = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    again = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
     assert len(again) == 1  # kept existing content despite the outage
     assert inner.refresh_attempted.wait(timeout=1.0)
     assert inner.calls == 2
@@ -670,11 +670,11 @@ def test_invalid_query_configuration_serves_stale_tasks_with_specific_warning(st
 
     inner = _InvalidPathBackend()
     caching = CachingBackend(inner=inner, storage=storage)
-    caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
 
     meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
     storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
-    cached = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    cached = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
 
     assert cached == [dict(_TASK)]
     assert inner.refresh_attempted.wait(timeout=1.0)
@@ -706,7 +706,7 @@ def test_remote_backend_error_propagates_when_no_cache(storage):
 
     caching = CachingBackend(inner=_ColdOutageBackend(), storage=storage)
     with pytest.raises(BackendUnavailableError):
-        caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+        caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
 
 
 def test_non_task_method_survives_outage_after_soft_expiry(storage):
@@ -790,13 +790,13 @@ def test_empty_refresh_keeps_existing_task_content(storage):
     inner = _FlakyBackend()
     caching = CachingBackend(inner=inner, storage=storage)
 
-    warm = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    warm = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
     assert len(warm) == 1
 
     meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
     storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
 
-    again = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    again = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
     assert len(again) == 1  # kept existing content, not the empty refresh
     assert inner.refresh_attempted.wait(timeout=1.0)
     assert inner.calls == 2
@@ -834,13 +834,13 @@ def test_empty_cached_content_does_not_emit_stale_warning(storage):
     inner = _AlwaysEmptyBackend()
     caching = CachingBackend(inner=inner, storage=storage)
 
-    first = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    first = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
     assert first == []
 
     meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
     storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
 
-    second = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    second = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
     assert second == []
     assert inner.calls == 2
     assert caching.consume_diagnostics(user_id='u@example.com') == []
@@ -875,7 +875,7 @@ def test_non_remote_backend_does_not_serve_stale_on_failure(storage):
     inner = _LocalBackend()
     caching = CachingBackend(inner=inner, storage=storage)
 
-    warm = caching.fetch_tasks(AREA, credential={'token': 'x', 'user_id': 'u@example.com'})
+    warm = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'x', 'user_id': 'u@example.com'})
     assert len(warm) == 1
 
     # Soft-expire so the next read attempts a refresh.
@@ -883,7 +883,7 @@ def test_non_remote_backend_does_not_serve_stale_on_failure(storage):
     storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
 
     with pytest.raises(RuntimeError):
-        caching.fetch_tasks(AREA, credential={'token': 'x', 'user_id': 'u@example.com'})
+        caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'x', 'user_id': 'u@example.com'})
 
     # No stale warning should have been queued for a local backend.
     assert caching.consume_diagnostics(user_id='u@example.com') == []
@@ -921,7 +921,7 @@ def test_soft_expired_remote_cache_returns_immediately_and_refreshes_in_backgrou
     inner = _SlowRefreshBackend()
     caching = CachingBackend(inner=inner, storage=storage)
 
-    warm = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    warm = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
     assert warm[0]['title'] == 'warm'
 
     meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
@@ -929,7 +929,7 @@ def test_soft_expired_remote_cache_returns_immediately_and_refreshes_in_backgrou
 
     with ThreadPoolExecutor(max_workers=1) as callers:
         pending = callers.submit(
-            caching.fetch_tasks, AREA, credential={'token': 'valid', 'user_id': 'u@example.com'},
+            caching.fetch_tasks, AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'},
         )
         try:
             stale = pending.result(timeout=2.0)
@@ -941,7 +941,7 @@ def test_soft_expired_remote_cache_returns_immediately_and_refreshes_in_backgrou
 
     # Allow the background refresh to publish the updated snapshot.
     for _ in range(30):
-        latest = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+        latest = caching.fetch_tasks(AREA, credential={'kind': 'pat', 'token': 'valid', 'user_id': 'u@example.com'})
         if latest and latest[0].get('title') == 'fresh':
             break
         time.sleep(0.02)

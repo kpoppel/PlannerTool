@@ -27,8 +27,9 @@ from datetime import date, datetime, timedelta, timezone
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
-from planner_lib.backend.port import BackendCredential, BackendPort
+from planner_lib.azure.authentication import pat_from_credential
 from planner_lib.azure.catalogue import imported_type_index, resolve_plan_process
+from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
 from planner_lib.backend.errors import (
     BackendAuthError,
@@ -113,7 +114,7 @@ class AzureDevOpsBackend(BackendPort):
     ) -> None:
         from planner_lib.azure.AzureClient import AzureClient
         self._organization_url = organization_url
-        # _conn provides connect(pat) context manager and all operation classes
+        # _conn provides connect(credential) and all Azure operation classes
         self._conn = AzureClient(organization_url, storage=storage)
         self._adapter = AzureAdapter()
         self._team_repository = team_repository
@@ -160,17 +161,24 @@ class AzureDevOpsBackend(BackendPort):
             self._diagnostics = [entry for entry in self._diagnostics if entry['user_id'] != user_id]
             return diagnostics
 
-    def _require_credential(self, credential: Optional[BackendCredential], op: str) -> str:
-        """Extract the token from *credential* or raise BackendAuthError."""
+    def _require_credential(
+        self,
+        credential: Optional[BackendCredential],
+        op: str,
+    ) -> BackendCredential:
+        """Validate and retain the operation credential or raise BackendAuthError."""
         if credential is None:
             raise BackendAuthError(
                 f"AzureDevOpsBackend.{op} requires a credential; "
                 "none was provided and there is no cache to serve from."
             )
-        token = credential.get('token')
-        if not token:
-            raise BackendAuthError(f"BackendCredential for {op} has an empty token.")
-        return token
+        try:
+            pat_from_credential(credential)
+        except ValueError as error:
+            raise BackendAuthError(
+                f"BackendCredential for {op} is invalid: {error}"
+            ) from error
+        return credential
 
     def _build_type_canonical(self) -> Dict[str, str]:
         """Return exact catalogue casing for imported work item types."""
@@ -227,7 +235,7 @@ class AzureDevOpsBackend(BackendPort):
         """Expand one seed forest while retaining backend-owned source identity."""
         if not seeds:
             return []
-        pat = self._require_credential(credential, 'fetch_task_context')
+        credential = self._require_credential(credential, 'fetch_task_context')
         assert credential is not None
         plans = self._config.fetch_project_map()
         plans_by_id = {plan['id']: plan for plan in plans}
@@ -257,7 +265,7 @@ class AzureDevOpsBackend(BackendPort):
         removed_ids = set()
         schedule_issues = {}
         try:
-            with self._conn.connect(pat) as client:
+            with self._conn.connect(credential) as client:
                 def iteration_map_for(area, ado_project):
                     key = ado_project
                     if key not in iteration_maps:
@@ -474,7 +482,7 @@ class AzureDevOpsBackend(BackendPort):
         handled separately by this backend's fetch_task_context operation.
         Wrap with CachingBackend to add a TTL cache in front.
         """
-        pat = self._require_credential(credential, 'fetch_tasks')
+        credential = self._require_credential(credential, 'fetch_tasks')
         catalogue = self._storage.load('config', 'ado_processes')
         process = resolve_plan_process({
             'name': area_path, 'area_path': area_path, 'task_types': task_types,
@@ -503,7 +511,7 @@ class AzureDevOpsBackend(BackendPort):
         # vocabulary so the caching layer can react by type (auth vs outage)
         # without inspecting exception strings.
         try:
-            with self._conn.connect(pat) as client:
+            with self._conn.connect(credential) as client:
                 iteration_map = self._build_iteration_map(
                     client,
                     area_path,
@@ -546,13 +554,13 @@ class AzureDevOpsBackend(BackendPort):
         credential: BackendCredential,
     ) -> WriteResult:
         """Persist *updates* for *task_id* to ADO."""
-        pat = self._require_credential(credential, 'write_task')
+        credential = self._require_credential(credential, 'write_task')
         task_id = int(task_id)
 
         errors: List[str] = []
         item_updated = False
 
-        with self._conn.connect(pat) as client:
+        with self._conn.connect(credential) as client:
             # Dates ─────────────────────────────────────────────────────
             if self._adapter.has_date_update(updates):
                 try:
@@ -622,8 +630,8 @@ class AzureDevOpsBackend(BackendPort):
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainHistoryEntry]:
         """Fetch raw revision history for *work_item_id* and return as DomainHistoryEntry list."""
-        pat = self._require_credential(credential, 'fetch_history')
-        with self._conn.connect(pat) as client:
+        credential = self._require_credential(credential, 'fetch_history')
+        with self._conn.connect(credential) as client:
             revisions = client.get_task_revision_history(
                 work_item_id=work_item_id,
                 start_field='Microsoft.VSTS.Scheduling.StartDate',
@@ -654,8 +662,8 @@ class AzureDevOpsBackend(BackendPort):
         project: str,
         credential: Optional[BackendCredential] = None,
     ) -> List[Dict[str, Any]]:
-        pat = self._require_credential(credential, 'fetch_teams')
-        with self._conn.connect(pat) as client:
+        credential = self._require_credential(credential, 'fetch_teams')
+        with self._conn.connect(credential) as client:
             return client.get_all_teams(project)
 
     def fetch_plans(
@@ -663,8 +671,8 @@ class AzureDevOpsBackend(BackendPort):
         project: str,
         credential: Optional[BackendCredential] = None,
     ) -> List[Dict[str, Any]]:
-        pat = self._require_credential(credential, 'fetch_plans')
-        with self._conn.connect(pat) as client:
+        credential = self._require_credential(credential, 'fetch_plans')
+        with self._conn.connect(credential) as client:
             return client.get_all_plans(project)
 
     def fetch_markers(
@@ -673,8 +681,8 @@ class AzureDevOpsBackend(BackendPort):
         plan_id: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> List[Dict[str, Any]]:
-        pat = self._require_credential(credential, 'fetch_markers')
-        with self._conn.connect(pat) as client:
+        credential = self._require_credential(credential, 'fetch_markers')
+        with self._conn.connect(credential) as client:
             if plan_id:
                 # Fast path: plan_id is known (from area_plan_map) — fetch directly
                 # without expensive plan-discovery + delivery-timeline traversal.
@@ -689,8 +697,8 @@ class AzureDevOpsBackend(BackendPort):
         root_paths: Optional[List[str]] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]:
-        pat = self._require_credential(credential, 'fetch_iterations')
-        with self._conn.connect(pat) as client:
+        credential = self._require_credential(credential, 'fetch_iterations')
+        with self._conn.connect(credential) as client:
             iteration_map: Dict[str, Any] = {}
             for raw_root in (root_paths or [None]):
                 try:

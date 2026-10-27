@@ -10,7 +10,7 @@ import pytest
 from tests.fakes.fake_backend import FakeBackend, FakeCredentialProvider
 
 AREA = 'MyOrg\\\\TeamA'
-CRED = {'token': 'tok', 'user_id': 'u@example.com'}
+CRED = {'kind': 'pat', 'token': 'tok', 'user_id': 'u@example.com'}
 
 _TASKS = [
     {'id': '10', 'title': 'Feature A', 'type': 'Feature', 'state': 'Active', 'project': 'p'},
@@ -149,7 +149,7 @@ def test_credential_provider_unknown_user_returns_none():
 
 
 def test_credential_provider_extra_users():
-    extra = {'other@example.com': {'token': 'other-pat', 'user_id': 'other@example.com'}}
+    extra = {'other@example.com': {'kind': 'pat', 'token': 'other-pat', 'user_id': 'other@example.com'}}
     cp = FakeCredentialProvider(extra_users=extra)
     cred = cp.get_credential('other@example.com')
     assert cred is not None

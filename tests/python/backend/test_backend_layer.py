@@ -47,7 +47,7 @@ def test_fake_backend_write_updates_in_memory():
                          'areaPath': 'P1\\TeamA', 'url': None,
                          '_inferred_start': False, '_inferred_end': False}
     backend.set_tasks('P1\\TeamA', [task])
-    cred = {'token': 'pat', 'user_id': 'user@test.com'}
+    cred = {'kind': 'pat', 'token': 'pat', 'user_id': 'user@test.com'}
     result = backend.write_task(1, {'start': '2026-01-01'}, cred)
     assert result['ok'] is True
     assert result['updated'] == 1
@@ -64,7 +64,7 @@ def test_fake_backend_records_calls():
 
 def test_fake_backend_raise_on_write():
     backend = FakeBackend(raise_on_write=True)
-    cred = {'token': 'pat', 'user_id': 'u'}
+    cred = {'kind': 'pat', 'token': 'pat', 'user_id': 'u'}
     with pytest.raises(RuntimeError):
         backend.write_task(1, {}, cred)
 
@@ -173,7 +173,7 @@ def test_static_backend_write_raises():
     from planner_lib.backend.static import StaticBackend
     backend = StaticBackend('nofile.json', storage=catalogue_storage(["A"]))
     with pytest.raises(NotImplementedError):
-        backend.write_task(1, {}, {'token': 'x', 'user_id': 'u'})
+        backend.write_task(1, {}, {'kind': 'pat', 'token': 'x', 'user_id': 'u'})
 
 
 def test_static_backend_invalidate_clears_cache(tmp_path):
@@ -229,7 +229,7 @@ def _canonical_task_repository(storage):
         {'id': 'plan', 'type': 'Plan', 'allocation_defaults': {'Plan': ['A', 'G']}},
     ]
     credentials = MagicMock()
-    credentials.get_credential.return_value = {'token': 'fixture-pat', 'user_id': 'fixture-user'}
+    credentials.get_credential.return_value = {'kind': 'pat', 'token': 'fixture-pat', 'user_id': 'fixture-user'}
     repository = WorkforceTaskRepository(backend, projects, credentials,
                                          storage=storage, task_storage=storage)
     return repository, backend
@@ -390,7 +390,7 @@ def test_task_repository_passes_private_combined_seeds_to_context_before_project
          'backendData': {'source': 'linked'}},
     ]
     backend.fetch_task_context.return_value = context
-    credential = {'token': 'test', 'user_id': 'test'}
+    credential = {'kind': 'pat', 'token': 'test', 'user_id': 'test'}
     repo = TaskRepository(backend, _make_project_service(projects), FakeCredentialProvider())
 
     private_context = repo._fetch_context(credential=credential)

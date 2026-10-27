@@ -20,7 +20,7 @@ from planner_lib.backend.azure import AzureDevOpsBackend
 from planner_lib.backend.port import BackendCredential
 
 
-_CRED = BackendCredential(token='test-pat', user_id='user1')
+_CRED = BackendCredential(kind='pat', token='test-pat', user_id='user1')
 _AREA = 'MyOrg\\TeamA'
 _PLAN_ID = 'b3a58eba-6464-4b28-99dd-57a50676fe23'
 _MARKERS = [
@@ -36,7 +36,8 @@ def _make_backend(markers=None):
     fake_client.get_markers_for_plan.return_value = markers if markers is not None else _MARKERS
 
     @contextmanager
-    def _fake_connect(pat):
+    def _fake_connect(credential: BackendCredential):
+        assert credential == _CRED
         yield fake_client
 
     storage = MagicMock()

@@ -29,7 +29,7 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
             task_repo = resolve_service(request, 'task_repository')
             _pat = ctx.get('pat')
             account_id = ctx['account_id']
-            cred = BackendCredential(token=_pat, user_id=account_id) if _pat else None
+            cred = BackendCredential(kind='pat', token=_pat, user_id=account_id) if _pat else None
             features = await asyncio.to_thread(task_repo.read, credential=cred)
 
         ctx = dict(ctx)
@@ -61,7 +61,7 @@ async def api_cost_get(request: Request):
         from planner_lib.cost import build_cost_schema
 
         task_repo = resolve_service(request, 'task_repository')
-        cred = BackendCredential(token=pat, user_id=ctx['account_id']) if pat else None
+        cred = BackendCredential(kind='pat', token=pat, user_id=ctx['account_id']) if pat else None
         features = await asyncio.to_thread(task_repo.read, credential=cred)
 
         ctx = dict(ctx)

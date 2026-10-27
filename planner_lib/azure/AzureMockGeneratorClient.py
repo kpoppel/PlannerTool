@@ -40,7 +40,7 @@ It can also be used standalone::
 
     storage = create_storage(data_dir='data')
     client = AzureMockGeneratorClient('my-org', storage=storage, data_dir='data')
-    with client.connect('dummy-pat') as c:
+    with client.connect({'kind': 'pat', 'token': 'dummy-pat', 'user_id': 'example'}) as c:
         teams = c.get_all_teams('MyProject')
 """
 from __future__ import annotations
@@ -1537,27 +1537,6 @@ class AzureMockGeneratorClient(AzureClient):
         self._persist_dir: Optional[str] = persist_dir or cfg.pop("persist_dir", None)
         self._config_dict: Optional[dict] = cfg or None
         self._dataset: Optional[AzureDataset] = None
-
-    # ------------------------------------------------------------------
-    # Override — called by AzureClient.connect() context manager
-    # ------------------------------------------------------------------
-
-    def connect(self, pat: str):
-        """Override: skip PAT validation — no live Azure connection is made."""
-        from contextlib import contextmanager
-
-        @contextmanager
-        def _cm():
-            self._connect_with_pat(pat or "")
-            try:
-                yield self
-            finally:
-                try:
-                    self.close()
-                except Exception:
-                    pass
-
-        return _cm()
 
     def _connect_with_pat(self, pat: str) -> None:
         """Override: inject a _GeneratedConnection instead of the real SDK."""

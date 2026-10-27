@@ -137,7 +137,7 @@ def test_context_completes_single_date_schedules_without_writing(
              'traversalBoundary': False}, child,
         ]
 
-    tasks = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+    tasks = backend.fetch_task_context([seed], {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
     task = next(task for task in tasks if task['id'] == ('2' if linked else '1'))
 
     assert task['start'] == (start_date if start_date is not None else end_date)
@@ -166,7 +166,7 @@ def test_context_repairs_same_owner_missing_or_inferred_dates(previous_start):
         'startDate': '2026-03-01', 'finishDate': '2026-03-14',
     }]
 
-    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+    task, = backend.fetch_task_context([seed], {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert task['start'] == '2026-03-01'
     assert task['_inferred_start'] is True
@@ -189,7 +189,7 @@ def test_context_completes_partial_iteration_boundaries(start_date, end_date):
         'startDate': start_date, 'finishDate': end_date,
     }]
 
-    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+    task, = backend.fetch_task_context([seed], {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     task = cast(dict[str, Any], task)
     assert task['start'] == (start_date if start_date is not None else end_date)
@@ -207,7 +207,7 @@ def test_context_removes_stale_inference_when_assigned_schedule_is_missing():
     backend, client = _context_backend([seed])
     client.get_iterations.return_value = []
 
-    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+    task, = backend.fetch_task_context([seed], {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     task = cast(dict[str, Any], task)
     assert task['start'] == '2026-03-31'
@@ -242,7 +242,7 @@ def test_linked_items_resolve_dates_from_native_project_once_across_areas():
     }]
 
     tasks = {task['id']: cast(dict[str, Any], task) for task in backend.fetch_task_context(
-        [seed], {'token': 'test', 'user_id': 'test'},
+        [seed], {'kind': 'pat', 'token': 'test', 'user_id': 'test'},
     )}
 
     assert (tasks['1']['start'], tasks['1']['end']) == dates_by_project['A']
@@ -260,7 +260,7 @@ def test_missing_schedule_diagnostics_are_aggregated_and_scoped_to_the_reader():
     backend, client = _context_backend(seeds)
     client.get_iterations.return_value = []
 
-    backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+    backend.fetch_task_context(seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     client.get_iterations.assert_called_once_with('A')
     assert backend.consume_diagnostics(user_id='other') == []
@@ -281,7 +281,7 @@ def test_root_backlog_assignments_are_quiet_and_undated_schedules_are_informatio
         'startDate': None, 'finishDate': None,
     }]
 
-    tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+    tasks = backend.fetch_task_context(seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert all(task['start'] is None and task['end'] is None for task in tasks)
     diagnostic, = backend.consume_diagnostics(user_id='test')
@@ -337,7 +337,11 @@ def test_fetch_tasks_attaches_failed_area_path_to_configuration_error():
     backend._conn = SimpleNamespace(connect=_connect)
 
     with pytest.raises(BackendConfigError) as raised:
-        backend.fetch_tasks('MyADO\\MissingArea', task_types=['Feature'], credential={'token': 'valid'})
+        backend.fetch_tasks(
+            'MyADO\\MissingArea',
+            task_types=['Feature'],
+            credential={'kind': 'pat', 'token': 'valid', 'user_id': 'test'},
+        )
 
     assert raised.value.failed_path == 'MyADO\\MissingArea'
 
@@ -366,7 +370,7 @@ def test_fetch_tasks_preserves_source_identity_revision_and_link_diagnostics():
 
     backend._conn = MagicMock(connect=connect)
     task, = backend.fetch_tasks('MyADO\\TeamA', task_types=['Feature'],
-                                credential={'token': 'test', 'user_id': 'test'})
+                                credential={'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert task['backendData'] == {'adoProject': 'OtherADO', 'rev': 7, 'type': 'Requirement'}
     assert task['project'] == '11111111-1111-4111-8111-111111111111'
@@ -391,7 +395,7 @@ def test_ado_backends_convert_domain_ids_at_the_native_boundary(backend_class):
     backend._client.connect = connect
 
     result = backend_class.write_task(backend, '42', {'start': '2026-01-01'},
-                                      {'token': 'test', 'user_id': 'test'})
+                                      {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert result['ok']
     client.update_work_item_dates.assert_called_once_with(42, start='2026-01-01')
@@ -446,7 +450,7 @@ def test_fetch_task_context_preserves_source_owner_and_unions_seed_provenance():
     backend._conn = MagicMock(connect=connect)
 
     tasks = {task['id']: task for task in backend.fetch_task_context(seeds, credential={
-        'token': 'test', 'user_id': 'test',
+        'kind': 'pat', 'token': 'test', 'user_id': 'test',
     })}
 
     assert tasks['3']['project'] == 'plan-b'
@@ -494,7 +498,7 @@ def test_context_uses_catalogue_categories_without_a_display_state_gate(removed_
         for item in [*roots, *children]
     ]
     tasks = {task['id']: task for task in backend.fetch_task_context(
-        seeds, {'token': 'test', 'user_id': 'test'},
+        seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'},
     )}
 
     assert '2' not in tasks
@@ -525,7 +529,7 @@ def test_plan_seeds_can_be_passed_directly_to_context_loading():
         yield client
 
     backend._conn = MagicMock(connect=connect)
-    credential = {'token': 'test', 'user_id': 'test'}
+    credential = {'kind': 'pat', 'token': 'test', 'user_id': 'test'}
 
     seeds = backend.fetch_plan_tasks(plan, credential)
     tasks = backend.fetch_task_context(seeds, credential)
@@ -607,7 +611,7 @@ def test_catalogue_context_uses_component_plan_windows(days, age, active, expect
          'traversalBoundary': False} for seed in seeds
     ]
 
-    tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+    tasks = backend.fetch_task_context(seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert {task['id'] for task in tasks} == expected
     assert all(task['process_id'] == 'agile' for task in tasks)
@@ -636,7 +640,7 @@ def test_context_preserves_completed_empty_subtrees_for_display_filtering():
     seeds[3]['capacity'] = [{'team': 'unknown', 'capacity': 20}]
     backend, _client = _context_backend(seeds)
     tasks = {task['id']: task for task in backend.fetch_task_context(
-        seeds, {'token': 'test', 'user_id': 'test'},
+        seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'},
     )}
 
     assert set(tasks) == {'1', '2', '3', '4', '416311', '416312'}
@@ -662,7 +666,7 @@ def test_context_keeps_completed_branches_with_unresolved_children(incomplete):
         {**item, **(incomplete if item['id'] == '1' else {})}
         for item in get_linked(roots)
     ]
-    tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+    tasks = backend.fetch_task_context(seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert {task['id'] for task in tasks} == {'1', '2'}
     assert all(task['excludedChildIds'] == [] for task in tasks)
@@ -679,7 +683,7 @@ def test_context_does_not_infer_completion_from_state_names(categories):
                           for order, (name, category) in enumerate(categories.items())]
     backend._storage.save('config', 'ado_processes', stored)
 
-    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+    task, = backend.fetch_task_context([seed], {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert task['id'] == '1'
 
@@ -690,7 +694,7 @@ def test_context_preserves_deep_completed_empty_trees_without_recursion():
     for seed in seeds:
         seed['state'] = 'Closed'
     backend, _client = _context_backend(seeds)
-    tasks = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+    tasks = backend.fetch_task_context(seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
     assert len(tasks) == 5000
     assert all(task['sourcePlanIds'] == ['plan-a'] for task in tasks)
 
@@ -735,7 +739,7 @@ def test_context_prunes_only_wholly_expired_trees():
            'unresolvedChildIds': [], 'traversalBoundary': False} for item in children],
     ]
     tasks = {task['id']: task for task in backend.fetch_task_context(
-        seeds, {'token': 'test', 'user_id': 'test'},
+        seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'},
     )}
 
     assert set(tasks) == {'3', '4', '5', '6', '7', '8'}
@@ -779,7 +783,7 @@ def test_context_marks_completed_unscheduled_tasks_as_anchor_presentations():
            'unresolvedChildIds': [], 'traversalBoundary': False} for item in children],
     ]
     tasks = {task['id']: task for task in backend.fetch_task_context(
-        [seed], {'token': 'test', 'user_id': 'test'},
+        [seed], {'kind': 'pat', 'token': 'test', 'user_id': 'test'},
     )}
 
     assert tasks['1']['presentation'] == {
@@ -806,7 +810,7 @@ def test_context_provenance_stops_at_task_boundaries_and_ignores_lateral_links()
     backend, client = _context_backend(seeds, boundary_ids=('2',))
 
     tasks = {task['id']: task for task in backend.fetch_task_context(
-        seeds, {'token': 'test', 'user_id': 'test'},
+        seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'},
     )}
 
     assert tasks['1']['sourcePlanIds'] == ['plan-a']
@@ -824,7 +828,7 @@ def test_context_uses_newest_seed_revision_without_losing_other_seed_provenance(
         seeds.reverse()
     backend, client = _context_backend(seeds)
 
-    task, = backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+    task, = backend.fetch_task_context(seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert task['revision'] == 2
     assert task['project'] == 'plan-b'
@@ -846,7 +850,7 @@ def test_context_failure_is_not_returned_as_a_partial_forest(message, error_type
     client.get_linked_work_items.side_effect = RuntimeError(message)
 
     with pytest.raises(error_type):
-        backend.fetch_task_context(seeds, {'token': 'test', 'user_id': 'test'})
+        backend.fetch_task_context(seeds, {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
 
 def test_context_empty_forest_does_not_need_credentials_or_contact_ado():
@@ -869,7 +873,7 @@ def test_context_resolves_moved_seed_owner_and_reinfers_only_inferred_dates():
         'Sprint B': {'startDate': '2026-03-01', 'finishDate': '2026-03-14'},
     })
 
-    task, = backend.fetch_task_context([seed], {'token': 'test', 'user_id': 'test'})
+    task, = backend.fetch_task_context([seed], {'kind': 'pat', 'token': 'test', 'user_id': 'test'})
 
     assert task['project'] == 'plan-b'
     assert task['areaPath'] == 'a/PLAN-B/'

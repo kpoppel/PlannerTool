@@ -28,6 +28,12 @@ from planner_lib.util import project_id_for_area_path
 
 logger = logging.getLogger(__name__)
 
+_MOCK_CREDENTIAL = BackendCredential(
+    kind='pat',
+    token='mock-pat',
+    user_id='mock-backend',
+)
+
 
 class _MockBackendBase(AzureDevOpsBackend):
     """Shared helpers for both mock backends."""
@@ -72,7 +78,7 @@ class _MockBackendBase(AzureDevOpsBackend):
         credential: Optional[BackendCredential] = None,
     ) -> List[BackendTask]:
         """Apply the live catalogue/discovery contract to the deterministic SDK."""
-        acting = credential if credential is not None else {'token': 'mock-pat', 'user_id': 'demo'}
+        acting = credential if credential is not None else _MOCK_CREDENTIAL
         return super().fetch_task_context(seeds, credential=acting)
 
     def _build_type_canonical(self) -> Dict[str, str]:
@@ -258,7 +264,7 @@ class MockFixtureBackend(_MockBackendBase):
         project_id: Optional[str] = None,
         **kwargs,
     ) -> List[DomainTask]:
-        with self._client.connect('mock-pat') as client:
+        with self._client.connect(_MOCK_CREDENTIAL) as client:
             raw_items = client.get_work_items(
                 area_path,
                 task_types=task_types,
@@ -292,7 +298,7 @@ class MockFixtureBackend(_MockBackendBase):
         errors: List[str] = []
         updated = 0
         try:
-            with self._client.connect('mock-pat') as client:
+            with self._client.connect(_MOCK_CREDENTIAL) as client:
                 if self._adapter.has_date_update(updates):
                     client.update_work_item_dates(task_id, **self._adapter.extract_date_kwargs(updates))
                 if self._adapter.has_iteration_update(updates):
@@ -310,7 +316,7 @@ class MockFixtureBackend(_MockBackendBase):
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainHistoryEntry]:
         try:
-            with self._client.connect('mock-pat') as client:
+            with self._client.connect(_MOCK_CREDENTIAL) as client:
                 revisions = client.get_task_revision_history(
                     work_item_id=work_item_id,
                     start_field='Microsoft.VSTS.Scheduling.StartDate',
@@ -328,18 +334,18 @@ class MockFixtureBackend(_MockBackendBase):
         return entries
 
     def fetch_teams(self, project: str, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
-        with self._client.connect('mock-pat') as client:
+        with self._client.connect(_MOCK_CREDENTIAL) as client:
             return client.get_all_teams(project)
 
     def fetch_plans(self, project: str, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
-        with self._client.connect('mock-pat') as client:
+        with self._client.connect(_MOCK_CREDENTIAL) as client:
             return client.get_all_plans(project)
 
     def fetch_markers(self, area_path: str, plan_id: Optional[str] = None, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
         return []
 
     def fetch_iterations(self, project: str, root_paths: Optional[List[str]] = None, credential: Optional[BackendCredential] = None) -> Dict[str, Any]:
-        with self._client.connect('mock-pat') as client:
+        with self._client.connect(_MOCK_CREDENTIAL) as client:
             iters = client.get_iterations(project)
         if isinstance(iters, dict):
             return self._flatten_iter_tree(iters)
@@ -536,7 +542,7 @@ class MockGeneratorBackend(_MockBackendBase):
         project_id: Optional[str] = None,
         **kwargs,
     ) -> List[DomainTask]:
-        with self._client.connect('mock-pat') as client:
+        with self._client.connect(_MOCK_CREDENTIAL) as client:
             raw_items = client.get_work_items(
                 area_path,
                 task_types=task_types,
@@ -564,7 +570,7 @@ class MockGeneratorBackend(_MockBackendBase):
         errors: List[str] = []
         updated = 0
         try:
-            with self._client.connect('mock-pat') as client:
+            with self._client.connect(_MOCK_CREDENTIAL) as client:
                 if self._adapter.has_date_update(updates):
                     client.update_work_item_dates(task_id, **self._adapter.extract_date_kwargs(updates))
                 if self._adapter.has_iteration_update(updates):
@@ -582,7 +588,7 @@ class MockGeneratorBackend(_MockBackendBase):
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainHistoryEntry]:
         try:
-            with self._client.connect('mock-pat') as client:
+            with self._client.connect(_MOCK_CREDENTIAL) as client:
                 revisions = client.get_task_revision_history(
                     work_item_id=work_item_id,
                     start_field='Microsoft.VSTS.Scheduling.StartDate',
@@ -600,18 +606,18 @@ class MockGeneratorBackend(_MockBackendBase):
         return entries
 
     def fetch_teams(self, project: str, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
-        with self._client.connect('mock-pat') as client:
+        with self._client.connect(_MOCK_CREDENTIAL) as client:
             return client.get_all_teams(project)
 
     def fetch_plans(self, project: str, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
-        with self._client.connect('mock-pat') as client:
+        with self._client.connect(_MOCK_CREDENTIAL) as client:
             return client.get_all_plans(project)
 
     def fetch_markers(self, area_path: str, plan_id: Optional[str] = None, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
         return []
 
     def fetch_iterations(self, project: str, root_paths: Optional[List[str]] = None, credential: Optional[BackendCredential] = None) -> Dict[str, Any]:
-        with self._client.connect('mock-pat') as client:
+        with self._client.connect(_MOCK_CREDENTIAL) as client:
             tree = client.get_iterations(project)
         if isinstance(tree, dict):
             return MockFixtureBackend._flatten_iter_tree(tree)

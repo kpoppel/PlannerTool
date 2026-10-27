@@ -38,7 +38,7 @@ class TeamPlanOperations:
             return self._teams_cache[project]
 
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         core_client = self.client.core_client
@@ -74,7 +74,7 @@ class TeamPlanOperations:
             return self._plans_cache[project]
 
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         work_client = self.client.work_client
@@ -167,7 +167,7 @@ class TeamPlanOperations:
             List of team IDs that own the area path
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         work_client = self.client.work_client
@@ -238,7 +238,7 @@ class TeamPlanOperations:
             project: Project name or ID
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         work_client = self.client.work_client
@@ -308,7 +308,7 @@ class TeamPlanOperations:
             Sorted by startDate (nulls last)
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         wit_client = self.client.wit_client

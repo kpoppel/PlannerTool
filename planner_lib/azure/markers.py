@@ -88,7 +88,7 @@ class MarkersOperations:
             List of marker dictionaries
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         work_client = self.client.work_client
@@ -140,7 +140,7 @@ class MarkersOperations:
             List of marker entries with plan/team context
         """
         if not self.client._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
         
         assert self.client.conn is not None
         

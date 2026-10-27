@@ -43,7 +43,8 @@ class AccountManagerCredentialProvider:
         Returns
         -------
         BackendCredential | None
-            A TypedDict with ``token`` (the PAT) and ``user_id`` when a
+            A TypedDict with ``kind`` (``"pat"``), ``token`` (the PAT), and
+            ``user_id`` when a
             PAT is found, otherwise None.
         """
         try:
@@ -57,4 +58,4 @@ class AccountManagerCredentialProvider:
         if not token:
             return None
 
-        return BackendCredential(token=token, user_id=user_id)
+        return BackendCredential(kind='pat', token=token, user_id=user_id)

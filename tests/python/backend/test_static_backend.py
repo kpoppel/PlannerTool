@@ -159,7 +159,7 @@ def test_fetch_history_missing_item_returns_empty(tmp_path):
 
 def test_write_task_raises_not_implemented(tmp_path):
     b = _yaml_backend(tmp_path, {AREA: _TASKS})
-    cred = {'token': 'tok', 'user_id': 'u@example.com'}
+    cred = {'kind': 'pat', 'token': 'tok', 'user_id': 'u@example.com'}
     with pytest.raises(NotImplementedError):
         b.write_task(1, {'state': 'Closed'}, cred)
 

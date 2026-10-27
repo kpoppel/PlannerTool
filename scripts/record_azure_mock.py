@@ -431,7 +431,7 @@ def record(data_dir: str, output_dir: str, with_history: bool, pat: str) -> None
         'with_history': with_history,
     }
 
-    with native.connect(pat) as c:
+    with native.connect_pat(pat) as c:
         conn = c.conn
         core_client = conn.clients.get_core_client()
         work_client = conn.clients.get_work_client()
