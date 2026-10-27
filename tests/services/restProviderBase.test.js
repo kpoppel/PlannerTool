@@ -15,20 +15,21 @@ function response({ ok = true, status = 200, jsonData = null, jsonThrows = false
 }
 
 describe('RestProviderBase', () => {
-  it('repairs a required PAT and retries a read without renewing the session', async () => {
-    const onPatRequired = vi.fn().mockResolvedValue(true);
-    const onSessionExpired = vi.fn();
+  it('reports PAT failures without waiting for repair or replaying the request', async () => {
+    const onPatRequired = vi.fn(() => new Promise(() => {}));
+    const onResponse = vi.fn();
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'pat_required' }), { status: 403 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ value: 42 })));
-    const base = new RestProviderBase({ fetchImpl, onPatRequired, session: true, onSessionExpired });
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'pat_required' }), { status: 403 }));
+    const base = new RestProviderBase({ fetchImpl, onPatRequired, onResponse, session: true });
 
-    const result = await base._fetchJson('/api/tasks');
+    const response = await base._fetch('/api/tasks');
 
-    expect(result).toEqual({ ok: true, data: { value: 42 } });
+    expect(response.status).toBe(403);
     expect(onPatRequired).toHaveBeenCalledWith('pat_required');
-    expect(onSessionExpired).not.toHaveBeenCalled();
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(onResponse).toHaveBeenCalledWith(response, expect.objectContaining({
+      credentialFailure: true,
+    }));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('does not replay a write after PAT repair or open repair for permission denials', async () => {
@@ -148,6 +149,23 @@ describe('RestProviderBase', () => {
     const out = await base._fetch('/api/secured', {});
     expect(out.ok).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it('currently replays a write after successful 401 session recovery (deferred policy)', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(response({ ok: false, status: 401, jsonData: { error: 'invalid_session' } }))
+      .mockResolvedValueOnce(response({ ok: true, status: 200, jsonData: { saved: true } }));
+    const onSessionExpired = vi.fn().mockResolvedValue(true);
+    const base = new RestProviderBase({ session: true, fetchImpl, onSessionExpired });
+    const options = { method: 'POST', body: JSON.stringify({ title: 'New task' }) };
+
+    await base._fetch('/api/tasks', options);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[0][1]).toEqual(expect.objectContaining(options));
+    expect(fetchImpl.mock.calls[1][1]).toEqual(expect.objectContaining(options));
     expect(onSessionExpired).toHaveBeenCalledTimes(1);
   });
 

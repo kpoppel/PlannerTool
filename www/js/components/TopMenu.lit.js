@@ -2,6 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
 import { StoreController } from '../core/StoreController.js';
 import { bus } from '../core/EventBus.js';
+import { NotificationActionIds } from '../application/commands/uiCommands.js';
 import {
   ProjectEvents,
   TeamEvents,
@@ -590,6 +591,11 @@ export class TopMenuBarLit extends LitElement {
     this.shadowRoot.querySelector('#openConfigBtn').focus();
   }
 
+  _runNotificationAction(actionId, code) {
+    this._closeMenu(false);
+    cmd.ui.runNotificationAction(actionId, code);
+  }
+
   _pluginMenuControls() {
     if (!this._menuElement) return [];
     const root = this._menuElement.shadowRoot === null ? this._menuElement : this._menuElement.shadowRoot;
@@ -804,6 +810,7 @@ export class TopMenuBarLit extends LitElement {
             <span class="status-icon" aria-hidden="true">ⓘ</span>
             <span>${this.boardBreakdown.tasksVisible} on board</span>
           </button>
+          ` : ''}
           ${this._notifications.value.length > 0 ? html`
             <button
               class="board-info-trigger ${this.openMenu === 'notifications' ? 'active' : ''}"
@@ -821,7 +828,7 @@ export class TopMenuBarLit extends LitElement {
                 <span class="menu-attention" aria-label="Unread notifications">
                   ${this._notifications.value.filter((entry) => entry.unread).length}
                 </span>` : ''}
-            </button>` : ''}` : ''}
+            </button>` : ''}
           ${this.application === 'admin' ? html`
             <a class="application-link" href=${`${this.baseUrl}/`} title="Open planner"
               aria-label="Open planner"><span aria-hidden="true">&#8592;</span> Planner</a>`
@@ -870,6 +877,10 @@ export class TopMenuBarLit extends LitElement {
           @keydown=${this._onMenuKeyDown}>
           <button class="settings-action" role="menuitem" id="configurationMenuItem"
             @click=${this._onConfig}>Configuration</button>
+          <button class="settings-action" role="menuitem" id="setPatMenuItem"
+            @click=${() => this._runNotificationAction(NotificationActionIds.SET_PAT, 'pat_required')}>
+            Set or update Azure DevOps PAT
+          </button>
           ${this.canOpenAdmin ? html`<div class="settings-group" role="group" aria-label="Administration">
             <div class="settings-group-label" aria-hidden="true">Administration</div>
             ${this.adminSections.map((section) => html`
@@ -903,6 +914,11 @@ export class TopMenuBarLit extends LitElement {
                   </div>
                   <p class="notification-message">${entry.message}</p>
                   ${entry.count > 1 ? html`<div class="notification-meta">${entry.count} occurrences</div>` : ''}
+                  ${entry.actionId === NotificationActionIds.SET_PAT ? html`
+                    <button class="settings-action notification-action" type="button"
+                      @click=${() => this._runNotificationAction(entry.actionId, entry.code)}>
+                      Set or update Azure DevOps PAT
+                    </button>` : ''}
                 </li>`)}
             </ol>`}
         </div>`;

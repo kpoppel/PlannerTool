@@ -17,7 +17,8 @@ async function mountAdminApp() {
   try {
     await dataService.init();
   } catch (err) {
-    /* ignore init errors */
+    console.error('admin: initialization failed', err);
+    throw err;
   }
 
   // After init, check whether the current session is an admin. If the

@@ -7,6 +7,7 @@ import { ok, fail } from './result.js';
 import { store } from '../application/store.js';
 import { createUiCommands } from '../application/commands/uiCommands.js';
 import { isMutableScenario } from '../application/shared/scenarioMutations.js';
+import { clearPatRecoveryNotifications, notifyPatRequired } from './authRecovery.js';
 
 const uiCommands = createUiCommands(store, bus);
 
@@ -23,11 +24,8 @@ export class ProviderREST extends RestProviderBase {
       networkRetryCount: 2,
       networkRetryDelay: 1000,
       onSessionExpired: () => this._handleSessionExpiry(),
-      onPatRequired: async (code) => {
-        const { showSetPat } = await import('../components/SetPat.lit.js');
-        return showSetPat(this._resolveUrl('/api'), code);
-      },
-      onResponse: (response, context) => this._recordResponse(response, context.url),
+      onPatRequired: (code) => notifyPatRequired(code),
+      onResponse: (response, context) => this._recordResponse(response, context.url, context),
       onNetworkError: (err) => uiCommands.addNotification({
         source: 'Network', code: 'network_unreachable', severity: 'error',
         message: err instanceof Error ? err.message : String(err),
@@ -49,6 +47,7 @@ export class ProviderREST extends RestProviderBase {
     const response = await this._fetch('/api/auth/logout', { method: 'POST' }, 0, false);
     if (!response.ok) throw new Error(`Sign out failed: ${response.status}`);
     this._accountEmail = null;
+    clearPatRecoveryNotifications();
     bus.emit(SessionEvents.CHANGED);
   }
 
@@ -63,6 +62,7 @@ export class ProviderREST extends RestProviderBase {
         ? error.detail : `Account deletion failed: ${response.status}`);
     }
     this._accountEmail = null;
+    clearPatRecoveryNotifications();
     bus.emit(SessionEvents.CHANGED);
   }
 
@@ -82,6 +82,7 @@ export class ProviderREST extends RestProviderBase {
     const account = await response.json();
     if (this._accountEmail !== account.email) {
       this._accountEmail = account.email;
+      clearPatRecoveryNotifications();
       bus.emit(SessionEvents.CHANGED);
     }
     const { ProviderLocalStorage } = await import('./providerLocalStorage.js');
@@ -150,7 +151,8 @@ export class ProviderREST extends RestProviderBase {
     return result;
   }
 
-  async _recordResponse(response, url) {
+  async _recordResponse(response, url, context = {}) {
+    if (context.credentialFailure) return;
     const diagnostics = response.headers.get('X-Backend-Diagnostics');
     if (diagnostics !== null) {
       try {

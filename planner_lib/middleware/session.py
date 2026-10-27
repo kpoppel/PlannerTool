@@ -206,8 +206,14 @@ class SessionMiddleware(BaseHTTPMiddleware):
             '/api/auth/release-notes',
             '/api/auth/enroll', '/api/auth/enrollment-status', '/api/auth/delete-account',
         }
+        local_admin_config_routes = {
+            '/admin/check', '/admin/v1/ado', '/admin/v1/events-config',
+            '/admin/v1/groups-config', '/admin/v1/system',
+        }
         protected_api = route_path.startswith(('/api/', '/admin/v1/')) or route_path == '/admin/check'
-        if protected_api and route_path not in credential_routes and request.cookies.get(SESSION_COOKIE):
+        if (protected_api and route_path not in credential_routes
+                and route_path not in local_admin_config_routes
+                and request.cookies.get(SESSION_COOKIE)):
             try:
                 context = get_session_context_from_request(request)
             except HTTPException:
@@ -292,4 +298,3 @@ def require_session(func: Callable) -> Callable:
         pass
 
     return wrapper
-

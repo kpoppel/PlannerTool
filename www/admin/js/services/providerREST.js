@@ -2,6 +2,7 @@
 // Uses shared RestProviderBase + Result helpers, while keeping admin endpoints separate.
 import { RestProviderBase } from '../../../js/services/RestProviderBase.js';
 import { ok, fail } from '../../../js/services/result.js';
+import { notifyPatRequired } from '../../../js/services/authRecovery.js';
 
 export class AdminProviderREST extends RestProviderBase {
   constructor() {
@@ -10,10 +11,7 @@ export class AdminProviderREST extends RestProviderBase {
       retry: false,
       session: false,
       defaultCredentials: 'same-origin',
-      onPatRequired: async (code) => {
-        const { showSetPat } = await import('../../../js/components/SetPat.lit.js');
-        return showSetPat(this._resolveUrl('/api'), code);
-      },
+      onPatRequired: (code) => notifyPatRequired(code),
     });
   }
 

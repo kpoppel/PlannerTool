@@ -36,16 +36,40 @@ def test_live_ado_enrollment_requires_pat_without_creating_account(client, app):
 
 def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monkeypatch):
     from planner_lib.azure.AzureClient import AzureClient
+    from fastapi.testclient import TestClient
     monkeypatch.setattr(AzureClient, 'get_projects', lambda self: [])
     response = client.post('/api/auth/enroll', json={'email': 'admin@example.com', 'name': 'Admin'})
     assert response.status_code == 200
     storage = app.state.container.get('storage')
     storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
 
-    for path in ('/api/teams', '/admin/v1/projects', '/admin/check'):
+    for path in ('/api/teams', '/admin/v1/projects', '/admin/v1/ado-processes',
+                 '/api/azure/area-paths?project=Example'):
         response = client.get(path)
         assert response.status_code == 403
         assert response.json()['error'] == 'pat_required'
+    assert client.get('/admin/check').json() == {'ok': True, 'permissions': ['admin']}
+    for path in ('/admin/v1/ado', '/admin/v1/events-config',
+                 '/admin/v1/groups-config', '/admin/v1/system'):
+        assert client.get(path).status_code == 200
+    for path, content in (
+        ('/admin/v1/ado', {'organization_url': 'example', 'feature_flags': {}}),
+        ('/admin/v1/events-config', {'event_backend': 'local'}),
+        ('/admin/v1/groups-config', {'groups_backend': 'local'}),
+        ('/admin/v1/system', {'feature_flags': {}, 'cache': {'ttls': {}}}),
+    ):
+        assert client.post(path, json={'content': content}).status_code == 200
+
+    accounts = app.state.container.get('account_manager')
+    delegate = TestClient(app)
+    enrollment = delegate.post('/api/auth/enroll', json={
+        'email': 'delegate@example.com', 'name': 'Delegate', 'pat': 'delegate-pat',
+    })
+    assert enrollment.status_code == 200
+    accounts.reject_pat('delegate@example.com', 'delegate-pat')
+    assert delegate.get('/admin/check').status_code == 401
+    assert delegate.get('/admin/v1/ado').status_code == 401
+
     assert client.get('/api/auth/me').status_code == 200
     assert client.post('/api/session').status_code == 200
     response = client.post('/api/config', json={'email': 'admin@example.com', 'pat': 'fixture-pat'})
@@ -114,7 +138,7 @@ def test_ado_auth_failure_routes_to_pat_repair_not_enrollment(client, app, monke
         response = client.post('/admin/v1/iterations/browse', json={'project': 'Example'})
     assert response.status_code == 403
     assert response.json()['error'] == 'pat_invalid'
-    assert client.get('/admin/check').json()['error'] == 'pat_invalid'
+    assert client.get('/admin/check').status_code == 200
     assert client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'new-pat'}).status_code == 200
     assert client.get('/admin/check').status_code == 200
 

@@ -87,18 +87,19 @@ export class RestProviderBase {
     return out;
   }
 
-  async _fetch(url, options = {}, retryAttempt = 0, allowSessionRecovery = true, allowPatRecovery = true) {
+  async _fetch(url, options = {}, retryAttempt = 0, allowSessionRecovery = true) {
     const resolvedUrl = this._resolveUrl(url);
     const fetchOptions = this._buildFetchOptions(options);
 
     let response;
+    let credentialFailure = false;
     try {
       response = await this._fetchImpl(resolvedUrl, fetchOptions);
     } catch (err) {
       if (this._retry && retryAttempt < this._networkRetryCount) {
         const delay = this._networkRetryDelay * Math.pow(2, retryAttempt);
         await this._sleep(delay);
-        return this._fetch(url, options, retryAttempt + 1, allowSessionRecovery, allowPatRecovery);
+        return this._fetch(url, options, retryAttempt + 1, allowSessionRecovery);
       }
 
       if (this._onNetworkError) {
@@ -112,7 +113,7 @@ export class RestProviderBase {
       throw err;
     }
 
-    if (allowPatRecovery && this._onPatRequired !== null && response.status === 403) {
+    if (this._onPatRequired !== null && response.status === 403) {
       let payload = null;
       try {
         payload = await response.clone().json();
@@ -120,12 +121,8 @@ export class RestProviderBase {
         console.warn('Non-JSON access denial', { url: resolvedUrl, status: response.status });
       }
       if (payload !== null && (payload.error === 'pat_required' || payload.error === 'pat_invalid')) {
-        const repaired = await this._onPatRequired(payload.error);
-        const readOnly = fetchOptions.method === undefined
-          || fetchOptions.method === 'GET' || fetchOptions.method === 'HEAD';
-        if (repaired && readOnly) {
-          return this._fetch(url, options, retryAttempt, allowSessionRecovery, false);
-        }
+        credentialFailure = true;
+        this._onPatRequired(payload.error);
       }
     }
     if (allowSessionRecovery && response && response.status === 401) {
@@ -133,12 +130,12 @@ export class RestProviderBase {
         url: resolvedUrl, options: fetchOptions, response,
       });
       if (recovered) {
-        return this._fetch(url, options, retryAttempt, false, allowPatRecovery);
+        return this._fetch(url, options, retryAttempt, false);
       }
     }
     // Observe completed responses outside retry handling so observer failures cannot replay writes.
     if (this._onResponse !== null) {
-      await this._onResponse(response, { url: resolvedUrl, options: fetchOptions });
+      await this._onResponse(response, { url: resolvedUrl, options: fetchOptions, credentialFailure });
     }
     return response;
   }

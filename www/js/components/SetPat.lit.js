@@ -1,6 +1,11 @@
 import { LitElement, html } from '../vendor/lit.js';
 import { AuthDialog } from './AuthDialog.lit.js';
 import { RestProviderBase } from '../services/RestProviderBase.js';
+import { store } from '../application/store.js';
+import { bus } from '../core/EventBus.js';
+import { createUiCommands } from '../application/commands/uiCommands.js';
+
+const uiCommands = createUiCommands(store, bus);
 
 export class SetPat extends LitElement {
   static properties = {
@@ -56,6 +61,7 @@ export class SetPat extends LitElement {
         return;
       }
       input.value = '';
+      uiCommands.clearPatRecoveryNotifications();
       this.resolve(true);
       this.remove();
     } finally {
@@ -63,10 +69,18 @@ export class SetPat extends LitElement {
     }
   }
 
+  _onCancel() {
+    if (this.busy) return;
+    this.resolve(false);
+    this.remove();
+  }
+
   async _onSignOut() {
     const result = await this.provider._fetchJson(this.apiBase + '/auth/logout', { method: 'POST' });
-    if (result.ok) window.location.reload();
-    else this.error = 'Could not sign out. Try again.';
+    if (result.ok) {
+      uiCommands.clearPatRecoveryNotifications();
+      window.location.reload();
+    } else this.error = 'Could not sign out. Try again.';
   }
 
   render() {
@@ -80,6 +94,7 @@ export class SetPat extends LitElement {
         <div class="actions">
           <button type="submit" ?disabled=${this.busy || this.email === ''}>Save PAT</button>
           ${this.email === '' ? html`<button type="button" @click=${this._loadAccount}>Retry</button>` : ''}
+          <button type="button" class="link" ?disabled=${this.busy} @click=${this._onCancel}>Cancel</button>
           <button type="button" class="link" ?disabled=${this.busy} @click=${this._onSignOut}>Sign out</button>
         </div>
       </form>

@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { showAuthDialog, showAccountKeyDialog } from '../../www/js/components/AuthDialog.lit.js';
 import '../../www/admin/js/components/admin/Users.lit.js';
 import { adminProvider } from '../../www/admin/js/services/providerREST.js';
+import { store } from '../../www/js/application/store.js';
+import { createUiCommands, NotificationActionIds } from '../../www/js/application/commands/uiCommands.js';
+import { bus } from '../../www/js/core/EventBus.js';
+
+const uiCommands = createUiCommands(store, bus);
 
 afterEach(() => {
   document.querySelectorAll('auth-dialog').forEach((dialog) => dialog.remove());
@@ -54,6 +59,10 @@ describe('account enrollment dialog', () => {
 
   it('saves a masked PAT through the shared repair screen', async () => {
     const { showSetPat } = await import('../../www/js/components/SetPat.lit.js');
+    uiCommands.addNotification({
+      source: 'Authentication', code: 'pat_required', severity: 'warning',
+      message: 'A PAT is required.', actionId: NotificationActionIds.SET_PAT,
+    });
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ email: 'owner@example.com' })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
@@ -73,7 +82,27 @@ describe('account enrollment dialog', () => {
       email: 'owner@example.com', pat: 'fixture-pat',
     });
     expect(input.value).toBe('');
+    expect(store.getState().notifications.some(
+      (entry) => entry.actionId === NotificationActionIds.SET_PAT,
+    )).toBe(false);
     expect(document.querySelector('set-pat')).toBeNull();
+  });
+
+  it('lets the user cancel PAT repair without saving', async () => {
+    const { showSetPat } = await import('../../www/js/components/SetPat.lit.js');
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ email: 'owner@example.com' })));
+    vi.stubGlobal('fetch', fetchImpl);
+    const complete = showSetPat('/api', 'pat_required');
+    const screen = document.querySelector('set-pat');
+    await screen.ready;
+    await screen.updateComplete;
+
+    screen.renderRoot.querySelector('button[type="button"]').click();
+
+    await expect(complete).resolves.toBe(false);
+    expect(document.querySelector('set-pat')).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the PAT screen open when ADO rejects the supplied token', async () => {

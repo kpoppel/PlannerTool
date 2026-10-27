@@ -96,6 +96,7 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
   await thirdContext.close();
 
   await page.getByRole('button', { name: 'Users', exact: true }).click();
+  await page.getByRole('button', { name: 'Actions for auth-e2e@example.com', exact: true }).click();
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: 'Reset access', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Save your account key' })).toBeVisible();
@@ -270,9 +271,26 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
         data: { content: { organization_url: 'auth-fixture', feature_flags: {} } },
       })).status()).toBe(200);
       expect((await page.request.get('/api/projects')).status()).toBe(403);
-      expect((await page.request.get('/admin/check')).status()).toBe(403);
+      expect((await page.request.get('/admin/check')).status()).toBe(200);
+      expect((await page.request.get('/admin/v1/ado')).status()).toBe(200);
+      expect((await page.request.get('/admin/v1/ado-processes')).status()).toBe(403);
 
       await page.goto('/admin/');
+      await expect(page.getByRole('button', { name: 'Users', exact: true })).toBeVisible();
+      await expect(page.locator('set-pat')).toHaveCount(0);
+      await page.goto('/');
+      await expect(page.locator('#notificationsBtn')).toBeVisible();
+      await expect(page.locator('set-pat')).toHaveCount(0);
+      await page.locator('#notificationsBtn').click();
+      const patAction = page.locator('#notificationLog')
+        .getByRole('button', { name: 'Set or update Azure DevOps PAT' });
+      await expect(patAction).toBeVisible();
+      await patAction.click();
+      await expect(page.getByRole('heading', { name: 'Set your Azure DevOps PAT' })).toBeVisible();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(page.locator('set-pat')).toHaveCount(0);
+      await page.locator('#openConfigBtn').click();
+      await page.getByRole('menuitem', { name: 'Set or update Azure DevOps PAT' }).click();
       await expect(page.getByRole('heading', { name: 'Set your Azure DevOps PAT' })).toBeVisible();
       const patInput = page.getByLabel('Azure DevOps PAT', { exact: true });
       await expect(patInput).toHaveAttribute('type', 'password');
@@ -283,13 +301,20 @@ test('desktop Enrollment, rotating keys, deletion, and selective restore', async
       await patInput.fill('auth-e2e-fixture-pat');
       await page.getByRole('button', { name: 'Save PAT', exact: true }).click();
       await expect(page.locator('set-pat')).toHaveCount(0);
-      await expect(page.getByRole('button', { name: 'Users', exact: true })).toBeVisible();
+      await expect(page.locator('top-menu-bar')).toBeVisible();
+      await expect(page.locator('set-pat')).toHaveCount(0);
       expect((await page.request.get('/admin/check')).status()).toBe(200);
+      expect((await page.request.get('/api/projects')).status()).toBe(200);
 
       const repairPage = await repairContext.newPage();
       await repairPage.goto('http://127.0.0.1:8017/');
       await expect(repairPage.locator('release-notes').getByRole('dialog')).toBeVisible();
       await repairPage.locator('release-notes').getByRole('button', { name: 'Continue to Planner' }).click();
+      await expect(repairPage.locator('set-pat')).toHaveCount(0);
+      await expect(repairPage.locator('#notificationsBtn')).toBeVisible();
+      await repairPage.locator('#notificationsBtn').click();
+      await repairPage.locator('#notificationLog')
+        .getByRole('button', { name: 'Set or update Azure DevOps PAT' }).click();
       await expect(repairPage.getByRole('heading', { name: 'Set your Azure DevOps PAT' })).toBeVisible();
       await expect(repairPage.locator('set-pat')).toHaveCount(1);
       await repairPage.screenshot({ path: 'test-results/auth-desktop-planner-pat-required.png' });

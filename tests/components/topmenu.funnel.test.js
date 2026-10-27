@@ -9,6 +9,7 @@ import PluginReconciliation from '../../www/js/plugins/PluginReconciliation.js';
 import modulesConfig from '../../www/js/modules.config.json';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginEvents } from '../../www/js/core/EventRegistry.js';
+import { NotificationActionIds } from '../../www/js/application/commands/uiCommands.js';
 
 describe('TopMenu Data Funnel', () => {
   let menu;
@@ -23,7 +24,9 @@ describe('TopMenu Data Funnel', () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     if (menu && menu.isConnected) menu.remove();
+    document.querySelectorAll('set-pat').forEach((dialog) => dialog.remove());
     for (const id of ['test-after-menu', 'test-before-menu', 'test-active-tool', 'plugin-reconciliation']) {
       await pluginManager.unregister(id);
     }
@@ -122,6 +125,43 @@ describe('TopMenu Data Funnel', () => {
     expect(menu.shadowRoot.querySelector('#notificationLog')).to.equal(null);
     expect(menu.shadowRoot.activeElement.id).to.equal('openConfigBtn');
     expect(menu.shadowRoot.querySelector('#notificationsBtn')).to.equal(null);
+  });
+
+  it('offers explicit PAT recovery actions from notifications and Settings in both shells', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValue(new Response(JSON.stringify({ email: 'owner@example.com' }))));
+    cmd.ui.addNotification({
+      source: 'Authentication', code: 'pat_invalid', severity: 'warning',
+      message: 'Your Azure DevOps PAT is invalid or expired.',
+      actionId: NotificationActionIds.SET_PAT,
+    });
+    await menu.updateComplete;
+    expect(document.querySelector('set-pat')).to.equal(null);
+    menu.shadowRoot.querySelector('#notificationsBtn').click();
+    await menu.updateComplete;
+    const action = menu.shadowRoot.querySelector('.notification-action');
+    expect(action.textContent).to.include('Set or update Azure DevOps PAT');
+    action.click();
+    const screen = document.querySelector('set-pat');
+    await screen.ready;
+    expect(screen.reason).to.equal('pat_invalid');
+    screen._onCancel();
+    await screen.updateComplete;
+
+    menu.shadowRoot.querySelector('#openConfigBtn').click();
+    await menu.updateComplete;
+    const settingsAction = menu.shadowRoot.querySelector('#setPatMenuItem');
+    expect(settingsAction).to.exist;
+    settingsAction.click();
+    expect(document.querySelector('set-pat')).not.to.equal(null);
+    document.querySelector('set-pat')._onCancel();
+
+    const adminMenu = document.createElement('top-menu-bar');
+    adminMenu.application = 'admin';
+    document.body.append(adminMenu);
+    await adminMenu.updateComplete;
+    expect(adminMenu.shadowRoot.querySelector('#notificationsBtn')).not.to.equal(null);
+    adminMenu.remove();
   });
 
   it('keeps a bounded log, treats new occurrences as unread, and rejects invalid notices', () => {

@@ -134,6 +134,75 @@ def test_enrollment_session_and_second_device(client):
     }).status_code == 401
 
 
+def test_first_enrollment_claims_admin_and_preserves_profile_contract(client, monkeypatch):
+    from unittest.mock import Mock
+
+    enrollment = client.post('/api/auth/enroll', json={
+        'email': 'first-admin@example.com', 'name': 'First Administrator',
+    })
+    assert enrollment.status_code == 200
+    assert enrollment.json()['initialSetup'] is True
+
+    accounts = client.app.state.container.get('account_manager')
+    account_id = accounts.get_account_id('first-admin@example.com')
+    assert accounts.get_account_by_id(account_id)['permissions'] == ['admin']
+
+    load_account = Mock(wraps=accounts.load)
+    monkeypatch.setattr(accounts, 'load', load_account)
+    profile = client.get('/api/auth/me').json()
+    assert set(profile) == {
+        'email', 'name', 'patRequired', 'patError', 'permissions',
+        'currentDeviceId', 'devices',
+    }
+    assert profile['email'] == 'first-admin@example.com'
+    assert profile['name'] == 'First Administrator'
+    assert profile['patRequired'] is False
+    assert profile['patError'] is None
+    assert profile['permissions'] == ['admin']
+    assert len(profile['devices']) == 1
+    assert profile['currentDeviceId'] == profile['devices'][0]['id']
+    assert isinstance(profile['devices'][0]['expires'], (int, float))
+    load_account.assert_not_called()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason='Live ADO /api/auth/me derives patError by loading the stored PAT',
+)
+def test_live_ado_profile_does_not_load_pat(client, monkeypatch):
+    from unittest.mock import Mock
+
+    assert client.post('/api/auth/enroll', json={
+        'email': 'profile@example.com', 'name': 'Profile User',
+    }).status_code == 200
+    accounts = client.app.state.container.get('account_manager')
+    client.app.state.container.get('storage').save(
+        'config', 'ado_config', {'organization_url': 'ExampleOrg', 'feature_flags': {}},
+    )
+    load_account = Mock(wraps=accounts.load)
+    monkeypatch.setattr(accounts, 'load', load_account)
+
+    assert client.get('/api/auth/me').status_code == 200
+    load_account.assert_not_called()
+
+
+def test_auth_cookies_keep_subpath_scope(client):
+    from fastapi.testclient import TestClient
+
+    browser = TestClient(client.app, root_path='/esw')
+    enrollment = browser.post('/api/auth/enroll', json={
+        'email': 'subpath@example.com', 'name': 'Subpath User',
+    })
+
+    assert enrollment.status_code == 200
+    cookie_paths = {
+        (cookie.name, cookie.path) for cookie in browser.cookies.jar
+        if cookie.name in ('plannerDevice', 'sessionId')
+    }
+    assert ('plannerDevice', '/esw/') in cookie_paths
+    assert ('sessionId', '/esw/') in cookie_paths
+
+
 def test_admin_can_precreate_an_account_with_permissions_before_browser_enrollment(client):
     from fastapi.testclient import TestClient
 
