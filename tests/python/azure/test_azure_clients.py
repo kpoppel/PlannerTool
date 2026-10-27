@@ -86,6 +86,22 @@ def test_connect_rejects_malformed_or_unsupported_credentials(credential, messag
     assert 'secret' not in str(raised.value)
 
 
+@pytest.mark.parametrize('flags', [
+    {'use_azure_mock': True}, {'use_azure_mock_generator': True},
+])
+def test_mock_service_uses_shared_client_connection_with_synthetic_credential(flags):
+    from planner_lib.azure import AzureService
+    from planner_lib.azure.AzureMockClient import _MOCK_CREDENTIAL
+
+    service = AzureService('example', MemoryStorage(), feature_flags=flags)
+    assert type(service._client).connect is AzureClient.connect
+
+    with patch.object(AzureClient, 'connect', autospec=True) as connect:
+        service.connect(None)
+
+    connect.assert_called_once_with(service._client, _MOCK_CREDENTIAL)
+
+
 def test_connect_uses_shared_pat_authentication_builder():
     client = AzureClient('org', DummyStorage())
     authentication = object()
@@ -1238,14 +1254,17 @@ class TestAzureMockClientPersistence:
     # Empty PAT
     # ------------------------------------------------------------------
 
-    def test_mock_client_rejects_malformed_empty_credential(self):
+    @pytest.mark.parametrize('credential', [None, '', {}])
+    @pytest.mark.parametrize('mock_kind', ['recorded', 'generator'])
+    def test_mock_client_preserves_live_credential_validation(self, credential, mock_kind):
         from planner_lib.azure.AzureMockClient import AzureMockClient
+        from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
         from planner_lib.storage import create_storage
-        client = AzureMockClient(
-            "anonymous-org",
-            storage=create_storage(backend='memory', serializer='json'),
-            fixture_dir=FIXTURE_DIR,
-            persist_enabled=True,
-        )
-        with pytest.raises(ValueError, match='Backend credential'):
-            client.connect("")
+        storage = create_storage(backend='memory', serializer='json')
+        if mock_kind == 'recorded':
+            client = AzureMockClient('anonymous-org', storage, fixture_dir=FIXTURE_DIR)
+        else:
+            client = AzureMockGeneratorClient('anonymous-org', storage)
+        assert type(client).connect is AzureClient.connect
+        with pytest.raises(ValueError, match='credential'):
+            client.connect(credential)

@@ -166,6 +166,10 @@ class CachingBackend:
     # Cache key helper
     # ------------------------------------------------------------------
 
+    @property
+    def is_remote(self) -> bool:
+        return self._inner_is_remote
+
     def read_task_snapshot(self, build, identity, guard, credential):
         if not self._inner_is_remote:
             return build(self, credential)

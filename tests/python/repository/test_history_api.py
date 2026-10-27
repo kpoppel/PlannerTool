@@ -20,6 +20,7 @@ def _make_history_repository_with_data():
             until=None,
             page=1,
             per_page=100,
+            credential=None,
         ):
             if not user_id:
                 return {'page': page, 'per_page': per_page, 'total': 0, 'tasks': []}
@@ -99,7 +100,11 @@ def _make_fake_session_manager(authenticated_client):
     """Create a fake session manager for tests."""
     from types import SimpleNamespace
     register_service_on_client(authenticated_client, 'account_manager',
-                               SimpleNamespace(load=lambda email: {'pat': 'test-token'}, pat_error=lambda email: None))
+                               SimpleNamespace(pat_error=lambda email: None))
+    register_service_on_client(authenticated_client, 'credential_provider', SimpleNamespace(
+        get_credential=lambda user_id: {'kind': 'pat', 'token': 'test-token', 'user_id': user_id},
+    ))
+    register_service_on_client(authenticated_client, 'backend', SimpleNamespace(is_remote=True))
     class FakeSessionMgr:
         def get(self, sid):
             return {'account_id': '11111111-1111-4111-8111-111111111111',
@@ -217,8 +222,9 @@ def test_history_api_pagination(authenticated_client):
     assert data['per_page'] == 50
 
 
-def test_history_api_no_pat(authenticated_client):
-    """Test the history API without PAT returns 401."""
+@pytest.mark.parametrize('remote', [False, True])
+def test_history_api_no_pat(authenticated_client, remote):
+    """Only a remote history source requires credentials."""
     from fastapi.testclient import TestClient
     from types import SimpleNamespace
 
@@ -229,14 +235,19 @@ def test_history_api_no_pat(authenticated_client):
 
     register_service_on_client(authenticated_client, 'session_manager', NoPATSessionMgr())
     register_service_on_client(authenticated_client, 'account_manager',
-                               SimpleNamespace(load=lambda email: {'pat': None}, pat_error=lambda email: None))
+                               SimpleNamespace(pat_error=lambda email: None))
+    register_service_on_client(authenticated_client, 'credential_provider',
+                               SimpleNamespace(get_credential=lambda user_id: None))
+    register_service_on_client(authenticated_client, 'backend', SimpleNamespace(is_remote=remote))
+    register_service_on_client(authenticated_client, 'task_repository', _make_task_repository())
+    register_service_on_client(authenticated_client, 'history_repository', _make_history_repository_with_data())
 
     # Create a client that doesn't raise server exceptions.
     c = TestClient(authenticated_client.app, raise_server_exceptions=False,
                    cookies=authenticated_client.cookies)
     r = c.get('/api/history/tasks')
 
-    assert r.status_code == 401
+    assert r.status_code == (401 if remote else 200)
 
 
 def test_history_service_deduplication():

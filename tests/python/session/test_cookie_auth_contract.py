@@ -46,7 +46,10 @@ def test_delegated_admin_access_is_scoped(client, permission, allowed):
 
 
 @pytest.mark.parametrize('path', ['/api/auth/me', '/api/view', '/api/scenario',
-                                 '/api/groups', '/admin/v1/users', '/admin/'])
+                                 '/api/groups', '/api/events', '/api/event-categories',
+                                 '/api/tasks', '/api/cost', '/api/markers', '/api/iterations',
+                                 '/api/history/tasks', '/api/v1/server/tasks',
+                                 '/admin/v1/users', '/admin/'])
 def test_identity_request_skips_credentials_and_refreshes_expiry_once(client, monkeypatch, path):
     from unittest.mock import Mock
 
@@ -59,16 +62,42 @@ def test_identity_request_skips_credentials_and_refreshes_expiry_once(client, mo
     accounts.set_permissions(accounts.get_account_id('resolution@example.com'), ['admin'])
     save = Mock(wraps=storage.save)
     load_account = Mock(wraps=accounts.load)
+    provider = container.get('credential_provider')
+    acquire = Mock(wraps=provider.get_credential)
     monkeypatch.setattr(storage, 'save', save)
     monkeypatch.setattr(accounts, 'load', load_account)
+    monkeypatch.setattr(provider, 'get_credential', acquire)
 
     response = client.get(path)
 
     assert response.status_code == 200
     load_account.assert_not_called()
+    acquire.assert_not_called()
     assert [call.args[0] for call in save.call_args_list].count('auth_sessions') == 1
     assert [call.args[0] for call in save.call_args_list].count('account_auth') == 1
     assert len(response.headers.get_list('set-cookie')) == 2
+
+
+def test_mock_task_refresh_does_not_acquire_credentials(client, monkeypatch):
+    from unittest.mock import Mock
+
+    assert client.post('/api/auth/enroll', json={
+        'email': 'local-refresh@example.com', 'name': 'Local Refresh',
+    }).status_code == 200
+    container = client.app.state.container
+    provider = container.get('credential_provider')
+    acquire = Mock(side_effect=AssertionError('Local refresh must not acquire credentials'))
+    monkeypatch.setattr(provider, 'get_credential', acquire)
+    accounts = container.get('account_manager')
+    load = Mock(wraps=accounts.load)
+    monkeypatch.setattr(accounts, 'load', load)
+
+    response = client.post('/api/tasks/refresh')
+
+    assert response.status_code == 202, response.text
+    assert response.json() == {'status': 'completed'}
+    acquire.assert_not_called()
+    load.assert_not_called()
 
 
 def test_session_post_rejects_email_only(client):
@@ -370,11 +399,12 @@ def test_self_service_delete_without_device_and_removed_routes(client):
 
 
 def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
     from unittest.mock import Mock
     from fastapi.testclient import TestClient
     from starlette.requests import Request
     from planner_lib.accounts.config import AccountCredentialsPayload
-    from planner_lib.middleware.session import get_session_credentials_from_request
+    from planner_lib.middleware.session import get_session_credential_from_request
 
     assert client.post('/api/auth/enroll', json={
         'email': 'first@example.com', 'name': 'First',
@@ -392,6 +422,9 @@ def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monk
         monkeypatch.setattr(sessions, 'get', resolve_context)
         load_account = Mock(wraps=accounts.load)
         monkeypatch.setattr(accounts, 'load', load_account)
+        provider = container.get('credential_provider')
+        acquire = Mock(wraps=provider.get_credential)
+        monkeypatch.setattr(provider, 'get_credential', acquire)
 
         def make_request(browser):
             return Request({'type': 'http', 'app': client.app,
@@ -405,18 +438,26 @@ def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monk
         assert 'pat' not in first
         assert 'pat' not in second
         load_account.assert_not_called()
-        first = get_session_credentials_from_request(first_request)
-        second = get_session_credentials_from_request(second_request)
-        assert get_session_credentials_from_request(first_request) is first
-        assert (first['email'], first['pat']) == ('first@example.com', 'first-pat')
-        assert (second['email'], second['pat']) == ('second@example.com', 'second-pat')
-        assert first['account_id'] != second['account_id']
+        acquire.assert_not_called()
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            first, second = list(workers.map(
+                get_session_credential_from_request, [first_request, second_request],
+            ))
+        assert get_session_credential_from_request(first_request) is first
+        assert first == {'kind': 'pat', 'token': 'first-pat',
+                 'user_id': accounts.get_account_id('first@example.com')}
+        assert second == {'kind': 'pat', 'token': 'second-pat',
+                  'user_id': accounts.get_account_id('second@example.com')}
+        assert first['user_id'] != second['user_id']
         assert resolve_context.call_count == 2
         assert load_account.call_count == 2
+        assert sorted(call.args[0] for call in acquire.call_args_list) == sorted([
+            first['user_id'], second['user_id'],
+        ])
 
         accounts.update_credentials(AccountCredentialsPayload(email='first@example.com', pat='updated-pat'))
-        assert get_session_credentials_from_request(make_request(client))['pat'] == 'updated-pat'
-        assert get_session_credentials_from_request(second_request)['pat'] == 'second-pat'
+        assert get_session_credential_from_request(make_request(client))['token'] == 'updated-pat'
+        assert get_session_credential_from_request(second_request)['token'] == 'second-pat'
         assert resolve_context.call_count == 3
         assert load_account.call_count == 3
 

@@ -646,6 +646,28 @@ def test_task_repository_write_returns_error_for_missing_credential():
     assert result['errors']
 
 
+@pytest.mark.parametrize('operation', ['request_refresh', 'rebuild_now'])
+@pytest.mark.parametrize('remote', [False, True])
+def test_task_repository_requires_refresh_credentials_only_for_remote(operation, remote):
+    from planner_lib.backend.errors import BackendAuthError
+    from planner_lib.repository.task_repository import TaskRepository
+
+    backend = FakeBackend()
+    backend.is_remote = remote
+    backend.fetch_task_context = MagicMock(wraps=backend.fetch_task_context)
+    provider = MagicMock()
+    repository = TaskRepository(backend, _make_project_service([]), provider)
+
+    if remote:
+        with pytest.raises(BackendAuthError):
+            getattr(repository, operation)(None)
+        backend.fetch_task_context.assert_not_called()
+    else:
+        getattr(repository, operation)(None)
+        backend.fetch_task_context.assert_called_once_with([], credential=None)
+    provider.get_credential.assert_not_called()
+
+
 def test_task_repository_refresh_calls_invalidate():
     from planner_lib.repository.task_repository import TaskRepository
 
@@ -689,6 +711,48 @@ def test_history_repository_read_returns_paginated_results():
     assert result['tasks'][0]['task_id'] == 42
     assert len(result['tasks'][0]['history']) == 1
     assert len(backend.fetch_history_calls) == 1
+
+
+@pytest.mark.parametrize('operation', ['write', 'list_markers', 'read'])
+def test_local_repositories_do_not_acquire_credentials(operation):
+    from planner_lib.repository.history_repository import HistoryRepository
+    from planner_lib.repository.plan_repository import PlanRepository
+    from planner_lib.repository.task_repository import TaskRepository
+
+    backend = FakeBackend()
+    backend.is_remote = False
+    provider = MagicMock()
+    projects = _make_project_service([])
+
+    if operation == 'write':
+        backend.write_task = MagicMock(return_value={'updated': 1, 'errors': []})
+        repository = TaskRepository(backend, projects, provider)
+        assert repository.write([{'id': '42'}], user_id='acting-account')['updated'] == 1
+        backend.write_task.assert_called_once_with('42', {'id': '42'}, None)
+    elif operation == 'list_markers':
+        repository = PlanRepository(backend, projects, provider, MagicMock())
+        assert repository.list_markers(user_id='acting-account') == []
+    else:
+        repository = HistoryRepository(backend, provider)
+        assert repository.read(tasks=[{'id': '42'}], user_id='acting-account')['total'] == 1
+    provider.get_credential.assert_not_called()
+
+
+def test_history_repository_reuses_operation_credential():
+    from planner_lib.repository.history_repository import HistoryRepository
+
+    backend = FakeBackend()
+    backend.fetch_history = MagicMock(wraps=backend.fetch_history)
+    provider = MagicMock()
+    credential = {'kind': 'pat', 'token': 'operation-pat', 'user_id': 'acting-account'}
+    repository = HistoryRepository(backend, provider)
+
+    result = repository.read(tasks=[{'id': '42'}], user_id='acting-account',
+                             credential=credential)
+
+    assert result['total'] == 1
+    provider.get_credential.assert_not_called()
+    assert backend.fetch_history.call_args.kwargs['credential'] is credential
 
 
 def test_history_repository_read_no_user_returns_empty():

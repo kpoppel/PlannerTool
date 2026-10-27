@@ -43,6 +43,8 @@ class FakeBackend(BackendPort):
         When True, ``write_task()`` raises RuntimeError (to test error paths).
     """
 
+    is_remote = True
+
     def __init__(
         self,
         tasks_by_area: Optional[Dict[str, List[DomainTask]]] = None,

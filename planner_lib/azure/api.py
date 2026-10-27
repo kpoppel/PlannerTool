@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import logging
 
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_credentials_from_request
+from planner_lib.middleware.session import get_session_credential_from_request
 from planner_lib.backend.port import BackendCredential
 from planner_lib.services.resolver import resolve_service
 
@@ -171,9 +171,8 @@ async def cache_refresh(
     """
     backend = resolve_service(request, 'backend')
 
-    credentials = get_session_credentials_from_request(request)
-    pat = credentials['pat']
-    if not pat:
+    credential = get_session_credential_from_request(request, backend=backend)
+    if backend.is_remote and credential is None:
         raise HTTPException(
             status_code=401,
             detail={'error': 'missing_pat', 'message': 'Personal Access Token required'}
@@ -193,8 +192,6 @@ async def cache_refresh(
     # Invalidate all cached task entries so the next fetch bypasses diskcache.
     backend.invalidate_cache()
 
-    cred = BackendCredential(kind='pat', token=pat, user_id=credentials['account_id'])
-
     refreshed: list = []
     errors: list = []
     for area_path in area_list:
@@ -212,7 +209,7 @@ async def cache_refresh(
                 project_id=proj_cfg.get('project_id'),
                 task_types=proj_cfg.get('task_types'),
                 closed_history_days=proj_cfg['closed_history_days'],
-                credential=cred,
+                credential=credential,
             )
             refreshed.append(area_path)
             logger.info("Refreshed area '%s' (%d items)", area_path, len(items))
@@ -266,15 +263,14 @@ async def cache_metrics(request: Request):
 # ---------------------------------------------------------------------------
 
 def _get_credential_or_raise(request: Request) -> BackendCredential:
-    """Return the session's PAT credential or raise HTTP 401."""
-    context = get_session_credentials_from_request(request)
-    pat = context['pat']
-    if not pat:
+    """Return the authenticated account's credential or raise HTTP 401."""
+    credential = get_session_credential_from_request(request)
+    if credential is None:
         raise HTTPException(
             status_code=401,
             detail={'error': 'missing_pat', 'message': 'Personal Access Token required in session'}
         )
-    return BackendCredential(kind='pat', token=pat, user_id=context['account_id'])
+    return credential
 
 
 def _live_client_or_raise(org_url: str, credential: BackendCredential):
@@ -333,8 +329,12 @@ async def azure_browse_area_paths(
     Returns:
         { "area_paths": ["Project\\Team", "Project\\Team\\SubTeam", ...] }
     """
-    credential = _get_credential_or_raise(request)
     azure_svc = resolve_service(request, 'azure_client')
+    credential = get_session_credential_from_request(request, backend=azure_svc)
+    if azure_svc.is_remote and credential is None:
+        raise HTTPException(status_code=401, detail={
+            'error': 'missing_pat', 'message': 'Personal Access Token required in session',
+        })
     with azure_svc.connect(credential) as client:
         area_paths = client.get_area_paths(project)
     return {'area_paths': area_paths}

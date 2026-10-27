@@ -232,8 +232,8 @@ def _build_services(
     container.register_factory("view_repository",
         lambda: ViewRepository(backend=container.get("user_data_backend")))
 
-    def _make_event_backend():
-        """Select the EventBackend based on admin-configured event_config.
+    def _make_event_repository():
+        """Select event persistence and inject credentials only for wiki access.
 
         Default: diskcache-backed UserDataBackend (no credential required).
         "ado_wiki": AzureWikiEventBackend persists events as an ADO wiki page.
@@ -269,7 +269,7 @@ def _build_services(
                     "the Events Configuration is complete.",
                     ", ".join(missing),
                 )
-                return container.get("user_data_backend")
+                return EventRepository(backend=container.get("user_data_backend"))
 
             from planner_lib.azure.wiki_events import AzureWikiEventBackend
             _log.info(
@@ -277,21 +277,21 @@ def _build_services(
                 "(project=%s, wiki=%s, path=%s)",
                 project, wiki_id, page_path,
             )
-            return AzureWikiEventBackend(
+            backend = AzureWikiEventBackend(
                 organization_url=org_url,
                 project=project,
                 wiki_id=wiki_id,
                 page_path=page_path,
                 project_repository=container.get("project_repository"),
             )
+            return EventRepository(
+                backend=backend,
+                credential_provider=container.get("credential_provider"),
+            )
 
-        return container.get("user_data_backend")
+        return EventRepository(backend=container.get("user_data_backend"))
 
-    container.register_factory("event_repository",
-        lambda: EventRepository(
-            backend=_make_event_backend(),
-            credential_provider=container.get("credential_provider"),
-        ))
+    container.register_factory("event_repository", _make_event_repository)
 
     # --- Groups ---
     def _make_group_repository():
@@ -409,10 +409,14 @@ def _build_app(
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     def pat_invalid_response(request):
-        from planner_lib.middleware.session import get_session_credentials_from_request
+        from planner_lib.middleware.session import (
+            get_session_context_from_request, get_session_credential_from_request,
+        )
         from planner_lib.services.resolver import resolve_service
-        credentials = get_session_credentials_from_request(request)
-        resolve_service(request, 'account_manager').reject_pat(credentials['email'], credentials['pat'])
+        context = get_session_context_from_request(request)
+        credential = get_session_credential_from_request(request)
+        if credential is not None:
+            resolve_service(request, 'account_manager').reject_pat(context['email'], credential['token'])
         return JSONResponse(status_code=403, content={'error': 'pat_invalid'})
 
     from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError

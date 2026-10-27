@@ -15,7 +15,6 @@ from tests.python.azure.test_process_catalogue import catalogue, plan
 @pytest.fixture
 def setup(monkeypatch):
     from planner_lib.middleware import admin as permissions
-    from planner_lib.admin import config_routes, process_routes
     store = create_storage(backend='memory')
     store.save('config', 'projects', {'project_map': [plan()]})
     store.save('config', 'ado_processes', catalogue())
@@ -31,18 +30,20 @@ def setup(monkeypatch):
          if key not in ('types', 'loaded_at')}]
     connected.get_process_types.return_value = catalogue()['processes'][0]['types']
     services = {'admin_service': service, 'account_manager': accounts,
-                'azure_client': azure, 'storage': store, 'task_repository': MagicMock()}
+                'backend': SimpleNamespace(is_remote=True),
+                'azure_client': azure, 'storage': store, 'task_repository': MagicMock(),
+                'session_manager': SimpleNamespace(get=lambda sid: {
+                    'email': 'acting@example.test', 'account_id': 'acting-account'}),
+                'credential_provider': SimpleNamespace(get_credential=MagicMock(return_value={
+                    'kind': 'pat', 'token': 'acting-pat', 'user_id': 'acting-account'}))}
     app = FastAPI()
     app.state.container = SimpleNamespace(get=lambda name: services[name])
     app.include_router(admin_api.router)
     monkeypatch.setattr(permissions, 'get_session_id_from_request', lambda request: 'session')
     monkeypatch.setattr(permissions, 'get_session_context_from_request',
                         lambda request: {'email': 'acting@example.test'})
-    monkeypatch.setattr(process_routes, 'get_session_credentials_from_request',
-                        lambda request: {'pat': 'acting-pat', 'account_id': 'acting-account'})
-    monkeypatch.setattr(config_routes, 'get_session_credentials_from_request',
-                        lambda request: {'pat': 'acting-pat', 'account_id': 'acting-account'})
     with TestClient(app) as client:
+        client.cookies.set('sessionId', 'session')
         yield client, store, service, granted, azure
 
 
@@ -60,6 +61,8 @@ def test_plan_refresh_counts_presented_items_with_acting_credentials(setup):
     assert response.json()['item_count'] == 2
     assert response.json()['completed_at']
     repository.rebuild_now.assert_called_once_with({'kind': 'pat', 'token': 'acting-pat', 'user_id': 'acting-account'})
+    client.app.state.container.get('credential_provider').get_credential.assert_called_once_with(
+        'acting-account')
 
 
 @pytest.mark.parametrize('code,status', [
@@ -82,6 +85,33 @@ def test_plan_refresh_reports_explicit_errors(setup, code, status):
     assert response.status_code == status, response.text
     assert response.json()['detail']['error'] == code
     assert response.json()['detail']['plan_id'] == 'plan'
+
+
+@pytest.mark.parametrize('path,payload', [
+    ('/admin/v1/projects/plan/refresh', {}),
+    ('/admin/v1/ado-processes/refresh', {}),
+    ('/admin/v1/iterations/browse', {'project': 'Platform'}),
+])
+def test_mock_admin_operations_do_not_acquire_credentials(setup, path, payload):
+    client, store, service, granted, azure = setup
+    granted.add('manage_iterations')
+    container = client.app.state.container
+    container.get('backend').is_remote = False
+    azure.is_remote = False
+    azure.connect.return_value.__enter__.return_value.get_iterations.return_value = {}
+    repository = container.get('task_repository')
+    repository.rebuild_now.return_value = []
+    provider = container.get('credential_provider')
+    provider.get_credential.side_effect = AssertionError('Mock operations must not acquire credentials')
+
+    response = client.post(path, json=payload)
+
+    assert response.status_code == 200, response.text
+    provider.get_credential.assert_not_called()
+    if path == '/admin/v1/projects/plan/refresh':
+        repository.rebuild_now.assert_called_once_with(None)
+    else:
+        azure.connect.assert_called_once_with(None)
 
 
 def test_plan_refresh_rejects_archived_and_unauthorized_plans(setup):

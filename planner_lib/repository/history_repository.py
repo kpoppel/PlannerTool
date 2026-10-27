@@ -56,6 +56,7 @@ class HistoryRepository:
         until: Optional[str] = None,
         page: int = 1,
         per_page: int = 100,
+        credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]:
         """Fetch revision history for a page of tasks.
 
@@ -79,8 +80,9 @@ class HistoryRepository:
             logger.error("user_id is required for fetching history")
             return {'page': page, 'per_page': per_page, 'total': 0, 'tasks': []}
 
-        credential = self._credential_provider.get_credential(user_id)
-        if credential is None:
+        if self._backend.is_remote and credential is None:
+            credential = self._credential_provider.get_credential(user_id)
+        if self._backend.is_remote and credential is None:
             logger.error("No credential for user '%s'; history unavailable", user_id)
             return {'page': page, 'per_page': per_page, 'total': 0, 'tasks': []}
 

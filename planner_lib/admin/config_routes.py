@@ -7,7 +7,6 @@ events-config (event backend selection).
 import asyncio
 from datetime import datetime, timezone
 from planner_lib.backend.errors import AreaNotReadableError, BackendAuthError, BackendUnavailableError
-from planner_lib.backend.port import BackendCredential
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -18,7 +17,7 @@ from planner_lib.middleware.admin import has_admin_access, require_permission
 from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.services.resolver import resolve_service
 from planner_lib.middleware.session import (
-    get_session_context_from_request, get_session_credentials_from_request,
+    get_session_context_from_request, get_session_credential_from_request,
 )
 from planner_lib.admin import schema as admin_schema
 from planner_lib.admin import area_mapping_service
@@ -104,11 +103,8 @@ async def admin_refresh_plan(request: Request, plan_id: str):
         raise HTTPException(status_code=404, detail={'error': 'plan_not_found', 'plan_id': plan_id})
     if plan.get('archived') is True:
         raise HTTPException(status_code=400, detail={'error': 'plan_archived', 'plan_id': plan_id})
-    context = get_session_credentials_from_request(request)
-    credential = BackendCredential(
-        kind='pat',
-        token=context['pat'],
-        user_id=context['account_id'],
+    credential = get_session_credential_from_request(
+        request, backend=resolve_service(request, 'backend'),
     )
     repository = resolve_service(request, 'task_repository')
     try:
@@ -344,16 +340,10 @@ async def admin_browse_iterations(request: Request):
         root_path = payload.get('root_path')
         depth = payload.get('depth', 10)
 
-        context = get_session_credentials_from_request(request)
-        if not context['pat']:
-            raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
-        credential = BackendCredential(
-            kind='pat',
-            token=context['pat'],
-            user_id=context['account_id'],
-        )
-
         azure_svc = resolve_service(request, 'azure_client')
+        credential = get_session_credential_from_request(request, backend=azure_svc)
+        if azure_svc.is_remote and credential is None:
+            raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
         def fetch_iterations():
             """Keep the thread-local Azure connection on the worker."""
@@ -418,13 +408,8 @@ async def admin_refresh_area_mapping(request: Request):
         if not area_path or not isinstance(area_path, str):
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing or invalid area_path'})
 
-        context = get_session_credentials_from_request(request)
-        credential = BackendCredential(
-            kind='pat',
-            token=context['pat'],
-            user_id=context['account_id'],
-        )
         azure_svc = resolve_service(request, 'azure_client')
+        credential = get_session_credential_from_request(request, backend=azure_svc)
         admin_svc = resolve_service(request, 'admin_service')
         try:
             return await asyncio.to_thread(
@@ -444,13 +429,8 @@ async def admin_refresh_area_mapping(request: Request):
 async def admin_refresh_all_area_mappings(request: Request):
     """Refresh mappings for all configured area_paths.  PAT from session."""
     try:
-        context = get_session_credentials_from_request(request)
-        credential = BackendCredential(
-            kind='pat',
-            token=context['pat'],
-            user_id=context['account_id'],
-        )
         azure_svc = resolve_service(request, 'azure_client')
+        credential = get_session_credential_from_request(request, backend=azure_svc)
         admin_svc = resolve_service(request, 'admin_service')
         try:
             return await asyncio.to_thread(

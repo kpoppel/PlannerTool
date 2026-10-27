@@ -147,7 +147,7 @@ class TaskRepository:
         return nullcontext()
 
     def request_refresh(self, credential):
-        if credential is None:
+        if self._backend.is_remote and credential is None:
             raise BackendAuthError('A valid credential is required to refresh tasks')
         if isinstance(self._backend, TaskSnapshotBackend):
             return self._backend.refresh_task_snapshot(
@@ -162,7 +162,7 @@ class TaskRepository:
         return []
 
     def rebuild_now(self, credential):
-        if credential is None:
+        if self._backend.is_remote and credential is None:
             raise BackendAuthError('A valid credential is required to rebuild tasks')
         if isinstance(self._backend, TaskSnapshotBackend):
             tasks = self._backend.rebuild_task_snapshot(
@@ -189,8 +189,8 @@ class TaskRepository:
         if not updates:
             return {'updated': 0, 'errors': []}
 
-        credential = self._credential_provider.get_credential(user_id)
-        if credential is None:
+        credential = self._credential_provider.get_credential(user_id) if self._backend.is_remote else None
+        if self._backend.is_remote and credential is None:
             return {'updated': 0, 'errors': ['No credential available for user']}
 
         total_updated = 0
@@ -225,7 +225,7 @@ class TaskRepository:
             logger.warning("TaskRepository.refresh: cache invalidation failed: %s", exc)
             invalidate_result = {}
 
-        if credential:
+        if credential or not self._backend.is_remote:
             try:
                 self.read(project_id=project_id, credential=credential)
             except Exception as exc:
@@ -238,7 +238,7 @@ class TaskRepository:
     # ------------------------------------------------------------------
 
     def _get_optional_credential(self, user_id: Optional[str]) -> Optional[BackendCredential]:
-        if not user_id:
+        if not user_id or not self._backend.is_remote:
             return None
         try:
             return self._credential_provider.get_credential(user_id)
@@ -273,8 +273,8 @@ class WorkforceTaskRepository(TaskRepository):
         """Validate the entire authored batch before issuing the first external mutation."""
         if not updates:
             return {'updated': 0, 'errors': []}
-        credential = self._credential_provider.get_credential(user_id)
-        if credential is None:
+        credential = self._credential_provider.get_credential(user_id) if self._backend.is_remote else None
+        if self._backend.is_remote and credential is None:
             raise BackendAuthError('No credential available for publication')
         with self._storage.transaction(), self._task_storage.transaction():
             catalogue = TeamCatalogue(self._storage.load('config', 'teams'))

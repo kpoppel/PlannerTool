@@ -2,9 +2,11 @@ import asyncio
 
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_credentials_from_request
+from planner_lib.middleware.session import (
+    get_session_context_from_request,
+    get_session_credential_from_request,
+)
 from planner_lib.services.resolver import resolve_service
-from planner_lib.backend.port import BackendCredential
 import logging
 
 router = APIRouter()
@@ -22,14 +24,14 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
     logger.debug("Calculating feature-level cost details")
     try:
         from planner_lib.cost import build_cost_schema
-        ctx = get_session_credentials_from_request(request)
+        ctx = get_session_context_from_request(request)
 
         features = (payload or {}).get('features')
         if features is None:
             task_repo = resolve_service(request, 'task_repository')
-            _pat = ctx.get('pat')
-            account_id = ctx['account_id']
-            cred = BackendCredential(kind='pat', token=_pat, user_id=account_id) if _pat else None
+            cred = get_session_credential_from_request(
+                request, backend=resolve_service(request, 'backend'),
+            )
             features = await asyncio.to_thread(task_repo.read, credential=cred)
 
         ctx = dict(ctx)
@@ -54,14 +56,15 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
 @require_session
 async def api_cost_get(request: Request):
     logger.debug("Fetching calculated cost")
-    ctx = get_session_credentials_from_request(request)
-    pat = ctx['pat']
+    ctx = get_session_context_from_request(request)
 
     try:
         from planner_lib.cost import build_cost_schema
 
         task_repo = resolve_service(request, 'task_repository')
-        cred = BackendCredential(kind='pat', token=pat, user_id=ctx['account_id']) if pat else None
+        cred = get_session_credential_from_request(
+            request, backend=resolve_service(request, 'backend'),
+        )
         features = await asyncio.to_thread(task_repo.read, credential=cred)
 
         ctx = dict(ctx)

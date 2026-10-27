@@ -31,9 +31,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from planner_lib.azure.AzureClient import AzureClient
+from planner_lib.backend.port import BackendCredential
 from planner_lib.storage.base import StorageBackend as StorageProtocol
 
 logger = logging.getLogger(__name__)
+
+_MOCK_CREDENTIAL = BackendCredential(kind='pat', token='mock-pat', user_id='mock-backend')
 
 
 # ---------------------------------------------------------------------------

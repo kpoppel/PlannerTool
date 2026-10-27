@@ -5,9 +5,8 @@ from fastapi import APIRouter, HTTPException, Request
 
 from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.azure.catalogue import CatalogueError
-from planner_lib.backend.port import BackendCredential
 from planner_lib.middleware.admin import require_permission
-from planner_lib.middleware.session import get_session_credentials_from_request
+from planner_lib.middleware.session import get_session_credential_from_request
 from planner_lib.services.resolver import resolve_service
 
 router = APIRouter()
@@ -36,12 +35,7 @@ async def admin_resolve_ado_process(request: Request):
             return {'content': next(entry for entry in content['processes']
                                     if entry['id'] == process['id'])}
     azure = resolve_service(request, 'azure_client')
-    context = get_session_credentials_from_request(request)
-    credential = BackendCredential(
-        kind='pat',
-        token=context['pat'],
-        user_id=context['account_id'],
-    )
+    credential = get_session_credential_from_request(request, backend=azure)
     known = {process['id']: process for process in stored}
 
     def fetch():
@@ -74,12 +68,7 @@ async def admin_refresh_ado_processes(request: Request):
     plan_projects = {plan['area_path'].replace('/', '\\').lstrip('\\').split('\\')[0].casefold()
                      for plan in plans}
     azure = resolve_service(request, 'azure_client')
-    context = get_session_credentials_from_request(request)
-    credential = BackendCredential(
-        kind='pat',
-        token=context['pat'],
-        user_id=context['account_id'],
-    )
+    credential = get_session_credential_from_request(request, backend=azure)
 
     def fetch():
         with azure.connect(credential) as client:

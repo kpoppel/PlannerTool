@@ -78,16 +78,20 @@ def test_repository_cost_requests_preserve_allocation_graph_and_diagnostics(clie
         response = client.post('/api/cost/features', json={}, headers={'Accept': 'application/json'})
     assert response.status_code == 200
     assert estimate.call_args.args[0]['features'] == features
+    assert 'pat' not in estimate.call_args.args[0]
+    assert 'token' not in estimate.call_args.args[0]
     assert response.json()['unknown_teams'] == unknown
 
 
 @pytest.mark.parametrize('pat', [None, 'updated-token'])
 @pytest.mark.parametrize('method', ['post', 'get'])
-def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monkeypatch, pat, method):
+@pytest.mark.parametrize('remote', [False, True])
+def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monkeypatch, pat, method, remote):
     import logging
 
     email = "user@example.com"
     container = client.app.state.container
+    container.register_singleton('backend', SimpleNamespace(is_remote=remote))
     account_mgr = container.get("account_manager")
     session_mgr = container.get("session_manager")
     account_mgr.update_credentials(AccountCredentialsPayload(email=email))
@@ -118,10 +122,13 @@ def test_cost_uses_live_account_pat_without_session_refresh(client, caplog, monk
             read_tasks.assert_called_once()
 
     assert response.status_code == 200, response.text
-    load_account.assert_called_once_with(email)
+    if method == 'post' or not remote:
+        load_account.assert_not_called()
+    else:
+        load_account.assert_called_once_with(email)
     if method == 'get':
         credential = read_tasks.call_args.kwargs['credential']
-        if pat is None:
+        if pat is None or not remote:
             assert credential is None
         else:
             assert credential['token'] == pat

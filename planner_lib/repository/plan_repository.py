@@ -97,7 +97,7 @@ class PlanRepository:
     # ------------------------------------------------------------------
 
     def _get_optional_credential(self, user_id: Optional[str]) -> Optional[BackendCredential]:
-        if not user_id:
+        if not user_id or not self._backend.is_remote:
             return None
         try:
             return self._credential_provider.get_credential(user_id)

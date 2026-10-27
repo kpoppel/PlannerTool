@@ -9,7 +9,7 @@ a FakeAzureClient without making real ADO connections.
 """
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -44,6 +44,8 @@ class FakeAzureClient:
 class FakeAzureService:
     """Stand-in for the azure_client service registered in the DI container."""
 
+    is_remote = True
+
     def __init__(self, inner_client):
         self._inner = inner_client
 
@@ -55,9 +57,11 @@ class FakeAzureService:
 def _register_azure_services(authenticated_client, pat='test-pat', inner_client=None):
     """Register explicit session and Azure service stubs on the test client."""
     fake_client = inner_client or FakeAzureClient()
+    credential = None if not pat else {'kind': 'pat', 'token': pat, 'user_id': 'test-account'}
     register_services_on_client(authenticated_client, {
         'session_manager': FakeSessionMgr(),
-        'account_manager': SimpleNamespace(load=lambda email: {'pat': pat}, pat_error=lambda email: None),
+        'account_manager': SimpleNamespace(pat_error=lambda email: None),
+        'credential_provider': SimpleNamespace(get_credential=Mock(return_value=credential)),
         'azure_client': FakeAzureService(fake_client),
     })
     return fake_client
@@ -96,6 +100,8 @@ def test_browse_projects_returns_project_list(authenticated_client):
     assert 'projects' in data
     assert 'ProjectA' in data['projects']
     assert 'ProjectB' in data['projects']
+    provider = authenticated_client.app.state.container.get('credential_provider')
+    provider.get_credential.assert_called_once_with('test-account')
 
 
 def test_browse_projects_missing_pat_returns_401(authenticated_client):
@@ -104,6 +110,20 @@ def test_browse_projects_missing_pat_returns_401(authenticated_client):
     assert resp.status_code == 401
     # access_denied_response puts the error dict directly at the root (not under 'detail')
     assert resp.json()['error'] == 'missing_pat'
+
+
+def test_local_task_backend_does_not_bypass_live_wiki_credentials(authenticated_client):
+    _register_azure_services(authenticated_client, pat=None)
+    register_services_on_client(authenticated_client, {'backend': SimpleNamespace(is_remote=False)})
+
+    with patch('planner_lib.azure.api._live_client_or_raise') as connect:
+        response = authenticated_client.get('/api/azure/wikis', params={
+            'project': 'Example', 'org_url': 'example',
+        }, headers={'Accept': 'application/json'})
+
+    assert response.status_code == 401
+    assert response.json()['error'] == 'missing_pat'
+    connect.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +180,8 @@ def test_cache_refresh_uses_active_projects_and_rejects_archived_areas(authentic
             } if key == 'projects' else default
 
     class FakeRefreshBackend:
+        is_remote = True
+
         def __init__(self):
             self.fetch_calls = []
 

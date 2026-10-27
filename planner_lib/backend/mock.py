@@ -21,19 +21,13 @@ from typing import Any, Dict, List, Optional
 from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
 from planner_lib.backend.azure import AzureDevOpsBackend
+from planner_lib.azure.AzureMockClient import _MOCK_CREDENTIAL
 from planner_lib.azure.catalogue import imported_type_index
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.util import project_id_for_area_path
 
 logger = logging.getLogger(__name__)
-
-_MOCK_CREDENTIAL = BackendCredential(
-    kind='pat',
-    token='mock-pat',
-    user_id='mock-backend',
-)
-
 
 class _MockBackendBase(AzureDevOpsBackend):
     """Shared helpers for both mock backends."""

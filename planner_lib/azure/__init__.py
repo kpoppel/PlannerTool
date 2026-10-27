@@ -76,13 +76,20 @@ class AzureService:
 
     def connect(
         self,
-        credential: BackendCredential,
+        credential: BackendCredential | None,
     ) -> ContextManager[AzureServiceProtocol]:
         """Return the concrete client's context-manager bound to a credential.
 
         Callers should use ``with service.connect(credential) as client:``.
         """
+        if not self.requires_pat:
+            from planner_lib.azure.AzureMockClient import _MOCK_CREDENTIAL
+            credential = _MOCK_CREDENTIAL
         return self._client.connect(credential)
+
+    @property
+    def is_remote(self) -> bool:
+        return self.requires_pat
 
     @property
     def requires_pat(self) -> bool:

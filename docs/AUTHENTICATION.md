@@ -187,6 +187,16 @@ credentials. Each server worker reuses only the Fernet cryptographic setup for
 the configured encryption secret, replacing it if that secret changes. This does
 not re-encrypt existing PATs when rotating the secret.
 
+Local/static and mock work-item operations do not acquire account credentials,
+including task reads, refreshes, publication, markers, history, and cost inputs.
+Configured iteration snapshots are local reads. Sessions and permissions remain
+required. ADO mocks retain the live client's credential validation, connection
+lifecycle, and data-processing path, replacing only the SDK connection and its
+responses. Mock composition supplies an explicit synthetic credential instead
+of acquiring a user's PAT. Explicitly live project/wiki browsing and wiki-backed
+events still use the acting account's credential independently of the selected
+work-item backend.
+
 With remote task caching enabled, all registered users are assumed authorized
 for every configured project and share one complete task snapshot. A stale task
 read or explicit task refresh may start a background job using that request's

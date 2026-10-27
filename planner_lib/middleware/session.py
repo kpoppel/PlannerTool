@@ -17,6 +17,7 @@ import os
 
 from planner_lib.storage import StorageBackend
 from planner_lib.accounts.interfaces import AccountManagerProtocol
+from planner_lib.backend.port import BackendCredential
 from planner_lib.services.resolver import resolve_service
 
 logger = logging.getLogger(__name__)
@@ -146,17 +147,21 @@ def get_session_context_from_request(request: Request) -> dict[str, Any]:
     return context
 
 
-def get_session_credentials_from_request(request: Request) -> dict[str, Any]:
-    """Read current account credentials once, isolated to this request's session."""
+def get_session_credential_from_request(request: Request, *, backend=None) -> Optional[BackendCredential]:
+    """Resolve the authenticated UUID's credential once within this request."""
     context = get_session_context_from_request(request)
-    sid = request.cookies[SESSION_COOKIE]
-    cached = getattr(request.state, '_planner_credentials', None)
+    if backend is not None and not backend.is_remote:
+        return None
+    sid = request.cookies.get(SESSION_COOKIE)
+    cached = getattr(request.state, '_planner_credential', None)
     if cached is not None and cached[0] == sid:
         return cached[1]
-    accounts = resolve_service(request, 'account_manager')
-    credentials = {**context, 'pat': accounts.load(context['email'])['pat']}
-    request.state._planner_credentials = (sid, credentials)
-    return credentials
+
+    provider = resolve_service(request, 'credential_provider')
+    credential = provider.get_credential(context['account_id'])
+
+    request.state._planner_credential = (sid, credential)
+    return credential
 
 
 def get_session_id_from_request(request: Request) -> str:
@@ -262,7 +267,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
                                     samesite='lax', max_age=90 * 86400,
                                     secure=request.url.scheme == 'https')
         request.scope['state'].pop('_planner_session', None)
-        request.scope['state'].pop('_planner_credentials', None)
+        request.scope['state'].pop('_planner_credential', None)
         return response
 
 

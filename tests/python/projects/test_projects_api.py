@@ -82,10 +82,17 @@ def _make_task_repository():
 
 def _make_session_mgr(authenticated_client, pat='token', email='test@example.com', account_id='test-account-id'):
     """Session identity stub with credentials persisted in the account manager."""
+    from types import SimpleNamespace
     from planner_lib.accounts.config import AccountCredentialsPayload
     authenticated_client.app.state.container.get('account_manager').update_credentials(
         AccountCredentialsPayload(email=email, pat=pat)
     )
+    register_service_on_client(authenticated_client, 'credential_provider', SimpleNamespace(
+        get_credential=lambda user_id: (
+            {'kind': 'pat', 'token': pat, 'user_id': user_id} if pat else None
+        ),
+    ))
+    register_service_on_client(authenticated_client, 'backend', SimpleNamespace(is_remote=True))
     class FakeSessionMgr:
         def get(self, sid):
             return {'account_id': account_id, 'email': email}
@@ -112,6 +119,8 @@ def test_backend_credential_uses_account_id(authenticated_client):
 
 def _make_backend_with_warning():
     class BackendWithWarning:
+        is_remote = True
+
         def consume_diagnostics(self, user_id=None):
             return [{
                 'code': 'tasks_stale_invalid_pat',
@@ -267,7 +276,7 @@ def test_tasks_returns_every_diagnostic_without_private_metadata(authenticated_c
         'code': 'schedule_dates_missing', 'severity': 'info', 'message': '1 schedule has no dates.',
         'user_id': 'test-account-id', 'ts': 124,
     }]
-    backend = SimpleNamespace(consume_diagnostics=MagicMock(return_value=diagnostics))
+    backend = SimpleNamespace(is_remote=True, consume_diagnostics=MagicMock(return_value=diagnostics))
     register_service_on_client(authenticated_client, 'task_repository', _make_task_repository())
     register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
     register_service_on_client(authenticated_client, 'backend', backend)

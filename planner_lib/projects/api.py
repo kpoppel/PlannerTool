@@ -3,9 +3,12 @@ import json
 
 from fastapi import APIRouter, Request, Body, HTTPException, Response
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_credentials_from_request
+from planner_lib.middleware.session import (
+    get_session_context_from_request,
+    get_session_credential_from_request,
+)
 from planner_lib.services.resolver import resolve_service
-from planner_lib.backend.port import BackendCredential, DiagnosticBackend
+from planner_lib.backend.port import DiagnosticBackend
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 import logging
 
@@ -14,13 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 def _get_credential(request: Request):
-    """Build a BackendCredential from the current session's PAT and account ID."""
-    context = get_session_credentials_from_request(request)
-    pat = context['pat']
-    account_id = context['account_id']
-    if not pat:
+    """Resolve an operation credential and the authenticated account UUID."""
+    credential = get_session_credential_from_request(
+        request, backend=resolve_service(request, 'backend'),
+    )
+    account_id = get_session_context_from_request(request)['account_id']
+    if credential is None:
         return None, account_id
-    return BackendCredential(kind='pat', token=pat, user_id=account_id), account_id
+    return credential, account_id
 
 
 @router.get('/teams')
@@ -115,7 +119,7 @@ async def api_tasks_refresh(request: Request, response: Response):
 async def api_markers(request: Request):
     logger.debug("Fetching markers")
     plan_repo = resolve_service(request, 'plan_repository')
-    _credential, account_id = _get_credential(request)
+    account_id = get_session_context_from_request(request)['account_id']
     project_id = request.query_params.get('project')
     return await asyncio.to_thread(
         plan_repo.list_markers, project_id=project_id or None, user_id=account_id
@@ -128,7 +132,7 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
     logger.debug("Updating tasks: %d items", len(payload or []))
 
     task_repo = resolve_service(request, 'task_repository')
-    _credential, account_id = _get_credential(request)
+    account_id = get_session_context_from_request(request)['account_id']
     try:
         result = await asyncio.to_thread(task_repo.write, payload or [], user_id=account_id)
     except ValueError as exc:
@@ -163,14 +167,7 @@ async def api_config_iterations(request: Request):
     Returns:
         JSON with project-keyed effective iteration sets.
     """
-    # Only require a PAT when talking to the live Azure DevOps endpoint.
-    # Mock clients (fixture replay and synthetic generator) work without one.
-    azure_client = resolve_service(request, 'azure_client')
-    pat_required = getattr(azure_client, 'requires_pat', True)
-    credential, account_id = _get_credential(request)
-    if pat_required and not credential:
-        raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
-
+    account_id = get_session_context_from_request(request)['account_id']
     iteration_repo = resolve_service(request, 'iteration_repository')
     try:
         iteration_sets = {}
@@ -243,7 +240,7 @@ async def api_history_tasks(request: Request):
         logger.debug("Fetching task history")
 
         credential, account_id = _get_credential(request)
-        if not credential:
+        if resolve_service(request, 'backend').is_remote and credential is None:
             raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
         # Get query parameters
@@ -282,6 +279,7 @@ async def api_history_tasks(request: Request):
             until=until,
             page=page,
             per_page=per_page,
+            credential=credential,
         )
 
         logger.debug("Returning %d tasks with history", len(result.get('tasks', [])))

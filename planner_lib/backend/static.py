@@ -58,6 +58,7 @@ class StaticBackend(BackendPort):
 
     # Feature flag key in server_config feature_flags that activates this backend.
     FEATURE_FLAG: str = 'use_static_backend'
+    is_remote = False
 
     @classmethod
     def config_schema(cls) -> Dict[str, Any]:
