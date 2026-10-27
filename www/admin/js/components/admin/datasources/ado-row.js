@@ -99,6 +99,27 @@ export function renderAdoSubForm(comp, type, errs) {
   if (type === 'ado_live') {
     return html`
       <div class="sub-form">
+        <div class="field full" data-authentication-settings>
+          <label for="ado-authentication-mode">Authentication mode (preview)</label>
+          <select id="ado-authentication-mode" class="backend-select"
+            .value=${comp._draftAuthMode}
+            aria-describedby="ado-authentication-status"
+            @change=${(event) => { comp._draftAuthMode = event.target.value; }}
+          >
+            <option value="pat">PAT</option>
+            <option value="entra">Entra ID</option>
+          </select>
+          <div id="ado-authentication-status" role="status">
+            Active: ${comp.authenticationSettings.activeMode === 'pat' ? 'PAT' : 'Entra ID'}.
+            Selected: ${comp._draftAuthMode === 'pat' ? 'PAT' : 'Entra ID'}.
+          </div>
+          ${comp._draftAuthMode !== comp.authenticationSettings.activeMode ? html`
+            <div class="desc" id="ado-authentication-unavailable">
+              ${comp.authenticationSettings.activationUnavailableReason}
+            </div>
+            <button disabled aria-describedby="ado-authentication-unavailable">Activate Entra ID</button>
+          ` : ''}
+        </div>
         <div class="field full">
           <label>Organization Name *</label>
           <div class="desc">Azure DevOps organization name (e.g. "MyCompany").</div>

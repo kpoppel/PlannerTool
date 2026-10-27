@@ -1,6 +1,69 @@
 import { test, expect } from '@playwright/test';
 import { fulfillAccountApi } from './helpers.js';
 
+test('ADO authentication preview keeps PAT active and never saves the Entra draft', async ({ page }, testInfo) => {
+  const saves = [];
+  const authRequests = [];
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.includes('/auth/')) authRequests.push(request.url());
+  });
+  await page.route('**/api/**', route => fulfillAccountApi(route, {
+    email: 'administrator@example.test', permissions: ['admin'],
+  }));
+  await page.route('**/admin/check', route => route.fulfill({ json: {
+    ok: true, permissions: ['admin'],
+  } }));
+  await page.route('**/admin/v1/**', route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() !== 'GET') saves.push({ path, payload: request.postDataJSON() });
+    let content = {};
+    if (path.endsWith('/ado')) content = { organization_url: 'example', feature_flags: {} };
+    if (path.endsWith('/events-config')) content = { event_backend: 'local' };
+    if (path.endsWith('/groups-config')) content = { groups_backend: 'local' };
+    if (path.endsWith('/system')) content = { server_name: 'Fixture', feature_flags: {} };
+    return route.fulfill({ json: { ok: true, content } });
+  });
+  await page.goto('/admin/#data-sources');
+  const editor = page.locator('admin-data-sources');
+  const mode = editor.getByLabel('Authentication mode (preview)');
+  const status = editor.locator('#ado-authentication-status');
+  const backend = editor.locator('select.backend-select').first();
+  await expect(mode).toHaveValue('pat');
+  await expect(status).toContainText('Active: PAT');
+  const initialAuthRequests = [...authRequests];
+  for (const value of ['ado_mock_fixture', 'ado_mock_generator', 'ado_static']) {
+    await backend.selectOption(value);
+    await expect(mode).toHaveCount(0);
+  }
+  await backend.selectOption('ado_live');
+  await mode.selectOption('entra');
+  await expect(status).toContainText('Active: PAT');
+  await expect(status).toContainText('Selected: Entra ID');
+  await expect(editor.getByRole('button', { name: 'Activate Entra ID' })).toBeDisabled();
+  await expect(editor.locator('#ado-authentication-unavailable')).toContainText('activation is unavailable');
+  expect(saves).toEqual([]);
+  expect(authRequests).toEqual(initialAuthRequests);
+  await page.screenshot({ path: testInfo.outputPath('ado-authentication-preview-desktop.png'), fullPage: true });
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(mode).toHaveValue('pat');
+  await mode.selectOption('entra');
+  await page.reload();
+  await expect(mode).toHaveValue('pat');
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor.locator('.status')).toHaveText('Saved.');
+  const patPayloads = [...saves];
+  await mode.selectOption('entra');
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor.locator('.status')).toContainText('Authentication selection was not applied.');
+  expect(saves.slice(4)).toEqual(patPayloads);
+  await expect(status).toContainText('Active: PAT');
+  expect(errors).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test('Global display settings reorder processes and tiers with explicit saving', async ({ page }, testInfo) => {
   const states = [{ name: 'New', category: 'Proposed', order: 1 },
     { name: 'Done', category: 'Completed', order: 2 },

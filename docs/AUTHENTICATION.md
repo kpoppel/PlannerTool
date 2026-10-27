@@ -79,6 +79,22 @@ Enrollment and save-key screens retain a contextual enrollment-help link.
 
 ## Azure DevOps credentials
 
+### Authentication mode preview
+
+**Admin > Data Sources** shows an authentication mode selector only for the live
+Azure DevOps backend. PAT remains active. Selecting Entra ID changes only the
+in-memory draft; activation is disabled until the authentication integration and
+transition checks are complete. Cancel or reopening the panel discards the draft.
+Save still saves ordinary data-source settings, without persisting or activating
+the authentication selection. It does not purge PATs, log users out or change
+enrollment behavior.
+
+The component accepts a non-persisted `authenticationSettings` model containing
+`activeMode` (`pat` or `entra`) and `activationUnavailableReason`. Tests can inject
+synthetic settings without an authentication service. The production model reports
+PAT; this presentation-only contract cannot authenticate users or enable activation.
+No configuration API or stored data shape changes are introduced by this preview.
+
 PATs are required only when the live Azure DevOps backend is selected. Enrollment
 and User Management require a PAT for each new live-ADO account. Selecting live
 ADO also activates this requirement for existing accounts. The server checks

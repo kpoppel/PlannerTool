@@ -86,6 +86,11 @@ function resultErrorMessage(result, fallback = 'Request failed') {
   return fallback;
 }
 
+export const PAT_AUTHENTICATION_SETTINGS = Object.freeze({
+  activeMode: 'pat',
+  activationUnavailableReason: 'Entra ID activation is unavailable until authentication integration and transition checks are complete.',
+});
+
 export class DataSources extends LitElement {
   static styles = [
     backendSelectStyles,
@@ -191,6 +196,8 @@ export class DataSources extends LitElement {
   ];
 
   static properties = {
+    authenticationSettings: { attribute: false },
+    _draftAuthMode:        { type: String, state: true },
     _loading:             { type: Boolean, state: true },
 
     // ---- Plan Events (ado_wiki) ----------------------------------------
@@ -252,6 +259,8 @@ export class DataSources extends LitElement {
 
   constructor() {
     super();
+    this.authenticationSettings = PAT_AUTHENTICATION_SETTINGS;
+    this._draftAuthMode = this.authenticationSettings.activeMode;
     this._loading             = false;
 
     // Plan Events
@@ -312,11 +321,18 @@ export class DataSources extends LitElement {
     this._load();
   }
 
+  willUpdate(changedProperties) {
+    if (changedProperties.has('authenticationSettings')) {
+      this._draftAuthMode = this.authenticationSettings.activeMode;
+    }
+  }
+
   // ------------------------------------------------------------------
   // Data loading
   // ------------------------------------------------------------------
 
   async _load() {
+    this._draftAuthMode = this.authenticationSettings.activeMode;
     this._loading = true;
     try {
       const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult] = await Promise.all([
@@ -535,7 +551,9 @@ export class DataSources extends LitElement {
       this._adoContent          = adoPayload;
       this._systemContent       = sysPayload;
 
-      this._statusMsg  = 'Saved.';
+      this._statusMsg  = this._adoBackendType === 'ado_live' &&
+        this._draftAuthMode !== this.authenticationSettings.activeMode
+        ? 'Data sources saved. Authentication selection was not applied.' : 'Saved.';
       this._statusType = 'success';
 
     } catch (e) {
@@ -640,6 +658,7 @@ export class DataSources extends LitElement {
 
         <div class="actions">
           <button class="primary" @click=${this._save}>Save</button>
+          <button @click=${this._load}>Cancel</button>
           <span class="status ${this._statusType}">${this._statusMsg}</span>
         </div>
 
