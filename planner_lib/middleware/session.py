@@ -210,9 +210,24 @@ class SessionMiddleware(BaseHTTPMiddleware):
             '/admin/check', '/admin/v1/ado', '/admin/v1/events-config',
             '/admin/v1/groups-config', '/admin/v1/system',
         }
+        cached_or_local_read_routes = {
+            '/api/teams', '/api/projects', '/api/tasks', '/api/markers',
+            '/api/iterations', '/api/history/tasks', '/api/cost', '/api/cost/teams',
+            '/api/cache/load', '/api/cache/metrics', '/api/scenario', '/api/view',
+            '/api/groups', '/api/plugins/config', '/api/plugins/schemas',
+            '/api/v1/server/projects', '/api/v1/server/teams', '/api/v1/server/tasks',
+        }
+        read_only_local_or_cached = (
+            request.method in ('GET', 'HEAD')
+            and (
+                route_path in cached_or_local_read_routes
+                or route_path.startswith('/admin/v1/')
+            )
+        )
         protected_api = route_path.startswith(('/api/', '/admin/v1/')) or route_path == '/admin/check'
         if (protected_api and route_path not in credential_routes
                 and route_path not in local_admin_config_routes
+                and not read_only_local_or_cached
                 and request.cookies.get(SESSION_COOKIE)):
             try:
                 context = get_session_context_from_request(request)

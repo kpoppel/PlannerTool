@@ -205,7 +205,7 @@ def test_tasks_list_and_project_param(authenticated_client):
     assert task_repo.last_read_args['project_id'] == '42'
 
 
-def test_tasks_routes_stale_pat_failure_to_credential_repair(authenticated_client):
+def test_tasks_returns_stale_data_with_pat_warning(authenticated_client):
     import json
 
     task_repo = _make_task_repository()
@@ -214,8 +214,10 @@ def test_tasks_routes_stale_pat_failure_to_credential_repair(authenticated_clien
     register_service_on_client(authenticated_client, 'backend', _make_backend_with_warning())
 
     r = authenticated_client.get('/api/tasks')
-    assert r.status_code == 403
-    assert r.json() == {'error': 'pat_invalid'}
+    assert r.status_code == 200
+    assert len(r.json()) == 2
+    diagnostics = json.loads(r.headers['X-Backend-Diagnostics'])
+    assert diagnostics[0]['code'] == 'tasks_stale_invalid_pat'
 
 
 def test_tasks_reports_shared_snapshot_freshness(authenticated_client):
@@ -411,4 +413,3 @@ def test_iterations_without_filter_returns_set_id_keyed_payload(authenticated_cl
             }
         },
     }
-

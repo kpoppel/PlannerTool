@@ -319,8 +319,12 @@ def test_iteration_browse_connects_fetches_and_closes_on_same_worker(azure_fails
 
     class AzureService:
         @contextmanager
-        def connect(self, pat):
-            assert pat == 'test-pat'
+        def connect(self, credential):
+            assert credential == {
+                'kind': 'pat',
+                'token': 'test-pat',
+                'user_id': 'test-account-id',
+            }
             lifecycle_threads.append(threading.get_ident())
             state.connected = True
             try:
@@ -340,7 +344,7 @@ def test_iteration_browse_connects_fetches_and_closes_on_same_worker(azure_fails
     class Session:
         def get(self, sid):
             assert sid == 'iteration-session'
-            return {'email': 'test@example.com'}
+            return {'account_id': 'test-account-id', 'email': 'test@example.com'}
 
     services = {
         'session_manager': Session(), 'azure_client': AzureService(),

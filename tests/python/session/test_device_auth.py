@@ -43,11 +43,12 @@ def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monke
     storage = app.state.container.get('storage')
     storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
 
-    for path in ('/api/teams', '/admin/v1/projects', '/admin/v1/ado-processes',
-                 '/api/azure/area-paths?project=Example'):
+    for path in ('/api/azure/area-paths?project=Example',):
         response = client.get(path)
         assert response.status_code == 403
         assert response.json()['error'] == 'pat_required'
+    assert client.get('/admin/v1/projects').status_code == 200
+    assert client.get('/admin/v1/ado-processes').status_code == 200
     assert client.get('/admin/check').json() == {'ok': True, 'permissions': ['admin']}
     for path in ('/admin/v1/ado', '/admin/v1/events-config',
                  '/admin/v1/groups-config', '/admin/v1/system'):
@@ -127,7 +128,7 @@ def test_ado_auth_failure_routes_to_pat_repair_not_enrollment(client, app, monke
 
     monkeypatch.setattr(repository, 'read', reject)
     azure = app.state.container.get('azure_client')
-    monkeypatch.setattr(azure, 'connect', lambda pat: nullcontext(SimpleNamespace(
+    monkeypatch.setattr(azure, 'connect', lambda credential: nullcontext(SimpleNamespace(
         get_area_paths=reject, get_iterations=reject,
     )))
     if operation == 'tasks':
@@ -141,6 +142,35 @@ def test_ado_auth_failure_routes_to_pat_repair_not_enrollment(client, app, monke
     assert client.get('/admin/check').status_code == 200
     assert client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'new-pat'}).status_code == 200
     assert client.get('/admin/check').status_code == 200
+
+
+def test_invalid_pat_keeps_local_admin_and_cached_task_reads_available(
+    client, app, monkeypatch,
+):
+    from planner_lib.azure.AzureClient import AzureClient
+
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    client.post('/api/auth/enroll', json={'email': 'reader@example.com', 'name': 'Reader'})
+    storage = app.state.container.get('storage')
+    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    client.post('/api/config', json={'email': 'reader@example.com', 'pat': 'valid-pat'})
+    app.state.container.get('account_manager').reject_pat('reader@example.com', 'valid-pat')
+
+    task_repository = app.state.container.get('task_repository')
+    monkeypatch.setattr(task_repository, 'read', lambda **kwargs: [{'id': 'cached-task'}])
+    monkeypatch.setattr(task_repository, 'snapshot_diagnostics', lambda: [])
+
+    assert client.get('/admin/v1/projects').status_code == 200
+    response = client.get('/api/tasks')
+    assert response.status_code == 200
+    assert response.json() == [{'id': 'cached-task'}]
+
+    rejected_refresh = client.post('/api/tasks/refresh')
+    assert rejected_refresh.status_code == 403
+    assert rejected_refresh.json()['error'] == 'pat_invalid'
+    rejected_browse = client.get('/api/azure/area-paths?project=Example')
+    assert rejected_browse.status_code == 403
+    assert rejected_browse.json()['error'] == 'pat_invalid'
 
 
 @pytest.mark.parametrize('operation', ['repair', 'create'])

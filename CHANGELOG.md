@@ -23,6 +23,7 @@ This version adds EntraID authentication.
 ### Changed
 ### Fixed
 - Keep authenticated administrators' local configuration access available without an Azure DevOps PAT, and make PAT recovery nonblocking and explicitly actionable.
+- Serve local configuration and cached user data when a PAT is invalid; keep live Azure DevOps reads and refreshes gated.
 
 ## [v5.1.0] - 2026-10-26
 ### Added
