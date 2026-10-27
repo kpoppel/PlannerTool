@@ -5,15 +5,19 @@ import { ConfigEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { showAccountDeletionDialog } from './AuthDialog.lit.js';
 import { cmd, sel } from '../application/imports.js';
+import { AuthPresentationController } from './AuthStatus.lit.js';
 
 class ConfigModal extends LitElement {
   static properties = {
+    authentication: { attribute: false },
     open: { type: Boolean },
     _signingOut: { state: true },
   };
 
   constructor() {
     super();
+    this.authentication = null;
+    new AuthPresentationController(this);
     this.open = false;
     this._signingOut = false;
     this._deletionDialog = null;
@@ -40,7 +44,7 @@ class ConfigModal extends LitElement {
     const emailInput = this._qs('#configEmail');
     const autosaveInput = this._qs('#autosaveInterval');
     const storedEmail = await dataService.getLocalPref('user.email');
-    if (storedEmail) emailInput.value = storedEmail;
+    if (storedEmail && this.authentication === null) emailInput.value = storedEmail;
     const storedAutosave = await dataService.getLocalPref('autosave.interval');
     if (storedAutosave !== undefined && autosaveInput)
       autosaveInput.value = storedAutosave;
@@ -50,6 +54,11 @@ class ConfigModal extends LitElement {
 
   async _signOut() {
     if (this._signingOut) return;
+    if (this.authentication !== null) {
+      if (!window.confirm('Sign out of this PlannerTool instance?')) return;
+      await this.authentication.logout();
+      return;
+    }
     if (!window.confirm('Sign out of this browser? PlannerTool preferences, cached data, and local drafts will be removed. Save your work first. You will need your current account key to enroll again.')) return;
     this._signingOut = true;
     const status = this._qs('#configStatus');
@@ -66,6 +75,11 @@ class ConfigModal extends LitElement {
 
   async _deleteAccount() {
     if (this._signingOut || (this._deletionDialog && this._deletionDialog.isConnected)) return;
+    if (this.authentication !== null) {
+      if (!window.confirm('Delete your local PlannerTool account?')) return;
+      await this.authentication.deleteAccount();
+      return;
+    }
     this._signingOut = true;
     try {
       const response = await fetch(`${window.APP_BASE_URL}/api/auth/me`, {
@@ -83,6 +97,9 @@ class ConfigModal extends LitElement {
   }
 
   render() {
+    const capabilities = this.authentication === null
+      ? { pat: true, enrollment: true, logout: true, deleteAccount: true }
+      : this.authentication.state.capabilities;
     return html`
       <modal-lit wide>
         <div slot="header"><h3>Configuration</h3></div>
@@ -148,19 +165,22 @@ class ConfigModal extends LitElement {
             }
           </style>
           <form id="configForm" class="config-form">
+            ${this.authentication === null ? '' : html`
+              <auth-status .authentication=${this.authentication}></auth-status>`}
             <div class="form-row">
               <label for="configEmail">Account email</label>
               <output id="configEmail" class="account-email"></output>
             </div>
-            <div class="form-row">
+            ${capabilities.pat ? html`<div class="form-row">
               <label for="configPat">Personal Access Token (PAT)</label>
               <input type="password" id="configPat" placeholder="••••••••" />
-            </div>
-            <div class="form-row">
+            </div>` : ''}
+            ${capabilities.enrollment ? html`<div class="form-row">
               <label>Remembered browsers</label>
-              <button type="button" id="deviceListBtn" class="btn" ?disabled=${this._signingOut}>Refresh device list</button>
+              <button type="button" id="deviceListBtn" class="btn" ?disabled=${this._signingOut}
+                @click=${this._onDeviceList}>Refresh device list</button>
               <div id="deviceList" class="status"></div>
-            </div>
+            </div>` : ''}
             <div class="form-row">
               <label for="autosaveInterval">Autosave interval (minutes, 0=off)</label>
               <input
@@ -197,13 +217,52 @@ class ConfigModal extends LitElement {
           </form>
         </div>
         <div slot="footer" class="modal-footer">
-          <button id="signOutBtn" class="btn" ?disabled=${this._signingOut} @click=${this._signOut}>Sign out</button>
-          <button id="deleteAccountBtn" class="btn danger" ?disabled=${this._signingOut} @click=${this._deleteAccount}>Delete account</button>
+          ${capabilities.logout ? html`<button id="signOutBtn" class="btn" ?disabled=${this._signingOut} @click=${this._signOut}>Sign out</button>` : ''}
+          ${capabilities.deleteAccount ? html`<button id="deleteAccountBtn" class="btn danger" ?disabled=${this._signingOut} @click=${this._deleteAccount}>Delete account</button>` : ''}
           <button id="saveConfigBtn" class="btn primary" ?disabled=${this._signingOut}>Save</button>
           <button id="closeConfigBtn" class="btn" ?disabled=${this._signingOut}>Close</button>
         </div>
       </modal-lit>
     `;
+  }
+
+  updated() {
+    if (this.authentication !== null) {
+      const account = this.authentication.state.account;
+      this._qs('#configEmail').value = account === null ? '' : account.email;
+    }
+  }
+
+  async _onDeviceList() {
+    if (this.authentication !== null) {
+      this._qs('#deviceList').textContent = 'This browser (preview)';
+      return;
+    }
+    const response = await fetch(`${window.APP_BASE_URL}/api/auth/me`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error('Could not load remembered browsers');
+    const account = await response.json();
+    const list = this._qs('#deviceList');
+    list.replaceChildren();
+    for (const device of account.devices) {
+      const row = document.createElement('div');
+      const label = document.createElement('span');
+      const current = account.currentDeviceId === device.id ? ' (this browser)' : '';
+      label.textContent = `${device.id.slice(0, 8)}${current} expires ${new Date(device.expires * 1000).toLocaleDateString()} `;
+      const revoke = document.createElement('button');
+      revoke.type = 'button';
+      revoke.textContent = 'Revoke';
+      revoke.addEventListener('click', async () => {
+        const result = await fetch(`${window.APP_BASE_URL}/api/auth/devices/${device.id}`, {
+          method: 'DELETE', headers: { Accept: 'application/json' },
+        });
+        if (!result.ok) throw new Error('Could not revoke browser');
+        row.remove();
+      });
+      row.append(label, revoke);
+      list.appendChild(row);
+    }
   }
 
   firstUpdated() {
@@ -214,7 +273,6 @@ class ConfigModal extends LitElement {
     const closeBtn = this._qs('#closeConfigBtn');
     const status = this._qs('#configStatus');
     const emailInput = this._qs('#configEmail');
-    const patInput = this._qs('#configPat');
     const autosaveInput = this._qs('#autosaveInterval');
 
     const allocation = sel.capacity.getAllocationSettings();
@@ -224,38 +282,12 @@ class ConfigModal extends LitElement {
 
     // Save handler wired to Save button so the footer button can trigger form submit
     const saveBtn = this._qs('#saveConfigBtn');
-    this._qs('#deviceListBtn').addEventListener('click', async () => {
-      const response = await fetch(`${window.APP_BASE_URL}/api/auth/me`, {
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error('Could not load remembered browsers');
-      const account = await response.json();
-      const list = this._qs('#deviceList');
-      list.replaceChildren();
-      for (const device of account.devices) {
-        const row = document.createElement('div');
-        const label = document.createElement('span');
-        const current = account.currentDeviceId === device.id ? ' (this browser)' : '';
-        label.textContent = `${device.id.slice(0, 8)}${current} expires ${new Date(device.expires * 1000).toLocaleDateString()} `;
-        const revoke = document.createElement('button');
-        revoke.type = 'button';
-        revoke.textContent = 'Revoke';
-        revoke.addEventListener('click', async () => {
-          const result = await fetch(`${window.APP_BASE_URL}/api/auth/devices/${device.id}`, {
-            method: 'DELETE', headers: { Accept: 'application/json' },
-          });
-          if (!result.ok) throw new Error('Could not revoke browser');
-          row.remove();
-        });
-        row.append(label, revoke);
-        list.appendChild(row);
-      }
-    });
     if (saveBtn)
       saveBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         const email = emailInput.value.trim();
-        const pat = patInput.value;
+        const patInput = this._qs('#configPat');
+        const pat = patInput === null ? '' : patInput.value;
         const autosaveInterval = Number(autosaveInput.value);
         const characterShortcutsEnabled = this._qs('#letterShortcuts').checked;
         // Client-side PAT format guard: disallow whitespace and require
@@ -274,7 +306,10 @@ class ConfigModal extends LitElement {
         let patText = '';
         if (pat) patText = 'Access token updated.';
         try {
-          const res = await dataService.saveConfig({ email, pat });
+          const res = this.authentication === null
+            ? await dataService.saveConfig({ email, pat })
+            : await this.authentication.saveSettings({ email, pat });
+          if (patInput !== null) patInput.value = '';
           if (res && res.ok) {
             status.textContent = 'Configuration saved. ' + patText;
           } else {
@@ -304,7 +339,9 @@ class ConfigModal extends LitElement {
         innerModal.addEventListener('modal-close', () => this.remove());
         innerModal.open = true;
         await innerModal.updateComplete;
-        patInput.focus();
+        const patInput = this._qs('#configPat');
+        if (patInput !== null) patInput.focus();
+        else autosaveInput.focus();
       });
   }
 

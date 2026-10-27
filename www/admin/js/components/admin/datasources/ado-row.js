@@ -104,7 +104,13 @@ export function renderAdoSubForm(comp, type, errs) {
           <select id="ado-authentication-mode" class="backend-select"
             .value=${comp._draftAuthMode}
             aria-describedby="ado-authentication-status"
-            @change=${(event) => { comp._draftAuthMode = event.target.value; }}
+            @change=${(event) => {
+              comp._draftAuthMode = event.target.value;
+              if (comp.authentication !== null) {
+                comp.authentication.select(comp._draftAuthMode === 'pat'
+                  ? 'pat_current' : 'entra_signed_out');
+              }
+            }}
           >
             <option value="pat">PAT</option>
             <option value="entra">Entra ID</option>
@@ -119,6 +125,8 @@ export function renderAdoSubForm(comp, type, errs) {
             </div>
             <button disabled aria-describedby="ado-authentication-unavailable">Activate Entra ID</button>
           ` : ''}
+          ${comp.authentication === null ? '' : html`
+            <auth-status .authentication=${comp.authentication}></auth-status>`}
         </div>
         <div class="field full">
           <label>Organization Name *</label>

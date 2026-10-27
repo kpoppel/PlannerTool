@@ -14,6 +14,7 @@ import {
   renderPlanEventsRow,
 } from './datasources/plan-events-row.js';
 import { renderGroupsRow } from './datasources/groups-row.js';
+import '../../../../js/components/AuthStatus.lit.js';
 
 /**
  * DataSources — Admin panel for all data domains, backend choices, and cache TTLs.
@@ -196,6 +197,7 @@ export class DataSources extends LitElement {
   ];
 
   static properties = {
+    authentication: { attribute: false },
     authenticationSettings: { attribute: false },
     _draftAuthMode:        { type: String, state: true },
     _loading:             { type: Boolean, state: true },
@@ -259,6 +261,7 @@ export class DataSources extends LitElement {
 
   constructor() {
     super();
+    this.authentication = null;
     this.authenticationSettings = PAT_AUTHENTICATION_SETTINGS;
     this._draftAuthMode = this.authenticationSettings.activeMode;
     this._loading             = false;
@@ -333,6 +336,9 @@ export class DataSources extends LitElement {
 
   async _load() {
     this._draftAuthMode = this.authenticationSettings.activeMode;
+    if (this.authentication !== null) {
+      this.authentication.select(this._draftAuthMode === 'pat' ? 'pat_current' : 'entra_signed_out');
+    }
     this._loading = true;
     try {
       const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult] = await Promise.all([

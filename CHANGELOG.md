@@ -19,6 +19,7 @@ This version adds EntraID authentication.
 ### Added
 - Option to configure EntraID authentication
 - Preview PAT / Entra ID selection for live Azure DevOps in Data Sources, showing the active mode without enabling Entra activation or changing saved authentication settings.
+- Add isolated authentication UI previews for mode-dependent account controls, Entra sign-in, recovery and logout, without enabling real Entra authentication or changing active PAT/local behavior.
 - Option to enable automatic HTTPS in generated multi-instance Docker deployments
 
 ### Changed

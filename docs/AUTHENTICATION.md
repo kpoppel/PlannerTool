@@ -95,6 +95,44 @@ synthetic settings without an authentication service. The production model repor
 PAT; this presentation-only contract cannot authenticate users or enable activation.
 No configuration API or stored data shape changes are introduced by this preview.
 
+### Isolated Authentication UI Mocks (Phase B)
+
+The Data Sources editor, enrollment dialog, account Settings and Users editor
+accept an explicit, non-attribute `authentication` dependency for isolated tests.
+It is `null` in production. No query parameter, persisted preference, network
+failure or configuration save selects a mock identity. The sole scenario model
+lives in `tests/helpers/mockAuth.js`; it is not shipped with application assets.
+
+This temporary presentation contract exposes `state`, `subscribe(listener)` and
+mock actions. State contains `mode` (`pat`, `local` or `entra`), `status`, a synthetic
+`account` (`uuid`, `email`, `name`) or `null`, and boolean capabilities for `pat`,
+`enrollment`, `reauthenticate`, `logout` and `deleteAccount`. Actions are `select`,
+`signIn`, `saveSettings`, `logout` and `deleteAccount`. A subscription returns its
+unsubscribe function. No field is sent to existing APIs or persisted as auth
+configuration. Phase C will define the shared HTTP adapter and recovery contract;
+this mock is not a new server API or authentication policy.
+
+The injected Entra presentation hides PAT editing, remembered-browser management,
+enrollment and key reset. Admin account creation is hidden because Entra
+provisioning is undecided. Local permissions, ordinary admin account removal and
+signed-in account deletion remain independent of enrollment capabilities.
+PAT and local installations retain their existing production controls.
+
+One fixture boundary covers current/missing/invalid PAT, local mode, Entra
+signed-out/signed-in, session expiry, backend interaction, access denial and
+service outage. Sign-in can be cancelled or return a different synthetic account.
+Backend interaction offers reauthentication without removing the local identity;
+denial and outage do not offer automatic login. Mock logout/deletion change only
+fixture state: they neither revoke a real session nor define production logout
+scope or Entra account deletion behavior.
+
+Selecting an admin draft updates only an injected preview, never the active mode.
+Cancel or reopening resets the preview. Tests supply the same model to dependent
+components explicitly. Browser tests inject the test helper from Playwright,
+without exposing a fixture route in the application. This is UI coverage only:
+server-side endpoint restrictions, real sessions, safe request replay, account
+switch isolation and broker integration remain later phase gates.
+
 PATs are required only when the live Azure DevOps backend is selected. Enrollment
 and User Management require a PAT for each new live-ADO account. Selecting live
 ADO also activates this requirement for existing accounts. The server checks

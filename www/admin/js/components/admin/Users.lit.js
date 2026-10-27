@@ -1,6 +1,7 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 import { showAccountKeyDialog } from '../../../../js/components/AuthDialog.lit.js';
+import { AuthPresentationController } from '../../../../js/components/AuthStatus.lit.js';
 
 const PERMISSIONS = [
   ['admin', 'Administrator'], ['manage_projects', 'Projects'],
@@ -112,6 +113,7 @@ export class AdminUsers extends LitElement {
   `;
 
   static properties = {
+    authentication: { attribute: false },
     users: { type: Array }, loading: { type: Boolean }, error: { type: String },
     newUser: { state: true }, newUserPat: { state: true }, requiresPat: { type: Boolean },
     statusMsg: { state: true }, resetting: { state: true }, saving: { state: true },
@@ -125,6 +127,8 @@ export class AdminUsers extends LitElement {
 
   constructor() {
     super();
+    this.authentication = null;
+    new AuthPresentationController(this);
     this.users = [];
     this.loading = false;
     this.error = '';
@@ -158,6 +162,13 @@ export class AdminUsers extends LitElement {
 
   connectedCallback() { super.connectedCallback(); this.load(); }
 
+  willUpdate() {
+    if (!this.enrollmentAvailable && this.dialog === 'add') {
+      this.dialog = '';
+      this.newUserPat = '';
+    }
+  }
+
   async load() {
     this.loading = true;
     this.error = '';
@@ -178,6 +189,9 @@ export class AdminUsers extends LitElement {
   }
 
   get busy() { return this.loading || this.saving || this.resetting; }
+  get enrollmentAvailable() {
+    return this.authentication === null || this.authentication.state.capabilities.enrollment;
+  }
   _isAdmin(user) { return user.permissions.includes('admin'); }
   _hasAccess(user, permission) { return this._isAdmin(user) || user.permissions.includes(permission); }
 
@@ -298,9 +312,13 @@ export class AdminUsers extends LitElement {
     }
   }
 
-  _openAdd() { this.newUser = ''; this.newUserPat = ''; this._openDialog('add'); }
+  _openAdd() {
+    if (!this.enrollmentAvailable) return;
+    this.newUser = ''; this.newUserPat = ''; this._openDialog('add');
+  }
 
   async addUser() {
+    if (!this.enrollmentAvailable) return;
     const email = this.newUser.trim().toLowerCase();
     if (email === '' || this.busy) return;
     if (!email.includes('@')) { this.error = 'Please enter a valid email address'; return; }
@@ -325,6 +343,7 @@ export class AdminUsers extends LitElement {
   }
 
   async resetAccess(account) {
+    if (!this.enrollmentAvailable) return;
     if (this.busy) return;
     const selfReset = this.current === account.id;
     const warning = selfReset
@@ -527,7 +546,7 @@ export class AdminUsers extends LitElement {
           }}>
             <label class="field">Email<input type="email" required autocomplete="off"
               .value=${this.newUser} @input=${(event) => { this.newUser = event.target.value; }}></label>
-            ${this.requiresPat ? html`<label class="field">Azure DevOps PAT<input type="password"
+            ${this.requiresPat && (this.authentication === null || this.authentication.state.capabilities.pat) ? html`<label class="field">Azure DevOps PAT<input type="password"
               autocomplete="new-password" data-pat="User" required .value=${this.newUserPat}
               @input=${(event) => { this.newUserPat = event.target.value; }}></label>` : ''}
             <p class="muted">Initial access: standard user</p>
@@ -535,7 +554,8 @@ export class AdminUsers extends LitElement {
           ${this.dialog === 'account' ? html`<p>${this.account.email}</p><div class="account-actions">
             <button @click=${() => this._openEditor([this.account.id])}>Edit permissions</button>
             <button @click=${() => this._openMail('one', [this.account.id])}>Copy email</button>
-            <button @click=${() => this.resetAccess(this.account)}>Reset access</button>
+            ${this.enrollmentAvailable ? html`
+              <button @click=${() => this.resetAccess(this.account)}>Reset access</button>` : ''}
             <button class="danger" ?disabled=${this._cannotRemove(this.account)}
               @click=${() => this.removeFrom(this.account)}>Remove user</button>
           </div>` : ''}
@@ -583,7 +603,8 @@ export class AdminUsers extends LitElement {
       <div class="heading"><h2>Users</h2><span class="count">${this.users.length}</span>
         <span class="grow"></span><button ?disabled=${this.busy} @click=${() =>
           this._openMail(this.selected.size > 0 ? 'selected' : 'filtered')}>Mailing list</button>
-        <button class="primary" ?disabled=${this.busy} @click=${this._openAdd}>Add user</button></div>
+        ${this.enrollmentAvailable ? html`<button class="primary" ?disabled=${this.busy}
+          @click=${this._openAdd}>Add user</button>` : ''}</div>
       <fieldset ?disabled=${this.busy}>
         <div class="views" aria-label="User views">${views.map(([value, label, count]) => html`
           <button aria-pressed=${this.view === value} @click=${() => {

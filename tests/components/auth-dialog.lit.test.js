@@ -5,8 +5,170 @@ import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 import { store } from '../../www/js/application/store.js';
 import { createUiCommands, NotificationActionIds } from '../../www/js/application/commands/uiCommands.js';
 import { bus } from '../../www/js/core/EventBus.js';
+import { AUTH_SCENARIOS, createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/mockAuth.js';
 
 const uiCommands = createUiCommands(store, bus);
+
+describe('isolated authentication scenarios', () => {
+  it.each([
+    ['pat_current', 'Connected', false],
+    ['pat_missing', 'PAT is required', true],
+    ['pat_invalid', 'PAT is invalid or expired', true],
+    ['local', 'Connected', false],
+    ['entra_signed_out', 'Signed out', false],
+    ['entra_signed_in', 'Connected', false],
+    ['session_expired', 'session has expired', false],
+    ['interaction_required', 'requires reauthentication', false],
+    ['access_denied', 'access denied', false],
+    ['unavailable', 'service unavailable', false],
+  ])('presents %s with only the permitted recovery controls', async (scenario, message, pat) => {
+    const model = createMockAuth(scenario);
+    const status = document.createElement('auth-status');
+    status.authentication = model;
+    document.body.append(status);
+    await status.updateComplete;
+    expect(status.shadowRoot.textContent).toContain(message);
+    expect(status.shadowRoot.querySelector('#previewPat') !== null).toBe(pat);
+    const buttons = [...status.shadowRoot.querySelectorAll('button')];
+    if (scenario === 'access_denied' || scenario === 'unavailable') {
+      expect(buttons).toHaveLength(0);
+      expect(model.state.account).not.toBeNull();
+    }
+    if (model.state.mode === 'entra') {
+      expect(status.shadowRoot.querySelector('input')).toBeNull();
+      expect(status.shadowRoot.textContent).not.toContain('Enroll this browser');
+    }
+    status.remove();
+  });
+
+  it('repairs PAT through the mock boundary and clears the masked value', async () => {
+    const model = createMockAuth('pat_invalid');
+    const status = document.createElement('auth-status');
+    status.authentication = model;
+    document.body.append(status);
+    await status.updateComplete;
+    const input = status.shadowRoot.querySelector('#previewPat');
+    expect(input.type).toBe('password');
+    input.value = 'synthetic-pat';
+    await status._onRepairPat(new Event('submit'));
+    expect(model.state.status).toBe('connected');
+    expect(input.value).toBe('');
+    status.remove();
+  });
+
+  it('keeps cancelled sign-in open, then presents a different returning account', async () => {
+    const model = createMockAuth('session_expired');
+    const status = document.createElement('auth-status');
+    status.authentication = model;
+    document.body.append(status);
+    await status.updateComplete;
+    model.setSignInOutcome({ cancelled: true });
+    await status._onSignIn();
+    await status.updateComplete;
+    expect(status.shadowRoot.textContent).toContain('Sign-in cancelled.');
+    expect(model.state.account).toBeNull();
+    model.setSignInOutcome({ account: OTHER_MOCK_ACCOUNT });
+    await status._onSignIn();
+    await status.updateComplete;
+    expect(status.shadowRoot.textContent).toContain(OTHER_MOCK_ACCOUNT.email);
+    model.select('interaction_required');
+    await status.updateComplete;
+    expect(status.shadowRoot.querySelector('button').textContent).toBe('Reauthenticate');
+    await status._onSignIn();
+    expect(model.state.status).toBe('connected');
+    status.remove();
+  });
+
+  it('unsubscribes on removal and subscribes again when reopened', async () => {
+    const model = createMockAuth('entra_signed_out');
+    const subscribe = vi.spyOn(model, 'subscribe');
+    const status = document.createElement('auth-status');
+    status.authentication = model;
+    document.body.append(status);
+    await status.updateComplete;
+    status.remove();
+    document.body.append(status);
+    await status.updateComplete;
+    model.select('entra_signed_in');
+    await status.updateComplete;
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    expect(status.shadowRoot.textContent).toContain('Connected');
+    status.remove();
+  });
+
+  it('retains admin permissions and removal without enrollment or key reset', async () => {
+    vi.spyOn(adminProvider, 'getUsers').mockResolvedValue({ ok: true, data: {
+      currentId: 'admin', requiresPat: true, accounts: [
+        { id: 'admin', email: 'admin@example.com', permissions: ['admin'], lastActive: null },
+        { id: 'user', email: 'user@example.com', permissions: [], lastActive: null },
+      ],
+    } });
+    const model = createMockAuth('entra_signed_in');
+    const users = document.createElement('admin-users');
+    users.authentication = model;
+    document.body.append(users);
+    await vi.waitFor(() => expect(users.loading).toBe(false));
+    users.account = users.users[1];
+    users._openDialog('account');
+    await users.updateComplete;
+    const buttons = [...users.shadowRoot.querySelectorAll('button')].map(button => button.textContent.trim());
+    expect(buttons).toContain('Edit permissions');
+    expect(buttons).toContain('Remove user');
+    expect(buttons).not.toContain('Reset access');
+    expect(buttons).not.toContain('Add user');
+    const reset = vi.spyOn(adminProvider, 'resetAccountAccess');
+    await users.resetAccess(users.account);
+    expect(reset).not.toHaveBeenCalled();
+    model.select('pat_current');
+    await users.updateComplete;
+    expect(users.shadowRoot.textContent).toContain('Reset access');
+    expect(users.users[1].permissions).toEqual([]);
+  });
+
+  it('switches capabilities without a network or browser session', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const model = createMockAuth('pat_current');
+    const changed = vi.fn();
+    const unsubscribe = model.subscribe(changed);
+    for (const name of Object.keys(AUTH_SCENARIOS)) model.select(name);
+    expect(changed).toHaveBeenCalledTimes(Object.keys(AUTH_SCENARIOS).length);
+    expect(model.state.capabilities.pat).toBe(false);
+    expect(model.state.capabilities.enrollment).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(document.cookie).toBe('');
+    unsubscribe();
+  });
+
+  it('keeps cancellation, returning identity and logout explicit', async () => {
+    const model = createMockAuth('session_expired');
+    const expired = model.state;
+    expect(await model.signIn({ cancelled: true })).toBe(false);
+    expect(model.state).toBe(expired);
+    await model.signIn({ account: OTHER_MOCK_ACCOUNT });
+    expect(model.state.account).toBe(OTHER_MOCK_ACCOUNT);
+    await model.logout();
+    expect(model.state.account).toBeNull();
+    expect(model.state.status).toBe('signed_out');
+  });
+
+  it('uses the injected Entra sign-in boundary without enrollment or PAT prompts', async () => {
+    const model = createMockAuth('entra_signed_out');
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const completion = showAuthDialog('/prefix/api', model);
+    const dialog = document.querySelector('auth-dialog');
+    await dialog.updateComplete;
+    const status = dialog.renderRoot.querySelector('auth-status');
+    await status.updateComplete;
+    expect(dialog.renderRoot.querySelector('input')).toBeNull();
+    expect(status.shadowRoot.textContent).not.toContain('Enrollment');
+    expect(status.shadowRoot.querySelector('button').textContent).toBe('Sign in with Entra ID');
+    status.shadowRoot.querySelector('button').click();
+    await completion;
+    expect(document.querySelector('auth-dialog')).toBeNull();
+    expect(model.state.status).toBe('connected');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
 
 afterEach(() => {
   document.querySelectorAll('auth-dialog').forEach((dialog) => dialog.remove());

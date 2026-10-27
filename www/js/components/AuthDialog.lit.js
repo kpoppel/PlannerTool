@@ -1,8 +1,10 @@
 import { LitElement, css, html } from '../vendor/lit.js';
 import { getDocsUrl } from '../services/docsUrl.js';
+import './AuthStatus.lit.js';
 
 export class AuthDialog extends LitElement {
   static properties = {
+    authentication: { attribute: false },
     deleting: { type: Boolean },
     requiresKey: { type: Boolean },
     requiresPat: { type: Boolean },
@@ -92,6 +94,7 @@ export class AuthDialog extends LitElement {
 
   constructor() {
     super();
+    this.authentication = null;
     this.deleting = false;
     this.standaloneDeletion = false;
     this.requiresKey = false;
@@ -127,6 +130,15 @@ export class AuthDialog extends LitElement {
   }
 
   render() {
+    if (this.authentication !== null) {
+      return html`<section class="single" role="dialog" aria-modal="true" aria-label="Sign in">
+        <div class="auth-main"><h2>PlannerTool</h2>
+          <auth-status .authentication=${this.authentication} @auth-complete=${(event) => {
+            if (event.detail) { this.done(); this.remove(); }
+          }}></auth-status>
+        </div>
+      </section>`;
+    }
     const help = this.deleting ? '' : html`<button type="button" class="help"
       @click=${this._showEnrollmentHelp} title="Enrollment help" aria-label="Enrollment help">?</button>`;
     if (this.accountKey) {
@@ -299,9 +311,10 @@ export class AuthDialog extends LitElement {
 
 customElements.define('auth-dialog', AuthDialog);
 
-export function showAuthDialog(apiBase) {
+export function showAuthDialog(apiBase, authentication = null) {
   const dialog = document.createElement('auth-dialog');
   dialog.apiBase = apiBase;
+  dialog.authentication = authentication;
   document.body.appendChild(dialog);
   return new Promise((resolve) => { dialog.done = resolve; });
 }

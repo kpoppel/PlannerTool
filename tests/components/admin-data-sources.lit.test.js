@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 import '../../www/admin/js/components/admin/DataSources.lit.js';
+import { createMockAuth } from '../helpers/mockAuth.js';
 
 const mockSettings = Object.freeze({
   activeMode: 'pat',
@@ -37,6 +38,26 @@ afterEach(() => {
 });
 
 describe('Data Sources authentication preview', () => {
+  it('drives an injected sign-in preview from the draft and resets it on Cancel', async () => {
+    const element = await mount();
+    const model = createMockAuth('pat_current');
+    element.authentication = model;
+    await element.updateComplete;
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    await select(element, '#ado-authentication-mode', 'entra');
+    const status = element.shadowRoot.querySelector('auth-status');
+    await status.updateComplete;
+    expect(status.shadowRoot.textContent).toContain('Sign in with Entra ID');
+    await status._onSignIn();
+    expect(model.state.status).toBe('connected');
+    expect(element.authenticationSettings.activeMode).toBe('pat');
+    [...element.shadowRoot.querySelectorAll('button')].find(button => button.textContent === 'Cancel').click();
+    await vi.waitFor(() => expect(element._loading).toBe(false));
+    await element.updateComplete;
+    expect(model.state.mode).toBe('pat');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(adminProvider.saveAdo).not.toHaveBeenCalled();
+  });
   it('uses PAT in production and exposes exactly two mode choices', async () => {
     const element = await mount(null);
     const control = element.shadowRoot.querySelector('#ado-authentication-mode');

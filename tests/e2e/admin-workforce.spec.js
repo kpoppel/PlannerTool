@@ -1,5 +1,115 @@
 import { test, expect } from '@playwright/test';
 import { fulfillAccountApi } from './helpers.js';
+import { readFileSync } from 'node:fs';
+
+const mockAuthSource = readFileSync(new URL('../helpers/mockAuth.js', import.meta.url), 'utf8');
+
+test('authentication capability mocks cover desktop sign-in, recovery and logout', async ({ page }, testInfo) => {
+  const errors = [];
+  const authWrites = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.includes('/auth/') && request.method() !== 'GET') {
+      authWrites.push(request.url());
+    }
+  });
+  await page.route('**/api/**', route => fulfillAccountApi(route, {
+    email: 'administrator@example.test', permissions: ['admin'],
+  }));
+  await page.route('**/admin/check', route => route.fulfill({ json: {
+    ok: true, permissions: ['admin'],
+  } }));
+  await page.route('**/admin/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    let content = {};
+    if (path.endsWith('/ado')) content = { organization_url: 'example', feature_flags: {} };
+    if (path.endsWith('/events-config')) content = { event_backend: 'local' };
+    if (path.endsWith('/groups-config')) content = { groups_backend: 'local' };
+    if (path.endsWith('/system')) content = { server_name: 'Fixture', feature_flags: {} };
+    return route.fulfill({ json: { ok: true, content } });
+  });
+  await page.goto('/admin/#data-sources');
+  const editor = page.locator('admin-data-sources');
+  await expect(editor.getByLabel('Authentication mode (preview)')).toBeVisible();
+  const cookies = await page.context().cookies();
+  await editor.evaluate(async (element, source) => {
+    const { createMockAuth, OTHER_MOCK_ACCOUNT } = await import(
+      'data:text/javascript,' + encodeURIComponent(source));
+    window.phaseBAuth = createMockAuth('pat_current');
+    window.phaseBOtherAccount = OTHER_MOCK_ACCOUNT;
+    element.authentication = window.phaseBAuth;
+  }, mockAuthSource);
+  await editor.getByLabel('Authentication mode (preview)').selectOption('entra');
+  const preview = editor.locator('auth-status');
+  await expect(preview.getByRole('button', { name: 'Sign in with Entra ID' })).toBeVisible();
+  await preview.getByRole('button', { name: 'Sign in with Entra ID' }).click();
+  await expect(preview.locator('[data-auth-account]')).toHaveText('alex@example.com');
+  await expect(editor.locator('#ado-authentication-status')).toContainText('Active: PAT');
+  await page.evaluate(async () => {
+    await import('/static/js/components/ConfigModal.lit.js');
+    const modal = document.createElement('config-modal');
+    modal.authentication = window.phaseBAuth;
+    document.body.append(modal);
+  });
+  const settings = page.locator('config-modal');
+  const status = settings.locator('auth-status');
+  await expect(settings.locator('#configEmail')).toHaveText('alex@example.com');
+  await expect(settings.locator('#configPat')).toHaveCount(0);
+  await expect(settings.locator('#deviceListBtn')).toHaveCount(0);
+  await expect(settings.getByRole('button', { name: 'Delete account', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('entra-settings-desktop.png'), fullPage: true });
+  for (const [scenario, message] of [
+    ['access_denied', 'access denied'], ['unavailable', 'service unavailable'],
+    ['interaction_required', 'requires reauthentication'],
+  ]) {
+    await page.evaluate(name => window.phaseBAuth.select(name), scenario);
+    await expect(status).toContainText(message);
+    if (scenario !== 'interaction_required') await expect(status.locator('button')).toHaveCount(0);
+  }
+  await status.getByRole('button', { name: 'Reauthenticate', exact: true }).click();
+  await expect(status.getByRole('status').first()).toHaveText('Connected');
+  await page.evaluate(() => {
+    window.phaseBAuth.select('session_expired');
+    window.phaseBAuth.setSignInOutcome({ cancelled: true });
+  });
+  await status.getByRole('button', { name: 'Sign in with Entra ID' }).click();
+  await expect(status).toContainText('Sign-in cancelled.');
+  await page.evaluate(() => window.phaseBAuth.setSignInOutcome({ account: window.phaseBOtherAccount }));
+  await status.getByRole('button', { name: 'Sign in with Entra ID' }).click();
+  await expect(settings.locator('#configEmail')).toHaveText('sam@example.com');
+  page.once('dialog', dialog => dialog.accept());
+  await settings.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(status.getByRole('status').first()).toHaveText('Signed out');
+  await expect(settings.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
+  for (const scenario of ['pat_missing', 'pat_invalid']) {
+    await page.evaluate(name => window.phaseBAuth.select(name), scenario);
+    await expect(settings.locator('#configPat')).toBeVisible();
+    await expect(settings.locator('#deviceListBtn')).toBeVisible();
+    await status.getByLabel('Azure DevOps PAT').fill('synthetic-pat');
+    await status.getByRole('button', { name: 'Save PAT', exact: true }).click();
+    await expect(status.getByRole('status').first()).toHaveText('Connected');
+  }
+  await page.evaluate(() => window.phaseBAuth.select('local'));
+  await expect(settings.locator('#configPat')).toHaveCount(0);
+  await expect(settings.locator('#deviceListBtn')).toBeVisible();
+  await settings.getByRole('button', { name: 'Close', exact: true }).click();
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(editor.getByLabel('Authentication mode (preview)')).toHaveValue('pat');
+  await page.evaluate(() => {
+    window.phaseBAuth.select('entra_signed_out');
+    const dialog = document.createElement('auth-dialog');
+    dialog.authentication = window.phaseBAuth;
+    dialog.done = () => {};
+    document.body.append(dialog);
+  });
+  const login = page.locator('auth-dialog');
+  await expect(login.locator('input')).toHaveCount(0);
+  await login.getByRole('button', { name: 'Sign in with Entra ID' }).click();
+  await expect(login).toHaveCount(0);
+  expect(authWrites).toEqual([]);
+  expect(await page.context().cookies()).toEqual(cookies);
+  expect(errors).toEqual([]);
+});
 
 test('ADO authentication preview keeps PAT active and never saves the Entra draft', async ({ page }, testInfo) => {
   const saves = [];

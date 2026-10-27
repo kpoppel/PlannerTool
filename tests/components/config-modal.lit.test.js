@@ -4,6 +4,7 @@ import { dataService } from '../../www/js/services/dataService.js';
 import { vi } from 'vitest';
 import { store } from '../../www/js/application/store.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
+import { createMockAuth } from '../helpers/mockAuth.js';
 
 describe('config-modal', () => {
   let modal;
@@ -69,6 +70,49 @@ describe('config-modal', () => {
     expect(modal._qs('#signOutBtn').textContent.trim()).to.equal('Sign out');
     await modal._signOut();
     expect(signOut.mock.calls.length).to.equal(0);
+  });
+
+  it('switches mock capabilities without losing local settings or account deletion', async () => {
+    vi.spyOn(dataService, 'getLocalPref').mockImplementation(async (key) =>
+      key === 'user.email' ? 'stored@example.com' : undefined);
+    const model = createMockAuth('pat_current');
+    modal.authentication = model;
+    await modal.updateComplete;
+    await modal._populate();
+    expect(modal._qs('#configEmail').value).to.equal('alex@example.com');
+    modal._qs('#autosaveInterval').value = '17';
+    expect(modal._qs('#configPat')).not.to.equal(null);
+    expect(modal._qs('#deviceListBtn')).not.to.equal(null);
+    model.select('entra_signed_in');
+    await modal.updateComplete;
+    expect(modal._qs('#configPat')).to.equal(null);
+    expect(modal._qs('#deviceListBtn')).to.equal(null);
+    expect(modal._qs('#deleteAccountBtn')).not.to.equal(null);
+    expect(modal._qs('#autosaveInterval').value).to.equal('17');
+    model.select('local');
+    await modal.updateComplete;
+    expect(modal._qs('#configPat')).to.equal(null);
+    expect(modal._qs('#deviceListBtn')).not.to.equal(null);
+  });
+
+  it('uses only the injected boundary for Entra deletion and logout', async () => {
+    const model = createMockAuth('entra_signed_in');
+    modal.authentication = model;
+    await modal.updateComplete;
+    const signOut = vi.spyOn(dataService, 'signOut');
+    const deleteAccount = vi.spyOn(model, 'deleteAccount');
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await modal._signOut();
+    expect(model.state.status).to.equal('connected');
+    window.confirm.mockReturnValue(true);
+    await modal._deleteAccount();
+    await modal.updateComplete;
+    expect(deleteAccount.mock.calls.length).to.equal(1);
+    expect(modal._qs('#signOutBtn')).to.equal(null);
+    expect(model.state.status).to.equal('signed_out');
+    expect(signOut.mock.calls.length).to.equal(0);
+    expect(fetch.mock.calls.length).to.equal(0);
   });
 
   it('offers staffing retry when reopened after a failed load', async () => {
