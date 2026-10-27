@@ -173,6 +173,99 @@ def test_invalid_pat_keeps_local_admin_and_cached_task_reads_available(
     assert rejected_browse.json()['error'] == 'pat_invalid'
 
 
+@pytest.mark.parametrize('pat_state', ['missing', 'invalid'])
+@pytest.mark.parametrize('endpoint', ['view', 'scenario', 'groups', 'events', 'event-categories'])
+def test_local_record_mutations_do_not_require_pat(client, app, monkeypatch, endpoint, pat_state):
+    from unittest.mock import Mock
+    from planner_lib.azure.AzureClient import AzureClient
+
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    assert client.post('/api/auth/enroll', json={
+        'email': 'local-writer@example.com', 'name': 'Local Writer',
+    }).status_code == 200
+    container = app.state.container
+    accounts = container.get('account_manager')
+    accounts.set_permissions(accounts.get_account_id('local-writer@example.com'), [])
+    container.get('storage').save('config', 'ado_config', {
+        'organization_url': 'example', 'feature_flags': {},
+    })
+    if pat_state == 'invalid':
+        assert client.post('/api/config', json={
+            'email': 'local-writer@example.com', 'pat': 'rejected-pat',
+        }).status_code == 200
+        accounts.reject_pat('local-writer@example.com', 'rejected-pat')
+    load = Mock(side_effect=AssertionError('Local records must not load a PAT'))
+    acquire = Mock(side_effect=AssertionError('Local records must not acquire credentials'))
+    with monkeypatch.context() as local:
+        local.setattr(accounts, 'load', load)
+        local.setattr(container.get('credential_provider'), 'get_credential', acquire)
+        path = '/api/' + endpoint
+        resource_route = endpoint not in {'view', 'scenario'}
+        data = {'name': 'Local record', 'plan_id': 'example-plan'}
+        label_field = 'title' if endpoint == 'events' else 'name'
+        if endpoint == 'events':
+            data = {'title': 'Local record', 'plan_id': 'example-plan', 'date': '2026-10-27'}
+        payload = data if resource_route else {'op': 'save', 'data': data}
+        saved = client.post(path, json=payload)
+        assert saved.status_code == (201 if resource_route else 200), saved.text
+        item_id = saved.json()['id']
+        data.update({'id': item_id, label_field: 'Updated local record'})
+        if resource_route:
+            item_path = path + '/' + item_id
+            updated = client.put(item_path, json={label_field: data[label_field]})
+            assert updated.status_code == 200, updated.text
+            if endpoint == 'event-categories':
+                assert any(item['id'] == item_id and item['name'] == data['name']
+                           for item in client.get(path).json())
+            else:
+                assert client.get(item_path).json()[label_field] == data[label_field]
+            deleted = client.delete(item_path)
+            assert deleted.status_code == 200, deleted.text
+            if endpoint == 'event-categories':
+                assert all(item['id'] != item_id for item in client.get(path).json())
+            else:
+                assert client.get(item_path).status_code == 404
+        else:
+            updated = client.post(path, json={'op': 'save', 'data': data})
+            assert updated.status_code == 200, updated.text
+            assert client.get(path, params={'id': item_id}).json()['name'] == data['name']
+            deleted = client.post(path, json={'op': 'delete', 'data': {'id': item_id}})
+            assert deleted.status_code == 200, deleted.text
+            assert client.get(path, params={'id': item_id}).status_code == 404
+        load.assert_not_called()
+        acquire.assert_not_called()
+
+    remote = client.post('/api/tasks/refresh')
+    assert remote.status_code == 403
+    assert remote.json()['error'] == ('pat_invalid' if pat_state == 'invalid' else 'pat_required')
+    client.cookies.clear()
+    assert client.post(path, json=payload).status_code == 401
+
+
+@pytest.mark.parametrize('endpoint', ['events', 'event-categories'])
+def test_wiki_event_mutations_still_require_pat(client, app, endpoint):
+    from unittest.mock import Mock
+    from planner_lib.repository.event_repository import EventRepository
+    from tests.helpers import register_service_on_client
+
+    assert client.post('/api/auth/enroll', json={
+        'email': 'wiki-writer@example.com', 'name': 'Wiki Writer',
+    }).status_code == 200
+    container = app.state.container
+    container.get('storage').save('config', 'ado_config', {
+        'organization_url': 'example', 'feature_flags': {},
+    })
+    backend = Mock()
+    repository = EventRepository(backend, container.get('credential_provider'))
+    register_service_on_client(client, 'event_repository', repository)
+
+    response = client.post('/api/' + endpoint, json={})
+
+    assert response.status_code == 403
+    assert response.json()['error'] == 'pat_required'
+    assert backend.mock_calls == []
+
+
 @pytest.mark.parametrize('status_code', [401, 403])
 @pytest.mark.parametrize('acquisition', ['request', 'operation'])
 def test_auth_rejection_preserves_replacement_pat(

@@ -14,6 +14,7 @@ afterEach(() => {
   document.querySelectorAll('admin-users').forEach((component) => component.remove());
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   localStorage.clear();
   delete window.APP_BASE_URL;
 });
@@ -21,6 +22,8 @@ afterEach(() => {
 describe('account enrollment dialog', () => {
   beforeEach(() => {
     window.APP_BASE_URL = '';
+    vi.stubGlobal('IS_VITE_DEV', false);
+    vi.stubEnv('DEV', false);
   });
 
   it('shows overview beside enrollment and opens the enrollment guide in the same panel', async () => {

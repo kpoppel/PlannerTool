@@ -60,7 +60,10 @@ def _register_azure_services(authenticated_client, pat='test-pat', inner_client=
     credential = None if not pat else {'kind': 'pat', 'token': pat, 'user_id': 'test-account'}
     register_services_on_client(authenticated_client, {
         'session_manager': FakeSessionMgr(),
-        'account_manager': SimpleNamespace(pat_error=lambda email: None),
+        'account_manager': SimpleNamespace(
+            get_account_by_id=lambda user_id: {'email': 'user@example.com'},
+            pat_error=lambda email: None,
+        ),
         'credential_provider': SimpleNamespace(get_credential=Mock(return_value=credential)),
         'azure_client': FakeAzureService(fake_client),
     })

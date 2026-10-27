@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from planner_lib.backend.port import BackendCredential, CredentialProvider
+from planner_lib.backend.port import BackendCredential
 
 logger = logging.getLogger(__name__)
 

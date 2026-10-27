@@ -88,17 +88,58 @@ creating an account, rotating its account key, or overwriting its stored PAT.
 Validation outages return HTTP 503 `backend_unavailable` instead.
 
 Data and administration APIs return HTTP 403 `pat_required` or `pat_invalid` when
-the signed-in account needs a credential. Both frontends open the same **Set your
-Azure DevOps PAT** dialog. Account identity, enrollment, session renewal,
-credential configuration, sign-out and account deletion remain reachable.
-Successfully saving a replacement resumes reads; writes are not automatically
-replayed. A PAT rejection does not send an authenticated user back to enrollment.
+the signed-in account needs a credential. Both frontends post a deduplicated
+notification with an action to open the cancellable **Set your Azure DevOps PAT**
+dialog. The failed request does not wait for repair or replay after it. Account
+identity, enrollment, session renewal, credential configuration, sign-out,
+account deletion and authorized local administration remain reachable. Remote
+administration operations still require the acting account's credential. A PAT
+rejection does not send an authenticated user back to enrollment.
+
+Saving, updating and deleting views, scenarios, groups, local events and local
+event categories do not require or load a PAT, including when live ADO is the
+work-item backend and the account's PAT is missing or rejected. Session, ownership
+and validation checks still apply. Wiki-backed events retain their credential
+requirement independently of local event storage.
 
 Browse calls, administration and request-triggered cache refreshes use only the
 acting account's PAT. Failed background refreshes retain the shared snapshot and
 report credential failures only to the initiating account. Another user's valid
 credential is never borrowed. PATs are encrypted at rest, entered in masked
 fields, and never persisted in browser preferences or exposed in error messages.
+
+## Authentication boundaries
+
+Enrollment is the only implemented login mechanism. This preparation refactor
+does not implement Entra/OIDC login, Bearer transport, token renewal, a central
+authentication service, or credential-mode selection.
+
+| Boundary | Current owner and contract |
+| --- | --- |
+| Login and profile | `EnrollmentLoginAdapter` delegates enrollment, remembered-browser renewal, device/key management and profile projection to `AuthManager`. `EnrollmentSessionBinding` owns the persisted device binding used by session validation. |
+| Identity and permissions | `SessionManager` persists hashed session IDs under `auth_sessions`; `get_session_context_from_request` resolves account UUID, email and device ID once per request. Permission checks remain request-scoped. No backend token belongs in this identity. |
+| Remote credentials | `get_session_credential_from_request` uses `AccountManagerCredentialProvider` and the session UUID. Repositories use the same provider when acquiring an operation credential. Local/static/mock consumers do not request user credentials. |
+| PAT policy and storage | `PatCredentialPolicy` selects the current requirement and handles credential rejection. `AccountManager` owns PAT validation, encryption, save and token-comparison rejection, so a failed operation cannot reject a replacement PAT. |
+| Wire authentication | `planner_lib/azure/authentication.py` selects PAT Basic authentication for both the SDK and wiki clients from explicit `BackendCredential.kind`. Unsupported kinds fail explicitly without including the secret. |
+| Backend failures | `BackendAuthError` retains operation credential/status context until the HTTP boundary in `main.py` maps it through the selected policy to existing public errors. Existing PAT 401/403 classification is unchanged. |
+| Browser recovery | Both REST providers compose `createAuthRecovery` from `authRecovery.js`. `RestProviderBase` invokes injected callbacks, without importing enrollment or PAT dialogs. Session recovery is single-flight; PAT repair is notification-driven. |
+
+PAT-specific public endpoints and UI may still use `pat_required`, `pat_invalid`
+and PAT fields. Logical backup/restore and migrations also handle PATs explicitly;
+they are persistence owners, not alternative live credential acquisition paths.
+Wiki access can target an organization independently of the work-item backend.
+
+Session 401 recovery retains the existing one-time request replay, including
+writes; configured network retries also retain their existing policy. This is
+distinct from PAT 403 repair, which does not replay the failed request. Safe write
+replay/idempotency and separating ADO authorization denials from invalid
+credentials require separate policy decisions.
+
+A future login adapter can establish identity and issue a local session; a future
+credential provider and transport can supply delegated ADO credentials. External
+identity linking, credential-mode transitions/PAT removal, token renewal, broker
+protocols and offboarding remain separately designed work. An arbitrary OIDC
+identity token is not an Azure DevOps access token.
 
 ## Delegated administration
 
@@ -178,10 +219,12 @@ are hashed in `auth_sessions`; records do not persist decrypted PATs. Browser
 cookies are scoped to the installation's reverse-proxy root path.
 
 Authenticated handlers share a request-local identity context, so session/device
-idle-expiry updates occur once per request. With non-ADO backends, identity-only
-routes, including groups, do not load or decrypt PATs. The live-ADO gate checks
-the account credential before protected routes. Routes needing Azure credentials
-resolve the current account PAT within that request. Neither identities nor decrypted PATs
+idle-expiry updates occur once per request. Identity resolution itself never
+loads or decrypts a PAT. The live-ADO policy checks the account credential before
+protected data routes, excluding identity/configuration and authorized local
+administration. Remote consumers resolve credentials through the provider using
+the authenticated account UUID, never an identity supplied in the request body.
+Neither identities nor decrypted PATs
 are cached across requests or shared between users; later requests read current
 credentials. Each server worker reuses only the Fernet cryptographic setup for
 the configured encryption secret, replacing it if that secret changes. This does

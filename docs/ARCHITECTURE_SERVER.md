@@ -167,8 +167,11 @@ on route handlers.
 #### Domain services
 
 - `AccountManager` validates and persists account records.
-- `SessionManager` tracks active sessions in a thread-safe process-local map and
-  loads account credentials during session creation.
+- `SessionManager` persists hashed session IDs, account UUIDs, device bindings and
+  expiry in `auth_sessions`, independently of backend credentials.
+- `EnrollmentLoginAdapter` delegates the current login, device/key operations and
+  profile projection to `AuthManager`; `EnrollmentSessionBinding` owns persisted
+  device validation for sessions.
 - `CapacityService` calculates capacity from configured team data.
 - The ADO process catalogue owns project-to-process metadata, type imports and
   synchronized display tiers; metadata loads use the acting user's PAT.
@@ -187,10 +190,37 @@ project/team/iteration/plan configuration backends,
 scenario/view backends, and event backends. `BackendPort` is the composite
 remote-data contract and deliberately excludes local configuration data.
 
-Remote operations receive a `BackendCredential` containing an opaque token and
-session user ID. Cache-satisfied reads may not need a credential; local config
+Remote operations receive a `BackendCredential` containing an explicit `kind`
+(currently only `pat`), opaque `token` and authenticated account UUID as `user_id`.
+Cache-satisfied reads may not need a credential; local config
 and user-data operations never require one. Azure SDK lifecycle and calls stay
 behind the backend/Azure adapter boundary.
+
+#### Authentication and recovery
+
+`get_session_context_from_request` resolves identity without a backend token.
+Remote routes use `get_session_credential_from_request`, backed by
+`AccountManagerCredentialProvider`; repositories use that same provider for
+UUID-based acquisition. Credentials are request/operation scoped, including
+background refreshes, and are not persisted with shared snapshots.
+
+`PatCredentialPolicy` owns the current live-ADO requirement and PAT failure
+mapping; `AccountManager` owns validation, encrypted storage and rejection of the
+specific failed token. `BackendAuthError` carries operation context to the HTTP
+adapter without generic callers rejecting PATs. The shared Azure authentication
+factory selects PAT Basic authentication for SDK and wiki clients and rejects
+unsupported credential kinds.
+
+The planner and administration frontends share `createAuthRecovery`. The HTTP
+transport invokes injected recovery handlers: session 401 recovery retains the
+existing replay policy, while PAT 403 failures post an actionable notification
+without awaiting a dialog or replaying the request. Authorized local
+administration remains usable without a valid PAT.
+
+Entra/OIDC login, delegated-token providers, Bearer transport and a central
+authentication service are not implemented. Future integrations extend these
+boundaries rather than coupling session identity to backend credentials. See
+[AUTHENTICATION.md](AUTHENTICATION.md) for contracts and deferred policy decisions.
 
 #### Storage abstraction
 
@@ -217,8 +247,8 @@ where configured.
 - `CachingBackend` decorates the selected backend with per-method soft TTLs,
   persistent remote-cache entries, invalidation, and background refresh.
 - Repositories translate backend capabilities into application operations.
-- `SessionManager` keeps active session context in a process-local,
-  thread-safe map and obtains account credentials during session creation.
+- `SessionManager` validates persisted sessions and device bindings without
+  loading PATs; request-local identity and credential resolution remain separate.
 
 ### Code-Level Construction Diagram
 
@@ -400,8 +430,8 @@ storage.
   application data.
 - A cache miss may require a valid `BackendCredential`; a cached response may
   not. Test both paths explicitly.
-- `SessionManager` is thread-safe within one process but is not distributed and
-  does not persist session state.
+- `SessionManager` persists hashed session records in authoritative storage;
+  its process-local lock is not a distributed coordination mechanism.
 - Backend selection is first-match-wins. Registry order determines precedence.
 - Do not convert unexpected backend or storage failures into empty data; keep
   explicit errors observable to the API and logs.
@@ -421,8 +451,8 @@ separation between authoritative and remote-cache storage.
 - `planner.py:make_app` is the zero-argument Uvicorn factory.
 - Run locally with `uvicorn planner:make_app --factory --reload --port 8001`.
 - Build the frontend bundle before serving the configured static directory.
-- `SessionManager` is process-local; multiple API instances need shared session
-  storage to share sessions reliably.
+- Multiple API instances need shared authoritative session storage and appropriate
+  cross-process transaction guarantees to share sessions reliably.
 - Diskcache persistence and cache invalidation/TTL behavior are configuration-
   driven.
 - Some Azure SDK and storage operations are synchronous inside the web app.

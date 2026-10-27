@@ -220,6 +220,16 @@ class SessionMiddleware(BaseHTTPMiddleware):
             '/admin/check', '/admin/v1/ado', '/admin/v1/events-config',
             '/admin/v1/groups-config', '/admin/v1/system',
         }
+        local_record_route = (
+            route_path in {'/api/view', '/api/scenario', '/api/groups'}
+            or route_path.startswith('/api/groups/')
+        )
+        event_route = (
+            route_path in {'/api/events', '/api/event-categories'}
+            or route_path.startswith(('/api/events/', '/api/event-categories/'))
+        )
+        if event_route and request.cookies.get(SESSION_COOKIE):
+            local_record_route = not resolve_service(request, 'event_repository').requires_credential
         cached_or_local_read_routes = {
             '/api/teams', '/api/projects', '/api/tasks', '/api/markers',
             '/api/iterations', '/api/history/tasks', '/api/cost', '/api/cost/teams',
@@ -237,6 +247,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         protected_api = route_path.startswith(('/api/', '/admin/v1/')) or route_path == '/admin/check'
         if (protected_api and route_path not in credential_routes
                 and route_path not in local_admin_config_routes
+            and not local_record_route
                 and not read_only_local_or_cached
                 and request.cookies.get(SESSION_COOKIE)):
             try:

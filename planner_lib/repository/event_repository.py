@@ -42,6 +42,10 @@ class EventRepository:
             type(backend).__name__,
         )
 
+    @property
+    def requires_credential(self) -> bool:
+        return self._credential_provider is not None
+
     def _get_credential(self, user_id: Optional[str]) -> Optional[BackendCredential]:
         if not self._credential_provider or not user_id:
             return None

@@ -263,6 +263,7 @@ def publication_api(authenticated_client, publication_wire, monkeypatch):
     )
     register_service_on_client(authenticated_client, 'task_repository', repository)
     register_service_on_client(authenticated_client, 'account_manager', SimpleNamespace(
+        get_account_by_id=lambda user_id: {'email': 'user@example.com'},
         load=lambda email: {'pat': CREDENTIAL['token']}, pat_error=lambda email: None,
     ))
     return authenticated_client
