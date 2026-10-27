@@ -19,6 +19,7 @@ from planner_lib.storage import StorageBackend
 from planner_lib.accounts.interfaces import AccountManagerProtocol
 from planner_lib.backend.port import BackendCredential
 from planner_lib.services.resolver import resolve_service
+from planner_lib.session.enrollment import EnrollmentSessionBinding
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +47,12 @@ class SessionManager:
         self,
         account_manager: AccountManagerProtocol,
         storage: StorageBackend,
+        session_binding_factory=EnrollmentSessionBinding,
     ) -> None:
         self._lock = threading.Lock()
         self._account_manager = account_manager
         self._storage = storage
+        self._session_binding = session_binding_factory(storage)
 
     def create(self, email: str, device_id: Optional[str] = None) -> str:
         account_id = self._account_manager.get_account_id(email)
@@ -96,16 +99,14 @@ class SessionManager:
             return None
         if record['device_id'] is not None:
             try:
-                auth = self._storage.load('account_auth', account_id)
+                valid_binding = self._session_binding.validate(
+                    account_id, record['device_id'], now, refresh=refresh,
+                )
             except KeyError:
                 return None
-            device = auth['devices'].get(record['device_id'])
-            if device is None or device['expires'] <= now:
+            if not valid_binding:
                 self._storage.delete('auth_sessions', key)
                 return None
-            if refresh:
-                device['expires'] = now + 90 * 86400
-                self._storage.save('account_auth', account_id, auth)
         if refresh:
             record['last_seen'] = now
             self._storage.save('auth_sessions', key, record, ttl_seconds=SESSION_MAX - (now - record['created']))
@@ -191,7 +192,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         )):
             identity = request.client.host if request.client else 'unknown'
             try:
-                auth = resolve_service(request, 'auth_manager')
+                auth = resolve_service(request, 'login_adapter')
                 auth.throttle(identity, limit=300)
                 try:
                     payload = await request.json()

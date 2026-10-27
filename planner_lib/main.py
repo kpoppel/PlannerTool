@@ -118,15 +118,20 @@ def _build_services(
     # --- Accounts / session ---
     container.register_factory("account_manager",
         lambda: AccountManager(storage=storage_diskcache))
+    from planner_lib.session.enrollment import EnrollmentLoginAdapter, EnrollmentSessionBinding
     container.register_factory("session_manager",
         lambda: SessionManager(
             account_manager=container.get("account_manager"),
             storage=storage_diskcache,
+            session_binding_factory=EnrollmentSessionBinding,
         ))
     from planner_lib.session.auth import AuthManager
     container.register_factory("auth_manager",
         lambda: AuthManager(storage_diskcache, container.get("account_manager"),
                             container.get("session_manager")))
+    container.register_factory("login_adapter",
+        lambda: EnrollmentLoginAdapter(container.get("auth_manager"),
+                                       container.get("account_manager"), storage_diskcache))
 
     # --- Project domain ---
     container.register_factory("capacity_service",

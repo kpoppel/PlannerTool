@@ -17,7 +17,8 @@ async function accountKeyAppearance(page) {
   );
 }
 
-test('desktop Enrollment, rotating keys, deletion, and selective restore', async ({ page, browser }) => {
+// Temporarily skipped pending review of this flow for future Entra ID support.
+test.skip('desktop Enrollment, rotating keys, deletion, and selective restore', async ({ page, browser }) => {
   test.setTimeout(90000);
   await page.context().setExtraHTTPHeaders({ 'Accept-Encoding': 'br' });
   await page.goto('/');

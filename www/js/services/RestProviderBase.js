@@ -17,7 +17,8 @@ export class RestProviderBase {
     this._onNetworkError =
       typeof options.onNetworkError === 'function' ? options.onNetworkError : null;
     this._onResponse = options.onResponse === undefined ? null : options.onResponse;
-    this._onPatRequired = options.onPatRequired === undefined ? null : options.onPatRequired;
+    this._onCredentialFailure = options.onCredentialFailure === undefined
+      ? null : options.onCredentialFailure;
     this._fetchImpl =
       typeof options.fetchImpl === 'function'
         ? options.fetchImpl
@@ -113,17 +114,10 @@ export class RestProviderBase {
       throw err;
     }
 
-    if (this._onPatRequired !== null && response.status === 403) {
-      let payload = null;
-      try {
-        payload = await response.clone().json();
-      } catch (error) {
-        console.warn('Non-JSON access denial', { url: resolvedUrl, status: response.status });
-      }
-      if (payload !== null && (payload.error === 'pat_required' || payload.error === 'pat_invalid')) {
-        credentialFailure = true;
-        this._onPatRequired(payload.error);
-      }
+    if (this._onCredentialFailure !== null) {
+      credentialFailure = await this._onCredentialFailure(response, {
+        url: resolvedUrl, options: fetchOptions,
+      });
     }
     if (allowSessionRecovery && response && response.status === 401) {
       const recovered = await this._recoverSession({

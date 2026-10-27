@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RestProviderBase } from '../../www/js/services/RestProviderBase.js';
+import { createAuthRecovery } from '../../www/js/services/authRecovery.js';
 
 function response({ ok = true, status = 200, jsonData = null, jsonThrows = false } = {}) {
   return {
@@ -15,12 +16,69 @@ function response({ ok = true, status = 200, jsonData = null, jsonThrows = false
 }
 
 describe('RestProviderBase', () => {
+  it('uses injected recovery handlers without selecting a login or credential implementation', async () => {
+    const denied = new Response(JSON.stringify({ error: 'interaction_required' }), { status: 403 });
+    const fetchImpl = vi.fn().mockResolvedValue(denied);
+    const onCredentialFailure = vi.fn().mockResolvedValue(true);
+    const onSessionExpired = vi.fn();
+    const onResponse = vi.fn();
+    const base = new RestProviderBase({
+      fetchImpl, session: true, onCredentialFailure, onSessionExpired, onResponse,
+    });
+
+    expect(await base._fetch('/api/custom', { method: 'POST' })).toBe(denied);
+    expect(onCredentialFailure).toHaveBeenCalledWith(denied, expect.objectContaining({
+      url: '/api/custom', options: expect.objectContaining({ method: 'POST' }),
+    }));
+    expect(onResponse).toHaveBeenCalledWith(denied, expect.objectContaining({
+      credentialFailure: true,
+    }));
+    expect(onSessionExpired).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([true, false])('shares one session recovery and resets after success=%s', async (success) => {
+    let finishRecovery;
+    const pending = new Promise((resolve, reject) => {
+      finishRecovery = () => {
+        if (success) resolve();
+        else reject(new Error('Renewal unavailable'));
+      };
+    });
+    const acquireSession = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(undefined);
+    const onSessionError = vi.fn();
+    const recovery = createAuthRecovery({ acquireSession, onSessionError });
+    const first = recovery.onSessionExpired({ url: '/api/tasks' });
+    const second = recovery.onSessionExpired({ url: '/api/cost' });
+
+    expect(acquireSession).toHaveBeenCalledTimes(1);
+    finishRecovery();
+    expect(await Promise.all([first, second])).toEqual([success, success]);
+    expect(onSessionError).toHaveBeenCalledTimes(success ? 0 : 1);
+    expect(await recovery.onSessionExpired({ url: '/api/tasks' })).toBe(true);
+    expect(acquireSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not share recovery state between coordinators', async () => {
+    const acquireFirst = vi.fn().mockResolvedValue(undefined);
+    const acquireSecond = vi.fn().mockResolvedValue(undefined);
+    const first = createAuthRecovery({ acquireSession: acquireFirst });
+    const second = createAuthRecovery({ acquireSession: acquireSecond });
+
+    expect(await Promise.all([
+      first.onSessionExpired({}), second.onSessionExpired({}),
+    ])).toEqual([true, true]);
+    expect(acquireFirst).toHaveBeenCalledTimes(1);
+    expect(acquireSecond).toHaveBeenCalledTimes(1);
+  });
+
   it('reports PAT failures without waiting for repair or replaying the request', async () => {
     const onPatRequired = vi.fn(() => new Promise(() => {}));
     const onResponse = vi.fn();
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'pat_required' }), { status: 403 }));
-    const base = new RestProviderBase({ fetchImpl, onPatRequired, onResponse, session: true });
+    const recovery = createAuthRecovery({ notifyCredential: onPatRequired });
+    const base = new RestProviderBase({ fetchImpl, ...recovery, onResponse, session: true });
 
     const response = await base._fetch('/api/tasks');
 
@@ -37,7 +95,8 @@ describe('RestProviderBase', () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: 'pat_invalid' }), { status: 403 }),
     );
-    const base = new RestProviderBase({ fetchImpl, onPatRequired });
+    const recovery = createAuthRecovery({ notifyCredential: onPatRequired });
+    const base = new RestProviderBase({ fetchImpl, ...recovery });
     await base._fetch('/api/tasks', { method: 'POST' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(onPatRequired).toHaveBeenCalledTimes(1);

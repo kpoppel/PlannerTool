@@ -34,3 +34,50 @@ export function notifyPatRequired(code) {
 export function clearPatRecoveryNotifications() {
   uiCommands.clearPatRecoveryNotifications();
 }
+
+export function createAuthRecovery({
+  acquireSession = null,
+  onSessionError = null,
+  notifyCredential = notifyPatRequired,
+} = {}) {
+  let sessionRecovery = null;
+  return {
+    async login(apiUrl) {
+      const { showAuthDialog } = await import('../components/AuthDialog.lit.js');
+      await showAuthDialog(apiUrl);
+    },
+    async onCredentialFailure(response, context) {
+      if (response.status !== 403) return false;
+      let payload = null;
+      try {
+        payload = await response.clone().json();
+      } catch (error) {
+        console.warn('Non-JSON access denial', { url: context.url, status: response.status });
+      }
+      if (payload === null || (payload.error !== 'pat_required' && payload.error !== 'pat_invalid')) {
+        return false;
+      }
+      notifyCredential(payload.error);
+      return true;
+    },
+    async onSessionExpired(context) {
+      if (acquireSession === null) return false;
+      if (sessionRecovery !== null) return sessionRecovery;
+      sessionRecovery = (async () => {
+        try {
+          await acquireSession(context);
+          return true;
+        } catch (error) {
+          console.error('Failed to re-acquire session', error);
+          if (onSessionError !== null) onSessionError(error);
+          return false;
+        }
+      })();
+      try {
+        return await sessionRecovery;
+      } finally {
+        sessionRecovery = null;
+      }
+    },
+  };
+}

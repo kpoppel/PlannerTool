@@ -194,6 +194,34 @@ def test_first_enrollment_claims_admin_and_preserves_profile_contract(client, mo
     load_account.assert_not_called()
 
 
+def test_profile_uses_login_adapter_projection_for_authenticated_uuid(client, monkeypatch):
+    from unittest.mock import Mock
+
+    client.post('/api/auth/enroll', json={
+        'email': 'profile@example.com', 'name': 'Enrollment Name',
+    })
+    container = client.app.state.container
+    accounts = container.get('account_manager')
+    account_id = accounts.get_account_id('profile@example.com')
+    sessions = container.get('session_manager')
+    session_id = sessions.create('profile@example.com')
+    client.cookies.clear()
+    client.cookies.set('sessionId', session_id)
+    container.get('storage').delete('account_auth', account_id)
+    projection = Mock(return_value={'name': 'Adapter Name', 'devices': []})
+    monkeypatch.setattr(container.get('login_adapter'), 'profile', projection)
+
+    response = client.get('/api/auth/me')
+
+    assert response.status_code == 200
+    assert response.json() == {
+        'email': 'profile@example.com', 'name': 'Adapter Name',
+        'patRequired': False, 'patError': None, 'permissions': ['admin'],
+        'currentDeviceId': None, 'devices': [],
+    }
+    projection.assert_called_once_with(account_id)
+
+
 @pytest.mark.xfail(
     strict=True,
     reason='Live ADO /api/auth/me derives patError by loading the stored PAT',

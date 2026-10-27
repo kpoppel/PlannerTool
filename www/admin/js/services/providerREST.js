@@ -2,16 +2,17 @@
 // Uses shared RestProviderBase + Result helpers, while keeping admin endpoints separate.
 import { RestProviderBase } from '../../../js/services/RestProviderBase.js';
 import { ok, fail } from '../../../js/services/result.js';
-import { notifyPatRequired } from '../../../js/services/authRecovery.js';
+import { createAuthRecovery } from '../../../js/services/authRecovery.js';
 
 export class AdminProviderREST extends RestProviderBase {
   constructor() {
+    const recovery = createAuthRecovery();
     // Admin UI uses same-origin credentials (cookie/session managed by server).
     super({
       retry: false,
       session: false,
       defaultCredentials: 'same-origin',
-      onPatRequired: (code) => notifyPatRequired(code),
+      onCredentialFailure: recovery.onCredentialFailure,
     });
   }
 

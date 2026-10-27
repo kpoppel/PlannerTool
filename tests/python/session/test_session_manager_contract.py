@@ -29,6 +29,49 @@ def test_unknown_account_cannot_create_session():
         sessions.create('unknown@example.com')
 
 
+def test_session_binding_can_validate_without_enrollment_storage(monkeypatch):
+    from unittest.mock import Mock
+
+    storage = MemoryStorage()
+    accounts = AccountManager(storage)
+    account_id = accounts.create_account(AccountCredentialsPayload(email='bound@example.com'))['id']
+    storage.delete('account_auth', account_id)
+    binding = Mock()
+    binding.validate.return_value = True
+    factory = Mock(return_value=binding)
+    sessions = SessionManager(accounts, storage, session_binding_factory=factory)
+    monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: 1000.0)
+    session_id = sessions.create('bound@example.com', 'binding-id')
+
+    assert sessions.get(session_id) == {
+        'account_id': account_id, 'email': 'bound@example.com', 'device_id': 'binding-id',
+    }
+    factory.assert_called_once_with(storage)
+    binding.validate.assert_called_once_with(account_id, 'binding-id', 1000.0, refresh=True)
+    assert sessions.is_valid(session_id)
+    binding.validate.assert_called_with(account_id, 'binding-id', 1000.0, refresh=False)
+
+    binding.validate.return_value = False
+    assert sessions.get(session_id) is None
+    assert not sessions.is_valid(session_id)
+
+
+def test_unbound_session_does_not_consult_login_binding():
+    from unittest.mock import Mock
+
+    storage = MemoryStorage()
+    accounts = AccountManager(storage)
+    account_id = accounts.create_account(AccountCredentialsPayload(email='local@example.com'))['id']
+    storage.delete('account_auth', account_id)
+    binding = Mock()
+    sessions = SessionManager(accounts, storage, session_binding_factory=Mock(return_value=binding))
+    session_id = sessions.create('local@example.com')
+
+    assert sessions.get(session_id)['account_id'] == account_id
+    assert sessions.is_valid(session_id)
+    binding.validate.assert_not_called()
+
+
 def test_last_active_survives_session_expiration_and_is_not_updated_by_validity_checks(monkeypatch):
     storage = MemoryStorage()
     accounts = AccountManager(storage)

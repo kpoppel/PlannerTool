@@ -7,7 +7,7 @@ import { ok, fail } from './result.js';
 import { store } from '../application/store.js';
 import { createUiCommands } from '../application/commands/uiCommands.js';
 import { isMutableScenario } from '../application/shared/scenarioMutations.js';
-import { clearPatRecoveryNotifications, notifyPatRequired } from './authRecovery.js';
+import { clearPatRecoveryNotifications, createAuthRecovery } from './authRecovery.js';
 
 const uiCommands = createUiCommands(store, bus);
 
@@ -18,21 +18,29 @@ const uiCommands = createUiCommands(store, bus);
 
 export class ProviderREST extends RestProviderBase {
   constructor() {
+    const recovery = createAuthRecovery({
+      acquireSession: () => this.acquireSession(),
+      onSessionError: (error) => bus.emit(SessionEvents.EXPIRED, {
+        ok: false,
+        error: String(error),
+        message:
+          'Session could not be reacquired. Please check if the server is up and your PAT is valid.',
+      }),
+    });
     super({
       retry: true,
       session: true,
       networkRetryCount: 2,
       networkRetryDelay: 1000,
-      onSessionExpired: () => this._handleSessionExpiry(),
-      onPatRequired: (code) => notifyPatRequired(code),
+      onSessionExpired: recovery.onSessionExpired,
+      onCredentialFailure: recovery.onCredentialFailure,
       onResponse: (response, context) => this._recordResponse(response, context.url, context),
       onNetworkError: (err) => uiCommands.addNotification({
         source: 'Network', code: 'network_unreachable', severity: 'error',
         message: err instanceof Error ? err.message : String(err),
       }),
     });
-    this._reacquiring = false;
-    this._reacquirePromise = null;
+    this._recovery = recovery;
     this._accountEmail = null;
   }
   // Initialize provider and acquire a session. Init should only perform
@@ -72,8 +80,7 @@ export class ProviderREST extends RestProviderBase {
     if (response.status === 401) {
       this._accountEmail = null;
       bus.emit(SessionEvents.CHANGED);
-      const { showAuthDialog } = await import('../components/AuthDialog.lit.js');
-      await showAuthDialog(this._resolveUrl('/api'));
+      await this._recovery.login(this._resolveUrl('/api'));
       return;
     }
     if (!response.ok) {
@@ -87,36 +94,6 @@ export class ProviderREST extends RestProviderBase {
     }
     const { ProviderLocalStorage } = await import('./providerLocalStorage.js');
     await new ProviderLocalStorage().setLocalPref('user.email', account.email);
-  }
-
-  async _handleSessionExpiry() {
-    // If already reacquiring, wait for that to complete
-    if (this._reacquiring && this._reacquirePromise) {
-      return await this._reacquirePromise;
-    }
-
-    this._reacquiring = true;
-    this._reacquirePromise = (async () => {
-      try {
-        await this.acquireSession();
-        return true;
-      } catch (err) {
-        console.error('Failed to re-acquire session', err);
-        // Only emit error event if reacquisition failed
-        bus.emit(SessionEvents.EXPIRED, {
-          ok: false,
-          error: String(err),
-          message:
-            'Session could not be reacquired. Please check if the server is up and your PAT is valid.',
-        });
-        return false;
-      } finally {
-        this._reacquiring = false;
-        this._reacquirePromise = null;
-      }
-    })();
-
-    return await this._reacquirePromise;
   }
 
   /**
