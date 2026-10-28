@@ -1,9 +1,0 @@
-{$POC_HOSTNAME} {
-	redir /auth /auth/
-	handle_path /auth/* {
-		reverse_proxy entra-id:8000
-	}
-	handle {
-		respond 404
-	}
-}

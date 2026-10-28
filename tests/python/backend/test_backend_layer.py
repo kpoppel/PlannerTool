@@ -5,7 +5,7 @@ Covers:
   - StaticBackend: YAML loading, filtering
   - TaskRepository: read, write, list_markers, list_iterations, refresh
   - HistoryRepository: read with pagination and date filters
-  - AccountManagerCredentialProvider: credential lookup
+    - PatCredentialPolicy: credential lookup
 """
 import pytest
 from collections.abc import Iterator
@@ -87,18 +87,18 @@ def test_fake_credential_provider_returns_none_for_unknown():
 
 
 # ---------------------------------------------------------------------------
-# AccountManagerCredentialProvider
+# PatCredentialPolicy
 # ---------------------------------------------------------------------------
 
 def test_credential_provider_wraps_account_manager():
-    from planner_lib.backend.credential import AccountManagerCredentialProvider
+    from planner_lib.backend.credential import PatCredentialPolicy
 
     account_mgr = MagicMock()
     account_mgr.get_account_by_id.return_value = {'email': 'user@test.com'}
     account_mgr.pat_error.return_value = None
     account_mgr.load.return_value = {'ok': True, 'email': 'user@test.com', 'pat': 'secret-pat'}
 
-    provider = AccountManagerCredentialProvider(account_mgr)
+    provider = PatCredentialPolicy(account_mgr)
     cred = provider.get_credential('11111111-1111-4111-8111-111111111111')
 
     assert cred is not None
@@ -109,36 +109,36 @@ def test_credential_provider_wraps_account_manager():
 
 
 def test_credential_provider_returns_none_when_no_pat():
-    from planner_lib.backend.credential import AccountManagerCredentialProvider
+    from planner_lib.backend.credential import PatCredentialPolicy
 
     account_mgr = MagicMock()
     account_mgr.get_account_by_id.return_value = {'email': 'user@test.com'}
     account_mgr.pat_error.return_value = None
     account_mgr.load.return_value = {'ok': True, 'email': 'user@test.com', 'pat': None}
 
-    provider = AccountManagerCredentialProvider(account_mgr)
+    provider = PatCredentialPolicy(account_mgr)
     assert provider.get_credential('11111111-1111-4111-8111-111111111111') is None
 
 
 @pytest.mark.parametrize('error', ['pat_required', 'pat_invalid'])
 def test_credential_policy_does_not_load_unusable_pat(error):
-    from planner_lib.backend.credential import AccountManagerCredentialProvider
+    from planner_lib.backend.credential import PatCredentialPolicy
 
     accounts = MagicMock()
     accounts.get_account_by_id.return_value = {'email': 'user@example.com'}
     accounts.pat_error.return_value = error
 
-    assert AccountManagerCredentialProvider(accounts).get_credential('account-id') is None
+    assert PatCredentialPolicy(accounts).get_credential('account-id') is None
     accounts.load.assert_not_called()
 
 
 def test_credential_provider_returns_none_on_load_exception():
-    from planner_lib.backend.credential import AccountManagerCredentialProvider
+    from planner_lib.backend.credential import PatCredentialPolicy
 
     account_mgr = MagicMock()
     account_mgr.get_account_by_id.side_effect = KeyError('unknown account')
 
-    provider = AccountManagerCredentialProvider(account_mgr)
+    provider = PatCredentialPolicy(account_mgr)
     assert provider.get_credential('22222222-2222-4222-8222-222222222222') is None
 
 

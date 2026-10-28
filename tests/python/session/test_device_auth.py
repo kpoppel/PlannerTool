@@ -604,14 +604,14 @@ def test_sessions_are_bound_to_account_id_not_reused_email(tmp_path, monkeypatch
 
 def test_credential_provider_resolves_account_id(tmp_path):
     from planner_lib.accounts.config import AccountCredentialsPayload
-    from planner_lib.backend.credential import AccountManagerCredentialProvider
+    from planner_lib.backend.credential import PatCredentialPolicy
 
     storage = DiskCacheStorage(tmp_path)
     try:
         accounts = AccountManager(storage)
         accounts.create_account(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
         account_id = accounts.get_account_id('owner@example.com')
-        provider = AccountManagerCredentialProvider(accounts)
+        provider = PatCredentialPolicy(accounts)
         assert provider.get_credential(account_id) == {'kind': 'pat', 'token': 'azure-pat', 'user_id': account_id}
         assert provider.get_credential('owner@example.com') is None
     finally:

@@ -584,25 +584,6 @@ class Database:
                                         and journal['phase'] != 'complete'),
                 'failure': journal['error'] if journal else None}
 
-    def open_offline(self):
-        lease = Lease(self.root, True, self.lock_timeout)
-        storage = None
-        try:
-            journal = self._journal()
-            if journal is not None and journal['phase'] != 'complete':
-                raise SchemaError('Finish database migration/recovery before authentication transition')
-            source = self._source(self._pointer())
-            if source is None or self._revision(source) != TARGET_REVISION:
-                raise SchemaError('Authentication transition requires an initialized current-schema database')
-            storage = DiskCacheStorage(source)
-            validate_records(storage, TARGET_REVISION)
-            return DatabaseHandle(storage, lease)
-        except BaseException:
-            if storage is not None:
-                storage.close()
-            lease.close()
-            raise
-
     def retry(self):
         lease = Lease(self.root, True, self.lock_timeout)
         try:

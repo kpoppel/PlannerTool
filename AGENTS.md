@@ -47,7 +47,7 @@ General
 
 - Prefer clear, small commits with focused scope. Write concise commit messages describing "why".
 - Use English for identifiers, comments and commit messages. Keep comments factual and short.
-- Do not ever create fallback paths. Every change is in control and backwards compatibility must be handled by upgrading by running the `scripts/migrate-py` migration.
+- Do not create fallback paths. Handle persisted-data changes through explicit server-owned schema migrations.
 - Only create try/catch paths if and only if there is a real failure path warranting this.
 - Do not introduce these constructions in JS/test code unless explicitly asked by the user or truly necessary for correctness: `?.`, `??`, `Array.isArray(...)`.
 - Boolean `||` expressions are allowed when they are true boolean evaluations (for example conditions and boolean flags).

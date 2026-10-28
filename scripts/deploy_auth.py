@@ -3,61 +3,9 @@ import json
 import os
 import re
 import secrets
-import shutil
-import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import yaml
-
-
-def migrate_auth_configuration(manifest_path, output_dir, *, apply=False):
-    manifest_path = Path(manifest_path).resolve()
-    config = yaml.safe_load(manifest_path.read_text())
-    changes = []
-    updates = []
-    for name, service in config.get('auth_services', {}).items():
-        if not re.fullmatch(r'[a-z][a-z0-9-]{0,40}', name):
-            raise ValueError('Invalid auth service name')
-        for field in ('environment_id', 'generation'):
-            if field in service:
-                del service[field]
-                changes.append(f'{name}: remove {field}')
-        if service['mode'] not in ('mock', 'entra'):
-            raise ValueError('Unknown auth service mode')
-        if 'registration' not in service:
-            env_path = Path(protected_file(manifest_path.parent, service['env_file']))
-            lines = env_path.read_text().splitlines()
-            retained = [line for line in lines if line.partition('=')[0] not in (
-                'ENTRA_BROKER_ENVIRONMENT', 'ENTRA_BROKER_GENERATION')]
-            if retained != lines:
-                updates.append((env_path, '\n'.join(retained) + '\n'))
-                changes.append(f'{name}: remove obsolete registration settings')
-            continue
-        marker = Path(output_dir).resolve() / '.auth' / name / 'managed.json'
-        if marker.exists():
-            previous = json.loads(Path(protected_file(marker.parent, marker.name)).read_text())
-            if (set(previous) != {'version', 'identity', 'instances'}
-                    or previous['version'] not in (1, 2)):
-                raise ValueError('Unsupported managed auth metadata')
-            updated = {'version': 2, 'identity': {
-                'mode': service['mode'], 'public_url': service['public_url'],
-            }, 'instances': previous['instances']}
-            if updated != previous:
-                updates.append((marker, json.dumps(updated, indent=2) + '\n'))
-                changes.append(f'{name}: migrate managed auth metadata')
-    if changes:
-        updates.append((manifest_path, yaml.safe_dump(config, sort_keys=False)))
-    if apply:
-        stamp = str(time.time_ns())
-        for path, content in updates:
-            shutil.copy2(path, path.with_name(path.name + '.before-auth-v2-' + stamp))
-            temporary = path.with_name(path.name + '.auth-v2-' + stamp)
-            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(descriptor, 'w') as stream:
-                stream.write(content)
-            os.replace(temporary, path)
-    return changes
 
 
 def validate_deployment_policy(config):
@@ -116,7 +64,7 @@ def write_managed_auth(service, registry, *, apply):
         previous = json.loads(Path(protected_file(directory, 'managed.json')).read_text())
         if (set(previous) != {'version', 'identity', 'instances'} or previous['version'] != 2
                 or previous['identity'] != identity):
-            raise ValueError('Managed auth configuration changed; run scripts/migrate-py auth before deployment')
+            raise ValueError('Managed auth authority differs from the deployment manifest')
         existing_members = set(previous['instances'])
         for name in shared_secrets | {'client-' + name for name in existing_members}:
             protected_file(directory, name)

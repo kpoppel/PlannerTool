@@ -1,13 +1,4 @@
-"""AccountManagerCredentialProvider: CredentialProvider backed by AccountManager.
-
-Wraps the existing AccountManager (which stores per-user PATs in encrypted
-storage) and exposes the CredentialProvider protocol so backends can call
-get_credential(user_id) without holding a direct reference to AccountManager.
-
-No PAT strings are stored in the provider itself — they are fetched on
-demand from AccountManager.load() and returned inside a BackendCredential
-TypedDict for immediate use by the caller.
-"""
+"""PAT and delegated credential policies for remote backend operations."""
 from __future__ import annotations
 
 import logging
@@ -66,38 +57,6 @@ class PatCredentialPolicy:
             email = self._account_manager.get_account_by_id(credential['user_id'])['email']
             self._account_manager.reject_pat(email, credential['token'])
         return 'pat_invalid'
-
-
-class AccountManagerCredentialProvider:
-    """CredentialProvider implementation backed by AccountManager.
-
-    Parameters
-    ----------
-    account_manager:
-        An AccountManager instance (see planner_lib/accounts/).
-        Resolves account IDs with ``get_account_by_id`` and loads the
-        corresponding credential dict with ``load(email)``.
-    """
-
-    def __init__(self, account_manager) -> None:
-        self._policy = PatCredentialPolicy(account_manager)
-
-    def get_credential(self, user_id: str) -> Optional[BackendCredential]:
-        """Return a BackendCredential for *user_id*, or None if no PAT is stored.
-
-        Parameters
-        ----------
-        user_id:
-            Stable account ID from the authenticated session.
-
-        Returns
-        -------
-        BackendCredential | None
-            A TypedDict with ``kind`` (``"pat"``), ``token`` (the PAT), and
-            ``user_id`` when a
-            PAT is found, otherwise None.
-        """
-        return self._policy.get_credential(user_id)
 
 
 class DelegatedCredentialProvider:
@@ -182,9 +141,6 @@ class DelegatedCredentialProvider:
             self.validate(credential)
             yield
 
-
-class DelegatedCredentialPolicy:
-    """Remote denial never revokes a grant or mutates a PAT."""
 
     def credential_error(self, user_id):
         return None

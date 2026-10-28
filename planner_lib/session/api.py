@@ -20,12 +20,10 @@ def _is_entra(request):
     return resolve_service(request, 'authentication_provider') == 'entra'
 
 
-def _link_adapter(request):
-    import os
-
-    if not _is_entra(request) and 'PLANNER_AUTH_SECRET_FILE' not in os.environ:
+def _broker_login(request):
+    if not _is_entra(request):
         raise HTTPException(403, detail={'error': 'access_denied'})
-    return resolve_service(request, 'entra_link_adapter')
+    return resolve_service(request, 'login_adapter')
 
 
 def _auth_failure(error):
@@ -74,11 +72,6 @@ class AuthenticationSelection(BaseModel):
     selected: Literal['enrollment', 'entra']
 
 
-class IdentityLinkApproval(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    account_id: str
-
-
 class LegacyAccountClaim(BaseModel):
     model_config = ConfigDict(extra='forbid')
     email: str
@@ -106,50 +99,23 @@ async def claim_legacy_account(payload: LegacyAccountClaim, request: Request, re
     return login.profile(resolve_service(request, 'session_manager').get(sid))
 
 
-@router.post('/auth/links/begin')
-@require_admin_session
-async def begin_identity_link(payload: IdentityLinkApproval, request: Request, response: Response):
-    from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
-
-    login = _link_adapter(request)
-    context = get_session_context_from_request(request)
-    if not _is_entra(request) and payload.account_id != context['account_id']:
-        return JSONResponse({'error': 'access_denied'}, status_code=403)
-    if request.headers.get('origin') != login.settings.completion_url.split('/' + login.settings.instance + '/')[0]:
-        return JSONResponse({'error': 'access_denied'}, status_code=403)
-    try:
-        binding, result = login.begin_link(payload.account_id,
-            get_session_context_from_request(request)['account_id'], get_session_id_from_request(request))
-    except AuthFailure as error:
-        return _auth_failure(error)
-    except KeyError:
-        return JSONResponse({'error': 'access_denied'}, status_code=403)
-    response.set_cookie(LOGIN_COOKIE, binding, httponly=True, samesite='lax', max_age=300,
-                        path=request.scope.get('root_path', '').rstrip('/') + '/api/auth/',
-                        secure=request.url.scheme == 'https')
-    response.headers['Cache-Control'] = 'no-store'
-    return result
-
-
 @router.get('/auth/settings')
 @require_admin_session
 async def authentication_settings(request: Request, response: Response):
-    import os
     from planner_lib.session.broker import AuthFailure
 
     response.headers['Cache-Control'] = 'no-store'
     storage = resolve_service(request, 'storage')
     policy = storage.load('config', 'authentication')
     readiness = 'pat' if resolve_service(request, 'account_manager').requires_pat() else 'local'
-    if _is_entra(request) or 'PLANNER_AUTH_SECRET_FILE' in os.environ:
+    if _is_entra(request):
         try:
             resolve_service(request, 'broker_client').ready()
             readiness = 'ready'
         except AuthFailure:
             readiness = 'unavailable'
     return {**policy, 'deployment_controlled': True, 'readiness': readiness,
-            'live_activation': _is_entra(request),
-            'transition': storage.load('system', 'authentication_transition')['state']}
+            'live_activation': _is_entra(request)}
 
 
 @router.post('/auth/settings')
@@ -161,8 +127,7 @@ async def stage_authentication(payload: AuthenticationSelection, request: Reques
 
 def _complete_login(request, state, code):
     from planner_lib.session.broker import LOGIN_COOKIE
-    return _link_adapter(request).complete(
-        state, code, request.cookies.get(LOGIN_COOKIE, ''), request.cookies.get(SESSION_COOKIE, ''))
+    return _broker_login(request).complete(state, code, request.cookies.get(LOGIN_COOKIE, ''))
 
 
 @router.post('/auth/login/redirect')
@@ -199,7 +164,7 @@ async def login_complete(payload: LoginCompletion, request: Request, response: R
 @router.get('/auth/login/callback')
 async def login_callback(request: Request):
     from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
-    login = _link_adapter(request)
+    login = _broker_login(request)
     try:
         pending = login.pending(request.query_params.get('state', ''), request.cookies.get(LOGIN_COOKIE, ''))
     except AuthFailure as error:
@@ -238,7 +203,7 @@ def _popup_completion(request, state, target, error=None):
     import secrets
     from urllib.parse import urlsplit
 
-    settings = _link_adapter(request).settings
+    settings = _broker_login(request).settings
     public = urlsplit(settings.public_url)
     origin = public.scheme + '://' + public.netloc
     destination = '/' + settings.instance + ('/admin' if target == 'admin' else '/')

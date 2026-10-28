@@ -158,11 +158,3 @@ export function createBrokerHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLog
     deleteAccount: async () => { throw new Error('Broker account deletion policy is not configured'); },
   };
 }
-
-export function createEnrollmentClientAdapter({ acquireSession, login, logout }) {
-  return {
-    acquireSession,
-    signIn: login,
-    logout,
-  };
-}

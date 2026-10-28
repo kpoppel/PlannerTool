@@ -567,7 +567,7 @@ class ConfigManager:
         if 'accounts' in data:
             for key in list(self._storage.list_keys('external_identities')):
                 self._storage.delete('external_identities', key)
-        for namespace in ('auth_sessions', 'auth_transactions', 'auth_grants', 'auth_link_approvals',
+        for namespace in ('auth_sessions', 'auth_transactions', 'auth_grants',
                   'auth_transition_proofs'):
             for key in list(self._storage.list_keys(namespace)):
                 if self._storage.exists(namespace, key):

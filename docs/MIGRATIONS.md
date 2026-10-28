@@ -36,7 +36,7 @@ config. The v4.2.1 server config can still be the owned writable
 used as a runtime fallback. Its `people` record may lack a schema-version field.
 
 The explicit post-baseline chain is `24 -> 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
--> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43 -> 44 -> 45 -> 46 -> 47`;
+-> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43 -> 44`;
 there was no migration 25. Revisions preserve their historical IDs.
 Revision 26 drops disposable remote records, 27 fills scenario metadata, 28 adds
 account IDs, 29 converts view Context flags, 30 adds plan container types, 31
@@ -45,47 +45,24 @@ plugin settings using a fixed packaged menu resource. Revision 34 persists packe
 Unplanned preferences in saved views. The server registry has no
 pre-v4.2.1 migrations or reverse functions; older IDs are admission evidence only.
 
-Fresh installations initialize revision 47 directly and invoke no upgrades.
+Fresh installations initialize revision 44 directly and invoke no upgrades.
 External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
 
-### Revision 47 Provider-Neutral Identities
+### Revision 44 Authentication Policy
 
-`0047.provider-neutral-identity-links` replaces the development external identity
-format with `system/external_identity_schema: {version: 2}` and opaque issuer/subject
-links. It clears external links, broker grants, pending handoffs, pending link
-approvals and external sessions. No old provider-specific identity parser or
-conversion path remains. Enrollment sessions, accounts, permissions, PATs,
-enrollment credentials, views and scenarios are preserved.
+`0044.authentication-policy-and-external-identities` is the single upgrade from
+revision 43. It initializes enrollment/PAT policy, external identity metadata,
+one-time existing-account claims and broker authority. Pre-policy sessions expire;
+accounts, permissions, encrypted PATs, enrollment credentials and user data remain.
+Existing remembered browsers can renew enrollment sessions. Deploy the application,
+browser assets and broker together.
 
-Sign in again after upgrading. A mock deployment can reuse an existing administrator
-by entering its account email; production identity proof must establish new links.
-Upgrade the broker and browser assets with PlannerTool. Current links contain
-`version`, `issuer`, `subject`, `account_id`, `environment`, `name` and `email`, keyed
-by a hash of the structured issuer/subject pair. Admission validates ownership and
-broker-environment binding. Equal subjects from different issuers remain distinct.
-
-### Revision 46 Deployment Transition Journal
-
-`0046.deployment-authentication-transition` adds
-`system/authentication_transition`, initially
-`{version: 1, state: idle, id: null, fleet: [], target: null, epoch: null,
-admin_id: null, environment: null}`. Non-idle records require a canonical transition
-UUID, complete sorted fleet, target Entra, next epoch, linked admin UUID and exact
-mock broker environment. Allowed states are prepared, fenced, committed and
-released. Unknown fields/states fail admission. The journal remains readable as
-schema history but no longer gates serving or login selection; the offline purge
-command has been removed. Migration/fresh initialization preserve existing
-sessions, PATs, permissions and epochs. Deployment login-source changes advance
-the policy epoch without deleting accounts or credentials.
-
-### Revision 45 External Identities
-
-`0045.external-identity-links` introduced the development external-link namespace
-and version-1 marker. Revision 47 retires that format without conversion. Logical
-backups do not export links or grants; importing external links is rejected, and
-restoring accounts clears destination links and pending link approvals.
+Intermediate development schemas and transition journals are not supported.
+Changing deployment login source advances the policy epoch without deleting
+accounts or credentials. Logical backups exclude login policy, credentials,
+external links and grants. See [Authentication](AUTHENTICATION.md).
 
 ### Revision 34 saved-view contract
 

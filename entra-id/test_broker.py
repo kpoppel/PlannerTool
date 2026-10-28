@@ -276,6 +276,66 @@ def test_live_callback_requires_bound_browser_and_supports_missing_email(live_br
     assert 'email' not in result['identity']
 
 
+def test_broker_headers_host_check_and_no_diagnostic_routes(live_broker):
+    client = live_broker[0]
+    response = client.get('/v1/readiness')
+    assert response.headers['cache-control'] == 'no-store'
+    assert response.headers['referrer-policy'] == 'no-referrer'
+    assert response.headers['x-content-type-options'] == 'nosniff'
+    assert response.headers['strict-transport-security'] == 'max-age=31536000'
+    assert "frame-ancestors 'none'" in response.headers['content-security-policy']
+    assert client.get('/v1/readiness', headers={'Host': 'attacker.example'}).status_code == 400
+    for path in ('/', '/login', '/ado/projects', '/ado/identity', '/mock/authorize'):
+        assert client.get(path).status_code == 404
+
+
+@pytest.mark.parametrize('body,content_type,status', [
+    ('state=expected&state=other&code=code', 'application/x-www-form-urlencoded', 400),
+    ('x' * 16385, 'application/x-www-form-urlencoded', 413),
+    ('{}', 'application/json', 415),
+])
+def test_broker_callback_rejects_invalid_forms(live_broker, body, content_type, status):
+    client, app, headers, calls, settings, factory = live_broker
+    begin_live(client, app, headers)
+    response = client.post('/callback', content=body, headers={'Content-Type': content_type})
+    assert response.status_code == status
+    assert calls['token'] == 0
+
+
+def test_real_msal_generates_pkce_and_rejects_wrong_state_without_exchange(live_broker):
+    from unittest.mock import Mock
+    from urllib.parse import parse_qs, urlsplit
+    import httpx
+    import msal
+    from broker import ProtocolError
+    from upstream import EntraUpstream, SCOPES
+
+    settings = live_broker[4]
+    transport = Mock()
+    authority = f'https://login.microsoftonline.com/{settings.tenant_id}/oauth2/v2.0'
+    transport.get.return_value = httpx.Response(200, json={
+        'authorization_endpoint': authority + '/authorize', 'token_endpoint': authority + '/token',
+        'issuer': f'https://login.microsoftonline.com/{settings.tenant_id}/v2.0',
+    })
+
+    def factory(*args, **kwargs):
+        return msal.ConfidentialClientApplication(
+            *args, **kwargs, http_client=transport, instance_discovery=False)
+
+    upstream = EntraUpstream(settings, factory)
+    flow, cache = upstream.begin('bound-state')
+    query = parse_qs(urlsplit(flow['auth_uri']).query)
+    assert query['code_challenge_method'] == ['S256']
+    assert len(query['code_challenge'][0]) >= 43
+    assert query['nonce'][0]
+    assert query['state'] == ['bound-state']
+    assert query['response_mode'] == ['form_post']
+    assert all(scope in query['scope'][0].split() for scope in SCOPES + ['openid', 'offline_access'])
+    with pytest.raises(ProtocolError, match='invalid_binding'):
+        upstream.complete(flow, cache, {'state': 'wrong', 'code': 'code'})
+    transport.post.assert_not_called()
+
+
 def test_grant_owner_and_revocation_token_race(config):
     store = broker.BrokerStore(config)
     grant = store.redeem('alpha', *prepared(store))['grant']
@@ -316,29 +376,6 @@ def test_unavailable_fixture_cannot_begin(config):
     store = broker.BrokerStore(replace(config, instances={'alpha': registration}))
     with pytest.raises(broker.ProtocolError, match='auth_unavailable'):
         prepared(store)
-
-
-def test_sandbox_process_guard_blocks_dns_and_direct_external_ip():
-    import subprocess
-
-    result = subprocess.run([sys.executable, '-c', '''
-import socket
-from egress import install_sandbox_egress
-install_sandbox_egress()
-for host in ('login.microsoftonline.com', 'dev.azure.com'):
-    try:
-        socket.getaddrinfo(host, 443)
-    except PermissionError:
-        continue
-    raise AssertionError('Forbidden DNS request was dispatched')
-try:
-    socket.socket().connect(('20.0.0.1', 443))
-except PermissionError:
-    pass
-else:
-    raise AssertionError('Forbidden external connection was dispatched')
-'''], cwd=Path(__file__).parent, capture_output=True, text=True, timeout=5)
-    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize('field,value', [
@@ -390,6 +427,7 @@ def test_configuration_rejects_public_sandbox_and_live_transport(config):
 
 @pytest.mark.parametrize('origin', ['http://localhost:8080', 'https://planner.example.test'])
 def test_authenticated_browser_handoff_and_replay(config, origin):
+    from unittest.mock import Mock
     sys.path.insert(0, str(Path(__file__).parent))
     from app import Settings, create_app
     from fastapi.testclient import TestClient
@@ -406,7 +444,8 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
                         network='private-compose' if https else 'loopback',
                         listen_host='0.0.0.0' if https else '127.0.0.1',
                         internal_host='auth-central' if https else '')
-    app = create_app(settings)
+    client_factory = Mock(side_effect=AssertionError('Mock authentication must not initialize MSAL'))
+    app = create_app(settings, client_factory)
     secret = Path(config.instances['alpha']['secret_file']).read_text()
     headers = {'X-Planner-Instance': 'alpha', 'Authorization': 'Bearer ' + secret}
     with TestClient(app, base_url=origin + '/auth/', follow_redirects=False) as client:
@@ -454,3 +493,4 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
             'link_existing_by_email': True}
         assert client.post('/v1/transactions/redeem', json=body, headers=headers).status_code == 400
         assert client.get(callback_url).status_code == 400
+        client_factory.assert_not_called()

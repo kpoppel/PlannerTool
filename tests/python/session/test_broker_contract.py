@@ -888,72 +888,6 @@ def test_verified_new_identity_is_provisioned_without_permissions_or_email_linki
     assert accounts.get_account_by_id(existing_uuid)['permissions'] == ['admin']
 
 
-def test_admin_link_requires_proof_and_preserves_uuid_permissions(sandbox):
-    from planner_lib.accounts.config import AccountCredentialsPayload
-    client, requests = sandbox
-    accounts = client.app.state.container.get('account_manager')
-    target = accounts.create_account(AccountCredentialsPayload(email='existing@example.test'), permissions=['cost'])['id']
-    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    assert client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).status_code == 200
-    begun = client.post('/api/auth/links/begin', json={'account_id': target},
-        headers={'Origin': 'http://localhost:8765'})
-    assert begun.status_code == 200
-    assert list(client.app.state.container.get('storage').list_keys('auth_link_approvals'))
-    broker = client.app.state.container.get('broker_client')
-    transport = broker.transport
-
-    def proof(request):
-        response = transport.handle_request(request)
-        if request.url.path.endswith('/redeem'):
-            value = json.loads(response.content)
-            value['identity'] = {'issuer': BROKER_ISSUER,
-                'subject': '55555555-5555-5555-5555-555555555555',
-                'email': 'proven@example.test', 'name': 'Proven Identity'}
-            return httpx.Response(200, json=value)
-        return response
-
-    broker.transport = httpx.MockTransport(proof)
-    completed = client.post('/api/auth/login/complete', json={'state': begun.json()['state'], 'code': 'proof-code'})
-    assert completed.status_code == 200
-    assert completed.json()['account']['uuid'] == target
-    assert completed.json()['permissions'] == ['cost']
-    assert client.post('/api/auth/links/begin', json={'account_id': target},
-        headers={'Origin': 'http://localhost:8765'}).status_code == 403
-
-
-def test_link_cannot_reassign_identity_or_remove_last_admin(sandbox):
-    from planner_lib.accounts.config import AccountCredentialsPayload
-    client, requests = sandbox
-    accounts = client.app.state.container.get('account_manager')
-    admin = accounts.get_account_id('alex@example.test')
-    with pytest.raises(ValueError, match='final admin'):
-        accounts.delete_account(admin)
-    target = accounts.create_account(AccountCredentialsPayload(email='target@example.test'))['id']
-    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
-    begun = client.post('/api/auth/links/begin', json={'account_id': target},
-        headers={'Origin': 'http://localhost:8765'}).json()
-    result = client.post('/api/auth/login/complete', json={'state': begun['state'], 'code': 'linked-identity'})
-    assert result.status_code == 403
-    assert accounts.get_account_by_id(admin)['permissions'] == ['admin']
-    assert accounts.get_account_by_id(target)['permissions'] == []
-
-
-def test_link_proof_requires_approving_session_to_remain_valid(sandbox):
-    from planner_lib.accounts.config import AccountCredentialsPayload
-    from planner_lib.middleware.session import SESSION_COOKIE
-    client, requests = sandbox
-    accounts = client.app.state.container.get('account_manager')
-    target = accounts.create_account(AccountCredentialsPayload(email='target@example.test'))['id']
-    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
-    begun = client.post('/api/auth/links/begin', json={'account_id': target},
-        headers={'Origin': 'http://localhost:8765'}).json()
-    client.app.state.container.get('session_manager').delete(client.cookies.get(SESSION_COOKIE))
-    result = client.post('/api/auth/login/complete', json={'state': begun['state'], 'code': 'identity-proof'})
-    assert result.status_code == 403
-
-
 def test_cancellation_validates_browser_and_consumes_pending_state(sandbox):
     client, requests = sandbox
     begin = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()
@@ -964,55 +898,6 @@ def test_cancellation_validates_browser_and_consumes_pending_state(sandbox):
     assert cancelled.status_code == 200
     assert '"error": "cancelled"' in cancelled.text
     assert client.post('/api/auth/login/complete', json={'state': begin['state'], 'code': 'code'}).status_code == 401
-
-
-def test_staged_link_proves_admin_without_issuing_entra_session(sandbox):
-    from planner_lib.session.enrollment import EnrollmentLoginAdapter
-
-    client, requests = sandbox
-    container = client.app.state.container
-    storage = container.get('storage')
-    accounts = container.get('account_manager')
-    sessions = container.get('session_manager')
-    admin = accounts.get_account_by_id(accounts.get_account_id('alex@example.test'))
-    storage.save('config', 'authentication', {
-        'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
-        'backend_credentials': 'pat', 'epoch': 1})
-    login = EnrollmentLoginAdapter(container.get('auth_manager'), accounts, storage)
-    device, sid, enrolled = login.enroll('alex@example.test', 'Alex Sandbox')
-    adapter = container.get('login_adapter')
-    binding, begun = adapter.begin_link(admin['id'], admin['id'], sid)
-    assert adapter.complete(begun['state'], 'code', binding, sid) is None
-    assert sessions.is_valid(sid)
-    assert storage.load('config', 'authentication')['active'] == 'enrollment'
-    assert not list(storage.list_keys('auth_transition_proofs'))
-    assert not list(storage.list_keys('auth_grants'))
-
-
-def test_staged_browser_callback_and_admin_proof_need_no_pat(sandbox, monkeypatch, tmp_path):
-    from planner_lib.middleware.session import SESSION_COOKIE
-    from planner_lib.accounts.config import AccountCredentialsPayload
-
-    source = sandbox[0].app.state.container
-    monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'enrollment')
-    app = create_app(Config(storage_backend='memory', data_dir=str(tmp_path / 'staged'), static_dir='www'))
-    app.state.container.get('broker_client').transport = source.get('broker_client').transport
-    with TestClient(app, base_url='http://localhost:8765') as client:
-        assert client.post('/api/auth/enroll', json={
-            'email': 'alex@example.test', 'name': 'Alex Sandbox'}).status_code == 200
-        sid = client.cookies.get(SESSION_COOKIE)
-        accounts = app.state.container.get('account_manager')
-        admin_id = accounts.get_account_id('alex@example.test')
-        monkeypatch.setattr(app.state.container.get('credential_policy'), 'credential_error', lambda user: 'pat_invalid')
-        begun = client.post('/api/auth/links/begin', json={'account_id': admin_id},
-                            headers={'Origin': 'http://localhost:8765'})
-        assert begun.status_code == 200
-        assert client.get('/api/auth/login/callback', params={
-            'state': begun.json()['state'], 'code': 'code'}).status_code == 200
-        assert client.cookies.get(SESSION_COOKIE) == sid
-        assert app.state.container.get('session_manager').is_valid(sid)
-        assert not list(app.state.container.get('storage').list_keys('auth_transition_proofs'))
-        assert client.post('/api/auth/settings', json={'selected': 'entra'}).status_code == 409
 
 
 def test_entra_rejects_pat_at_account_storage_boundary(sandbox):
@@ -1045,20 +930,3 @@ def test_admin_selection_rejected_without_activation_or_session_invalidation(cli
     assert client.get('/api/auth/settings').json() == before
     assert client.get('/api/auth/me').status_code == 200
     assert client.post('/api/auth/settings', json={'selected': 'entra', 'active': 'entra'}).status_code == 422
-
-
-@pytest.mark.parametrize('invalid', [{'state': 'idle'}, {'state': 'unknown'}, {'id': 'not-a-uuid'}, {'secret': 'forbidden'}])
-def test_transition_journal_is_strict_without_any_sessions(sandbox, invalid):
-    from planner_lib.migrations.contracts import SchemaError
-    from planner_lib.migrations.revisions import validate_records
-
-    storage = sandbox[0].app.state.container.get('storage')
-    assert not list(storage.list_keys('auth_sessions'))
-    record = storage.load('system', 'authentication_transition')
-    if invalid == {'state': 'idle'}:
-        del record['fleet']
-    else:
-        record.update(invalid)
-    storage.save('system', 'authentication_transition', record)
-    with pytest.raises(SchemaError, match='transition'):
-        validate_records(storage, TARGET_REVISION)

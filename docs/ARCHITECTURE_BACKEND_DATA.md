@@ -37,17 +37,15 @@ The provider resolves only the current request's session-owned grant. SDK/wiki
 construction selects Basic/Bearer explicitly; fixture credentials cannot enter
 live transport. Background task snapshots renew through that provider and hold
 an authoritative grant/account/epoch validation guard through cache publication.
-These are sandbox-tested contracts, not production Entra activation.
+Mock and live service paths have offline tests; real-tenant acceptance remains required.
 
 Deployment policy owns ADO PAT versus delegated Entra composition; instance
 settings cannot override it. Local-only deployments retain enrollment without a
-broker and reject remote task/wiki configuration. `session/transition.py` uses
-exclusive database leases and a revision-46 journal to fence a complete registered
-sandbox fleet before atomic per-instance epoch/purge commits. Serving resumes
-only after fleet completion; there is no authentication fallback. Logical exports
-contain account/data records, never login authority or transition state. Restored
+broker and reject remote task/wiki configuration. Deployment login-source changes
+advance the policy epoch without purging accounts or credentials. Logical exports
+contain account/data records, never login authority. Restored
 enrollment accounts require fresh operator reset; Entra account replacement is
-rejected. Full recovery/activation contracts are in [Phase F](PHASE_F_REPORT.md).
+rejected. See [Authentication](AUTHENTICATION.md) for account and credential contracts.
 
 ## 2. System Components & Boundary Map
 

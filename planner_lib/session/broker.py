@@ -140,19 +140,6 @@ class BrokerLoginAdapter:
         from planner_lib.session.identity import ExternalIdentityLinks
         self.identities = ExternalIdentityLinks(storage, accounts, self.settings)
 
-    def begin_link(self, account_id, approved_by, session_id):
-        from planner_lib.accounts.constants import AccountPermissions
-
-        if AccountPermissions.ADMIN not in self.accounts.get_account_by_id(approved_by)['permissions']:
-            raise AuthFailure('access_denied', 403)
-        self.accounts.get_account_by_id(account_id)
-        binding, result = self.begin('admin')
-        self.storage.save('auth_link_approvals', sha256(result['state']), {
-            'account_id': account_id, 'approved_by': approved_by,
-            'session_hash': sha256(session_id),
-        }, ttl_seconds=300)
-        return binding, result
-
     def begin(self, return_target='app'):
         if return_target not in ('app', 'admin'):
             raise AuthFailure('access_denied', 403)
@@ -198,10 +185,8 @@ class BrokerLoginAdapter:
         with self.storage.transaction():
             self.pending(state, binding)
             self.storage.delete('auth_transactions', sha256(state))
-            if self.storage.exists('auth_link_approvals', sha256(state)):
-                self.storage.delete('auth_link_approvals', sha256(state))
 
-    def complete(self, state, code, binding, session_id=''):
+    def complete(self, state, code, binding):
         key = sha256(state)
         with self.storage.transaction():
             record = self.pending(state, binding)
@@ -213,26 +198,10 @@ class BrokerLoginAdapter:
                     or not result['grant'] or type(result.get('expires_at')) not in (int, float)
                     or not time.time() < result['expires_at'] <= time.time() + 30 * 24 * 3600 + 10):
                 raise AuthFailure('auth_configuration_error')
-            target = None
-            if self.storage.exists('auth_link_approvals', key):
-                from planner_lib.accounts.constants import AccountPermissions
-                approval = self.storage.load('auth_link_approvals', key)
-                approving_session = self.sessions.get(session_id)
-                if (approving_session is None or approving_session['account_id'] != approval['approved_by']
-                    or not hmac.compare_digest(sha256(session_id), approval['session_hash'])
-                    or AccountPermissions.ADMIN not in self.accounts.get_account_by_id(approval['approved_by'])['permissions']):
-                    raise AuthFailure('access_denied', 403)
-                target = approval['account_id']
-            account = self.identities.resolve(identity, target)
+            account = self.identities.resolve(identity)
             email = account['email']
             account_id = account['id']
             name = self.identities.profile(account_id)['name']
-            if self.policy()['active'] == 'enrollment':
-                if target is None or target != approval['approved_by']:
-                    raise AuthFailure('access_denied', 403)
-                self.storage.delete('auth_transactions', key)
-                self.storage.delete('auth_link_approvals', key)
-                return None
             local_binding = secrets.token_urlsafe(32)
             encrypted_grant = _get_fernet().encrypt(result['grant'].encode()).decode()
             self.storage.save('auth_grants', local_binding, {
@@ -242,8 +211,6 @@ class BrokerLoginAdapter:
             })
             sid = self.sessions.create(email, source='entra', binding=local_binding)
             self.storage.delete('auth_transactions', key)
-            if self.storage.exists('auth_link_approvals', key):
-                self.storage.delete('auth_link_approvals', key)
         return sid
 
     def profile(self, context=None):

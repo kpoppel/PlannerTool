@@ -191,7 +191,7 @@ scenario/view backends, and event backends. `BackendPort` is the composite
 remote-data contract and deliberately excludes local configuration data.
 
 Remote operations receive a `BackendCredential` containing an explicit `kind`
-(currently only `pat`), opaque `token` and authenticated account UUID as `user_id`.
+(`pat` or `bearer`), opaque `token` and authenticated account UUID as `user_id`.
 Cache-satisfied reads may not need a credential; local config
 and user-data operations never require one. Azure SDK lifecycle and calls stay
 behind the backend/Azure adapter boundary.
@@ -200,7 +200,7 @@ behind the backend/Azure adapter boundary.
 
 `get_session_context_from_request` resolves identity without a backend token.
 Remote routes use `get_session_credential_from_request`, backed by
-`AccountManagerCredentialProvider`; repositories use that same provider for
+`PatCredentialPolicy` or `DelegatedCredentialProvider`; repositories use the same provider for
 UUID-based acquisition. Credentials are request/operation scoped, including
 background refreshes, and are not persisted with shared snapshots.
 
@@ -208,8 +208,7 @@ background refreshes, and are not persisted with shared snapshots.
 mapping; `AccountManager` owns validation, encrypted storage and rejection of the
 specific failed token. `BackendAuthError` carries operation context to the HTTP
 adapter without generic callers rejecting PATs. The shared Azure authentication
-factory selects PAT Basic authentication for SDK and wiki clients and rejects
-unsupported credential kinds.
+factory selects PAT Basic or delegated Bearer authentication for SDK and wiki clients.
 
 The planner and administration frontends share `createAuthRecovery`. The HTTP
 transport invokes injected recovery handlers: session 401 recovery retains the
@@ -217,10 +216,9 @@ existing replay policy, while PAT 403 failures post an actionable notification
 without awaiting a dialog or replaying the request. Authorized local
 administration remains usable without a valid PAT.
 
-Entra/OIDC login, delegated-token providers, Bearer transport and a central
-authentication service are not implemented. Future integrations extend these
-boundaries rather than coupling session identity to backend credentials. See
-[AUTHENTICATION.md](AUTHENTICATION.md) for contracts and deferred policy decisions.
+The external broker owns Entra verification and MSAL renewal. Local application
+sessions remain independent of delegated ADO authority. See
+[AUTHENTICATION.md](AUTHENTICATION.md) for contracts and acceptance limits.
 
 #### Storage abstraction
 

@@ -1,6 +1,0 @@
-:80 {
-    redir /auth /auth/
-    handle /auth/* {
-        reverse_proxy auth-standalone:8000
-    }
-}

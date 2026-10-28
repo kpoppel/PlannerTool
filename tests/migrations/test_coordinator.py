@@ -86,22 +86,6 @@ def test_current_restart_does_not_copy_or_rewrite_metadata(tmp_path, monkeypatch
     assert (tmp_path / 'upgrade-state.json').read_bytes() == journal
 
 
-def test_offline_transition_requires_exclusive_server_lease(tmp_path):
-    database = Database(tmp_path, lock_timeout=0)
-    server = database.prepare()
-    try:
-        with pytest.raises(SchemaError, match='busy'):
-            database.open_offline()
-    finally:
-        server.close()
-    operator = database.open_offline()
-    try:
-        with pytest.raises(SchemaError, match='busy'):
-            database.prepare()
-    finally:
-        operator.close()
-
-
 def test_invalid_pointer_fails_without_opening_storage(tmp_path):
     (tmp_path / 'active-generation.json').write_text('{"generation":"../outside"}')
     with pytest.raises(SchemaError):

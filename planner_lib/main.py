@@ -129,23 +129,19 @@ def _build_services(
             raise ValueError('Invalid deployment ADO credential policy')
         if provider == 'entra' and deployment_mode != 'entra':
             raise ValueError('Login provider contradicts deployment policy')
-    staged_broker = 'PLANNER_AUTH_SECRET_FILE' in os.environ
-    if provider == 'entra' or staged_broker:
+    if provider == 'entra':
         from planner_lib.session.broker import BrokerClient, BrokerSettings, BrokerLoginAdapter
         broker_settings = BrokerSettings.from_env()
         if provider == 'entra' and broker_settings.upstream_mode == 'entra':
             from planner_lib.session.identity import initialize_legacy_claims
             initialize_legacy_claims(storage_diskcache)
         container.register_factory('broker_client', lambda: BrokerClient(broker_settings))
-        container.register_factory('entra_link_adapter',
-            lambda: BrokerLoginAdapter(storage_diskcache, container.get('account_manager'),
-                                     container.get('session_manager'), container.get('broker_client')))
     auth_settings = storage_diskcache.load('config', 'authentication')
     authority_changed = (provider == 'entra'
                          and storage_diskcache.load('system', 'broker_authority') != broker_settings.metadata())
     if authority_changed:
         with storage_diskcache.transaction():
-            for namespace in ('auth_grants', 'auth_transactions', 'auth_link_approvals'):
+            for namespace in ('auth_grants', 'auth_transactions'):
                 for key in list(storage_diskcache.list_keys(namespace)):
                     if storage_diskcache.exists(namespace, key):
                         storage_diskcache.delete(namespace, key)
@@ -252,8 +248,7 @@ def _build_services(
         GroupRepository,
     )
     from planner_lib.backend.credential import (
-        AccountManagerCredentialProvider, PatCredentialPolicy,
-        DelegatedCredentialProvider, DelegatedCredentialPolicy,
+        PatCredentialPolicy, DelegatedCredentialProvider,
     )
 
     # project_repository uses the active backend (which handles enrichment).
@@ -266,10 +261,9 @@ def _build_services(
     container.register_factory("credential_provider",
         lambda: (DelegatedCredentialProvider(storage_diskcache, container.get('account_manager'),
                                              container.get('broker_client'))
-                 if provider == 'entra' else AccountManagerCredentialProvider(container.get('account_manager'))))
+                 if provider == 'entra' else PatCredentialPolicy(container.get('account_manager'))))
     container.register_factory("credential_policy",
-        lambda: (DelegatedCredentialPolicy() if provider == 'entra'
-                 else PatCredentialPolicy(container.get('account_manager'))))
+        lambda: container.get('credential_provider'))
 
     container.register_factory("history_repository",
         lambda: HistoryRepository(

@@ -26,23 +26,21 @@ def initialize_legacy_claims(storage):
             })
 
 
-def validate_identity_records(storage, version=3):
-    if storage.load('system', 'external_identity_schema') != {'version': version}:
+def validate_identity_records(storage):
+    if storage.load('system', 'external_identity_schema') != {'version': 3}:
         raise SchemaError('Invalid external identity schema')
     account_ids = {storage.load('accounts', email)['account_id'] for email in storage.list_keys('accounts')}
     linked_accounts = set()
     for key in storage.list_keys('external_identities'):
         record = storage.load('external_identities', key)
         if (set(record) != {'version', 'issuer', 'subject', 'account_id', 'environment', 'name', 'email'}
-                or record['version'] != version or key != identity_key(record['issuer'], record['subject'])
+                or record['version'] != 3 or key != identity_key(record['issuer'], record['subject'])
                 or record['account_id'] not in account_ids or record['account_id'] in linked_accounts
                 or not isinstance(record['name'], str) or not record['name'].strip()
                 or not isinstance(record['email'], str)
                 or (record['email'] != '' and not _is_valid_email(record['email']))
                 or not isinstance(record['environment'], dict)
-                or set(record['environment']) != (
-                    {'protocol', 'broker_url', 'upstream_mode'} if version == 3 else
-                    {'protocol', 'environment_id', 'generation', 'upstream_mode'})
+                or set(record['environment']) != {'protocol', 'broker_url', 'upstream_mode'}
                 or record['environment']['protocol'] != 'plannertool-auth/1'
                 or not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', record['environment']['upstream_mode'])):
             raise SchemaError('Invalid external identity link')
@@ -100,7 +98,7 @@ class ExternalIdentityLinks:
             self.consume_claim(target['id'])
             return target
 
-    def resolve(self, identity, target=None):
+    def resolve(self, identity):
         from planner_lib.session.broker import AuthFailure
 
         try:
@@ -115,7 +113,7 @@ class ExternalIdentityLinks:
         with self.storage.transaction():
             if self.storage.exists('external_identities', key):
                 link = self.storage.load('external_identities', key)
-                if link['environment'] != self.settings.metadata() or (target is not None and link['account_id'] != target):
+                if link['environment'] != self.settings.metadata():
                     raise AuthFailure('access_denied', 403)
                 return self.accounts.get_account_by_id(link['account_id'])
             email = identity.get('email', '')
@@ -124,6 +122,7 @@ class ExternalIdentityLinks:
                     or (email != '' and not _is_valid_email(email)) or len(email) > 320):
                 raise AuthFailure('auth_configuration_error')
             email = email.strip().casefold()
+            target = None
             mock_email_identity = identity.get('link_existing_by_email', False)
             if target is None and self.settings.upstream_mode == 'entra' and email:
                 claims = self.storage.load('system', 'legacy_email_claims')

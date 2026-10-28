@@ -29,17 +29,15 @@ This version adds EntraID authentication.
 - Support DNS/HTTPS ingress for shared mock authentication while retaining private broker transport and blocking live ADO.
 
 ### Changed
-- Remove operator environment/generation labels from broker configuration. Revision 48 resets obsolete broker state while preserving local accounts and data; an explicit backed-up configuration migration upgrades existing manifests and managed metadata.
-- Use provider-neutral broker issuer/subject identities and generic sign-in discovery; revision 47 resets obsolete development external links and sessions while preserving local accounts and data. Mock sign-in accepts an account email to reuse existing permissions, including administration.
-- Make PlannerTool independent of mock-auth sandbox storage: allow copied server data and normal ADO configuration, preserve accounts and credentials on deployment login changes, and reject fake ADO credentials during acquisition with a notification before any ADO fetch. Keep local sessions and cached tasks available. Remove automatic demo provisioning, Planner network isolation and the credential-purging fleet transition command.
+- Use broker issuer/subject identities and generic sign-in discovery. Mock sign-in can reuse existing account permissions; fake ADO credentials are rejected before remote requests while local sessions and cached tasks remain available.
 - Build and start source-declared PlannerTool instances and the auth service in one generated Compose project, with explicit protected environment-file and project-name options for operators.
 - Use the standard image startup command for auth-connected instances, with proxy and access-log settings supplied through environment variables instead of per-instance command overrides.
 - Make ADO authentication deployment-controlled with read-only instance readiness. Instances without an auth-service connection remain independent of the broker.
 - Exclude PATs, enrollment keys, active login policy and broker authority from logical backups. Account restore requires fresh operator-reset enrollment credentials and cannot replace Entra accounts.
 - Share frontend authentication client contracts and typed recovery across planner and administration.
-- Discover the active login source in normal planner/admin pages and support isolated broker-backed Entra sandbox sign-in, reauthentication and instance logout without PAT or enrollment prompts.
+- Discover the active login source in planner/admin pages and support broker-backed Entra sign-in, reauthentication and instance logout without PAT or enrollment prompts.
 - Keep backend selection in each instance's admin configuration; deployment manifests specify hosting, auth-service connections and shared credential policy without duplicating backend or login-provider settings.
-- Invalidate existing sessions once during the revision-44 source/epoch upgrade, preserving accounts, permissions and PATs.
+- Upgrade from the previous release in one revision-44 authentication migration, preserving accounts, permissions and PATs while expiring pre-policy sessions.
 ### Fixed
 - Allow first-time Entra sign-in without a PAT when live ADO is configured, and stop claiming an active local session when signed-out authentication fails.
 - Build both PlannerTool and auth-service images with version and latest tags from the build script and explicit deployment build flags, including deployments without source-build services.

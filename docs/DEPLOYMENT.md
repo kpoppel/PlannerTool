@@ -3,9 +3,7 @@
 Keep the normal operator workflow: define `instances.yml`, retain the installation's
 encryption key, then run `python scripts/deploy.py --apply --start`. The optional
 auth service, your own named PlannerTool instances and Caddy are built and started
-in the **same generated Docker Compose project**. Do not start a separate auth
-Compose stack or use the sandbox fixture generator under `tests/fakes/` to prepare
-an operator deployment.
+in the **same generated Docker Compose project**.
 
 The manifest owns hosting, routing, storage, auth-service connections and the
 deployment-wide ADO credential policy. Each instance's **Admin > Data Sources**
@@ -14,9 +12,9 @@ owns backend selection. Do not specify per-instance `backend` or
 
 ## Prerequisites
 
-- For mock upstreams, use fresh isolated instance data and auth state, never
-   production accounts or volumes. Commit and push the branch before pulling it
-   on the server; uncommitted changes are not available through a pull.
+- Mock authentication can impersonate existing accounts. Restrict its audience
+   and never expose it as production authentication. Preserve the installation's
+   encryption key when using copied data.
 - Install Docker Engine, Docker Compose plugin 2.20 or newer, Git and Python 3.13
    with venv support. Node is not needed on the host; Docker builds the frontend.
    The deployment account needs permission to use Docker without an interactive
@@ -63,8 +61,8 @@ instances:
 
 Add as many instances as needed. A connected instance uses Entra login under the
 `entra` credential policy regardless of its admin-selected backend. Unconnected
-instances retain enrollment and local backend access. `pat` retains enrollment
-and can stage an auth connection; `disabled` forbids live ADO and wiki access.
+instances retain enrollment and local backend access. `pat` retains enrollment;
+`disabled` forbids live ADO and wiki access.
 Under `entra`, an unconnected instance cannot enable live ADO or remote wiki
 transport. Ordinary backend saves never change login mode, epoch or sessions.
 
@@ -80,22 +78,10 @@ with a generated instance registry, synthetic registration and distinct secrets
 (mode 0600). Dry-run creates no files. Subsequent runs reuse keys and secrets;
 missing retained secrets fail instead of being silently regenerated. The operator
 manifest is never rewritten. Back up this directory with the instance/auth volumes.
-Environment and generation labels are no longer configured. Before upgrading an
-older auth deployment or changing its mode/public URL, stop that Compose stack,
-back up its data and run the explicit configuration migration:
-
-```bash
-source .venv/bin/activate
-python scripts/migrate-py auth --config instances.yml --output-dir deployment
-python scripts/migrate-py auth --config instances.yml --output-dir deployment --apply
-```
-
-The first invocation previews changes. `--apply` backs up every changed file before
-removing obsolete labels and updating managed metadata. It does not start services,
-delete broker stores or replace secrets. Deploy application, browser assets and
-broker together. Revision 48 expires old broker sessions/links while preserving
-local accounts and data. New mode-specific broker stores coexist with retained old
-stores in the same volume; never delete the volume to change modes.
+Deploy application, browser assets and broker together. The server applies the
+single revision-44 database upgrade from dev. Intermediate branch deployment
+formats are not supported. Never delete retained volumes or replace secrets as a
+routine deployment step.
 
 ### Live Entra Registration
 
@@ -138,20 +124,19 @@ in the client/browser trust store as described below. No SSH tunnel or localhost
 supported only for explicit `http://localhost:PORT/auth/` configurations without
 `https_hostname`; these publish a loopback-only port for local testing.
 
-Normal PlannerTool sign-in opens the shared auth service's simulated identity
-selection. Choose **Alex Sandbox** for the prelinked synthetic administrator or
-**Sam Sandbox** for an unprivileged user. The shared callback returns to the
-originating instance. Settings, reauthentication, cancellation, different-account
-recovery and logout use the ordinary application. Logout affects only that instance.
+PlannerTool sign-in opens the shared service. In mock mode, enter an account email;
+existing account permissions can be reused. No demo accounts or planning dataset
+are seeded. In live mode, the service redirects to Entra and requires a configured
+registration and delegated consent. The callback returns to the originating
+instance. Settings, reauthentication, cancellation, different-account recovery and
+logout use the ordinary application. Logout affects only that instance.
 
 **Mock identity selection is not production authentication.** Anyone with access
-can select the synthetic administrator. Restrict demonstration access appropriately
-and never attach production data, accounts, credentials or volumes.
-
-The initial planning dataset is empty. Select supported local backends in Admin >
-Data Sources as needed. ADO operations use fixtures, never live reads/writes. No
-Entra registration, consent or real PAT is required. `mode: entra` is not yet a
-supported operator switch, pending implementation and acceptance of the live broker.
+can impersonate an existing account, including an administrator. Restrict its
+audience and never expose it as production authentication. Mock credentials are
+rejected before remote ADO/wiki requests; local and cached data remain available.
+Backend selection remains in Admin > Data Sources. Real-tenant acceptance is still
+required before treating the live path as production-verified.
 
 ## Verify and Operate
 
@@ -196,11 +181,10 @@ connections, and regenerate using the normal deployment command. Generated
 backends are retained; removing duplicated manifest fields does not activate a
 different login source, invalidate sessions or purge credentials.
 
-Adding Entra login to an existing enrollment installation still requires an
-explicit proven transition, not an ordinary backend save or manifest edit. Mock
-bootstrap requires fresh isolated data. For an offline sandbox transition
-rehearsal, see [the Phase F recovery procedure](PHASE_F_REPORT.md); that diagnostic
-utility is not the normal deployment workflow. Live activation remains blocked.
+Adding Entra login uses the deployment manifest, not an ordinary backend save.
+Existing accounts are eligible for the one-time claims described in
+[Authentication](AUTHENTICATION.md). Login-source changes invalidate old sessions
+without deleting accounts or credentials. Real-tenant acceptance remains required.
 
 # How to deploy the application for production or development
 
@@ -467,8 +451,7 @@ the current version tag. To use a prebuilt image, set `image:` in the manifest;
 it is image-only unless you explicitly add `build_from_source: true`. This setting
 is supported on both instances and auth services. An image-only service is never
 rebuilt or replaced with a source fallback. `build_from_source: false` requires
-an explicit image. Generated demo manifests explicitly opt both codebases into
-source builds with dedicated sandbox tags; they do not tag `latest`.
+an explicit image.
 
 #### Image Cleanup
 Image cleanup is an explicit operator task. The deployment script does not run
