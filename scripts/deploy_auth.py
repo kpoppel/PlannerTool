@@ -8,6 +8,22 @@ from urllib.parse import urlsplit
 import yaml
 
 
+def validate_deployment_policy(config):
+    mode = config.get('ado_authentication')
+    if mode not in ('disabled', 'pat', 'entra'):
+        raise ValueError('Deployment requires ado_authentication: disabled|pat|entra')
+    for instance in config['instances']:
+        backend = instance.get('backend')
+        if backend not in ('local', 'ado'):
+            raise ValueError('Every instance requires backend: local|ado')
+        expected = 'entra' if backend == 'ado' and mode == 'entra' else 'enrollment'
+        if backend == 'ado' and mode == 'disabled':
+            raise ValueError('ADO instances require a deployment ADO authentication policy')
+        if instance['authentication_provider'] != expected:
+            raise ValueError('Instance login contradicts deployment ADO authentication policy')
+    return mode
+
+
 def validate_instances(instances):
     names = set()
     for instance in instances:

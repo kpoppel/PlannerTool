@@ -275,6 +275,9 @@ class AccountManager:
                     and self.count_all_with_permission(AccountPermissions.ADMIN) == 1):
                 raise ValueError('Cannot remove final admin')
             self._delete_user_data(account_id)
+            for key in list(self._storage.list_keys('external_identities')):
+                if self._storage.load('external_identities', key)['account_id'] == account_id:
+                    self._storage.delete('external_identities', key)
             for namespace in ('auth_sessions',):
                 for key in list(self._storage.list_keys(namespace)):
                     try:

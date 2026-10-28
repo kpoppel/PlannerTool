@@ -36,8 +36,9 @@ from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential
 from planner_lib.azure.authentication import (
+    azure_devops_authentication,
     azure_devops_pat_authentication,
-    pat_from_credential,
+    token_from_credential,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ class AzureWikiEventBackend:
         wiki_id: str,
         project_repository: Any,
         page_path: str = "/PlannerTool/Events",
+        credential_provider=None,
     ) -> None:
         self._organization_url = organization_url
         self._project = project
@@ -84,6 +86,7 @@ class AzureWikiEventBackend:
         # Required ProjectRepository injected via DI so the backend can
         # resolve human-readable plan names from plan IDs when rendering.
         self._project_repository = project_repository
+        self._credential_provider = credential_provider
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -91,7 +94,7 @@ class AzureWikiEventBackend:
 
     def _get_wiki_client(self, credential: BackendCredential):
         """Return a live ADO wiki client connected with the supplied credential."""
-        pat = pat_from_credential(credential)
+        token = token_from_credential(credential)
         org_url = self._organization_url
         if not org_url:
             raise RuntimeError("Azure DevOps organization URL is not configured")
@@ -108,7 +111,8 @@ class AzureWikiEventBackend:
 
         from azure.devops.connection import Connection
 
-        creds = azure_devops_pat_authentication(pat)
+        creds = (azure_devops_pat_authentication(token) if credential['kind'] == 'pat'
+                 else azure_devops_authentication(credential, self._credential_provider))
         conn = Connection(
             base_url=f"https://dev.azure.com/{org_url}",
             creds=creds,

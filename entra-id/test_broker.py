@@ -84,6 +84,16 @@ def test_wrong_browser_and_replay_rejected(config):
         store.authorize(reference, 'browser-one', {})
 
 
+def test_permission_denial_does_not_revoke_a_session_grant(config):
+    config.instances['alpha']['scenario'] = 'access_denied'
+    store = broker.BrokerStore(config)
+    reference, code, verifier = prepared(store)
+    grant = store.redeem('alpha', reference, code, verifier)['grant']
+    with pytest.raises(broker.ProtocolError, match='access_denied'):
+        store.grant('alpha', grant, 'token', 'ado')
+    assert store.grant('alpha', grant, 'status')['status'] == 'active'
+
+
 def test_store_is_encrypted_and_rejects_environment_key_or_generation_changes(config):
     store = broker.BrokerStore(config)
     reference, code, verifier = prepared(store)

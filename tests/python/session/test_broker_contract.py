@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from planner_lib.main import Config, create_app
+from planner_lib.migrations.contracts import TARGET_REVISION
 from planner_lib.session.broker import BrokerClient, BrokerSettings, AuthFailure, SANDBOX_TENANT
 
 
@@ -54,6 +55,10 @@ def sandbox(monkeypatch, tmp_path):
             return httpx.Response(200, json={**metadata, 'status': 'revoked'})
         if request.url.path.endswith('/status'):
             return httpx.Response(200, json={**metadata, 'status': 'active'})
+        if request.url.path.endswith('/token'):
+            import time
+            return httpx.Response(200, json={**metadata, 'resource': 'ado', 'token_kind': 'fixture',
+                'access_token': 'invalid-sandbox-ado-fixture', 'expires_at': time.time() + 300})
         raise AssertionError('Unexpected broker operation')
 
     app.state.container.get('broker_client').transport = httpx.MockTransport(transport)
@@ -247,7 +252,7 @@ def test_config_save_and_restore_cannot_activate_a_source(sandbox):
     with pytest.raises(ValueError, match='transition'):
         manager.save_config('authentication', incompatible)
     with pytest.raises(ValueError, match='transition'):
-        manager.restore_backup({'schema_revision': 44, 'config': {'authentication': incompatible}})
+        manager.restore_backup({'schema_revision': TARGET_REVISION, 'config': {'authentication': incompatible}})
     with pytest.raises(ValueError, match='fixture transport'):
         manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
 
@@ -259,11 +264,211 @@ def test_entra_denies_pat_and_enrollment_mutations(sandbox):
         assert client.post(path, json={}).status_code == 403
 
 
+def test_delegated_provider_requires_exact_session_and_revokes_locally(sandbox):
+    from planner_lib.middleware.session import current_session_context, SESSION_COOKIE
+    client, requests = sandbox
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
+    provider = client.app.state.container.get('credential_provider')
+    context = client.app.state.container.get('session_manager').get(client.cookies.get(SESSION_COOKIE))
+    token = current_session_context.set(context)
+    try:
+        credential = provider.get_credential(profile['account']['uuid'])
+        assert credential['kind'] == 'bearer'
+        assert credential['transport'] == 'fixture'
+        assert credential['binding'] == context['binding']
+        assert credential['token'] == 'invalid-sandbox-ado-fixture'
+        assert requests[-1].url.path.endswith('/token')
+        with pytest.raises(AuthFailure, match='invalid_session'):
+            provider.get_credential('another-account')
+        assert client.post('/api/auth/logout').status_code == 200
+        with pytest.raises(AuthFailure, match='invalid_session'):
+            provider.renew(credential)
+    finally:
+        current_session_context.reset(token)
+
+
+def test_sandbox_delegated_operation_uses_bound_fixture_without_credential_disclosure(sandbox):
+    client, requests = sandbox
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
+    result = client.post('/api/auth/sandbox/operation')
+    assert result.status_code == 200
+    assert result.json() == {'account_id': profile['account']['uuid'], 'transport': 'fixture', 'status': 'completed'}
+    assert 'invalid-sandbox-ado-fixture' not in result.text
+    assert requests[-1].url.path.endswith('/token')
+
+
+@pytest.mark.parametrize('status,code', [(403, 'access_denied'), (409, 'interaction_required'), (503, 'auth_unavailable')])
+def test_delegated_acquisition_keeps_denial_interaction_and_outage_distinct(sandbox, status, code):
+    from planner_lib.middleware.session import current_session_context, SESSION_COOKIE
+    client, requests = sandbox
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
+    context = client.app.state.container.get('session_manager').get(client.cookies.get(SESSION_COOKIE))
+    provider = client.app.state.container.get('credential_provider')
+    broker = client.app.state.container.get('broker_client')
+    broker.transport = httpx.MockTransport(lambda request: httpx.Response(status, json={'error': code}))
+    token = current_session_context.set(context)
+    try:
+        with pytest.raises(AuthFailure) as raised:
+            provider.get_credential(profile['account']['uuid'])
+        assert (raised.value.status, raised.value.code) == (status, code)
+    finally:
+        current_session_context.reset(token)
+
+
+@pytest.mark.parametrize('change', [
+    {'resource': 'other'}, {'token_kind': 'bearer'}, {'access_token': ''},
+    {'expires_at': 0}, {'expires_at': float('inf')}, {'refresh_token': 'forbidden'},
+    {'generation': 'wrong-generation'},
+])
+def test_delegated_token_response_fails_closed(sandbox, change):
+    import time
+    client, requests = sandbox
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    broker = client.app.state.container.get('broker_client')
+    payload = {**broker.settings.metadata(), 'resource': 'ado', 'token_kind': 'fixture',
+        'access_token': 'synthetic-token', 'expires_at': time.time() + 300, **change}
+    broker.transport = httpx.MockTransport(lambda request: httpx.Response(200,
+        content=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'}))
+    response = client.post('/api/auth/sandbox/operation')
+    assert response.status_code == 503
+    assert response.json() == {'error': 'auth_configuration_error'}
+    assert 'synthetic-token' not in response.text
+
+
+def test_delegated_publication_rejects_changed_epoch(sandbox):
+    client, requests = sandbox
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    container = client.app.state.container
+    storage = container.get('storage')
+    binding = next(iter(storage.list_keys('auth_grants')))
+    grant = storage.load('auth_grants', binding)
+    credential = container.get('credential_provider').acquire(grant['account_id'], binding, grant['epoch'])
+    policy = storage.load('config', 'authentication')
+    storage.save('config', 'authentication', {**policy, 'epoch': policy['epoch'] + 1})
+    with pytest.raises(AuthFailure, match='invalid_session'):
+        with container.get('credential_provider').publication_guard(credential):
+            pytest.fail('A revoked epoch must not publish')
+
+
+def test_delegated_renewal_rejects_a_deleted_owning_session(sandbox):
+    from planner_lib.middleware.session import SESSION_COOKIE
+    client, requests = sandbox
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    container = client.app.state.container
+    sessions = container.get('session_manager')
+    sid = client.cookies.get(SESSION_COOKIE)
+    context = sessions.get(sid)
+    provider = container.get('credential_provider')
+    credential = provider.acquire(context['account_id'], context['binding'], 1)
+    sessions.delete(sid)
+    with pytest.raises(AuthFailure, match='invalid_session'):
+        provider.renew(credential)
+
+
 def test_login_body_limit(sandbox):
     client, requests = sandbox
     response = client.post('/api/auth/login/complete', content=b'x' * 16385)
     assert response.status_code == 401
     assert not requests
+
+
+def test_verified_new_identity_is_provisioned_without_permissions_or_email_linking(sandbox):
+    client, requests = sandbox
+    broker = client.app.state.container.get('broker_client')
+    transport = broker.transport
+
+    def new_identity(request):
+        response = transport.handle_request(request)
+        if request.url.path.endswith('/redeem'):
+            value = json.loads(response.content)
+            value['identity'] = {'tid': SANDBOX_TENANT,
+                'oid': '55555555-5555-5555-5555-555555555555',
+                'email': 'alex@example.test', 'name': 'Different Alex'}
+            return httpx.Response(200, json=value)
+        return response
+
+    accounts = client.app.state.container.get('account_manager')
+    existing_uuid = accounts.get_account_id('alex@example.test')
+    broker.transport = httpx.MockTransport(new_identity)
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    response = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    assert response.status_code == 200
+    assert response.json()['account']['uuid'] != existing_uuid
+    assert response.json()['account']['name'] == 'Different Alex'
+    assert response.json()['permissions'] == []
+    assert accounts.get_account_by_id(existing_uuid)['permissions'] == ['admin']
+
+
+def test_admin_link_requires_proof_and_preserves_uuid_permissions(sandbox):
+    from planner_lib.accounts.config import AccountCredentialsPayload
+    client, requests = sandbox
+    accounts = client.app.state.container.get('account_manager')
+    target = accounts.create_account(AccountCredentialsPayload(email='existing@example.test'), permissions=['cost'])['id']
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    assert client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).status_code == 200
+    begun = client.post('/api/auth/links/begin', json={'account_id': target},
+        headers={'Origin': 'http://localhost:8765'})
+    assert begun.status_code == 200
+    assert list(client.app.state.container.get('storage').list_keys('auth_link_approvals'))
+    broker = client.app.state.container.get('broker_client')
+    transport = broker.transport
+
+    def proof(request):
+        response = transport.handle_request(request)
+        if request.url.path.endswith('/redeem'):
+            value = json.loads(response.content)
+            value['identity'] = {'tid': SANDBOX_TENANT,
+                'oid': '55555555-5555-5555-5555-555555555555',
+                'email': 'proven@example.test', 'name': 'Proven Identity'}
+            return httpx.Response(200, json=value)
+        return response
+
+    broker.transport = httpx.MockTransport(proof)
+    completed = client.post('/api/auth/login/complete', json={'state': begun.json()['state'], 'code': 'proof-code'})
+    assert completed.status_code == 200
+    assert completed.json()['account']['uuid'] == target
+    assert completed.json()['permissions'] == ['cost']
+    assert client.post('/api/auth/links/begin', json={'account_id': target},
+        headers={'Origin': 'http://localhost:8765'}).status_code == 403
+
+
+def test_link_cannot_reassign_identity_or_remove_last_admin(sandbox):
+    from planner_lib.accounts.config import AccountCredentialsPayload
+    client, requests = sandbox
+    accounts = client.app.state.container.get('account_manager')
+    admin = accounts.get_account_id('alex@example.test')
+    with pytest.raises(ValueError, match='final admin'):
+        accounts.delete_account(admin)
+    target = accounts.create_account(AccountCredentialsPayload(email='target@example.test'))['id']
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    begun = client.post('/api/auth/links/begin', json={'account_id': target},
+        headers={'Origin': 'http://localhost:8765'}).json()
+    result = client.post('/api/auth/login/complete', json={'state': begun['state'], 'code': 'linked-identity'})
+    assert result.status_code == 403
+    assert accounts.get_account_by_id(admin)['permissions'] == ['admin']
+    assert accounts.get_account_by_id(target)['permissions'] == []
+
+
+def test_link_proof_requires_approving_session_to_remain_valid(sandbox):
+    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.middleware.session import SESSION_COOKIE
+    client, requests = sandbox
+    accounts = client.app.state.container.get('account_manager')
+    target = accounts.create_account(AccountCredentialsPayload(email='target@example.test'))['id']
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    begun = client.post('/api/auth/links/begin', json={'account_id': target},
+        headers={'Origin': 'http://localhost:8765'}).json()
+    client.app.state.container.get('session_manager').delete(client.cookies.get(SESSION_COOKIE))
+    result = client.post('/api/auth/login/complete', json={'state': begun['state'], 'code': 'identity-proof'})
+    assert result.status_code == 403
 
 
 def test_cancellation_validates_browser_and_consumes_pending_state(sandbox):

@@ -585,7 +585,10 @@ class ConfigManager:
             for key, content in data["scenarios"].items():
                 self._storage.save('scenarios', key, content)
 
-        for namespace in ('auth_sessions', 'auth_transactions', 'auth_grants'):
+        if 'accounts' in data:
+            for key in list(self._storage.list_keys('external_identities')):
+                self._storage.delete('external_identities', key)
+        for namespace in ('auth_sessions', 'auth_transactions', 'auth_grants', 'auth_link_approvals'):
             for key in list(self._storage.list_keys(namespace)):
                 if self._storage.exists(namespace, key):
                     self._storage.delete(namespace, key)

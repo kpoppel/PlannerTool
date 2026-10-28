@@ -5,6 +5,12 @@ Existing application sessions expire once on upgrade; account UUIDs, permissions
 enrollment keys and PATs are retained. Production Entra activation remains blocked.
 See [the broker protocol and operator runbook](AUTH_BROKER_PHASE_D.md).
 
+Phase E adds revision 45, stable tenant/object identity links, unprivileged JIT
+accounts, session-owned delegated credentials and SDK/wiki Bearer transport.
+It is exercised only against the isolated mock broker. Neither migration nor
+ordinary settings saves enable production Entra, purge PATs or invalidate sessions.
+See [the Phase E report](PHASE_E_REPORT.md).
+
 Normal planner and admin pages now discover the active login source. Explicit
 isolated Entra sandboxes use the shared HTTP client and the running broker;
 enrollment/PAT installations retain their existing login path. This is not live
@@ -128,10 +134,10 @@ only the test composition maps that event to scenarios. Application components
 do not select fixture identities.
 
 The injected Entra presentation hides PAT editing, remembered-browser management,
-enrollment and key reset. Admin account creation is hidden because Entra
-provisioning is not implemented. The approved Phase E direction is unprivileged
-JIT creation for verified identities in the approved tenant, including admitted
-guests, and explicit admin-approved identity-proven links to existing UUIDs.
+enrollment and key reset. Manual account creation remains hidden. Phase E implements
+unprivileged JIT creation for verified identities in the approved tenant, including
+admitted guests, and explicit admin-approved identity-proven links to existing UUIDs,
+while activation remains limited to isolated synthetic sandbox data.
 Local permissions, ordinary admin account removal and
 signed-in account deletion remain independent of enrollment capabilities.
 PAT and local installations retain their existing production controls.
@@ -151,6 +157,51 @@ without exposing a fixture route in the application. This is UI coverage only:
 the Phase D sandbox separately enforces endpoint restrictions and source-bound
 sessions on the server and exercises the running broker. Live Entra remains a
 later gate.
+
+### External Identity and Delegated Credentials (Phase E)
+
+External links use canonical tenant/object UUIDs, never email matching. A new
+verified identity receives a new account UUID and no permissions; its internal
+account lookup key ends in `@identity.invalid`. Display/contact email and name
+come from the verified identity link. Existing sandbox fixture accounts retain
+their UUIDs and permissions through explicit revision-45 seed records.
+
+`POST /api/auth/links/begin` accepts only `{account_id}` from an authenticated
+administrator and starts the existing browser-bound proof flow. Completion
+requires the same still-valid approving session, current admin permission and
+the verified returning identity. Existing links cannot be reassigned, and an
+account cannot acquire a conflicting second link. Linking never changes local
+permissions or bypasses final-admin deletion protection. There is no email-based
+linking, unlink/reassignment API or production activation path.
+
+Each login owns a separate local binding and broker grant. Ordinary logout
+revokes only that session/grant, including local revocation during broker outage.
+Other sessions, instances and corporate SSO remain independent. Deleted accounts
+cannot acquire or renew credentials; their external links are removed.
+
+The selected delegated provider requires request-scoped identity plus the exact
+session binding. Token acquisition validates environment/generation, resource,
+credential kind and fresh-enough expiry. Credentials carry acting UUID, binding,
+epoch, expiry and explicit fixture/live transport metadata; no refresh token is
+accepted. Profile reads never acquire a token. SDK/wiki authentication selects
+Basic or Bearer explicitly, and delegated SDK requests renew through the provider
+without retrying an ADO denial. Failures retain the credential actually used.
+Task refresh renews before building and checks account/grant/epoch under an
+authoritative transaction before publishing its shared snapshot.
+
+`POST /api/auth/sandbox/operation` is available only in the explicit isolated
+sandbox. It acquires a session-owned fixture token and invokes the recorded-data
+SDK transport; its response contains only account UUID, fixture marker and result.
+The live SDK and wiki path reject fixture credentials before constructing a live
+connection. Broker fixture `access_denied` returns 403 without revoking the grant;
+interaction stays 409 and outage 503. No failure selects PAT or another grant.
+
+Logical backups omit external links, approvals, sessions and broker grants; account
+restore clears destination links and requires new identity proof. Cross-instance
+link import is rejected. Physical operator recovery and destructive mode-transition
+rules remain separately gated Phase F work. Live session lifetime, authoritative
+disablement checks and outage deadlines still require explicit policy approval;
+sandbox grant expiry is not evidence of upstream account disablement.
 
 ### Frontend Adapter Contract (Phase C)
 

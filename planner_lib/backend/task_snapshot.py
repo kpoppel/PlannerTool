@@ -5,9 +5,10 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
+from contextlib import nullcontext
 from uuid import uuid4
 
-from planner_lib.backend.errors import AreaNotReadableError, BackendAuthError, BackendUnavailableError
+from planner_lib.backend.errors import AreaNotReadableError, BackendAuthError, BackendDecisionError, BackendUnavailableError
 
 logger = logging.getLogger(__name__)
 NAMESPACE = 'backend_domain'
@@ -18,11 +19,12 @@ RETRY_SECONDS = 60
 
 
 class TaskSnapshot:
-    def __init__(self, storage, backend, ttl, report_auth_error):
+    def __init__(self, storage, backend, ttl, report_auth_error, *, credential_provider=None):
         self._storage = storage
         self._backend = backend
         self._ttl = ttl
         self._report_auth_error = report_auth_error
+        self._credential_provider = credential_provider
         self._state_lock = threading.Lock()
         self._build_lock = threading.Lock()
         self._thread = None
@@ -86,6 +88,11 @@ class TaskSnapshot:
 
     def _build(self, build, identity, guard, credential):
         started = time.monotonic()
+        delegated = credential is not None and credential['kind'] == 'bearer'
+        if delegated:
+            if self._credential_provider is None:
+                raise BackendUnavailableError('Delegated task refresh requires its credential provider')
+            credential = self._credential_provider.renew(credential)
         with guard(), self._storage.transaction():
             expected_identity = identity()
             epoch = self._load(EPOCH_KEY)
@@ -93,7 +100,8 @@ class TaskSnapshot:
                 self.changed()
                 epoch = self._load(EPOCH_KEY)
         tasks = build(self._backend, credential)
-        with guard(), self._storage.transaction():
+        publication = self._credential_provider.publication_guard(credential) if delegated else nullcontext()
+        with publication, guard(), self._storage.transaction():
             if identity() != expected_identity or self._load(EPOCH_KEY) != epoch:
                 raise BackendUnavailableError('Task refresh superseded by a write or configuration change')
             previous = self._load(SNAPSHOT_KEY)
@@ -135,7 +143,7 @@ class TaskSnapshot:
                     with self._build_lock:
                         self._build(build, identity, guard, credential)
                 except Exception as exc:
-                    if isinstance(exc, BackendAuthError):
+                    if isinstance(exc, (BackendAuthError, BackendDecisionError)):
                         self._report_auth_error(exc, credential)
                     if isinstance(exc, AreaNotReadableError):
                         with self._state_lock:

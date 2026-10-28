@@ -586,6 +586,20 @@ def upgrade_44(storage):
             storage.delete('auth_sessions', key)
 
 
+def upgrade_45(storage):
+    with storage.transaction():
+        storage.save('system', 'external_identity_schema', {'version': 1})
+        if storage.exists('system', 'sandbox_auth'):
+            from types import SimpleNamespace
+            from planner_lib.accounts.config import AccountManager
+            from planner_lib.session.identity import seed_sandbox_links
+
+            metadata = storage.load('system', 'sandbox_auth')
+            if metadata['upstream_mode'] != 'mock':
+                raise SchemaError('Only explicit sandbox identities may be seeded')
+            seed_sandbox_links(storage, AccountManager(storage), SimpleNamespace(metadata=lambda: metadata))
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -596,6 +610,7 @@ REGISTRY = tuple(
         (38, 37, upgrade_38), (39, 38, upgrade_39), (40, 39, upgrade_40),
         (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
         (44, 43, upgrade_44),
+        (45, 44, upgrade_45),
     )
 )
 
@@ -620,6 +635,7 @@ def initialize(storage):
         if not storage.exists('config', key):
             storage.save('config', key, value)
     storage.save('system', 'schema_state', schema_state(TARGET_REVISION, initialized=True))
+    storage.save('system', 'external_identity_schema', {'version': 1})
     storage.save('system', 'workforce_backend_refresh_required', False)
 
 
@@ -774,6 +790,9 @@ def validate_records(storage, revision, *, server_config=None):
                         or (session['source'] == 'enrollment' and session['binding'] != session['device_id'])
                         or (session['source'] == 'entra' and not isinstance(session['binding'], str))):
                     raise SchemaError('Invalid source-bound session record')
+        if revision >= 45:
+            from planner_lib.session.identity import validate_identity_records
+            validate_identity_records(storage)
         for namespace in ('views', 'scenarios'):
             for key, payload in _payloads(storage, namespace):
                 if not isinstance(payload, dict):

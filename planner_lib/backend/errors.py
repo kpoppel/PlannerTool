@@ -24,6 +24,15 @@ class BackendError(Exception):
     """Base class for recoverable failures contacting a remote data backend."""
 
 
+class BackendDecisionError(BackendError):
+    """Preserve a structured policy decision through backend exception boundaries."""
+
+    def __init__(self, code, status=503):
+        super().__init__(code)
+        self.code = code
+        self.status = status
+
+
 class BackendAuthError(BackendError):
     """The acting user's backend credential or permissions were rejected.
 

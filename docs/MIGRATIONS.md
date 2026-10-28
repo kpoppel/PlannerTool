@@ -36,7 +36,8 @@ config. The v4.2.1 server config can still be the owned writable
 used as a runtime fallback. Its `people` record may lack a schema-version field.
 
 The explicit post-baseline chain is `24 -> 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
--> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42`; there was no migration 25. Revisions preserve their historical IDs.
+-> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43 -> 44 -> 45`;
+there was no migration 25. Revisions preserve their historical IDs.
 Revision 26 drops disposable remote records, 27 fills scenario metadata, 28 adds
 account IDs, 29 converts view Context flags, 30 adds plan container types, 31
 prepares device enrollment, 32 changes ownership to account IDs, and 33 harmonizes
@@ -44,10 +45,28 @@ plugin settings using a fixed packaged menu resource. Revision 34 persists packe
 Unplanned preferences in saved views. The server registry has no
 pre-v4.2.1 migrations or reverse functions; older IDs are admission evidence only.
 
-Fresh installations initialize revision 42 directly and invoke no upgrades.
+Fresh installations initialize revision 45 directly and invoke no upgrades.
 External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
+
+### Revision 45 External Identities
+
+`0045.external-identity-links` adds the strict
+`system/external_identity_schema: {version: 1}` marker and canonical
+`external_identities` records keyed by `tenant_uuid:object_uuid`. Each record has
+`version`, `tenant`, `subject`, `account_id`, `environment`, `name` and `email`.
+Environment pins protocol, environment ID, generation and upstream mode. Admission
+rejects malformed, orphaned or conflicting links, including when no sessions exist.
+
+Ordinary upgrades create no links and retain account UUIDs, permissions, PATs and
+sessions. Only an existing explicit synthetic sandbox marker permits migration
+of its two fixed identity mappings. No email-derived production links are created.
+Fresh sandbox initialization writes the same canonical records. Logical backups
+do not export links or grants; importing external links is rejected, and restoring
+accounts clears destination links and pending link approvals. The migration does
+not activate Entra, change the authentication epoch or repeat revision 44's session
+invalidation. Production linking/activation remains disabled.
 
 ### Revision 34 saved-view contract
 

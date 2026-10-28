@@ -151,9 +151,20 @@ test('real fixture interaction and revocation preserve local UI; expired handoff
       const profile = await (await page.request.get(`${ORIGIN}/beta/api/auth/me`)).json();
       expect(profile.status).toBe('interaction_required');
       expect(profile.account.email).toBe('alex@example.test');
+      const operation = await page.request.post(`${ORIGIN}/beta/api/auth/sandbox/operation`);
+      expect(operation.status()).toBe(409);
+      expect(await operation.json()).toEqual({ error: 'interaction_required' });
     });
     await page.context().clearCookies();
   }
+  await withBrokerScenario('beta', 'access_denied', async () => {
+    await signIn(page, 'beta', 'Alex Sandbox');
+    const operation = await page.request.post(`${ORIGIN}/beta/api/auth/sandbox/operation`);
+    expect(operation.status()).toBe(403);
+    expect(await operation.json()).toEqual({ error: 'access_denied' });
+    expect((await (await page.request.get(`${ORIGIN}/beta/api/auth/me`)).json()).status).toBe('signed_in');
+  });
+  await page.context().clearCookies();
   await withBrokerScenario('beta', 'expired', async () => {
     await page.goto(`${ORIGIN}/beta/`);
     const opened = page.waitForEvent('popup');
@@ -199,25 +210,39 @@ test('outage logout revokes locally and discloses pending service cleanup once',
 test('real subpath redirects isolate two identities and two registered instances', async ({ browser }) => {
   const first = await browser.newContext();
   const second = await browser.newContext();
+  const sameAccount = await browser.newContext();
   try {
     const alex = await first.newPage();
     const sam = await second.newPage();
     await signIn(alex, 'alpha', 'Alex Sandbox');
     await signIn(sam, 'beta', 'Sam Sandbox');
+    await signIn(await sameAccount.newPage(), 'alpha', 'Alex Sandbox');
     const alpha = await first.request.get(`${ORIGIN}/alpha/api/auth/me`);
     const beta = await second.request.get(`${ORIGIN}/beta/api/auth/me`);
     expect((await alpha.json()).account.email).toBe('alex@example.test');
     expect((await beta.json()).account.email).toBe('sam@example.test');
+    const alphaOperation = await first.request.post(`${ORIGIN}/alpha/api/auth/sandbox/operation`);
+    const betaOperation = await second.request.post(`${ORIGIN}/beta/api/auth/sandbox/operation`);
+    expect(alphaOperation.status()).toBe(200);
+    expect(betaOperation.status()).toBe(200);
+    const alphaResult = await alphaOperation.json();
+    const betaResult = await betaOperation.json();
+    expect(alphaResult.transport).toBe('fixture');
+    expect(betaResult.transport).toBe('fixture');
+    expect(alphaResult.account_id).not.toBe(betaResult.account_id);
+    expect(Object.keys(alphaResult).sort()).toEqual(['account_id', 'status', 'transport']);
     expect((await (await first.request.get(`${ORIGIN}/beta/api/auth/me`)).json()).account).toBeNull();
     await alex.screenshot({ path: test.info().outputPath('alpha-desktop.png') });
     await sam.screenshot({ path: test.info().outputPath('beta-desktop.png') });
     await alex.getByRole('button', { name: 'Sign out', exact: true }).click();
     await expect(alex.getByText('Signed out', { exact: true })).toBeVisible();
+    expect((await sameAccount.request.post(`${ORIGIN}/alpha/api/auth/sandbox/operation`)).status()).toBe(200);
     expect((await (await second.request.get(`${ORIGIN}/beta/api/auth/me`)).json()).account.email)
       .toBe('sam@example.test');
   } finally {
     await first.close();
     await second.close();
+    await sameAccount.close();
   }
 });
 

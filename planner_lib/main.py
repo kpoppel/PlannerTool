@@ -123,16 +123,13 @@ def _build_services(
     if provider == 'enrollment' and auth_settings['active'] != 'enrollment':
         raise ValueError('Manifest login policy conflicts with persisted active authentication')
     if provider == 'entra':
-        from planner_lib.session.broker import BrokerClient, BrokerSettings, SandboxLogin, prepare_sandbox
+        from planner_lib.session.broker import BrokerClient, BrokerSettings, EntraLoginAdapter, prepare_sandbox
         broker_settings = BrokerSettings.from_env()
         prepare_sandbox(storage_diskcache, broker_settings)
         from planner_lib.session.isolation import install_sandbox_egress
         from urllib.parse import urlsplit
         install_sandbox_egress(urlsplit(broker_settings.url).hostname)
         container.register_factory('broker_client', lambda: BrokerClient(broker_settings))
-        container.register_factory('sandbox_login', lambda: SandboxLogin(
-            storage_diskcache, container.get('account_manager'), container.get('session_manager'),
-            container.get('broker_client')))
     container.register_singleton('authentication_provider', provider)
     container.register_factory("account_manager",
         lambda: AccountManager(storage=storage_diskcache))
@@ -150,8 +147,10 @@ def _build_services(
         lambda: AuthManager(storage_diskcache, container.get("account_manager"),
                             container.get("session_manager")))
     container.register_factory("login_adapter",
-        lambda: EnrollmentLoginAdapter(container.get("auth_manager"),
-                                       container.get("account_manager"), storage_diskcache))
+        lambda: (EntraLoginAdapter(storage_diskcache, container.get('account_manager'),
+                                  container.get('session_manager'), container.get('broker_client'))
+                 if provider == 'entra' else EnrollmentLoginAdapter(container.get('auth_manager'),
+                                       container.get('account_manager'), storage_diskcache)))
 
     # --- Project domain ---
     container.register_factory("capacity_service",
@@ -164,6 +163,7 @@ def _build_services(
             ado_cfg.get('organization_url', ''),
             storage_diskcache,
             feature_flags={**feature_flags, **ado_cfg.get('feature_flags', {})},
+            credential_provider=container.get('credential_provider') if provider == 'entra' else None,
         )
 
     container.register_factory("azure_client", _make_azure_client)
@@ -180,6 +180,7 @@ def _build_services(
             config_backend=container.get("config_backend"),
             team_repository=container.get("team_repository"),
             capacity_service=container.get("capacity_service"),
+            credential_provider=container.get('credential_provider') if provider == 'entra' else None,
         )
 
         if feature_flags.get('enable_cache', False):
@@ -191,6 +192,7 @@ def _build_services(
                 inner=inner,
                 storage=container.get("remote_cache_storage"),
                 ttl_config=ttl_config,
+                credential_provider=container.get('credential_provider') if provider == 'entra' else None,
             )
 
         return inner
@@ -217,7 +219,10 @@ def _build_services(
         EventRepository,
         GroupRepository,
     )
-    from planner_lib.backend.credential import AccountManagerCredentialProvider, PatCredentialPolicy
+    from planner_lib.backend.credential import (
+        AccountManagerCredentialProvider, PatCredentialPolicy,
+        DelegatedCredentialProvider, DelegatedCredentialPolicy,
+    )
 
     # project_repository uses the active backend (which handles enrichment).
     # The backend's fetch_projects() is responsible for returning the correct
@@ -227,9 +232,12 @@ def _build_services(
             backend=container.get("backend"),
         ))
     container.register_factory("credential_provider",
-        lambda: AccountManagerCredentialProvider(container.get("account_manager")))
+        lambda: (DelegatedCredentialProvider(storage_diskcache, container.get('account_manager'),
+                                             container.get('broker_client'))
+                 if provider == 'entra' else AccountManagerCredentialProvider(container.get('account_manager'))))
     container.register_factory("credential_policy",
-        lambda: PatCredentialPolicy(container.get("account_manager")))
+        lambda: (DelegatedCredentialPolicy() if provider == 'entra'
+                 else PatCredentialPolicy(container.get('account_manager'))))
 
     container.register_factory("history_repository",
         lambda: HistoryRepository(
@@ -310,6 +318,7 @@ def _build_services(
                 wiki_id=wiki_id,
                 page_path=page_path,
                 project_repository=container.get("project_repository"),
+                credential_provider=container.get('credential_provider') if provider == 'entra' else None,
             )
             return EventRepository(
                 backend=backend,
@@ -445,6 +454,12 @@ def _build_app(
         return JSONResponse(status_code=403, content={'error': error})
 
     from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError
+    from planner_lib.session.broker import AuthFailure
+
+    @app.exception_handler(AuthFailure)
+    async def authentication_exception_handler(request, exc):
+        return JSONResponse(status_code=exc.status, content={'error': exc.code},
+                            headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
     @app.exception_handler(BackendAuthError)
     async def backend_auth_exception_handler(request, exc):

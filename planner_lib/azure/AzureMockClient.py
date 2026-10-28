@@ -712,6 +712,9 @@ class AzureMockClient(AzureClient):
         self._fixture_dir = fixture_dir
         self._persist_enabled = persist_enabled
 
+    def _connect_with_fixture(self, credential):
+        self._connect_with_pat(credential['token'])
+
     def _connect_with_pat(self, pat: str) -> None:
         """Override: inject a MockConnection instead of the real Azure SDK."""
         if self._connected:

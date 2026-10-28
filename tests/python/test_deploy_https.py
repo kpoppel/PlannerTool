@@ -74,6 +74,29 @@ def test_duplicate_names_rejected():
         generate_caddyfile(INSTANCES * 2)
 
 
+@pytest.mark.parametrize('mode,backend,provider,valid', [
+    ('pat', 'ado', 'enrollment', True),
+    ('entra', 'ado', 'entra', True),
+    ('entra', 'ado', 'enrollment', False),
+    ('pat', 'ado', 'entra', False),
+    ('disabled', 'ado', 'enrollment', False),
+    ('disabled', 'local', 'enrollment', True),
+    ('entra', 'local', 'enrollment', True),
+    ('entra', 'local', 'entra', False),
+    (None, 'local', 'enrollment', False),
+])
+def test_deployment_owns_ado_mode(mode, backend, provider, valid):
+    from deploy_auth import validate_deployment_policy
+
+    config = {'ado_authentication': mode, 'instances': [
+        {'name': 'alpha', 'backend': backend, 'authentication_provider': provider}]}
+    if valid:
+        assert validate_deployment_policy(config) == mode
+    else:
+        with pytest.raises(ValueError):
+            validate_deployment_policy(config)
+
+
 @pytest.fixture
 def sandbox_manifest(tmp_path):
     import yaml

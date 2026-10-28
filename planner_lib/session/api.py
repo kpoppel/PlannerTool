@@ -29,7 +29,7 @@ def _auth_failure(error):
 async def authentication_config(request: Request, response: Response):
     response.headers['Cache-Control'] = 'no-store'
     if _is_entra(request):
-        return {'mode': 'entra', 'capabilities': resolve_service(request, 'sandbox_login').profile()['capabilities']}
+        return {'mode': 'entra', 'capabilities': resolve_service(request, 'login_adapter').profile()['capabilities']}
     accounts = resolve_service(request, 'account_manager')
     return {'mode': 'pat' if accounts.requires_pat() else 'local', 'capabilities': {
         'pat': accounts.requires_pat(), 'enrollment': True, 'reauthenticate': False,
@@ -41,7 +41,7 @@ async def login_begin(request: Request, response: Response):
     from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
     if not _is_entra(request):
         return JSONResponse({'error': 'access_denied'}, status_code=403)
-    login = resolve_service(request, 'sandbox_login')
+    login = resolve_service(request, 'login_adapter')
     if request.headers.get('origin') != login.settings.completion_url.split('/' + login.settings.instance + '/')[0]:
         return JSONResponse({'error': 'access_denied'}, status_code=403)
     try:
@@ -66,6 +66,35 @@ class AuthenticationSelection(BaseModel):
     selected: Literal['enrollment', 'entra']
 
 
+class IdentityLinkApproval(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    account_id: str
+
+
+@router.post('/auth/links/begin')
+@require_admin_session
+async def begin_identity_link(payload: IdentityLinkApproval, request: Request, response: Response):
+    from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
+
+    if not _is_entra(request):
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    login = resolve_service(request, 'login_adapter')
+    if request.headers.get('origin') != login.settings.completion_url.split('/' + login.settings.instance + '/')[0]:
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    try:
+        binding, result = login.begin_link(payload.account_id,
+            get_session_context_from_request(request)['account_id'], get_session_id_from_request(request))
+    except AuthFailure as error:
+        return _auth_failure(error)
+    except KeyError:
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    response.set_cookie(LOGIN_COOKIE, binding, httponly=True, samesite='lax', max_age=300,
+                        path=request.scope.get('root_path', '').rstrip('/') + '/api/auth/',
+                        secure=request.url.scheme == 'https')
+    response.headers['Cache-Control'] = 'no-store'
+    return result
+
+
 @router.get('/auth/settings')
 @require_admin_session
 async def authentication_settings(request: Request, response: Response):
@@ -88,7 +117,8 @@ async def stage_authentication(payload: AuthenticationSelection, request: Reques
 
 def _complete_login(request, state, code):
     from planner_lib.session.broker import LOGIN_COOKIE
-    return resolve_service(request, 'sandbox_login').complete(state, code, request.cookies.get(LOGIN_COOKIE, ''))
+    return resolve_service(request, 'login_adapter').complete(
+        state, code, request.cookies.get(LOGIN_COOKIE, ''), request.cookies.get(SESSION_COOKIE, ''))
 
 
 @router.get('/auth/sandbox', response_class=HTMLResponse)
@@ -98,7 +128,7 @@ async def sandbox_diagnostics(request: Request):
 
     if not _is_entra(request):
         raise HTTPException(404)
-    login = resolve_service(request, 'sandbox_login')
+    login = resolve_service(request, 'login_adapter')
     if not login.settings.isolated_sandbox:
         raise HTTPException(404)
     context = resolve_service(request, 'session_manager').get(request.cookies.get(SESSION_COOKIE, ''))
@@ -134,6 +164,22 @@ async def sandbox_login_redirect(request: Request):
     return redirect
 
 
+@router.post('/auth/sandbox/operation')
+async def sandbox_delegated_operation(request: Request, response: Response):
+    from planner_lib.middleware.session import get_session_credential_from_request
+    from planner_lib.session.broker import AuthFailure
+
+    if not _is_entra(request) or not resolve_service(request, 'login_adapter').settings.isolated_sandbox:
+        raise HTTPException(404)
+    credential = get_session_credential_from_request(request)
+    if credential['transport'] != 'fixture':
+        raise AuthFailure('auth_configuration_error')
+    with resolve_service(request, 'azure_client').connect(credential) as sdk:
+        sdk.get_projects()
+    response.headers['Cache-Control'] = 'no-store'
+    return {'account_id': credential['user_id'], 'transport': 'fixture', 'status': 'completed'}
+
+
 @router.post('/auth/sandbox/logout')
 async def sandbox_logout(request: Request):
     if not _is_entra(request):
@@ -156,7 +202,7 @@ async def login_complete(payload: LoginCompletion, request: Request, response: R
     response.headers['Cache-Control'] = 'no-store'
     context = resolve_service(request, 'session_manager').get(sid)
     try:
-        return resolve_service(request, 'sandbox_login').profile(context)
+        return resolve_service(request, 'login_adapter').profile(context)
     except AuthFailure as error:
         return _auth_failure(error)
 
@@ -166,7 +212,7 @@ async def login_callback(request: Request):
     from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
     if not _is_entra(request):
         return JSONResponse({'error': 'access_denied'}, status_code=403)
-    login = resolve_service(request, 'sandbox_login')
+    login = resolve_service(request, 'login_adapter')
     try:
         pending = login.pending(request.query_params.get('state', ''), request.cookies.get(LOGIN_COOKIE, ''))
     except AuthFailure as error:
@@ -176,7 +222,7 @@ async def login_callback(request: Request):
         if set(request.query_params) != {'state', 'error'} or len(request.query_params.multi_items()) != 2:
             return JSONResponse({'error': 'invalid_session'}, status_code=401)
         try:
-            resolve_service(request, 'sandbox_login').cancel(
+            resolve_service(request, 'login_adapter').cancel(
                 request.query_params['state'], request.cookies.get(LOGIN_COOKIE, ''))
         except AuthFailure as error:
             return _auth_failure(error)
@@ -212,7 +258,7 @@ def _popup_completion(request, state, target, error=None):
     import secrets
     from urllib.parse import urlsplit
 
-    settings = resolve_service(request, 'sandbox_login').settings
+    settings = resolve_service(request, 'login_adapter').settings
     public = urlsplit(settings.public_url)
     origin = public.scheme + '://' + public.netloc
     destination = '/' + settings.instance + ('/admin' if target == 'admin' else '/')
@@ -348,7 +394,7 @@ async def current_account(request: Request):
         sid = request.cookies.get(SESSION_COOKIE, '')
         context = resolve_service(request, 'session_manager').get(sid)
         try:
-            return resolve_service(request, 'sandbox_login').profile(context)
+            return resolve_service(request, 'login_adapter').profile(context)
         except AuthFailure as error:
             return _auth_failure(error)
     context = get_session_context_from_request(request)
@@ -404,7 +450,7 @@ async def revoke_device(device_id: str, request: Request):
 async def logout(response: Response, request: Request):
     if _is_entra(request):
         from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
-        login = resolve_service(request, 'sandbox_login')
+        login = resolve_service(request, 'login_adapter')
         revocation_pending = False
         try:
             login.logout(request.cookies.get(SESSION_COOKIE, ''))

@@ -1,5 +1,6 @@
 
 from typing import Callable, Optional, Any
+from contextvars import ContextVar
 import functools
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, Response, JSONResponse
@@ -28,6 +29,7 @@ SESSION_COOKIE = "sessionId"
 DEVICE_COOKIE = "plannerDevice"
 SESSION_IDLE = 14 * 86400
 SESSION_MAX = 30 * 86400
+current_session_context = ContextVar('planner_session_context', default=None)
 
 # Read the 401 HTML template once at module load.  The path is resolved
 # relative to this file so the server can be started from any working directory.
@@ -169,12 +171,14 @@ def get_session_context_from_request(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail={'error': 'missing_session_id', 'message': 'Somehow you got here without a session.'})
     cached = getattr(request.state, '_planner_session', None)
     if cached is not None and cached[0] == sid:
+        current_session_context.set(cached[1])
         return cached[1]
     mgr = resolve_service(request, 'session_manager')
     context = mgr.get(sid)
     if context is None:
         raise HTTPException(status_code=401, detail={'error': 'invalid_session', 'message': 'Your session is invalid or expired.'})
     request.state._planner_session = (sid, context)
+    current_session_context.set(context)
     return context
 
 
@@ -217,6 +221,13 @@ class SessionMiddleware(BaseHTTPMiddleware):
         self.session_manager = session_manager
 
     async def dispatch(self, request: Request, call_next):
+        token = current_session_context.set(None)
+        try:
+            return await self._dispatch(request, call_next)
+        finally:
+            current_session_context.reset(token)
+
+    async def _dispatch(self, request: Request, call_next):
         route_path = request.url.path.removeprefix(request.scope.get('root_path', ''))
         if route_path.startswith('/api/auth/login/') and request.method == 'POST':
             body = bytearray()

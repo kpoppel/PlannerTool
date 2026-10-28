@@ -56,7 +56,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, DiagnosticBackend
-from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendError
+from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendDecisionError, BackendError
 from planner_lib.domain.tasks import WriteResult
 from planner_lib.storage.base import StorageBackend
 
@@ -137,6 +137,7 @@ class CachingBackend:
         inner,
         storage: StorageBackend,
         ttl_config: Optional[CacheTTLConfig] = None,
+        credential_provider=None,
     ) -> None:
         self._inner = inner
         self._storage = storage
@@ -156,6 +157,7 @@ class CachingBackend:
             lambda error, credential: self._record_stale_warning(
                 error, key='fetch_task_context__complete', user_id=credential['user_id'],
             ),
+            credential_provider=credential_provider,
         )
         logger.info(
             "CachingBackend: initialised wrapping %s",
@@ -309,7 +311,11 @@ class CachingBackend:
         Shared by the synchronous and background refresh paths so the
         auth-vs-outage classification lives in exactly one place.
         """
-        if isinstance(exc, BackendAuthError):
+        if isinstance(exc, BackendDecisionError):
+            code, message = exc.code, 'Backend authentication requires attention; cached results are retained.'
+        elif isinstance(exc, BackendAuthError) and exc.credential is not None and exc.credential['kind'] == 'bearer':
+            code, message = 'access_denied', 'Azure DevOps denied this refresh; cached results are retained.'
+        elif isinstance(exc, BackendAuthError):
             code, message = 'tasks_stale_invalid_pat', (
                 'Azure DevOps denied the work-item refresh due to a stale PAT, so cached work items could not be '
                 'refreshed. Latest cached results will be used instead.'

@@ -27,6 +27,17 @@ The pipeline normalizes provider-specific records into domain objects before the
 rest of the application sees them. The cache can return stale remote data during
 an outage, but it must never be used as the system of record for user changes.
 
+Authentication composition selects enrollment/PAT or the isolated Entra adapter
+once. Entra's `external_identities` records map verified tenant/object UUIDs to
+local account UUIDs; contact email is not an ownership or linking key. Delegated
+credentials include `kind: bearer`, acting `user_id`, opaque `token`, local
+`binding`, authentication `epoch`, `expires_at` and explicit `transport` metadata.
+The provider resolves only the current request's session-owned grant. SDK/wiki
+construction selects Basic/Bearer explicitly; fixture credentials cannot enter
+live transport. Background task snapshots renew through that provider and hold
+an authoritative grant/account/epoch validation guard through cache publication.
+These are sandbox-tested contracts, not production Entra activation.
+
 ## 2. System Components & Boundary Map
 
 ### Directory & File Layout

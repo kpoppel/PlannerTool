@@ -14,13 +14,18 @@ def manager():
 
 
 def test_logical_backup_exports_revision_without_recovery_metadata(manager):
+    manager._storage.save('external_identities', 'synthetic-link', {'account_id': 'synthetic-uuid'})
+    manager._storage.save('auth_grants', 'synthetic-binding', {'grant': 'protected-grant'})
     backup = manager.get_backup()
     assert backup['schema_revision'] == TARGET_REVISION
     assert 'system' not in backup
     assert 'active-generation' not in backup
+    assert 'external_identities' not in backup
+    assert 'auth_grants' not in backup
 
 
 @pytest.mark.parametrize('payload', [
+    {'schema_revision': TARGET_REVISION, 'external_identities': {'imported': {}}},
     {'schema_revision': 32, 'config': {'server_config': {'feature_flags': {}}}},
     {'schema_revision': TARGET_REVISION + 1, 'config': {}},
     {'config': {'schema_state': {'schema_revision': 34}}},

@@ -61,6 +61,34 @@ def test_second_fetch_served_from_cache(caching, inner):
     assert len(inner.fetch_tasks_calls) == 1
 
 
+def test_delegated_snapshot_renews_and_rejects_revoked_publication(storage):
+    from contextlib import contextmanager, nullcontext
+    from unittest.mock import MagicMock
+    from planner_lib.backend.task_snapshot import TaskSnapshot, NAMESPACE, SNAPSHOT_KEY
+    from planner_lib.session.broker import AuthFailure
+
+    provider = MagicMock()
+    original = {'kind': 'bearer', 'token': 'old', 'user_id': 'acting-account'}
+    renewed = {**original, 'token': 'renewed'}
+    provider.renew.return_value = renewed
+
+    @contextmanager
+    def revoked(credential):
+        assert credential == renewed
+        raise AuthFailure('invalid_session', 401)
+        yield
+
+    provider.publication_guard = revoked
+    build = MagicMock(return_value=[dict(_TASK)])
+    backend = object()
+    snapshot = TaskSnapshot(storage, backend, lambda: None, MagicMock(), credential_provider=provider)
+    with pytest.raises(AuthFailure, match='invalid_session'):
+        snapshot.rebuild_now(build, lambda: 'configuration', nullcontext, original)
+    provider.renew.assert_called_once_with(original)
+    build.assert_called_once_with(backend, renewed)
+    assert not storage.exists(NAMESPACE, SNAPSHOT_KEY)
+
+
 def test_repository_serves_complete_snapshot_when_seed_payload_changes(inner, tmp_path):
     from unittest.mock import MagicMock
     from planner_lib.backend.caching import CachingBackend

@@ -92,8 +92,49 @@ def test_fresh_initialization_is_current_without_upgrades(tmp_path):
         validate_candidate(storage)
         assert storage.load('system', 'schema_state')['initialized_at_revision'] == TARGET_REVISION
         assert storage.load('system', 'schema_state')['last_applied_migration'] is None
+        assert storage.load('system', 'external_identity_schema') == {'version': 1}
     finally:
         storage.close()
+
+
+def test_identity_link_upgrade_preserves_existing_accounts_and_sessions():
+    from planner_lib.migrations.revisions import upgrade_45
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    storage = MemoryStorage()
+    storage.save('accounts', 'existing@example.test', {'account_id': 'existing-uuid'})
+    storage.save('auth_sessions', 'existing-hash', {'account_id': 'existing-uuid'})
+    upgrade_45(storage)
+    assert storage.load('system', 'external_identity_schema') == {'version': 1}
+    assert storage.load('accounts', 'existing@example.test') == {'account_id': 'existing-uuid'}
+    assert storage.load('auth_sessions', 'existing-hash') == {'account_id': 'existing-uuid'}
+    assert list(storage.list_keys('external_identities')) == []
+
+
+def test_current_candidate_requires_external_identity_schema(tmp_path):
+    storage = DiskCacheStorage(tmp_path / 'cache')
+    try:
+        initialize(storage)
+        storage.delete('system', 'external_identity_schema')
+        with pytest.raises(SchemaError):
+            validate_candidate(storage)
+    finally:
+        storage.close()
+
+
+def test_sandbox_identity_upgrade_preserves_deleted_fixture_accounts():
+    from planner_lib.migrations.revisions import upgrade_45
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    storage = MemoryStorage()
+    storage.save('system', 'sandbox_auth', {'protocol': 'plannertool-auth/1',
+        'environment_id': 'sandbox', 'generation': 'test-1', 'upstream_mode': 'mock'})
+    storage.save('accounts', 'alex@example.test', {'account_id': 'existing-sandbox-admin'})
+    upgrade_45(storage)
+    links = [storage.load('external_identities', key) for key in storage.list_keys('external_identities')]
+    assert len(links) == 1
+    assert links[0]['account_id'] == 'existing-sandbox-admin'
+    assert not storage.exists('accounts', 'sam@example.test')
 
 
 def test_current_candidate_rejects_incomplete_enrollment_credentials(tmp_path):

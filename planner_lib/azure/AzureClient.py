@@ -14,8 +14,9 @@ from planner_lib.azure.teams_plans import TeamPlanOperations
 from planner_lib.azure.markers import MarkersOperations
 from planner_lib.azure.processes import ProcessOperations
 from planner_lib.azure.authentication import (
+    azure_devops_authentication,
     azure_devops_pat_authentication,
-    pat_from_credential,
+    token_from_credential,
 )
 from planner_lib.backend.port import BackendCredential
 
@@ -35,8 +36,10 @@ class AzureClient:
     project-level and global invalidation methods.
     """
 
-    def __init__(self, organization_url: str, storage: StorageBackend, *, cache_plans: bool = True):
+    def __init__(self, organization_url: str, storage: StorageBackend, *, cache_plans: bool = True,
+                 credential_provider=None):
         self.organization_url = organization_url
+        self._credential_provider = credential_provider
         self._connection_state = threading.local()
         self._connected = False
         self.conn: Optional[Any] = None
@@ -70,6 +73,9 @@ class AzureClient:
 
         This method sets up the azure-devops SDK connection object.
         """
+        self._connect_with_authentication(azure_devops_pat_authentication(pat))
+
+    def _connect_with_authentication(self, authentication) -> None:
         try:
             from azure.devops.connection import Connection
         except ImportError as error:
@@ -83,14 +89,16 @@ class AzureClient:
         if self._connected:
             return
 
-        creds = azure_devops_pat_authentication(pat)
-        self.conn = Connection(base_url=f"https://dev.azure.com/{self.organization_url}", creds=creds)
+        self.conn = Connection(base_url=f"https://dev.azure.com/{self.organization_url}", creds=authentication)
         self._connected = True
 
     def connect(self, credential: BackendCredential) -> ContextManager["AzureClient"]:
         """Context-manager that connects with a validated operation credential."""
-        pat = pat_from_credential(credential)
-        return self._connection_context(pat, credential=credential)
+        token = token_from_credential(credential)
+        return self._connection_context(token, credential=credential)
+
+    def _connect_with_fixture(self, credential):
+        raise ValueError('Sandbox credentials require an explicit fixture transport')
 
     def connect_pat(self, pat: str) -> ContextManager["AzureClient"]:
         """Context-manager for an explicit PAT-only connection outside a user credential."""
@@ -99,21 +107,30 @@ class AzureClient:
         return self._connection_context(pat)
 
     def _connection_context(
-        self, pat: str, *, credential: BackendCredential | None = None,
+        self, token: str, *, credential: BackendCredential | None = None,
     ) -> ContextManager["AzureClient"]:
-        """Connect with a PAT already selected by the credential contract and
+        """Connect with the transport selected by the credential contract and
         yield a connected client for the duration of the context.
         """
         @contextmanager
         def _cm():
+            authentication = None
             try:
-                self._connect_with_pat(pat)
+                if credential is not None and credential['kind'] == 'bearer':
+                    if credential.get('transport') == 'fixture':
+                        self._connect_with_fixture(credential)
+                    else:
+                        authentication = azure_devops_authentication(credential, self._credential_provider)
+                        self._connect_with_authentication(authentication)
+                else:
+                    self._connect_with_pat(token)
                 yield self
             except Exception as error:
                 from planner_lib.backend.errors import BackendAuthError, classify_ado_exception
                 classified = classify_ado_exception(error)
                 if isinstance(classified, BackendAuthError):
-                    classified.credential = credential
+                    classified.credential = (authentication.credential
+                        if authentication is not None and self._credential_provider is not None else credential)
                     raise classified from error
                 raise
             finally:

@@ -27,7 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
-from planner_lib.azure.authentication import pat_from_credential
+from planner_lib.azure.authentication import token_from_credential
 from planner_lib.azure.catalogue import imported_type_index, resolve_plan_process
 from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
@@ -102,6 +102,7 @@ class AzureDevOpsBackend(BackendPort):
             local_backend=services.get('config_backend'),
             team_repository=services.get('team_repository'),
             capacity_service=services.get('capacity_service'),
+            credential_provider=services.get('credential_provider'),
         )
 
     def __init__(
@@ -111,11 +112,13 @@ class AzureDevOpsBackend(BackendPort):
         team_repository,
         capacity_service,
         local_backend=None,
+        credential_provider=None,
     ) -> None:
         from planner_lib.azure.AzureClient import AzureClient
         self._organization_url = organization_url
         # _conn provides connect(credential) and all Azure operation classes
-        self._conn = AzureClient(organization_url, storage=storage)
+        self._credential_provider = credential_provider
+        self._conn = AzureClient(organization_url, storage=storage, credential_provider=credential_provider)
         self._adapter = AzureAdapter()
         self._team_repository = team_repository
         self._capacity_service = capacity_service
@@ -145,6 +148,7 @@ class AzureDevOpsBackend(BackendPort):
             config_backend=self._config,
             team_repository=self._team_repository,
             capacity_service=self._capacity_service,
+            credential_provider=self._credential_provider,
         )
 
     # ------------------------------------------------------------------
@@ -173,7 +177,7 @@ class AzureDevOpsBackend(BackendPort):
                 "none was provided and there is no cache to serve from."
             )
         try:
-            pat_from_credential(credential)
+            token_from_credential(credential)
         except ValueError as error:
             raise BackendAuthError(
                 f"BackendCredential for {op} is invalid: {error}"

@@ -97,6 +97,20 @@ def _page_response(content: str, etag: str = '"abc123"'):
     return resp
 
 
+def test_wiki_connection_uses_explicit_bearer_authentication():
+    backend = _make_backend(org='example')
+    credential = {'kind': 'bearer', 'token': 'opaque-wiki-token', 'user_id': 'acting-account'}
+
+    with patch('azure.devops.connection.Connection') as connection:
+        backend._get_wiki_client(credential)
+        authentication = connection.call_args.kwargs['creds']
+        session = authentication.signed_session()
+        assert session.headers['Authorization'] == 'Bearer opaque-wiki-token'
+        session.close()
+
+    assert connection.call_args.kwargs['base_url'] == 'https://dev.azure.com/example'
+
+
 def _empty_page_response():
     return _page_response('', '-1')
 

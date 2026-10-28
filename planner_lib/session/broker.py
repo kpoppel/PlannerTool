@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from planner_lib.accounts.config import AccountCredentialsPayload, _get_fernet
+from planner_lib.backend.errors import BackendDecisionError
 from planner_lib.session.policy import validate_authentication
 
 
@@ -26,11 +27,8 @@ SANDBOX_IDENTITIES = {
 SANDBOX_TENANT = '11111111-1111-1111-1111-111111111111'
 
 
-class AuthFailure(Exception):
-    def __init__(self, code, status=503):
-        super().__init__(code)
-        self.code = code
-        self.status = status
+class AuthFailure(BackendDecisionError):
+    """Typed authentication decision shared by transport and HTTP boundaries."""
 
 
 def sha256(value):
@@ -143,13 +141,28 @@ class BrokerClient:
         return value
 
 
-class SandboxLogin:
+class EntraLoginAdapter:
     def __init__(self, storage, accounts, sessions, client):
         self.storage = storage
         self.accounts = accounts
         self.sessions = sessions
         self.client = client
         self.settings = client.settings
+        from planner_lib.session.identity import ExternalIdentityLinks
+        self.identities = ExternalIdentityLinks(storage, accounts, self.settings, SANDBOX_TENANT)
+
+    def begin_link(self, account_id, approved_by, session_id):
+        from planner_lib.accounts.constants import AccountPermissions
+
+        if AccountPermissions.ADMIN not in self.accounts.get_account_by_id(approved_by)['permissions']:
+            raise AuthFailure('access_denied', 403)
+        self.accounts.get_account_by_id(account_id)
+        binding, result = self.begin('admin')
+        self.storage.save('auth_link_approvals', sha256(result['state']), {
+            'account_id': account_id, 'approved_by': approved_by,
+            'session_hash': sha256(session_id),
+        }, ttl_seconds=300)
+        return binding, result
 
     def begin(self, return_target='diagnostic'):
         if return_target not in ('diagnostic', 'app', 'admin'):
@@ -196,8 +209,10 @@ class SandboxLogin:
         with self.storage.transaction():
             self.pending(state, binding)
             self.storage.delete('auth_transactions', sha256(state))
+            if self.storage.exists('auth_link_approvals', sha256(state)):
+                self.storage.delete('auth_link_approvals', sha256(state))
 
-    def complete(self, state, code, binding):
+    def complete(self, state, code, binding, session_id=''):
         key = sha256(state)
         with self.storage.transaction():
             record = self.pending(state, binding)
@@ -205,12 +220,24 @@ class SandboxLogin:
                 'transaction': record['transaction'], 'code': code, 'verifier': record['verifier']})
             identity = result.get('identity')
             if (result.get('transaction') != record['transaction'] or not isinstance(identity, dict)
-                    or identity.get('tid') != SANDBOX_TENANT or identity.get('oid') not in SANDBOX_IDENTITIES
                     or not isinstance(result.get('grant'), str)
-                    or not isinstance(result.get('expires_at'), (int, float))):
+                    or not result['grant'] or type(result.get('expires_at')) not in (int, float)
+                    or not time.time() < result['expires_at'] <= time.time() + 3610):
                 raise AuthFailure('auth_configuration_error')
-            email, name = SANDBOX_IDENTITIES[identity['oid']]
-            account_id = self.accounts.get_account_id(email)
+            target = None
+            if self.storage.exists('auth_link_approvals', key):
+                from planner_lib.accounts.constants import AccountPermissions
+                approval = self.storage.load('auth_link_approvals', key)
+                approving_session = self.sessions.get(session_id)
+                if (approving_session is None or approving_session['account_id'] != approval['approved_by']
+                    or not hmac.compare_digest(sha256(session_id), approval['session_hash'])
+                    or AccountPermissions.ADMIN not in self.accounts.get_account_by_id(approval['approved_by'])['permissions']):
+                    raise AuthFailure('access_denied', 403)
+                target = approval['account_id']
+            account = self.identities.resolve(identity, target)
+            email = account['email']
+            account_id = account['id']
+            name = self.identities.profile(account_id)['name']
             local_binding = secrets.token_urlsafe(32)
             encrypted_grant = _get_fernet().encrypt(result['grant'].encode()).decode()
             self.storage.save('auth_grants', local_binding, {
@@ -220,15 +247,15 @@ class SandboxLogin:
             })
             sid = self.sessions.create(email, source='entra', binding=local_binding)
             self.storage.delete('auth_transactions', key)
+            if self.storage.exists('auth_link_approvals', key):
+                self.storage.delete('auth_link_approvals', key)
         return sid
 
     def profile(self, context=None):
         account = None
         status = 'signed_out'
         if context is not None:
-            email = context['email']
-            name = next(value[1] for value in SANDBOX_IDENTITIES.values() if value[0] == email)
-            account = {'uuid': context['account_id'], 'email': email, 'name': name}
+            account = self.identities.profile(context['account_id'])
             local = self.storage.load('auth_grants', context['binding'])
             reference = _get_fernet().decrypt(local['grant'].encode()).decode()
             try:
@@ -284,6 +311,8 @@ def prepare_sandbox(storage, settings):
         accounts = AccountManager(storage)
         for index, (email, name) in enumerate(SANDBOX_IDENTITIES.values()):
             accounts.create_account(AccountCredentialsPayload(email=email), permissions=['admin'] if index == 0 else [])
+        from planner_lib.session.identity import seed_sandbox_links
+        seed_sandbox_links(storage, accounts, settings)
         storage.save('config', 'authentication', {
             'version': 1, 'selected': 'entra', 'active': 'entra', 'backend_credentials': 'delegated', 'epoch': 1})
         storage.save('config', 'ado_config', {

@@ -156,6 +156,95 @@ def test_shared_pat_authentication_uses_basic_auth_with_empty_username():
     basic_authentication.assert_called_once_with('', 'private-pat')
 
 
+def test_connect_uses_explicit_bearer_authentication_with_installed_sdk():
+    client = AzureClient('example', DummyStorage())
+    credential = {'kind': 'bearer', 'token': 'opaque-access-token', 'user_id': 'acting-account'}
+
+    with patch('azure.devops.connection.Connection') as connection:
+        with client.connect(credential):
+            authentication = connection.call_args.kwargs['creds']
+            session = authentication.signed_session()
+            assert session.headers['Authorization'] == 'Bearer opaque-access-token'
+            session.close()
+
+    assert connection.call_args.kwargs['base_url'] == 'https://dev.azure.com/example'
+    assert client.conn is None
+    assert client._connected is False
+
+
+def test_bearer_authentication_is_accepted_by_real_sdk_without_network():
+    client = AzureClient('example', DummyStorage())
+    credential = {'kind': 'bearer', 'token': 'opaque-access-token', 'user_id': 'acting-account'}
+
+    with client.connect(credential):
+        session = client.conn._config.credentials.signed_session()
+        assert session.headers['Authorization'] == 'Bearer opaque-access-token'
+        session.close()
+
+
+def test_sdk_renews_bearer_for_each_request_without_replaying_denial():
+    from planner_lib.azure.authentication import azure_devops_authentication
+    from planner_lib.session.broker import AuthFailure
+
+    credential = {'kind': 'bearer', 'token': 'initial', 'user_id': 'acting-account', 'transport': 'live'}
+    provider = MagicMock()
+    provider.renew.side_effect = [
+        {**credential, 'token': 'first'}, {**credential, 'token': 'second'},
+        AuthFailure('access_denied', 403),
+    ]
+    authentication = azure_devops_authentication(credential, provider)
+    for token in ('first', 'second'):
+        session = authentication.signed_session()
+        assert session.headers['Authorization'] == 'Bearer ' + token
+        session.close()
+    with pytest.raises(AuthFailure, match='access_denied'):
+        authentication.signed_session()
+    assert provider.renew.call_count == 3
+
+
+def test_live_sdk_refuses_sandbox_credentials_before_connection():
+    client = AzureClient('example', DummyStorage())
+    credential = {'kind': 'bearer', 'token': 'fixture', 'user_id': 'acting-account', 'transport': 'fixture'}
+    with patch('azure.devops.connection.Connection') as connection:
+        with pytest.raises(ValueError, match='fixture transport'):
+            with client.connect(credential):
+                pass
+    connection.assert_not_called()
+
+
+def test_backend_composition_and_reload_keep_delegated_provider():
+    provider = MagicMock()
+    config = MagicMock()
+    config.fetch_ado_config.return_value = {'organization_url': 'example', 'feature_flags': {}}
+    backend = AzureDevOpsBackend.build_from_flags({}, org_url='example', storage=MemoryStorage(),
+        config_backend=config, credential_provider=provider)
+    assert backend._conn._credential_provider is provider
+    backend.reload()
+    assert backend._conn._credential_provider is provider
+    credential = {'kind': 'bearer', 'token': 'opaque', 'user_id': 'acting-account'}
+    assert backend._require_credential(credential, 'fetch_tasks') == credential
+
+
+def test_renewed_sdk_failure_keeps_used_credential_and_typed_broker_decision():
+    from planner_lib.backend.errors import BackendAuthError, classify_ado_exception
+    from planner_lib.session.broker import AuthFailure
+
+    provider = MagicMock()
+    credential = {'kind': 'bearer', 'token': 'initial', 'user_id': 'acting-account', 'transport': 'live'}
+    renewed = {**credential, 'token': 'used-access-token'}
+    provider.renew.return_value = renewed
+    client = AzureClient('example', DummyStorage(), credential_provider=provider)
+    with patch('azure.devops.connection.Connection') as connection:
+        with pytest.raises(BackendAuthError) as raised:
+            with client.connect(credential):
+                session = connection.call_args.kwargs['creds'].signed_session()
+                session.close()
+                raise BackendAuthError('Remote access denied', status_code=403)
+    assert raised.value.credential == renewed
+    failure = AuthFailure('interaction_required', 409)
+    assert classify_ado_exception(failure) is failure
+
+
 @pytest.mark.skip(reason='Recorded-file mock catalogue fixtures are not maintained; temporarily deferred.')
 def test_recorded_mock_process_catalogue():
     from planner_lib.azure.AzureMockClient import AzureMockClient

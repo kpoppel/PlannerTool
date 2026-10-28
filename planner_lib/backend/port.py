@@ -68,7 +68,7 @@ never require a credential at all.
 from __future__ import annotations
 
 from typing import List, Optional, Dict, Any, Literal
-from typing_extensions import TypedDict, Protocol, runtime_checkable
+from typing_extensions import TypedDict, Protocol, runtime_checkable, NotRequired
 
 from planner_lib.domain.tasks import BackendTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
@@ -86,12 +86,16 @@ class BackendCredential(TypedDict):
     """A credential scoped to one user session.
 
     kind    — the authentication mechanism used by the backend transport
-    token   — PAT value (never logged)
-    user_id — the session / user identifier; used for auditing only
+    token   — opaque PAT or delegated access token (never logged)
+    user_id — acting account UUID; used for ownership and auditing
     """
-    kind: Literal['pat']
+    kind: Literal['pat', 'bearer']
     token: str
     user_id: str
+    binding: NotRequired[str]
+    epoch: NotRequired[int]
+    expires_at: NotRequired[float]
+    transport: NotRequired[Literal['fixture', 'live']]
 
 
 @runtime_checkable

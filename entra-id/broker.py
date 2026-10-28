@@ -94,7 +94,7 @@ class BrokerConfig:
                 raise ValueError('Each instance must have its own service secret')
             secret_hashes.add(secret_hash)
             if registration['scenario'] not in (
-                    'success', 'cancel', 'expired', 'revoked', 'interaction_required', 'unavailable'):
+                    'success', 'cancel', 'expired', 'revoked', 'interaction_required', 'unavailable', 'access_denied'):
                 raise ValueError('Unknown sandbox scenario')
 
     @classmethod
@@ -277,6 +277,8 @@ class BrokerStore:
                 raise ProtocolError('invalid_resource', 403)
             if status != 'active':
                 raise ProtocolError('interaction_required', 409)
+            if payload['scenario'] == 'access_denied':
+                raise ProtocolError('access_denied', 403)
             if self.config.mode != 'mock':
                 raise ProtocolError('auth_unavailable', 503)
             return {**self.metadata(), 'resource': RESOURCE, 'token_kind': 'fixture',
