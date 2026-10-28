@@ -146,6 +146,9 @@ class AccountManager:
     def requires_pat(self) -> bool:
         from planner_lib.backend.credential import PatCredentialPolicy
 
+        if (self._storage.exists('config', 'authentication')
+            and self._storage.load('config', 'authentication')['active'] == 'entra'):
+            return False
         return PatCredentialPolicy.requires_credential(self._storage)
 
     def validate_pat(self, pat: str | None) -> str | None:

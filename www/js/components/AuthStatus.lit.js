@@ -81,10 +81,18 @@ export class AuthStatus extends LitElement {
     } catch (error) {
       if (AUTH_DECISIONS[error.code] === undefined) throw error;
       await this.authentication.handleDecision(error.code);
-      this._message = STATUS_MESSAGES[this.authentication.state.status];
+      this._message = this._statusMessage();
     } finally {
       this._busy = false;
     }
+  }
+
+  _statusMessage() {
+    const { status, account } = this.authentication.state;
+    if (status === 'unavailable' && account === null) {
+      return 'Authentication service unavailable. Please try again later.';
+    }
+    return STATUS_MESSAGES[status];
   }
 
   async _onRepairPat(event) {
@@ -110,8 +118,7 @@ export class AuthStatus extends LitElement {
       ${this._logoutPending ? html`<p role="status">Signed out of this instance.
         Authentication service cleanup is pending; the delegated grant will expire.</p>` : ''}
       ${account === null ? '' : html`<p data-auth-account>${account.email}</p>`}
-      <p role="status">${status === 'unavailable' && account === null
-        ? 'Authentication service unavailable. Please try again later.' : STATUS_MESSAGES[status]}</p>
+      <p role="status">${this._statusMessage()}</p>
       ${capabilities.pat && (status === 'pat_required' || status === 'pat_invalid') ? html`
         <form @submit=${this._onRepairPat}>
           <label for="previewPat">Azure DevOps PAT</label>

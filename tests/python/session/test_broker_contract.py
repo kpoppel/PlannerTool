@@ -155,6 +155,34 @@ def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, 
         assert storage.load('config', 'ado_config') == ado_config
 
 
+def test_new_entra_identity_can_sign_in_with_live_ado_without_pat(sandbox, monkeypatch):
+    from planner_lib.session.identity import identity_key
+
+    client, requests = sandbox
+    container = client.app.state.container
+    storage = container.get('storage')
+    accounts = container.get('account_manager')
+    admin = accounts.get_account_by_id(accounts.get_account_id('alex@example.test'))
+    storage.delete('external_identities', identity_key(
+        SANDBOX_TENANT, '33333333-3333-3333-3333-333333333333'))
+    storage.save('config', 'ado_config', {
+        'organization_url': 'https://dev.azure.com/example', 'feature_flags': {}})
+    monkeypatch.setattr(accounts, 'validate_pat', lambda value: pytest.fail('Login required a PAT'))
+
+    state = client.post('/api/auth/login/begin', headers={
+        'Origin': 'http://localhost:8765'}).json()['state']
+    response = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+
+    assert response.status_code == 200
+    profile = response.json()
+    assert profile['account']['uuid'] != admin['id']
+    assert profile['permissions'] == []
+    assert profile['status'] == 'signed_in'
+    assert accounts.get_account_by_id(admin['id']) == admin
+    assert not accounts.requires_pat()
+    assert not any(request.url.path.endswith('/token') for request in requests)
+
+
 def test_mock_auth_preserves_admin_backend_choice_and_authentication(sandbox):
     from planner_lib.admin.config_manager import ConfigManager
 

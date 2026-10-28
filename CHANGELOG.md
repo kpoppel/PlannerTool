@@ -39,6 +39,7 @@ This version adds EntraID authentication.
 - Keep backend selection in each instance's admin configuration; deployment manifests specify hosting, auth-service connections and shared credential policy without duplicating backend or login-provider settings.
 - Invalidate existing sessions once during the revision-44 source/epoch upgrade, preserving accounts, permissions and PATs.
 ### Fixed
+- Allow first-time Entra sign-in without a PAT when live ADO is configured, and stop claiming an active local session when signed-out authentication fails.
 - Build both PlannerTool and auth-service images with version and latest tags from the build script and explicit deployment build flags, including deployments without source-build services.
 - Keep local updates, including account-key resets and permission changes, independent of PAT validity; centralize credential acquisition and ADO credential errors in the credential policy.
 - Apply changed HTTPS configuration to running Caddy instances before certificate checks, and report internal CA export errors instead of silently waiting on failed copies.

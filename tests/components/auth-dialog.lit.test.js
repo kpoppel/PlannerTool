@@ -10,6 +10,22 @@ import { AUTH_SCENARIOS, createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/m
 const uiCommands = createUiCommands(store, bus);
 
 describe('isolated authentication scenarios', () => {
+  it('does not claim a local session is active after signed-out sign-in fails', async () => {
+    const model = createMockAuth('entra_signed_out');
+    vi.spyOn(model, 'signIn').mockRejectedValue(
+      Object.assign(new Error('auth_unavailable'), { code: 'auth_unavailable' }));
+    const status = document.createElement('auth-status');
+    status.authentication = model;
+    document.body.append(status);
+    await status.updateComplete;
+    await status._onSignIn();
+    await status.updateComplete;
+    expect(model.state.account).toBeNull();
+    expect(status.shadowRoot.textContent).toContain('Please try again later.');
+    expect(status.shadowRoot.textContent).not.toContain('local session is still active');
+    status.remove();
+  });
+
   it.each(['auth_unavailable', 'access_denied'])('presents typed sign-in failure %s without losing the account', async code => {
     const model = createMockAuth('interaction_required');
     vi.spyOn(model, 'signIn').mockRejectedValue(Object.assign(new Error(code), { code }));
