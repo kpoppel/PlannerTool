@@ -46,6 +46,7 @@ export function createAuthRecovery({
     message: {
       interaction_required: 'Azure DevOps requires reauthentication. Local work is still available.',
       access_denied: 'Azure DevOps access denied. Sign-in will not change your permissions.',
+      ado_credential_unusable: 'The authentication service returned a fake Azure DevOps token. No Azure DevOps request was sent. Local work is still available.',
       auth_unavailable: 'Authentication service unavailable. Please try again later.',
       auth_configuration_error: 'Authentication configuration requires administrator attention.',
     }[code],

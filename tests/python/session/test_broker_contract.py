@@ -5,14 +5,16 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import Request
 
 from planner_lib.main import Config, create_app
 from planner_lib.migrations.contracts import TARGET_REVISION
-from planner_lib.session.broker import BrokerClient, BrokerSettings, AuthFailure, SANDBOX_TENANT
+from planner_lib.session.broker import BrokerClient, BrokerSettings, AuthFailure
 
 
 pytestmark = pytest.mark.real_auth
 CONTRACT = json.loads((Path(__file__).resolve().parents[3] / 'entra-id' / 'protocol-v1.json').read_text())
+SANDBOX_TENANT = '11111111-1111-1111-1111-111111111111'
 
 
 @pytest.fixture
@@ -26,12 +28,31 @@ def sandbox(monkeypatch, tmp_path, request):
         'PLANNER_AUTH_URL': 'http://localhost:8765/auth/',
         'PLANNER_AUTH_PUBLIC_URL': origin + '/auth/',
         'PLANNER_AUTH_ENVIRONMENT': 'sandbox', 'PLANNER_AUTH_GENERATION': 'test-1',
-        'PLANNER_AUTH_UPSTREAM_MODE': 'mock', 'PLANNER_AUTH_ISOLATED_SANDBOX': '1',
+        'PLANNER_AUTH_UPSTREAM_MODE': 'mock',
         'PLANNER_AUTH_SECRET_FILE': str(secret_file),
     }.items():
         monkeypatch.setenv(key, value)
     app = create_app(Config(storage_backend='memory', data_dir=str(tmp_path), static_dir='www'))
+    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.session.identity import identity_key
+
+    container = app.state.container
+    storage = container.get('storage')
+    accounts = container.get('account_manager')
     settings = app.state.container.get('broker_client').settings
+    identities = {
+        '33333333-3333-3333-3333-333333333333': ('alex@example.test', 'Alex Sandbox'),
+        '44444444-4444-4444-4444-444444444444': ('sam@example.test', 'Sam Sandbox'),
+    }
+    for index, (subject, (email, name)) in enumerate(identities.items()):
+        accounts.create_account(AccountCredentialsPayload(email=email), permissions=['admin'] if index == 0 else [])
+        storage.save('external_identities', identity_key(SANDBOX_TENANT, subject), {
+            'version': 1, 'tenant': SANDBOX_TENANT, 'subject': subject,
+            'account_id': accounts.get_account_id(email), 'environment': settings.metadata(),
+            'name': name, 'email': email,
+        })
+    storage.save('config', 'ado_config', {
+        'organization_url': 'example', 'feature_flags': {'use_azure_mock': True}})
     requests = []
 
     def transport(request):
@@ -52,7 +73,8 @@ def sandbox(monkeypatch, tmp_path, request):
         if request.url.path.endswith('/redeem'):
             import time
             return httpx.Response(200, json={**metadata, 'transaction': payload['transaction'],
-                'identity': {'tid': SANDBOX_TENANT, 'oid': '33333333-3333-3333-3333-333333333333'},
+                'identity': {'tid': SANDBOX_TENANT, 'oid': '33333333-3333-3333-3333-333333333333',
+                             'email': 'alex@example.test', 'name': 'Alex Sandbox'},
                 'grant': 'opaque-server-only-grant', 'expires_at': time.time() + 3600})
         if request.url.path.endswith('/revoke'):
             return httpx.Response(200, json={**metadata, 'status': 'revoked'})
@@ -60,34 +82,95 @@ def sandbox(monkeypatch, tmp_path, request):
             return httpx.Response(200, json={**metadata, 'status': 'active'})
         if request.url.path.endswith('/token'):
             import time
-            return httpx.Response(200, json={**metadata, 'resource': 'ado', 'token_kind': 'fixture',
-                'access_token': 'invalid-sandbox-ado-fixture', 'expires_at': time.time() + 300})
+            return httpx.Response(200, json={**metadata, 'resource': 'ado', 'token_kind': 'bearer',
+                'access_token': 'synthetic-ado-token', 'expires_at': time.time() + 300})
         raise AssertionError('Unexpected broker operation')
 
     app.state.container.get('broker_client').transport = httpx.MockTransport(transport)
+    from planner_lib.middleware.session import get_session_credential_from_request
+
+    @app.post('/api/auth/sandbox/operation')
+    async def delegated_operation(request: Request):
+        credential = get_session_credential_from_request(request)
+        return {'account_id': credential['user_id'], 'transport': credential['transport'], 'status': 'completed'}
+
+    @app.post('/api/auth/sandbox/wiki')
+    async def wiki_operation(request: Request):
+        get_session_credential_from_request(request)
+        pytest.fail('Fake credential reached wiki operations')
+
     with TestClient(app, base_url=origin) as client:
         yield client, requests
 
 
+def set_broker_token_kind(client, token_kind):
+    broker = client.app.state.container.get('broker_client')
+    original = broker.transport
+
+    def token_response(request):
+        response = original.handle_request(request)
+        value = json.loads(response.content)
+        if request.url.path.endswith('/token'):
+            value['token_kind'] = token_kind
+        return httpx.Response(200, json=value)
+
+    broker.transport = httpx.MockTransport(token_response)
+
+
+def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, monkeypatch, tmp_path):
+    from planner_lib.accounts.config import AccountCredentialsPayload
+
+    monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'enrollment')
+    config = Config(data_dir=str(tmp_path / 'copied'), static_dir='www')
+    original = create_app(config)
+    container = original.state.container
+    storage = container.get('storage')
+    accounts = container.get('account_manager')
+    accounts.create_account(AccountCredentialsPayload(
+        email='existing@example.test', pat='synthetic-existing-pat'), permissions=['admin'])
+    ado_config = {'organization_url': 'copied-projects', 'feature_flags': {}}
+    storage.save('config', 'ado_config', ado_config)
+    namespaces = ('accounts', 'account_auth', 'config', 'views', 'scenarios', 'external_identities')
+    before = {namespace: {key: storage.load(namespace, key) for key in storage.list_keys(namespace)}
+              for namespace in namespaces}
+    old_epoch = before['config']['authentication']['epoch']
+    original.state.database_handle.close()
+
+    monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'entra')
+    with TestClient(create_app(config)) as client:
+        storage = client.app.state.container.get('storage')
+        for namespace, records in before.items():
+            after = {key: storage.load(namespace, key) for key in storage.list_keys(namespace)}
+            if namespace == 'config':
+                records = {**records, 'authentication': {
+                    'version': 1, 'selected': 'entra', 'active': 'entra',
+                    'backend_credentials': 'delegated', 'epoch': old_epoch + 1}}
+            assert after == records
+        assert not storage.exists('system', 'sandbox_auth')
+        assert client.get('/api/auth/config').json()['mode'] == 'entra'
+
+    with TestClient(create_app(config)) as client:
+        storage = client.app.state.container.get('storage')
+        assert storage.load('config', 'authentication')['epoch'] == old_epoch + 1
+        assert storage.load('config', 'ado_config') == ado_config
+
+
 def test_mock_auth_preserves_admin_backend_choice_and_authentication(sandbox):
     from planner_lib.admin.config_manager import ConfigManager
-    from planner_lib.session.broker import prepare_sandbox
 
     client, requests = sandbox
     container = client.app.state.container
     storage = container.get('storage')
-    settings = container.get('broker_client').settings
     authentication = dict(storage.load('config', 'authentication'))
     manager = ConfigManager(storage)
     local_config = {'organization_url': 'example', 'feature_flags': {'use_azure_mock_generator': True}}
     manager.save_config('ado_config', local_config)
-    prepare_sandbox(storage, settings)
     assert storage.load('config', 'ado_config') == local_config
     assert storage.load('config', 'authentication') == authentication
     assert client.get('/api/auth/config').json()['mode'] == 'entra'
-    with pytest.raises(ValueError, match='fixture transport'):
-        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
-    assert storage.load('config', 'ado_config') == local_config
+    copied_config = {'organization_url': 'copied-projects', 'feature_flags': {}}
+    manager.save_config('ado_config', copied_config)
+    assert storage.load('config', 'ado_config') == copied_config
     assert requests == []
 
 
@@ -208,7 +291,7 @@ def test_logout_commits_local_revocation_when_broker_is_unavailable(sandbox):
     assert sessions.is_valid(sid)
     broker = client.app.state.container.get('broker_client')
     broker.transport = httpx.MockTransport(lambda request: httpx.Response(503))
-    diagnostic = client.get('/api/auth/sandbox')
+    diagnostic = client.get('/api/auth/me')
     assert diagnostic.status_code == 200
     profile = client.get('/api/auth/me').json()
     assert profile['status'] == 'unavailable'
@@ -297,11 +380,36 @@ def test_completion_translates_typed_broker_failures(
     assert len(calls) == 1
 
 
-def test_sandbox_refuses_live_ado_egress(sandbox):
-    import socket
+def test_fake_token_is_reported_at_acquisition_before_ado_fetch(sandbox, monkeypatch):
+    from planner_lib.azure.AzureClient import AzureClient
 
-    with pytest.raises(PermissionError, match='Sandbox prohibits'):
-        socket.getaddrinfo('dev.azure.com', 443)
+    client, requests = sandbox
+    set_broker_token_kind(client, 'fixture')
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    monkeypatch.setattr(AzureClient, '_connect_with_authentication',
+                        lambda *arguments: pytest.fail('Fake token reached the ADO SDK'))
+    response = client.get('/api/azure/projects', params={'org_url': 'copied-projects'})
+    assert response.status_code == 403
+    assert response.json() == {'error': 'ado_credential_unusable'}
+    assert 'synthetic-ado-token' not in response.text
+    assert requests[-1].url.path.endswith('/token')
+    assert client.get('/api/auth/me').json()['status'] == 'signed_in'
+    assert client.get('/admin/check').status_code == 200
+
+
+def test_fake_credential_stops_at_ado_transport_boundary(sandbox, monkeypatch):
+    from planner_lib.azure.AzureClient import AzureClient
+
+    client, requests = sandbox
+    storage = client.app.state.container.get('storage')
+    sdk = AzureClient('copied-projects', storage)
+    monkeypatch.setattr(sdk, '_connect_with_authentication',
+                        lambda authentication: pytest.fail('Fake token reached live SDK'))
+    credential = {'kind': 'bearer', 'token': 'fake', 'user_id': 'acting-user', 'transport': 'fixture'}
+    with pytest.raises(ValueError, match='fixture transport'):
+        with sdk.connect(credential):
+            pytest.fail('Fake token opened a live connection')
 
 
 def test_config_save_and_restore_cannot_activate_a_source(sandbox):
@@ -315,8 +423,7 @@ def test_config_save_and_restore_cannot_activate_a_source(sandbox):
         manager.save_config('authentication', incompatible)
     with pytest.raises(ValueError, match='deployment-controlled'):
         manager.restore_backup({'schema_revision': TARGET_REVISION, 'config': {'authentication': incompatible}})
-    with pytest.raises(ValueError, match='fixture transport'):
-        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    manager.save_config('ado_config', {'organization_url': 'copied-projects', 'feature_flags': {}})
 
 
 def test_entra_denies_pat_and_enrollment_mutations(sandbox):
@@ -337,9 +444,9 @@ def test_delegated_provider_requires_exact_session_and_revokes_locally(sandbox):
     try:
         credential = provider.get_credential(profile['account']['uuid'])
         assert credential['kind'] == 'bearer'
-        assert credential['transport'] == 'fixture'
+        assert credential['transport'] == 'live'
         assert credential['binding'] == context['binding']
-        assert credential['token'] == 'invalid-sandbox-ado-fixture'
+        assert credential['token'] == 'synthetic-ado-token'
         assert requests[-1].url.path.endswith('/token')
         with pytest.raises(AuthFailure, match='invalid_session'):
             provider.get_credential('another-account')
@@ -350,14 +457,35 @@ def test_delegated_provider_requires_exact_session_and_revokes_locally(sandbox):
         current_session_context.reset(token)
 
 
-def test_sandbox_delegated_operation_uses_bound_fixture_without_credential_disclosure(sandbox):
+@pytest.mark.parametrize('token_kind,transport', [('bearer', 'live'), ('fixture', 'fixture')])
+def test_credential_transport_follows_token_type_not_auth_service_mode(sandbox, token_kind, transport):
+    from planner_lib.middleware.session import SESSION_COOKIE
+
+    client, requests = sandbox
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    container = client.app.state.container
+    set_broker_token_kind(client, token_kind)
+    context = container.get('session_manager').get(client.cookies.get(SESSION_COOKIE))
+    epoch = container.get('storage').load('config', 'authentication')['epoch']
+    provider = container.get('credential_provider')
+    if token_kind == 'fixture':
+        with pytest.raises(AuthFailure, match='ado_credential_unusable'):
+            provider.acquire(context['account_id'], context['binding'], epoch)
+        return
+    credential = provider.acquire(context['account_id'], context['binding'], epoch)
+    assert credential['kind'] == 'bearer'
+    assert credential['transport'] == transport
+
+
+def test_delegated_operation_uses_bound_credential_without_disclosure(sandbox):
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
     profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
     result = client.post('/api/auth/sandbox/operation')
     assert result.status_code == 200
-    assert result.json() == {'account_id': profile['account']['uuid'], 'transport': 'fixture', 'status': 'completed'}
-    assert 'invalid-sandbox-ado-fixture' not in result.text
+    assert result.json() == {'account_id': profile['account']['uuid'], 'transport': 'live', 'status': 'completed'}
+    assert 'synthetic-ado-token' not in result.text
     assert requests[-1].url.path.endswith('/token')
 
 
@@ -381,7 +509,7 @@ def test_delegated_acquisition_keeps_denial_interaction_and_outage_distinct(sand
 
 
 @pytest.mark.parametrize('change', [
-    {'resource': 'other'}, {'token_kind': 'bearer'}, {'access_token': ''},
+    {'resource': 'other'}, {'token_kind': 'unsupported'}, {'access_token': ''},
     {'expires_at': 0}, {'expires_at': float('inf')}, {'refresh_token': 'forbidden'},
     {'generation': 'wrong-generation'},
 ])
@@ -427,7 +555,8 @@ def test_delegated_renewal_rejects_a_deleted_owning_session(sandbox):
     sid = client.cookies.get(SESSION_COOKIE)
     context = sessions.get(sid)
     provider = container.get('credential_provider')
-    credential = provider.acquire(context['account_id'], context['binding'], 1)
+    epoch = client.app.state.container.get('storage').load('config', 'authentication')['epoch']
+    credential = provider.acquire(context['account_id'], context['binding'], epoch)
     sessions.delete(sid)
     with pytest.raises(AuthFailure, match='invalid_session'):
         provider.renew(credential)
@@ -540,7 +669,8 @@ def test_cancellation_validates_browser_and_consumes_pending_state(sandbox):
         'state': 'tampered', 'error': 'cancelled'}, follow_redirects=False).status_code == 401
     cancelled = client.get('/api/auth/login/callback', params={
         'state': begin['state'], 'error': 'cancelled'}, follow_redirects=False)
-    assert cancelled.status_code == 303
+    assert cancelled.status_code == 200
+    assert '"error": "cancelled"' in cancelled.text
     assert client.post('/api/auth/login/complete', json={'state': begin['state'], 'code': 'code'}).status_code == 401
 
 
@@ -563,8 +693,7 @@ def test_staged_link_proves_admin_without_issuing_entra_session(sandbox):
     assert adapter.complete(begun['state'], 'code', binding, sid) is None
     assert sessions.is_valid(sid)
     assert storage.load('config', 'authentication')['active'] == 'enrollment'
-    proof = storage.load('auth_transition_proofs', admin['id'])
-    assert proof['epoch'] == 1
+    assert not list(storage.list_keys('auth_transition_proofs'))
     assert not list(storage.list_keys('auth_grants'))
 
 
@@ -590,7 +719,7 @@ def test_staged_browser_callback_and_admin_proof_need_no_pat(sandbox, monkeypatc
             'state': begun.json()['state'], 'code': 'code'}).status_code == 200
         assert client.cookies.get(SESSION_COOKIE) == sid
         assert app.state.container.get('session_manager').is_valid(sid)
-        assert app.state.container.get('storage').exists('auth_transition_proofs', admin_id)
+        assert not list(app.state.container.get('storage').list_keys('auth_transition_proofs'))
         assert client.post('/api/auth/settings', json={'selected': 'entra'}).status_code == 409
 
 
@@ -602,19 +731,17 @@ def test_entra_rejects_pat_at_account_storage_boundary(sandbox):
         accounts.update_credentials(AccountCredentialsPayload(email='alex@example.test', pat='new-synthetic-pat'))
 
 
-def test_sandbox_wiki_events_use_renewed_acting_session_fixture(sandbox):
+def test_fake_token_is_rejected_before_wiki_operations(sandbox):
     client, requests = sandbox
+    set_broker_token_kind(client, 'fixture')
     begun = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()
-    profile = client.post('/api/auth/login/complete', json={'state': begun['state'], 'code': 'code'}).json()
+    client.post('/api/auth/login/complete', json={'state': begun['state'], 'code': 'code'})
     response = client.post('/api/auth/sandbox/wiki')
-    assert response.status_code == 200
-    assert response.json() == {'account_id': profile['account']['uuid'], 'transport': 'fixture', 'status': 'completed'}
+    assert response.status_code == 403
+    assert response.json() == {'error': 'ado_credential_unusable'}
     storage = client.app.state.container.get('storage')
-    records = [storage.load('sandbox_wiki', key) for key in storage.list_keys('sandbox_wiki')]
-    assert len(records) == 1
-    assert records[0]['account_id'] == profile['account']['uuid']
-    assert records[0]['revision'] == 3
-    assert sum(request.url.path.endswith('/token') for request in requests) >= 7
+    assert not list(storage.list_keys('sandbox_wiki'))
+    assert sum(request.url.path.endswith('/token') for request in requests) == 1
 def test_admin_selection_rejected_without_activation_or_session_invalidation(client):
     assert client.post('/api/auth/enroll', json={
         'email': 'staging@example.test', 'name': 'Staging Administrator',
@@ -626,185 +753,6 @@ def test_admin_selection_rejected_without_activation_or_session_invalidation(cli
     assert client.get('/api/auth/settings').json() == before
     assert client.get('/api/auth/me').status_code == 200
     assert client.post('/api/auth/settings', json={'selected': 'entra', 'active': 'entra'}).status_code == 422
-
-
-def test_sandbox_fleet_transition_requires_proof_and_resumes_after_commit(sandbox):
-    from types import SimpleNamespace
-    from uuid import uuid4
-    from planner_lib.session.enrollment import EnrollmentLoginAdapter
-    from planner_lib.session.policy import require_serving_policy
-    from planner_lib.session.transition import SandboxFleetTransition
-
-    client, requests = sandbox
-    container = client.app.state.container
-    storage = container.get('storage')
-    accounts = container.get('account_manager')
-    sessions = container.get('session_manager')
-    storage.save('config', 'authentication', {
-        'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
-        'backend_credentials': 'pat', 'epoch': 1})
-    login = EnrollmentLoginAdapter(container.get('auth_manager'), accounts, storage)
-    device, sid, enrolled = login.enroll('alex@example.test', 'Alex Sandbox')
-    admin_id = accounts.get_account_id('alex@example.test')
-    instance = SimpleNamespace(storage=storage, accounts=accounts, sessions=sessions,
-                               client=container.get('broker_client'))
-    transition_id = str(uuid4())
-    transition = SandboxFleetTransition({'alpha': instance}, transition_id)
-    with pytest.raises(ValueError, match='confirmation'):
-        transition.execute()
-    with pytest.raises(ValueError, match='proof'):
-        transition.execute(confirmed=True)
-    adapter = container.get('login_adapter')
-    binding, begun = adapter.begin_link(admin_id, admin_id, sid)
-    adapter.complete(begun['state'], 'code', binding, sid)
-    original = accounts.get_account_by_id(admin_id)
-
-    def crash(name, state):
-        if state == 'committed':
-            raise RuntimeError('injected crash')
-
-    transition.fault = crash
-    with pytest.raises(RuntimeError, match='injected crash'):
-        transition.execute(confirmed=True)
-    assert storage.load('config', 'authentication')['epoch'] == 2
-    assert not list(storage.list_keys('auth_sessions'))
-    assert storage.load('account_auth', admin_id) == {'enrolled': False}
-    assert accounts.get_account_by_id(admin_id)['permissions'] == original['permissions']
-    with pytest.raises(PermissionError, match='fenced'):
-        require_serving_policy(storage)
-    with pytest.raises(ValueError, match='Cannot abort'):
-        transition.abort()
-    transition.fault = None
-    transition.execute(confirmed=True)
-    require_serving_policy(storage)
-    assert storage.load('system', 'authentication_transition')['state'] == 'released'
-    transition.execute(confirmed=True)
-    assert storage.load('config', 'authentication')['epoch'] == 2
-
-
-@pytest.mark.parametrize('failed_state', ['prepared', 'fenced', 'committed', 'released'])
-def test_two_instance_transition_failure_is_recoverable_without_mixed_serving(sandbox, failed_state):
-    from dataclasses import replace
-    from types import SimpleNamespace
-    from uuid import uuid4
-    from planner_lib.accounts.config import AccountManager
-    from planner_lib.middleware.session import SessionManager
-    from planner_lib.session.auth import AuthManager
-    from planner_lib.session.broker import EntraLoginAdapter
-    from planner_lib.session.policy import SessionPolicy, require_serving_policy
-    from planner_lib.session.transition import SandboxFleetTransition
-    from planner_lib.storage.memory_backend import MemoryStorage
-
-    source = sandbox[0].app.state.container
-    instances = {}
-    for name in ('alpha', 'beta'):
-        storage = MemoryStorage()
-        for namespace in ('system', 'config', 'accounts', 'account_auth', 'external_identities'):
-            for key in source.get('storage').list_keys(namespace):
-                storage.save(namespace, key, source.get('storage').load(namespace, key))
-        storage.save('config', 'authentication', {
-            'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
-            'backend_credentials': 'pat', 'epoch': 1})
-        accounts = AccountManager(storage)
-        sessions = SessionManager(accounts, storage, auth_policy=SessionPolicy(storage))
-        auth = AuthManager(storage, accounts, sessions)
-        device, account_key, sid = auth.enroll('alex@example.test', 'Alex')
-        settings = replace(source.get('broker_client').settings, instance=name)
-
-        def transport(request, settings=settings):
-            if request.url.path.endswith('/deployment/readiness'):
-                return httpx.Response(200, json={**settings.metadata(), 'ready': True,
-                    'instances': ['alpha', 'beta'],
-                    'completion_urls': {settings.instance: settings.completion_url},
-                    'tenant': SANDBOX_TENANT, 'organization': 'example'})
-            return source.get('broker_client').transport.handle_request(request)
-
-        client = BrokerClient(settings, transport=httpx.MockTransport(transport))
-        login = EntraLoginAdapter(storage, accounts, sessions, client)
-        admin_id = accounts.get_account_id('alex@example.test')
-        binding, begun = login.begin_link(admin_id, admin_id, sid)
-        login.complete(begun['state'], 'code', binding, sid)
-        instances[name] = SimpleNamespace(storage=storage, accounts=accounts, sessions=sessions, client=client)
-
-    def crash(name, state):
-        if name == 'alpha' and state == failed_state:
-            raise RuntimeError('injected fleet crash')
-
-    transition = SandboxFleetTransition(instances, str(uuid4()), fault=crash)
-    with pytest.raises(RuntimeError, match='fleet crash'):
-        transition.execute(confirmed=True)
-    if failed_state in ('committed', 'released'):
-        for instance in instances.values():
-            if instance.storage.load('system', 'authentication_transition')['state'] != 'released':
-                with pytest.raises(PermissionError):
-                    require_serving_policy(instance.storage)
-        with pytest.raises(ValueError, match='Cannot abort'):
-            transition.abort()
-    else:
-        transition.abort()
-        for instance in instances.values():
-            assert instance.storage.load('system', 'authentication_transition')['state'] == 'idle'
-            assert instance.storage.load('config', 'authentication')['epoch'] == 1
-    SandboxFleetTransition(instances, transition.transition_id).execute(confirmed=True)
-    for instance in instances.values():
-        require_serving_policy(instance.storage)
-        assert instance.storage.load('config', 'authentication')['epoch'] == 2
-        assert instance.storage.load('system', 'authentication_transition')['state'] == 'released'
-
-
-@pytest.mark.parametrize('failure', ['expired', 'revoked_session', 'revoked_grant', 'lost_admin', 'lost_link', 'omitted_member'])
-def test_transition_rejects_lost_authority_before_fencing(sandbox, failure):
-    import time
-    from types import SimpleNamespace
-    from uuid import uuid4
-    from planner_lib.session.enrollment import EnrollmentLoginAdapter
-    from planner_lib.session.transition import SandboxFleetTransition
-
-    container = sandbox[0].app.state.container
-    storage = container.get('storage')
-    accounts = container.get('account_manager')
-    sessions = container.get('session_manager')
-    client = container.get('broker_client')
-    storage.save('config', 'authentication', {
-        'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
-        'backend_credentials': 'pat', 'epoch': 1})
-    device, sid, enrollment = EnrollmentLoginAdapter(container.get('auth_manager'), accounts, storage).enroll(
-        'alex@example.test', 'Alex')
-    admin_id = accounts.get_account_id('alex@example.test')
-    adapter = container.get('login_adapter')
-    binding, begun = adapter.begin_link(admin_id, admin_id, sid)
-    adapter.complete(begun['state'], 'code', binding, sid)
-    proof = storage.load('auth_transition_proofs', admin_id)
-    if failure == 'expired':
-        storage.save('auth_transition_proofs', admin_id, {**proof, 'expires_at': time.time() - 1})
-    elif failure == 'revoked_session':
-        sessions.delete(sid)
-    elif failure == 'lost_admin':
-        account = storage.load('accounts', 'alex@example.test')
-        storage.save('accounts', 'alex@example.test', {**account, 'permissions': []})
-    elif failure == 'lost_link':
-        for key in list(storage.list_keys('external_identities')):
-            storage.delete('external_identities', key)
-    else:
-        original = client.transport
-
-        def transport(request):
-            response = original.handle_request(request)
-            value = json.loads(response.content)
-            if failure == 'revoked_grant' and request.url.path.endswith('/status'):
-                value['status'] = 'revoked'
-            if failure == 'omitted_member' and request.url.path.endswith('/deployment/readiness'):
-                value['instances'] = ['alpha', 'beta']
-            return httpx.Response(200, json=value)
-
-        client.transport = httpx.MockTransport(transport)
-    transition = SandboxFleetTransition({'alpha': SimpleNamespace(
-        storage=storage, accounts=accounts, sessions=sessions, client=client)}, str(uuid4()))
-    with pytest.raises(ValueError):
-        transition.execute(confirmed=True)
-    assert storage.load('system', 'authentication_transition')['state'] == 'idle'
-    assert storage.load('config', 'authentication')['epoch'] == 1
-    assert storage.load('account_auth', admin_id)['enrolled'] is True
 
 
 @pytest.mark.parametrize('invalid', [{'state': 'idle'}, {'state': 'unknown'}, {'id': 'not-a-uuid'}, {'secret': 'forbidden'}])

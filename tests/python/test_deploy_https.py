@@ -394,7 +394,7 @@ def test_mixed_sandbox_generation_is_isolated_and_secret_scoped(sandbox_manifest
     compose = generate_docker_compose(config['instances'], 'test', auth_services=services)
     caddy = generate_caddyfile(config['instances'], auth_services=services)
     assert compose['services']['caddy']['ports'] == ['127.0.0.1:18880:80']
-    assert compose['networks']['default']['internal'] is True
+    assert 'networks' not in compose
     auth = compose['services']['auth-sandbox']
     assert set(compose['services']) == {
         'caddy', 'planner-alpha', 'planner-beta', 'planner-local', 'auth-sandbox',
@@ -673,7 +673,7 @@ def test_operator_manifest_manages_auth_wiring_without_a_sandbox_generator(tmp_p
     assert 'build' in rendered['services']['auth-central']
     assert 'build' in rendered['services']['planner-roadmap']
     assert rendered['services']['auth-central']['environment']['ENTRA_AUTH_MODE'] == 'mock'
-    assert rendered['networks']['default']['internal'] is True
+    assert 'networks' not in rendered
     assert 'ports' not in rendered['services']['auth-central']
     if https_hostname is not None:
         assert rendered['services']['caddy']['ports'] == ['80:80', '443:443', '443:443/udp']

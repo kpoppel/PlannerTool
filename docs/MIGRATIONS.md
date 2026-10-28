@@ -58,10 +58,11 @@ opened without copying or rewriting schema metadata. Newer schemas are rejected.
 admin_id: null, environment: null}`. Non-idle records require a canonical transition
 UUID, complete sorted fleet, target Entra, next epoch, linked admin UUID and exact
 mock broker environment. Allowed states are prepared, fenced, committed and
-released. Unknown fields/states fail admission; fenced/committed stores cannot
-serve. Migration/fresh initialization use the same shape and preserve existing
-sessions, PATs, permissions and epochs. Destructive changes happen only in the
-explicit offline sandbox command. See [Phase F](PHASE_F_REPORT.md).
+released. Unknown fields/states fail admission. The journal remains readable as
+schema history but no longer gates serving or login selection; the offline purge
+command has been removed. Migration/fresh initialization preserve existing
+sessions, PATs, permissions and epochs. Deployment login-source changes advance
+the policy epoch without deleting accounts or credentials.
 
 ### Revision 45 External Identities
 

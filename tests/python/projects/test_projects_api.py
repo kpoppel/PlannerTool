@@ -235,6 +235,7 @@ def test_tasks_returns_stale_data_with_pat_warning(authenticated_client):
 
 @pytest.mark.parametrize('code,status', [
     ('interaction_required', 409), ('access_denied', 403), ('auth_unavailable', 503),
+    ('ado_credential_unusable', 403),
     ('invalid_session', 401), ('auth_configuration_error', 503),
 ])
 @pytest.mark.parametrize('cached', [None, [], [{'id': 'cached-task'}]])
@@ -255,10 +256,14 @@ def test_tasks_remote_auth_failure_reads_only_existing_cache(authenticated_clien
     register_service_on_client(authenticated_client, 'task_repository', repository)
 
     response = authenticated_client.get('/api/tasks?project=42')
-    if cached is not None and code in ('interaction_required', 'access_denied', 'auth_unavailable'):
+    if cached is not None and code in ('interaction_required', 'access_denied', 'auth_unavailable',
+                                       'ado_credential_unusable'):
         assert response.status_code == 200
         assert response.json() == cached
         assert json.loads(response.headers['X-Backend-Diagnostics'])[0]['code'] == code
+        if code == 'ado_credential_unusable':
+            assert 'No Azure DevOps request was sent' in json.loads(
+                response.headers['X-Backend-Diagnostics'])[0]['message']
         repository.read_cached.assert_called_once_with(project_id='42')
     else:
         assert response.status_code == status

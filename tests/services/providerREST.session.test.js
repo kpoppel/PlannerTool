@@ -10,6 +10,7 @@ import { dataService } from '../../www/js/services/dataService.js';
 import { createAuthClient, createEntraHttpAdapter, AUTH_DECISIONS } from '../../www/js/services/authClient.js';
 import { createMockAuth, MOCK_ACCOUNT, OTHER_MOCK_ACCOUNT, AUTH_SCENARIOS } from '../helpers/mockAuth.js';
 import { AdminProviderREST } from '../../www/admin/js/services/providerREST.js';
+import { store } from '../../www/js/application/store.js';
 
 vi.mock('../../www/js/components/AuthDialog.lit.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -100,6 +101,28 @@ describe('ProviderREST /api/session tests', () => {
     expectVitest(recover).not.toHaveBeenCalled();
     expectVitest(authentication.state.capabilities.reauthenticate).toBe(true);
   });
+  itVitest.each([ProviderREST, AdminProviderREST])('notifies fake ADO credentials without changing login or replaying in %s', async Provider => {
+    const state = createMockAuth('entra_signed_in').state;
+    const signIn = vi.fn();
+    const authentication = createAuthClient({ initialState: state, instance: '/team_1',
+      adapter: { signIn }, onAccountChanged: vi.fn() });
+    const provider = new Provider({ authentication });
+    for (const method of ['GET', 'POST']) {
+      provider._fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        error: 'ado_credential_unusable',
+      }), { status: 403 }));
+      const response = await provider._fetch('/api/tasks', { method });
+      expectVitest(response.status).toBe(403);
+      expectVitest(provider._fetchImpl).toHaveBeenCalledTimes(1);
+      expectVitest(authentication.state).toBe(state);
+    }
+    expectVitest(signIn).not.toHaveBeenCalled();
+    expectVitest(store.getState().notifications.some(notification =>
+      notification.code === 'ado_credential_unusable'
+      && notification.message.includes('No Azure DevOps request was sent.')
+    )).toBe(true);
+  });
+
   itVitest.each(Object.keys(AUTH_SCENARIOS).filter(name => AUTH_SCENARIOS[name].mode === 'entra'))('uses the shared client contract for %s mocks and HTTP', async scenario => {
     const mock = createMockAuth(scenario);
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify(mock.state)));

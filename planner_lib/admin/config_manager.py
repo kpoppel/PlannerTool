@@ -75,7 +75,7 @@ class ConfigManager:
         """
         if key == 'authentication':
             self._validate_auth_policy_change(content)
-        self._validate_sandbox_config(key, content)
+        self._validate_backend_config(key, content)
         if self._should_backup():
             self._backup_config(key)
 
@@ -110,27 +110,12 @@ class ConfigManager:
         """
         if key == 'authentication':
             self._validate_auth_policy_change(content)
-        self._validate_sandbox_config(key, content)
+        self._validate_backend_config(key, content)
         self._storage.save('config', key, content)
 
-    def _validate_sandbox_config(self, key, content, *, overrides=None):
+    def _validate_backend_config(self, key, content, *, overrides=None):
         from planner_lib.session.policy import validate_backend_policy
         validate_backend_policy(self._storage, key, content, overrides=overrides)
-        if not self._storage.exists('system', 'sandbox_auth'):
-            return
-        if key in ('ado_config', 'server_config') or overrides is not None:
-            from planner_lib.backend.registry import get_active_class
-            from planner_lib.backend.azure import AzureDevOpsBackend
-
-            flags = {}
-            for name in ('server_config', 'ado_config'):
-                if overrides is not None and name in overrides:
-                    value = overrides[name]
-                else:
-                    value = content if key == name else self._storage.load('config', name)
-                flags.update(value['feature_flags'])
-            if get_active_class(flags) is AzureDevOpsBackend:
-                raise ValueError('Mock auth requires fixture transport for ADO; local backends remain available')
 
     def _validate_auth_policy_change(self, content):
         from planner_lib.session.policy import validate_authentication
@@ -248,7 +233,7 @@ class ConfigManager:
         canonical_key = parts[0]
         if canonical_key == 'authentication':
             self._validate_auth_policy_change(content)
-        self._validate_sandbox_config(canonical_key, content)
+        self._validate_backend_config(canonical_key, content)
         self._storage.save('config', canonical_key, content)
         return content
 
@@ -375,12 +360,10 @@ class ConfigManager:
             if any(record != {'enrolled': False}
                    for record in data['authentication']['account_auth'].values()):
                 raise ValueError('Logical restore cannot import enrollment authority; enroll afresh')
-        if self._storage.exists('system', 'sandbox_auth') and 'accounts' in data:
-            raise ValueError('Sandbox account import requires an approved provisioning policy')
         for key, value in config.items():
             if value is not None:
-                self._validate_sandbox_config(key, value)
-        self._validate_sandbox_config(None, None,
+                self._validate_backend_config(key, value)
+        self._validate_backend_config(None, None,
             overrides={key: value for key, value in config.items() if value is not None})
         projects = config.get('projects')
         if projects is not None and (

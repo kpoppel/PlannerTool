@@ -72,6 +72,8 @@ describe('ProviderREST feature/team/project endpoints', () => {
       { code: 'tasks_stale', severity: 'warning', message: 'Using cached tasks.' },
       { code: 'task_cache_access', severity: 'warning',
         message: 'Your backend access cannot read Plan A; showing previously loaded data.' },
+      { code: 'ado_credential_unusable', severity: 'warning',
+        message: 'The authentication service returned a fake Azure DevOps token. No Azure DevOps request was sent; showing cached tasks.' },
     ];
     const pr = new ProviderREST();
     vi.spyOn(pr, '_fetchImpl').mockResolvedValue(new Response('[]', {

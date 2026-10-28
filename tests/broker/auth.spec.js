@@ -38,13 +38,43 @@ async function openSettings(page, instance) {
 }
 
 async function signIn(page, instance, identity, origin = ORIGIN) {
-  await page.goto(`${origin}/${instance}/api/auth/sandbox`);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  const begun = await page.request.post(`${origin}/${instance}/api/auth/login/begin`, {
+    headers: { Origin: origin },
+  });
+  expect(begun.status()).toBe(200);
+  await page.goto((await begun.json()).authorization_url);
   await expect(page.getByRole('heading', { name: 'Sandbox sign-in' })).toBeVisible();
   await page.getByRole('button', { name: identity, exact: true }).click();
-  await expect(page).toHaveURL(`${origin}/${instance}/api/auth/sandbox`);
-  await expect(page.getByText(identity, { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(`${origin}/${instance}/`);
+  const profile = await (await page.request.get(`${origin}/${instance}/api/auth/me`)).json();
+  expect(profile.account.name).toBe(identity);
 }
+
+test.beforeAll(() => {
+  for (const instance of ['alpha', 'beta']) {
+    compose('exec', '-T', `planner-${instance}`, 'python', '-c', [
+      'from planner_lib.migrations.coordinator import Database',
+      'from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload',
+      'from planner_lib.session.broker import BrokerSettings',
+      'from planner_lib.session.identity import identity_key',
+      "database = Database('/app/data').prepare()",
+      'storage = database.storage',
+      'accounts = AccountManager(storage)',
+      'settings = BrokerSettings.from_env()',
+      "tenant = '11111111-1111-1111-1111-111111111111'",
+      "identities = [('33333333-3333-3333-3333-333333333333', 'alex@example.test', 'Alex Sandbox', ['admin']),",
+      "              ('44444444-4444-4444-4444-444444444444', 'sam@example.test', 'Sam Sandbox', [])]",
+      'for subject, email, name, permissions in identities:',
+      "    if not storage.exists('accounts', email):",
+      '        accounts.create_account(AccountCredentialsPayload(email=email), permissions=permissions)',
+      "    storage.save('external_identities', identity_key(tenant, subject), {",
+      "        'version': 1, 'tenant': tenant, 'subject': subject, 'account_id': accounts.get_account_id(email),",
+      "        'environment': settings.metadata(), 'email': email, 'name': name})",
+      "storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {'use_azure_mock': True}})",
+      'database.close()',
+    ].join('\n'));
+  }
+});
 
 test('normal planner and admin use discovered Entra popup login without enrollment', async ({ page }) => {
   const errors = [];
@@ -116,24 +146,18 @@ test('normal admin login supports cancellation and denies an unprivileged identi
   expect((await page.request.get(`${ORIGIN}/beta/admin/check`)).status()).toBe(403);
 });
 
-test('deployment mode is read-only and delegated wiki events use the acting session', async ({ page }) => {
+test('deployment mode is read-only and normal ADO configuration remains available', async ({ page }) => {
   await signIn(page, 'alpha', 'Alex Sandbox');
   const settings = await (await page.request.get(`${ORIGIN}/alpha/api/auth/settings`)).json();
   expect(settings.active).toBe('entra');
   expect(settings.deployment_controlled).toBe(true);
-  expect(settings.readiness).toBe('sandbox_only');
-  expect(settings.live_activation).toBe(false);
+  expect(settings.readiness).toBe('ready');
+  expect(settings.live_activation).toBe(true);
   const override = await page.request.post(`${ORIGIN}/alpha/api/auth/settings`, {
     data: { selected: 'enrollment' },
   });
   expect(override.status()).toBe(409);
   expect(await override.json()).toEqual({ error: 'deployment_policy_required' });
-  const wiki = await page.request.post(`${ORIGIN}/alpha/api/auth/sandbox/wiki`);
-  expect(wiki.status()).toBe(200);
-  const profile = await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
-  expect(await wiki.json()).toEqual({
-    account_id: profile.account.uuid, transport: 'fixture', status: 'completed',
-  });
   await page.goto(`${ORIGIN}/alpha/admin/`);
   await page.getByRole('button', { name: 'Data Sources', exact: true }).click();
   await expect(page.locator('admin-data-sources')).toBeVisible();
@@ -142,7 +166,7 @@ test('deployment mode is read-only and delegated wiki events use the acting sess
   await expect(page.locator('#ado-authentication-mode')).toBeDisabled();
   await expect(page.locator('#ado-authentication-mode')).toHaveValue('entra');
   await expect(page.locator('#ado-authentication-status')).toContainText('Deployment controlled');
-  await expect(page.locator('#ado-authentication-status')).toContainText('Live activation blocked');
+  await expect(page.locator('#ado-authentication-status')).toContainText('Authentication service ready');
   await page.screenshot({ path: test.info().outputPath('deployment-policy-desktop.png') });
 });
 
@@ -183,7 +207,7 @@ test('real fixture interaction and revocation preserve local UI; expired handoff
       const profile = await (await page.request.get(`${ORIGIN}/beta/api/auth/me`)).json();
       expect(profile.status).toBe('interaction_required');
       expect(profile.account.email).toBe('alex@example.test');
-      const operation = await page.request.post(`${ORIGIN}/beta/api/auth/sandbox/operation`);
+      const operation = await page.request.get(`${ORIGIN}/beta/api/azure/projects?org_url=example`);
       expect(operation.status()).toBe(409);
       expect(await operation.json()).toEqual({ error: 'interaction_required' });
     });
@@ -191,7 +215,7 @@ test('real fixture interaction and revocation preserve local UI; expired handoff
   }
   await withBrokerScenario('beta', 'access_denied', async () => {
     await signIn(page, 'beta', 'Alex Sandbox');
-    const operation = await page.request.post(`${ORIGIN}/beta/api/auth/sandbox/operation`);
+    const operation = await page.request.get(`${ORIGIN}/beta/api/azure/projects?org_url=example`);
     expect(operation.status()).toBe(403);
     expect(await operation.json()).toEqual({ error: 'access_denied' });
     expect((await (await page.request.get(`${ORIGIN}/beta/api/auth/me`)).json()).status).toBe('signed_in');
@@ -230,7 +254,6 @@ test('expired delegated authority keeps local drafts and repairs only remote acc
   compose('exec', '-T', 'planner-alpha', 'python', '-c', [
     'import os, sys, time',
     'from planner_lib.migrations.coordinator import Database',
-    "assert os.environ['PLANNER_AUTH_ISOLATED_SANDBOX'] == '1'",
     "assert os.environ['PLANNER_AUTH_UPSTREAM_MODE'] == 'mock'",
     "database = Database('/app/data').prepare()",
     'storage = database.storage',
@@ -245,11 +268,9 @@ test('expired delegated authority keeps local drafts and repairs only remote acc
   expect(expired.status).toBe('interaction_required');
   expect((await page.request.get(`${ORIGIN}/alpha/admin/check`)).status()).toBe(200);
   expect((await page.request.get(`${ORIGIN}/alpha/api/tasks`)).status()).toBe(200);
-  for (const operation of ['operation', 'wiki']) {
-    const denied = await page.request.post(`${ORIGIN}/alpha/api/auth/sandbox/${operation}`);
-    expect(denied.status()).toBe(409);
-    expect(await denied.json()).toEqual({ error: 'interaction_required' });
-  }
+  const denied = await page.request.get(`${ORIGIN}/alpha/api/azure/projects?org_url=example`);
+  expect(denied.status()).toBe(409);
+  expect(await denied.json()).toEqual({ error: 'interaction_required' });
   await openSettings(page, 'alpha');
   await expect(page.locator('config-modal auth-status')).toContainText('Azure DevOps requires reauthentication');
   const draft = page.locator('config-modal #autosaveInterval');
@@ -263,9 +284,7 @@ test('expired delegated authority keeps local drafts and repairs only remote acc
   await expect(draft).toHaveValue('19');
   const after = await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
   expect(after.account.uuid).toBe(before.account.uuid);
-  for (const operation of ['operation', 'wiki']) {
-    expect((await page.request.post(`${ORIGIN}/alpha/api/auth/sandbox/${operation}`)).status()).toBe(200);
-  }
+  expect(after.status).toBe('signed_in');
 });
 
 test('outage logout revokes locally and discloses pending service cleanup once', async ({ page }) => {
@@ -300,22 +319,12 @@ test('real subpath redirects isolate two identities and two registered instances
     const beta = await second.request.get(`${ORIGIN}/beta/api/auth/me`);
     expect((await alpha.json()).account.email).toBe('alex@example.test');
     expect((await beta.json()).account.email).toBe('sam@example.test');
-    const alphaOperation = await first.request.post(`${ORIGIN}/alpha/api/auth/sandbox/operation`);
-    const betaOperation = await second.request.post(`${ORIGIN}/beta/api/auth/sandbox/operation`);
-    expect(alphaOperation.status()).toBe(200);
-    expect(betaOperation.status()).toBe(200);
-    const alphaResult = await alphaOperation.json();
-    const betaResult = await betaOperation.json();
-    expect(alphaResult.transport).toBe('fixture');
-    expect(betaResult.transport).toBe('fixture');
-    expect(alphaResult.account_id).not.toBe(betaResult.account_id);
-    expect(Object.keys(alphaResult).sort()).toEqual(['account_id', 'status', 'transport']);
+    expect((await alpha.json()).account.uuid).not.toBe((await beta.json()).account.uuid);
     expect((await (await first.request.get(`${ORIGIN}/beta/api/auth/me`)).json()).account).toBeNull();
     await alex.screenshot({ path: test.info().outputPath('alpha-desktop.png') });
     await sam.screenshot({ path: test.info().outputPath('beta-desktop.png') });
-    await alex.getByRole('button', { name: 'Sign out', exact: true }).click();
-    await expect(alex.getByText('Signed out', { exact: true })).toBeVisible();
-    expect((await sameAccount.request.post(`${ORIGIN}/alpha/api/auth/sandbox/operation`)).status()).toBe(200);
+    expect((await first.request.post(`${ORIGIN}/alpha/api/auth/logout`)).status()).toBe(200);
+    expect((await (await sameAccount.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).status).toBe('signed_in');
     expect((await (await second.request.get(`${ORIGIN}/beta/api/auth/me`)).json()).account.email)
       .toBe('sam@example.test');
   } finally {
@@ -330,10 +339,13 @@ test('cancellation and browser-mismatched completion do not authenticate', async
   const outsider = await browser.newContext();
   try {
     const page = await context.newPage();
-    await page.goto(`${ORIGIN}/alpha/api/auth/sandbox`);
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const cancellation = await context.request.post(`${ORIGIN}/alpha/api/auth/login/begin`, {
+      headers: { Origin: ORIGIN },
+    });
+    await page.goto((await cancellation.json()).authorization_url);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(page.getByText('Signed out', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(`${ORIGIN}/alpha/`);
+    expect((await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).account).toBeNull();
     const begun = await context.request.post(`${ORIGIN}/alpha/api/auth/login/begin`, {
       headers: { Origin: ORIGIN },
     });
@@ -390,7 +402,7 @@ test('broker outage preserves admin and encrypted state survives container recre
       expect(await tasksDuring.json()).toEqual(cachedTasks);
       const views = await context.request.get(`${ORIGIN}/alpha/api/view`);
       expect(views.status()).toBe(200);
-      const remote = await context.request.post(`${ORIGIN}/alpha/api/auth/sandbox/operation`);
+      const remote = await context.request.get(`${ORIGIN}/alpha/api/azure/projects?org_url=example`);
       expect(remote.status()).toBe(503);
       expect(await remote.json()).toEqual({ error: 'auth_unavailable' });
       const outageProfile = await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
@@ -416,8 +428,9 @@ test('broker outage preserves admin and encrypted state survives container recre
     expect(after.account.uuid).toBe(before.account.uuid);
     await page.goto(transaction.authorization_url);
     await page.getByRole('button', { name: 'Alex Sandbox', exact: true }).click();
-    await expect(page).toHaveURL(`${ORIGIN}/alpha/api/auth/sandbox`);
-    await expect(page.getByText('alex@example.test', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(`${ORIGIN}/alpha/`);
+    expect((await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).account.email)
+      .toBe('alex@example.test');
   } finally {
     await context.close();
   }
@@ -435,7 +448,7 @@ test('container logs contain no service secrets or callback query access records
   expect(/(?:GET|POST) .*auth\/login\/callback\?.*(?:code|state)=/.test(logs)).toBe(false);
 });
 
-test('disposable fleet activates only after browser admin proof and offline deployment commit', async ({ browser }) => {
+test('copied accounts retain identity and permissions across deployment login changes', async ({ browser }) => {
   test.setTimeout(240000);
   const transitionId = randomUUID();
   const projectName = `planner-f-${transitionId.slice(0, 8)}`;
@@ -478,33 +491,12 @@ test('disposable fleet activates only after browser admin proof and offline depl
       await expect(page).toHaveURL(`${origin}/${name}/admin/`);
       const staged = await (await context.request.get(`${origin}/${name}/api/auth/settings`)).json();
       expect(staged.active).toBe('enrollment');
-      expect(staged.readiness).toBe('sandbox_only');
+      expect(staged.readiness).toBe('ready');
     }
     generatedCompose('stop', 'planner-alpha', 'planner-beta');
-    const fleet = { version: 1, instances: {} };
-    for (const name of ['alpha', 'beta']) {
-      fleet.instances[name] = {
-        data_dir: name === 'alpha' ? '/app/data' : '/fleet/beta',
-        broker: { instance: name, url: 'http://auth-sandbox:8000/auth/',
-          public_url: `${origin}/auth/`, environment: 'sandbox', generation: 'sandbox-1',
-          upstream_mode: 'mock', isolated_sandbox: true,
-          secret_file: name === 'alpha' ? '/run/secrets/auth-client' : '/run/secrets/client-beta' },
-      };
-    }
-    writeFileSync(`${root}/fleet.json`, JSON.stringify(fleet), { mode: 0o600 });
-    const maintenance = (...argumentsList) => generatedCompose('run', '--rm', '--no-deps', '-T',
-      '--volume', `${projectName}_data-beta:/fleet/beta`,
-      '--volume', `${root}/fleet.json:/app/fleet.json:ro`,
-      '--volume', `${root}/client-beta:/run/secrets/client-beta:ro`,
-      'planner-alpha', 'python', 'planner.py', 'authentication-transition', ...argumentsList,
-      '--fleet', '/app/fleet.json', '--id', transitionId);
-    maintenance('commit', '--confirm-purge-sandbox-authority');
-    const status = maintenance('status').toString();
-    expect(status.match(/"state": "released"/g)).toHaveLength(2);
     python('-c', 'from pathlib import Path; import sys,yaml; path=Path(sys.argv[1]); '
       + 'config=yaml.safe_load(path.read_text()); config["ado_authentication"]="entra"; '
-      + '[instance.update(authentication_provider="entra") for instance in config["instances"] '
-      + 'if instance["backend"]=="ado"]; path.write_text(yaml.safe_dump(config,sort_keys=False))',
+      + 'path.write_text(yaml.safe_dump(config,sort_keys=False))',
     `${root}/manifest.yml`);
     generate();
     generatedCompose('up', '-d', '--force-recreate', '--no-deps', '--wait', 'planner-alpha', 'planner-beta');
@@ -521,10 +513,7 @@ test('disposable fleet activates only after browser admin proof and offline depl
       expect((await context.request.get(`${origin}/${name}/admin/check`)).status()).toBe(200);
       const settings = await (await context.request.get(`${origin}/${name}/api/auth/settings`)).json();
       expect(settings.epoch).toBe(2);
-      expect(settings.transition).toBe('released');
-      for (const operation of ['operation', 'wiki']) {
-        expect((await context.request.post(`${origin}/${name}/api/auth/sandbox/${operation}`)).status()).toBe(200);
-      }
+      expect(settings.transition).toBe('idle');
       expect((await context.request.post(`${origin}/${name}/api/auth/logout`)).status()).toBe(200);
       await page.screenshot({ path: test.info().outputPath(`${name}-fleet-transition-desktop.png`) });
     }

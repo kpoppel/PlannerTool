@@ -29,6 +29,7 @@ This version adds EntraID authentication.
 - Support DNS/HTTPS ingress for shared mock authentication while retaining private broker transport and blocking live ADO.
 
 ### Changed
+- Make PlannerTool independent of mock-auth sandbox storage: allow copied server data and normal ADO configuration, preserve accounts and credentials on deployment login changes, and reject fake ADO credentials during acquisition with a notification before any ADO fetch. Keep local sessions and cached tasks available. Remove automatic demo provisioning, Planner network isolation and the credential-purging fleet transition command.
 - Build and start source-declared PlannerTool instances and the auth service in one generated Compose project, with explicit protected environment-file and project-name options for operators.
 - Use the standard image startup command for auth-connected instances, with proxy and access-log settings supplied through environment variables instead of per-instance command overrides.
 - Make ADO authentication deployment-controlled, with read-only instance readiness and an explicit, recoverable offline sandbox fleet transition. Instances without an auth-service connection remain independent of the broker; live activation remains blocked.

@@ -38,12 +38,6 @@ def validate_transition(value):
     return value
 
 
-def require_serving_policy(storage):
-    transition = validate_transition(storage.load('system', 'authentication_transition'))
-    if transition['state'] in ('fenced', 'committed'):
-        raise PermissionError('Authentication deployment transition is fenced; operator resume required')
-
-
 def validate_backend_policy(storage, key=None, content=None, *, overrides=None):
     import os
     from planner_lib.backend.azure import AzureDevOpsBackend

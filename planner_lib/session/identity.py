@@ -32,11 +32,10 @@ def validate_identity_records(storage):
 
 
 class ExternalIdentityLinks:
-    def __init__(self, storage, accounts, settings, tenant):
+    def __init__(self, storage, accounts, settings):
         self.storage = storage
         self.accounts = accounts
         self.settings = settings
-        self.tenant = tenant
 
     def resolve(self, identity, target=None):
         from planner_lib.session.broker import AuthFailure
@@ -45,8 +44,6 @@ class ExternalIdentityLinks:
             key = identity_key(identity['tid'], identity['oid'])
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             raise AuthFailure('auth_configuration_error') from error
-        if identity['tid'] != self.tenant:
-            raise AuthFailure('access_denied', 403)
         with self.storage.transaction():
             if self.storage.exists('external_identities', key):
                 link = self.storage.load('external_identities', key)
@@ -84,17 +81,3 @@ class ExternalIdentityLinks:
             if link['account_id'] == account_id and link['environment'] == self.settings.metadata():
                 return {'uuid': account_id, 'email': link['email'], 'name': link['name']}
         raise AuthFailure('invalid_session', 401)
-
-
-def seed_sandbox_links(storage, accounts, settings):
-    from planner_lib.session.broker import SANDBOX_IDENTITIES, SANDBOX_TENANT
-
-    for subject, (email, name) in SANDBOX_IDENTITIES.items():
-        if not storage.exists('accounts', email):
-            continue
-        key = identity_key(SANDBOX_TENANT, subject)
-        storage.save('external_identities', key, {
-            'version': 1, 'tenant': SANDBOX_TENANT, 'subject': subject,
-            'account_id': accounts.get_account_id(email), 'environment': settings.metadata(),
-            'name': name, 'email': email,
-        })

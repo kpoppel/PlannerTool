@@ -243,14 +243,10 @@ def add_auth_compose(compose, instances, services, version):
     if not services:
         return
     compose['secrets'] = {}
-    sandbox = any(service['mode'] == 'mock' for service in services.values())
-    if sandbox:
-        service = next(iter(services.values()))
-        public = urlsplit(service['public_url'])
-        if public.scheme == 'http':
-            compose['services']['caddy']['ports'] = [f'127.0.0.1:{public.port}:80']
-        compose['networks'] = {'default': {'internal': True}, 'ingress': {}}
-        compose['services']['caddy']['networks'] = ['default', 'ingress']
+    service = next(iter(services.values()))
+    public = urlsplit(service['public_url'])
+    if public.scheme == 'http':
+        compose['services']['caddy']['ports'] = [f'127.0.0.1:{public.port}:80']
     for name, service in services.items():
         dns = 'auth-' + name
         key_name = dns + '-key'
@@ -298,7 +294,6 @@ def add_auth_compose(compose, instances, services, version):
                 'PLANNER_AUTH_GENERATION=' + service['generation'],
                 'PLANNER_AUTH_UPSTREAM_MODE=' + service['mode'],
                 'PLANNER_AUTH_SECRET_FILE=/run/secrets/auth-client',
-                'PLANNER_AUTH_ISOLATED_SANDBOX=' + ('1' if sandbox else '0'),
             ])
             planner['depends_on'] = {dns: {'condition': 'service_started', 'required': False}}
         compose['services'][dns] = auth

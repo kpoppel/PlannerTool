@@ -356,7 +356,7 @@ export class DataSources extends LitElement {
         if (!result.ok) throw new Error('Failed to load deployment authentication policy');
         const settings = result.data;
         const readiness = {
-          sandbox_only: 'Sandbox ready. Live activation blocked.',
+          ready: 'Authentication service ready.',
           unavailable: 'Authentication service unavailable. Live activation blocked.',
           local: 'Local enrollment. No broker required.',
           pat: 'User-owned PAT credentials.',

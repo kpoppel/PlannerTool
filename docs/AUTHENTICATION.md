@@ -1,28 +1,30 @@
 # Authentication
 
-Phase D adds an isolated, authenticated broker sandbox and canonical revision 44.
-Existing application sessions expire once on upgrade; account UUIDs, permissions,
-enrollment keys and PATs are retained. Production Entra activation remains blocked.
-See [the current sandbox operator and recovery procedure](PHASE_F_REPORT.md).
+PlannerTool uses the deployment-selected login adapter and credential policy.
+The authentication service owns its upstream choice: mock Entra ID or real Entra ID.
+PlannerTool does not seed demo accounts, require empty storage, install network
+isolation, replace ADO settings, or purge PATs and enrollment records on startup.
+The retired `authentication-transition` command is no longer available.
 
-Phase E adds revision 45, stable tenant/object identity links, unprivileged JIT
-accounts, session-owned delegated credentials and SDK/wiki Bearer transport.
-It is exercised only against the isolated mock broker. Neither migration nor
-ordinary settings saves enable production Entra, purge PATs or invalidate sessions.
-See [the Phase E report](PHASE_E_REPORT.md).
+A deployment may start from a physical copy of server data. Preserve its encryption
+key when copied credentials must remain readable. Changing the deployment login
+source advances the authentication epoch once, invalidating old-source sessions
+without deleting accounts, permissions, saved user data, or stored credentials.
+Subsequent restarts with the same login source do not advance the epoch.
 
-Phase F adds revision 46 and deployment-owned ADO policy, read-only instance
-readiness, staged administrator identity proof and offline sandbox fleet activation.
-The migration adds only an idle journal; it does not purge credentials or expire
-sessions. See [the Phase F report and recovery procedure](PHASE_F_REPORT.md).
-Live activation and production transitions remain blocked. The approved Phase G
-policy below does not establish live implementation or acceptance. No gateway or
-organization tenancy is introduced.
+Credential consumers use typed PAT or Bearer credentials from the policy/provider.
+The auth service's `fixture` token type marks fake Bearer authority. The credential
+provider rejects it immediately with HTTP 403 and `ado_credential_unusable`, before
+invoking any ADO fetch or SDK connection. The notification explains that the token
+is fake and no ADO request was sent. Local login and work remain available; an
+existing task snapshot can be returned with the same warning. This decision does
+not prompt for login or replay the operation. Backend and organization configuration
+remain unchanged. Broker mode does not determine credential validity.
 
-Normal planner and admin pages now discover the active login source. Explicit
-isolated Entra sandboxes use the shared HTTP client and the running broker;
-enrollment/PAT installations retain their existing login path. This is not live
-Entra activation or authorization to change an existing instance's active mode.
+Verified identities retain stable tenant/object links. A new identity gets an
+unprivileged account; mock sign-in does not automatically grant administration or
+match an existing account by email. Link an existing administrator through the
+normal administrator-approved identity proof before changing login source.
 
 PlannerTool uses generated browser credentials, not user-chosen passwords or
 email verification. Each installation has independent accounts and credentials.
@@ -30,7 +32,7 @@ email verification. Each installation has independent accounts and credentials.
 ## Approved Phase G Access Policy
 
 Approved on 2026-10-28. Session separation and cached task access are implemented
-and verified against the isolated mock service; live Entra remains blocked. See
+and verified against the mock service. See
 [the Phase G mock implementation report](PHASE_G_REPORT.md) for evidence and limits.
 
 PlannerTool accounts and permissions govern application access until account
@@ -53,11 +55,10 @@ PlannerTool timer or a guaranteed disabled-account revocation bound. Renewal and
 remote enforcement depend on tenant policy and MSAL outcomes. Local offboarding
 remains an administrator's task.
 
-Current authorization covers only the mock journey demonstrator, with explicit
-fixtures and live Entra/ADO transport blocked. Live registration, consent,
-deployment, activation and credential purge remain separately gated. Historical
-Phase E/F reports describe their original gates and are not rewritten by this
-policy decision.
+The mock journey uses explicit fake credentials at the ADO boundary. Real Entra
+registration, consent and upstream token acquisition are separate auth-service
+responsibilities. Historical phase reports describe their original restrictions,
+not the current PlannerTool startup contract.
 
 Expired or revoked local broker grants now report `interaction_required` without
 deleting the PlannerTool session. Local account removal, logout, source/epoch
@@ -66,7 +67,7 @@ invalidate application access. `/api/auth/me` retains the local account and neve
 acquires an ADO token; known local grant expiry/revocation needs no broker request.
 
 If credential acquisition for `GET /api/tasks` reports `interaction_required`,
-`access_denied` or `auth_unavailable`, the API can return the existing complete
+`access_denied`, `auth_unavailable` or `ado_credential_unusable`, the API can return the existing complete
 snapshot with HTTP 200 and the corresponding warning in `X-Backend-Diagnostics`.
 This cache-only read neither starts remote work nor acquires another credential.
 An empty snapshot is valid; no snapshot or a changed configuration preserves the
@@ -153,8 +154,8 @@ Enrollment and save-key screens retain a contextual enrollment-help link.
 ### Deployment Authentication Policy
 
 **Admin > Data Sources** shows an authentication mode selector only for the live
-Azure DevOps backend. PAT remains active in enrollment installations; an isolated
-Entra sandbox reports Entra as active. The production selector is disabled and
+Azure DevOps backend. PAT remains active in enrollment installations; a connected
+Entra deployment reports Entra as active. The production selector is disabled and
 shows effective mode and broker readiness. Instance administrators cannot stage
 or override deployment policy: `POST /api/auth/settings` returns HTTP 409 with
 `deployment_policy_required`. Ordinary Save cannot change mode, epoch, sessions
@@ -180,16 +181,18 @@ without activation or purge.
 Generated `PLANNER_ADO_AUTHENTICATION` constrains remote authority, not backend
 selection. `disabled` rejects live ADO and remote wiki configuration; `entra`
 requires a connected Entra login for either remote transport. These checks cover
-startup, settings and import. Mock auth permits supported local backends and
-fixture ADO transport, never live ADO. Regenerate deployments that previously set
+startup, settings and import. Mock auth does not restrict backend selection;
+fake credentials cannot enter live ADO transport. Regenerate deployments that previously set
 `PLANNER_INSTANCE_BACKEND`; that duplicated backend setting is no longer accepted.
 
 Mock upstreams can use the server's real DNS hostname over HTTPS. Set top-level
 `https_hostname` and the matching auth-service `public_url` in the deployment
-manifest. Caddy terminates TLS; application/broker traffic stays on the isolated
-private Compose network and live ADO remains blocked. HTTP is allowed only for
-explicit localhost callbacks. Mock identities are selectable synthetic accounts,
-not production authentication; never attach production accounts or data.
+manifest. Caddy terminates TLS; application/broker traffic uses private Compose
+service addresses. PlannerTool has no mock-specific network sandbox. HTTP is
+allowed only for explicit localhost callbacks. Mock identities are selectable
+synthetic accounts, not production authentication. Restrict access to copied data
+and retain the deployment's encryption key; never expose a mock-login deployment
+as production authentication.
 
 Logical backup excludes active authentication policy, PATs, enrollment keys,
 devices, sessions, external links, grants and transition proofs/journals. Imported
@@ -205,7 +208,7 @@ separate offline recovery and revocation review.
 The Data Sources editor, enrollment dialog, account Settings and Users editor
 accept an explicit, non-attribute `authentication` dependency for isolated tests.
 It is `null` in enrollment/PAT installations and supplied by discovery in an
-explicitly isolated Entra sandbox. No query parameter, persisted preference, network
+Entra deployment. No query parameter, persisted preference, network
 failure or configuration save selects a mock identity. The sole scenario model
 lives in `tests/helpers/mockAuth.js`; it is not shipped with application assets.
 
@@ -223,8 +226,7 @@ do not select fixture identities.
 The injected Entra presentation hides PAT editing, remembered-browser management,
 enrollment and key reset. Manual account creation remains hidden. Phase E implements
 unprivileged JIT creation for verified identities in the approved tenant, including
-admitted guests, and explicit admin-approved identity-proven links to existing UUIDs,
-while activation remains limited to isolated synthetic sandbox data.
+admitted guests, and explicit admin-approved identity-proven links to existing UUIDs.
 Local permissions, ordinary admin account removal and
 signed-in account deletion remain independent of enrollment capabilities.
 PAT and local installations retain their existing production controls.
@@ -241,17 +243,16 @@ Selecting an admin draft updates only an injected preview, never the active mode
 Cancel or reopening resets the preview. Tests supply the same model to dependent
 components explicitly. Browser tests inject the test helper from Playwright,
 without exposing a fixture route in the application. This is UI coverage only:
-the Phase D sandbox separately enforces endpoint restrictions and source-bound
-sessions on the server and exercises the running broker. Live Entra remains a
-later gate.
+the broker tests separately exercise source-bound sessions on the server and the
+running authentication service.
 
 ### External Identity and Delegated Credentials (Phase E)
 
 External links use canonical tenant/object UUIDs, never email matching. A new
 verified identity receives a new account UUID and no permissions; its internal
 account lookup key ends in `@identity.invalid`. Display/contact email and name
-come from the verified identity link. Existing sandbox fixture accounts retain
-their UUIDs and permissions through explicit revision-45 seed records.
+come from the verified identity link. Existing accounts retain their UUIDs and
+permissions through explicit administrator-approved identity links.
 
 `POST /api/auth/links/begin` accepts only `{account_id}` from an authenticated
 administrator and starts the existing browser-bound proof flow. Completion
@@ -259,7 +260,7 @@ requires the same still-valid approving session, current admin permission and
 the verified returning identity. Existing links cannot be reassigned, and an
 account cannot acquire a conflicting second link. Linking never changes local
 permissions or bypasses final-admin deletion protection. There is no email-based
-linking, unlink/reassignment API or production activation path.
+linking or unlink/reassignment API.
 
 Each login owns a separate local binding and broker grant. Ordinary logout
 revokes only that session/grant, including local revocation during broker outage.
@@ -276,20 +277,20 @@ without retrying an ADO denial. Failures retain the credential actually used.
 Task refresh renews before building and checks account/grant/epoch under an
 authoritative transaction before publishing its shared snapshot.
 
-`POST /api/auth/sandbox/operation` is available only in the explicit isolated
-sandbox. It acquires a session-owned fixture token and invokes the recorded-data
-SDK transport; its response contains only account UUID, fixture marker and result.
+Credential probes belong to the test harness, not production HTTP routes. Fake
+tokens are rejected during acquisition, including before wiki operations, without
+credentials in responses.
 The live SDK and wiki path reject fixture credentials before constructing a live
 connection. Broker fixture `access_denied` returns 403 without revoking the grant;
 interaction stays 409 and outage 503. No failure selects PAT or another grant.
 
 Logical backups omit external links, approvals, sessions and broker grants; account
 restore clears destination links and requires new identity proof. Cross-instance
-link import is rejected. Physical operator recovery and destructive mode-transition
-rules are described in the Phase F report. The approved Phase G access policy
+link import is rejected. Physical operator recovery is independent of deployment
+login selection; there is no credential-purging transition command. The access policy
 above supersedes earlier unresolved lifetime, disablement-check and outage-deadline
 requirements. Mock session/cache implementation is covered by the Phase G report;
-live acceptance remains outstanding. Sandbox grant expiry is not evidence of
+live acceptance remains outstanding. Mock grant expiry is not evidence of
 upstream account disablement.
 
 ### Frontend Adapter Contract (Phase C)
@@ -302,8 +303,8 @@ and enrollment dialog; discovery cannot activate a source. Both REST
 providers accept the same explicitly injected `authentication` client. Their
 enrollment/PAT composition retains the existing admin cookie behavior.
 
-The following PlannerTool HTTP contract is implemented against the isolated
-sandbox and also covered by mocked frontend contracts. It is not the broker
+The following PlannerTool HTTP contract is exercised against the mock auth
+service and covered by mocked frontend contracts. It is not the broker
 protocol. URLs are relative to the instance API URL, including its subpath.
 
 | Operation | Request | Successful response |
@@ -321,7 +322,7 @@ the remote grant expires within its configured TTL. No grant/token is placed in
 browser storage. Neither ordinary logout nor this notice logs out other instances
 or corporate Entra.
 
-### Normal UI Sandbox Composition
+### Normal UI Composition
 
 `www/js/services/authStartup.js` discovers policy once per page/instance, reads
 the initial profile, and shares one client with both REST providers. Normal
@@ -335,8 +336,8 @@ transaction. The callback alone redeems the handoff and sends a CSP-protected
 completion message containing only instance, state and error/success. The opener
 checks its exact origin, window, instance and state, then reads status; it never
 redeems the same code again. Without an opener, the callback returns to a fixed
-instance-local app/admin destination. The existing diagnostic path remains scoped
-to sandbox use. Closing/cancelling the popup does not authenticate a user.
+instance-local app/admin destination. Closing/cancelling the popup does not
+authenticate a user.
 
 Same-account repair leaves the page and drafts intact. A different returning UUID
 blocks stale provider responses, clears old-account browser data and reloads.
@@ -459,11 +460,9 @@ PAT 403 repair and backend interaction/denial/outage never replay requests.
 Separating real ADO permission denials from credential rejection remains backend
 policy work for subsequent phases.
 
-A future login adapter can establish identity and issue a local session; a future
-credential provider and transport can supply delegated ADO credentials. External
-identity linking, credential-mode transitions/PAT removal, token renewal, broker
-protocols and offboarding remain separately designed work. An arbitrary OIDC
-identity token is not an Azure DevOps access token.
+The login adapter establishes identity and issues a local session; the credential
+provider supplies typed delegated ADO authority independently. Login-source changes
+do not remove PATs. An arbitrary OIDC identity token is not an Azure DevOps access token.
 
 ## Delegated administration
 

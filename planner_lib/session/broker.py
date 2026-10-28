@@ -1,4 +1,4 @@
-"""Bounded broker transport and fixed isolated-sandbox account composition."""
+"""Bounded broker transport and broker-backed login."""
 import base64
 import hashlib
 import hmac
@@ -13,18 +13,13 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from planner_lib.accounts.config import AccountCredentialsPayload, _get_fernet
+from planner_lib.accounts.config import _get_fernet
 from planner_lib.backend.errors import BackendDecisionError
 from planner_lib.session.policy import validate_authentication
 
 
 PROTOCOL = 'plannertool-auth/1'
 LOGIN_COOKIE = 'plannerLogin'
-SANDBOX_IDENTITIES = {
-    '33333333-3333-3333-3333-333333333333': ('alex@example.test', 'Alex Sandbox'),
-    '44444444-4444-4444-4444-444444444444': ('sam@example.test', 'Sam Sandbox'),
-}
-SANDBOX_TENANT = '11111111-1111-1111-1111-111111111111'
 
 
 class AuthFailure(BackendDecisionError):
@@ -44,7 +39,6 @@ class BrokerSettings:
     generation: str
     upstream_mode: str
     secret: str = field(repr=False)
-    isolated_sandbox: bool = False
 
     def __post_init__(self):
         if self.upstream_mode not in ('mock', 'entra'):
@@ -60,15 +54,13 @@ class BrokerSettings:
                 raise ValueError('Invalid broker URL')
         if len(self.secret) < 43:
             raise ValueError('Broker service secret must contain at least 256 bits of random material')
-        if self.upstream_mode == 'mock':
-            browser_ingress = (public.scheme == 'https' or (
-                public.scheme == 'http' and public.hostname == 'localhost' and public.port is not None))
-            if (not self.isolated_sandbox or not browser_ingress or internal.scheme != 'http'
-                    or not (internal.hostname in ('localhost', '127.0.0.1')
-                            or re.fullmatch(r'auth-[a-z][a-z0-9-]*', internal.hostname))):
-                raise ValueError('Mock broker requires isolated private transport and HTTPS or localhost ingress')
-        elif public.scheme != 'https' or internal.scheme != 'https' or self.isolated_sandbox:
-            raise ValueError('Live broker requires validated HTTPS URLs and live policy')
+        browser_ingress = (public.scheme == 'https' or (
+            public.scheme == 'http' and public.hostname == 'localhost' and public.port is not None))
+        private_transport = (internal.scheme == 'http' and (
+            internal.hostname in ('localhost', '127.0.0.1')
+            or re.fullmatch(r'auth-[a-z][a-z0-9-]*', internal.hostname)))
+        if not browser_ingress or not (internal.scheme == 'https' or private_transport):
+            raise ValueError('Broker requires HTTPS or private transport with HTTPS or localhost ingress')
 
     @classmethod
     def from_env(cls):
@@ -80,7 +72,6 @@ class BrokerSettings:
             os.environ['PLANNER_AUTH_PUBLIC_URL'], os.environ['PLANNER_AUTH_ENVIRONMENT'],
             os.environ['PLANNER_AUTH_GENERATION'], os.environ['PLANNER_AUTH_UPSTREAM_MODE'],
             secret_file.read_text().strip(),
-            os.environ.get('PLANNER_AUTH_ISOLATED_SANDBOX', '0') == '1',
         )
 
     def metadata(self):
@@ -150,7 +141,7 @@ class EntraLoginAdapter:
         self.client = client
         self.settings = client.settings
         from planner_lib.session.identity import ExternalIdentityLinks
-        self.identities = ExternalIdentityLinks(storage, accounts, self.settings, SANDBOX_TENANT)
+        self.identities = ExternalIdentityLinks(storage, accounts, self.settings)
 
     def begin_link(self, account_id, approved_by, session_id):
         from planner_lib.accounts.constants import AccountPermissions
@@ -165,8 +156,8 @@ class EntraLoginAdapter:
         }, ttl_seconds=300)
         return binding, result
 
-    def begin(self, return_target='diagnostic'):
-        if return_target not in ('diagnostic', 'app', 'admin'):
+    def begin(self, return_target='app'):
+        if return_target not in ('app', 'admin'):
             raise AuthFailure('access_denied', 403)
         self.client.ready()
         binding = secrets.token_urlsafe(32)
@@ -242,12 +233,6 @@ class EntraLoginAdapter:
             if self.policy()['active'] == 'enrollment':
                 if target is None or target != approval['approved_by']:
                     raise AuthFailure('access_denied', 403)
-                self.storage.save('auth_transition_proofs', account_id, {
-                    'epoch': self.policy()['epoch'], 'environment': self.settings.metadata(),
-                    'session': _get_fernet().encrypt(session_id.encode()).decode(),
-                    'grant': _get_fernet().encrypt(result['grant'].encode()).decode(),
-                    'expires_at': min(result['expires_at'], time.time() + 600),
-                }, ttl_seconds=600)
                 self.storage.delete('auth_transactions', key)
                 self.storage.delete('auth_link_approvals', key)
                 return None
@@ -307,31 +292,3 @@ class EntraLoginAdapter:
                     self.sessions.delete(sid)
         if reference is not None:
             self.client.request('v1/grants/revoke', {'grant': reference})
-
-
-def prepare_sandbox(storage, settings, *, activate=True):
-    if not settings.isolated_sandbox or settings.upstream_mode != 'mock':
-        raise ValueError('Phase D permits Entra activation only in isolated sandbox data')
-    marker = settings.metadata()
-    if storage.exists('system', 'sandbox_auth'):
-        if storage.load('system', 'sandbox_auth') != marker:
-            raise ValueError('Sandbox environment or generation mismatch; use separate data')
-        from planner_lib.admin.config_manager import ConfigManager
-        ConfigManager(storage)._validate_sandbox_config('ado_config', storage.load('config', 'ado_config'))
-        return
-    if list(storage.list_keys('accounts')):
-        raise ValueError('Sandbox activation requires fresh isolated data, never existing accounts')
-    from planner_lib.accounts.config import AccountManager
-
-    with storage.transaction():
-        accounts = AccountManager(storage)
-        for index, (email, name) in enumerate(SANDBOX_IDENTITIES.values()):
-            accounts.create_account(AccountCredentialsPayload(email=email), permissions=['admin'] if index == 0 else [])
-        from planner_lib.session.identity import seed_sandbox_links
-        seed_sandbox_links(storage, accounts, settings)
-        if activate:
-            storage.save('config', 'authentication', {
-                'version': 1, 'selected': 'entra', 'active': 'entra', 'backend_credentials': 'delegated', 'epoch': 1})
-        storage.save('config', 'ado_config', {
-            'organization_url': 'example', 'feature_flags': {'use_azure_mock': True}})
-        storage.save('system', 'sandbox_auth', marker)

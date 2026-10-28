@@ -116,8 +116,7 @@ def _build_services(
     # (removed — diskcache handles memory via OS page cache automatically)
 
     # --- Accounts / session ---
-    from planner_lib.session.policy import require_serving_policy, validate_backend_policy
-    require_serving_policy(storage_diskcache)
+    from planner_lib.session.policy import validate_backend_policy
     validate_backend_policy(storage_diskcache)
     provider = os.environ.get('PLANNER_AUTH_PROVIDER', 'enrollment')
     if provider not in ('enrollment', 'entra'):
@@ -132,19 +131,18 @@ def _build_services(
             raise ValueError('Login provider contradicts deployment policy')
     staged_broker = 'PLANNER_AUTH_SECRET_FILE' in os.environ
     if provider == 'entra' or staged_broker:
-        from planner_lib.session.broker import BrokerClient, BrokerSettings, EntraLoginAdapter, prepare_sandbox
+        from planner_lib.session.broker import BrokerClient, BrokerSettings, EntraLoginAdapter
         broker_settings = BrokerSettings.from_env()
-        prepare_sandbox(storage_diskcache, broker_settings, activate=provider == 'entra')
-        from planner_lib.session.isolation import install_sandbox_egress
-        from urllib.parse import urlsplit
-        install_sandbox_egress(urlsplit(broker_settings.url).hostname)
         container.register_factory('broker_client', lambda: BrokerClient(broker_settings))
         container.register_factory('entra_link_adapter',
             lambda: EntraLoginAdapter(storage_diskcache, container.get('account_manager'),
                                      container.get('session_manager'), container.get('broker_client')))
     auth_settings = storage_diskcache.load('config', 'authentication')
     if provider != auth_settings['active']:
-        raise ValueError('Deployment login policy conflicts with persisted active authentication; transition required')
+        storage_diskcache.save('config', 'authentication', {
+            'version': 1, 'selected': provider, 'active': provider,
+            'backend_credentials': 'delegated' if provider == 'entra' else 'pat',
+            'epoch': auth_settings['epoch'] + 1})
     container.register_singleton('authentication_provider', provider)
     container.register_factory("account_manager",
         lambda: AccountManager(storage=storage_diskcache))

@@ -686,11 +686,8 @@ class _PersistingMockClientsAccessor(_MockClientsAccessor):
 
 class SandboxWikiClient:
     def __init__(self, storage, provider, credential, organization):
-        if (organization != 'example' or not storage.exists('system', 'sandbox_auth')
-                or storage.load('system', 'sandbox_auth') != provider.client.settings.metadata()
-                or not provider.client.settings.isolated_sandbox
-                or credential['kind'] != 'bearer' or credential['transport'] != 'fixture'):
-            raise ValueError('Wiki fixture requires isolated sandbox storage and delegated fixture authority')
+        if credential['kind'] != 'bearer' or credential['transport'] != 'fixture':
+            raise ValueError('Wiki fixture requires delegated fixture authority')
         self.storage = storage
         self.provider = provider
         self.credential = credential

@@ -122,7 +122,7 @@ def test_current_candidate_requires_external_identity_schema(tmp_path):
         storage.close()
 
 
-def test_sandbox_identity_upgrade_preserves_deleted_fixture_accounts():
+def test_identity_upgrade_does_not_seed_demo_links_or_accounts():
     from planner_lib.migrations.revisions import upgrade_45
     from planner_lib.storage.memory_backend import MemoryStorage
 
@@ -131,9 +131,8 @@ def test_sandbox_identity_upgrade_preserves_deleted_fixture_accounts():
         'environment_id': 'sandbox', 'generation': 'test-1', 'upstream_mode': 'mock'})
     storage.save('accounts', 'alex@example.test', {'account_id': 'existing-sandbox-admin'})
     upgrade_45(storage)
-    links = [storage.load('external_identities', key) for key in storage.list_keys('external_identities')]
-    assert len(links) == 1
-    assert links[0]['account_id'] == 'existing-sandbox-admin'
+    assert not list(storage.list_keys('external_identities'))
+    assert storage.load('accounts', 'alex@example.test') == {'account_id': 'existing-sandbox-admin'}
     assert not storage.exists('accounts', 'sam@example.test')
 
 

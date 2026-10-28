@@ -157,10 +157,10 @@ class DelegatedCredentialProvider:
             grant = self.validate(credential)
             reference = _get_fernet().decrypt(grant['grant'].encode()).decode()
         value = self.client.request('v1/grants/token', {'grant': reference, 'resource': 'ado'})
-        expected_kind = 'fixture' if self.client.settings.upstream_mode == 'mock' else 'bearer'
+        token_kind = value.get('token_kind')
         expires = value.get('expires_at')
         token = value.get('access_token')
-        if (value.get('resource') != 'ado' or value.get('token_kind') != expected_kind
+        if (value.get('resource') != 'ado' or token_kind not in ('fixture', 'bearer')
                 or not isinstance(token, str) or not token or len(token) > 8192
                 or type(expires) not in (int, float) or not math.isfinite(expires)
                 or expires <= time.time() + 30 or expires > grant['expires_at']
@@ -168,8 +168,10 @@ class DelegatedCredentialProvider:
             raise AuthFailure('auth_configuration_error')
         with self.storage.transaction():
             self.validate(credential)
+        if token_kind == 'fixture':
+            raise AuthFailure('ado_credential_unusable', 403)
         return {**credential, 'token': token, 'expires_at': expires,
-                'transport': 'fixture' if expected_kind == 'fixture' else 'live'}
+                'transport': 'live'}
 
     def renew(self, credential):
         return self.acquire(credential['user_id'], credential['binding'], credential['epoch'])

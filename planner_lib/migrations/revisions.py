@@ -589,15 +589,6 @@ def upgrade_44(storage):
 def upgrade_45(storage):
     with storage.transaction():
         storage.save('system', 'external_identity_schema', {'version': 1})
-        if storage.exists('system', 'sandbox_auth'):
-            from types import SimpleNamespace
-            from planner_lib.accounts.config import AccountManager
-            from planner_lib.session.identity import seed_sandbox_links
-
-            metadata = storage.load('system', 'sandbox_auth')
-            if metadata['upstream_mode'] != 'mock':
-                raise SchemaError('Only explicit sandbox identities may be seeded')
-            seed_sandbox_links(storage, AccountManager(storage), SimpleNamespace(metadata=lambda: metadata))
 
 
 def upgrade_46(storage):

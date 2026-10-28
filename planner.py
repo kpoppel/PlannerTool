@@ -58,9 +58,6 @@ def main(argv=None):
     arguments = sys.argv[1:] if argv is None else argv
     if arguments and arguments[0] == 'database':
         return database_command(arguments[1:])
-    if arguments and arguments[0] == 'authentication-transition':
-        from planner_lib.session.transition import transition_command
-        return transition_command(arguments[1:])
     import uvicorn
     uvicorn.run('planner:make_app', factory=True, host=os.environ.get('HOST', '0.0.0.0'),
                 port=int(os.environ.get('PORT', '8000')), root_path=os.environ.get('ROOT_PATH', ''))

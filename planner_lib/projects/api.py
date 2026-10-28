@@ -50,7 +50,8 @@ async def api_tasks(request: Request, response: Response):
     try:
         credential, account_id = _get_credential(request)
     except BackendDecisionError as error:
-        if error.code not in ('interaction_required', 'access_denied', 'auth_unavailable'):
+        if error.code not in ('interaction_required', 'access_denied', 'auth_unavailable',
+                      'ado_credential_unusable'):
             raise
         credential_failure = error
         credential = None
@@ -68,7 +69,10 @@ async def api_tasks(request: Request, response: Response):
         if credential_failure is not None:
             diagnostics.append({
                 'code': credential_failure.code, 'severity': 'warning',
-                'message': 'Azure DevOps is unavailable for this account; showing cached tasks.',
+                'message': ('The authentication service returned a fake Azure DevOps token. '
+                            'No Azure DevOps request was sent; showing cached tasks.'
+                            if credential_failure.code == 'ado_credential_unusable' else
+                            'Azure DevOps is unavailable for this account; showing cached tasks.'),
             })
         return tasks, diagnostics
 
