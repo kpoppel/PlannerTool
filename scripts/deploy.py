@@ -222,16 +222,27 @@ def wait_for_https(hostname, timeout=120, cafile=None):
 def export_internal_ca(compose_command, output_dir, timeout=120):
     destination = Path(output_dir).resolve() / 'tls' / 'caddy-root.crt'
     destination.parent.mkdir(parents=True, exist_ok=True)
+    print(f'Waiting up to {timeout} seconds for Caddy to create its internal CA...', flush=True)
     deadline = time.monotonic() + timeout
+    previous_error = None
     while True:
         result = subprocess.run(compose_command + [
             'cp', 'caddy:/data/caddy/pki/authorities/local/root.crt', str(destination),
-        ], cwd=output_dir, capture_output=True, timeout=10)
+        ], cwd=output_dir, capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
             return str(destination)
+        detail = result.stderr.strip()
+        if not detail:
+            detail = f'Docker Compose cp exited with code {result.returncode}'
+        missing_root = 'could not find the file' in detail.lower() or 'no such file or directory' in detail.lower()
+        if not missing_root:
+            raise RuntimeError('Could not export Caddy public root certificate: ' + detail)
+        if detail != previous_error:
+            print('Internal CA not available yet: ' + detail, flush=True)
+            previous_error = detail
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise RuntimeError('Caddy internal CA is not ready; could not export its public root certificate')
+            raise RuntimeError('Caddy internal CA is not ready; could not export its public root certificate: ' + detail)
         time.sleep(min(2, remaining))
 
 
@@ -396,6 +407,8 @@ def main():
         try:
             subprocess.run(compose_command + ['up', '-d', '--wait'], cwd=args.output_dir, check=True)
             if args.https_hostname:
+                print('Restarting Caddy to load the generated TLS configuration...', flush=True)
+                subprocess.run(compose_command + ['restart', 'caddy'], cwd=args.output_dir, check=True)
                 ca_file = https_tls.get('ca_file')
                 if https_tls['mode'] == 'internal':
                     ca_file = export_internal_ca(compose_command, args.output_dir)

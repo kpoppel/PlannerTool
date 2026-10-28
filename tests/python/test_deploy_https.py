@@ -109,7 +109,8 @@ def test_https_start_failure_reports_certificate_diagnostics(tmp_path, monkeypat
     assert 'Deployment successful!' not in rendered
     assert 'Containers remain running' in rendered
     assert 'DNS A/AAAA' in rendered
-    assert commands[-1][-3:] == ['up', '-d', '--wait']
+    assert commands[-2][-3:] == ['up', '-d', '--wait']
+    assert commands[-1][-2:] == ['restart', 'caddy']
     assert shlex.split(rendered.splitlines()[-1].strip()) == [
         'docker', 'compose', '--project-name', 'planner-test', '--env-file', str(env_file),
         '--project-directory', str(output), 'logs', '--tail=100', 'caddy',
@@ -228,14 +229,15 @@ def test_provided_tls_rejects_invalid_key_material(tls_files, tmp_path, defect):
         load_https_tls({'https_tls': tls_files}, tmp_path / 'instances.yml', 'planner.example.test')
 
 
-def test_internal_ca_export_retries_and_exports_only_public_root(tmp_path, monkeypatch):
+def test_internal_ca_export_retries_and_exports_only_public_root(tmp_path, monkeypatch, capsys):
     import subprocess
     from unittest.mock import MagicMock
     from deploy import export_internal_ca
 
     prefix = ['docker', 'compose', '--project-name', 'preview']
     run = MagicMock(side_effect=[
-        subprocess.CompletedProcess([], 1), subprocess.CompletedProcess([], 0),
+        subprocess.CompletedProcess([], 1, stderr='Could not find the file root.crt'),
+        subprocess.CompletedProcess([], 0, stderr=''),
     ])
     monkeypatch.setattr('deploy.subprocess.run', run)
     monkeypatch.setattr('deploy.time.sleep', MagicMock())
@@ -246,6 +248,9 @@ def test_internal_ca_export_retries_and_exports_only_public_root(tmp_path, monke
         'cp', 'caddy:/data/caddy/pki/authorities/local/root.crt', destination,
     ]
     assert run.call_args.kwargs['cwd'] == str(tmp_path)
+    output = capsys.readouterr().out
+    assert 'Waiting up to 120 seconds' in output
+    assert 'Could not find the file root.crt' in output
 
 
 def test_internal_ca_export_timeout_is_actionable(tmp_path, monkeypatch):
@@ -253,10 +258,28 @@ def test_internal_ca_export_timeout_is_actionable(tmp_path, monkeypatch):
     from unittest.mock import MagicMock
     from deploy import export_internal_ca
 
-    monkeypatch.setattr('deploy.subprocess.run', MagicMock(return_value=subprocess.CompletedProcess([], 1)))
+    monkeypatch.setattr('deploy.subprocess.run', MagicMock(return_value=subprocess.CompletedProcess(
+        [], 1, stderr='Could not find the file root.crt',
+    )))
     monkeypatch.setattr('deploy.time.monotonic', MagicMock(side_effect=[0, 121]))
     with pytest.raises(RuntimeError, match='public root certificate'):
         export_internal_ca(['docker', 'compose'], str(tmp_path))
+
+
+def test_internal_ca_export_reports_nontransient_errors_immediately(tmp_path, monkeypatch, capsys):
+    import subprocess
+    from unittest.mock import MagicMock
+    from deploy import export_internal_ca
+
+    run = MagicMock(return_value=subprocess.CompletedProcess([], 1, stderr='permission denied'))
+    pause = MagicMock()
+    monkeypatch.setattr('deploy.subprocess.run', run)
+    monkeypatch.setattr('deploy.time.sleep', pause)
+    with pytest.raises(RuntimeError, match='permission denied'):
+        export_internal_ca(['docker', 'compose'], str(tmp_path))
+    run.assert_called_once()
+    pause.assert_not_called()
+    assert 'Waiting up to 120 seconds' in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('mode', ['internal', 'provided'])
@@ -272,9 +295,15 @@ def test_private_https_start_uses_selected_trust_without_acme(mode, tls_files, t
         'instances': [{'name': 'planning', 'image': 'plannertool:test'}],
     }))
     output = tmp_path / 'deployment'
-    monkeypatch.setattr('deploy.subprocess.run', MagicMock())
+    commands = []
+    monkeypatch.setattr('deploy.subprocess.run', lambda command, **options: commands.append(command))
     root = str(output / 'tls' / 'caddy-root.crt')
-    export = MagicMock(return_value=root)
+
+    def export_root(*args):
+        assert commands[-1] == ['docker', 'compose', 'restart', 'caddy']
+        return root
+
+    export = MagicMock(side_effect=export_root)
     monkeypatch.setattr('deploy.export_internal_ca', export)
     verify = MagicMock()
     monkeypatch.setattr('deploy.wait_for_https', verify)
@@ -660,7 +689,7 @@ def test_operator_manifest_manages_auth_wiring_without_a_sandbox_generator(tmp_p
     assert commands == [
         ['docker', 'compose', 'config', '--quiet'], ['docker', 'compose', 'build'],
         ['docker', 'compose', 'up', '-d', '--wait'],
-    ]
+    ] + ([] if https_hostname is None else [['docker', 'compose', 'restart', 'caddy']])
     assert verified == ([] if https_hostname is None else [https_hostname])
     main()
     assert {path: path.read_bytes() for path in secret_paths} == originals
