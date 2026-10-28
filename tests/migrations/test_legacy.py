@@ -92,7 +92,7 @@ def test_fresh_initialization_is_current_without_upgrades(tmp_path):
         validate_candidate(storage)
         assert storage.load('system', 'schema_state')['initialized_at_revision'] == TARGET_REVISION
         assert storage.load('system', 'schema_state')['last_applied_migration'] is None
-        assert storage.load('system', 'external_identity_schema') == {'version': 2}
+        assert storage.load('system', 'external_identity_schema') == {'version': 3}
     finally:
         storage.close()
 
@@ -132,7 +132,7 @@ def test_neutral_identity_upgrade_resets_external_auth_but_preserves_local_accou
         'source': 'enrollment', 'account_id': 'existing-admin'}
     assert storage.load('accounts', 'admin@example.test') == account
     assert storage.load('account_auth', 'existing-admin') == {'enrolled': True}
-    validate_identity_records(storage)
+    validate_identity_records(storage, version=2)
 
 
 def test_neutral_identity_upgrade_handles_expired_handoffs(tmp_path):
@@ -157,6 +157,29 @@ def test_current_candidate_requires_external_identity_schema(tmp_path):
         storage.delete('system', 'external_identity_schema')
         with pytest.raises(SchemaError):
             validate_candidate(storage)
+    finally:
+        storage.close()
+
+
+def test_single_broker_upgrade_preserves_accounts_and_expires_only_broker_state(tmp_path):
+    from planner_lib.migrations.revisions import upgrade_48
+
+    storage = DiskCacheStorage(tmp_path / 'cache')
+    try:
+        account = {'account_id': 'existing-admin', 'permissions': ['admin'], 'pat': 'encrypted'}
+        storage.save('accounts', 'admin@example.test', account)
+        storage.save('auth_sessions', 'local', {'source': 'enrollment'})
+        storage.save('auth_sessions', 'external', {'source': 'entra'})
+        storage.save('external_identities', 'obsolete', {'version': 2})
+        storage.save('auth_transactions', 'expired', 'opaque', ttl_seconds=-1)
+        upgrade_48(storage)
+        assert storage.load('accounts', 'admin@example.test') == account
+        assert storage.load('auth_sessions', 'local') == {'source': 'enrollment'}
+        assert not storage.exists('auth_sessions', 'external')
+        assert not list(storage.list_keys('external_identities'))
+        assert storage.load('system', 'external_identity_schema') == {'version': 3}
+        assert storage.load('system', 'legacy_email_claims') == {'initialized': False, 'accounts': []}
+        assert storage.load('system', 'broker_authority') is None
     finally:
         storage.close()
 

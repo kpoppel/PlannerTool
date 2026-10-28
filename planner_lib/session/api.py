@@ -79,6 +79,33 @@ class IdentityLinkApproval(BaseModel):
     account_id: str
 
 
+class LegacyAccountClaim(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    email: str
+
+
+@router.post('/auth/links/claim')
+async def claim_legacy_account(payload: LegacyAccountClaim, request: Request, response: Response):
+    from planner_lib.session.broker import AuthFailure
+
+    if not _is_entra(request):
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    context = get_session_context_from_request(request)
+    login = resolve_service(request, 'login_adapter')
+    origin = login.settings.completion_url.split('/' + login.settings.instance + '/')[0]
+    if request.headers.get('origin') != origin:
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    try:
+        sid = login.claim_account(context, payload.email)
+    except AuthFailure as error:
+        return _auth_failure(error)
+    except (ValueError, KeyError):
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    response.headers['x-set-session-id'] = sid
+    response.headers['Cache-Control'] = 'no-store'
+    return login.profile(resolve_service(request, 'session_manager').get(sid))
+
+
 @router.post('/auth/links/begin')
 @require_admin_session
 async def begin_identity_link(payload: IdentityLinkApproval, request: Request, response: Response):

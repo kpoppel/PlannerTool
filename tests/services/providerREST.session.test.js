@@ -186,6 +186,22 @@ describe('ProviderREST /api/session tests', () => {
     ]);
   });
 
+  it('links an existing account once and invalidates the previous browser account context', async () => {
+    const state = createMockAuth('entra_signed_in').state;
+    const linked = { ...state, account: OTHER_MOCK_ACCOUNT };
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(linked)));
+    const onAccountChanged = vi.fn();
+    const adapter = createBrokerHttpAdapter({ apiUrl: '/team_1/api', fetchImpl, presentLogin: vi.fn() });
+    const client = createAuthClient({ adapter, initialState: state, instance: '/team_1', onAccountChanged });
+    await client.linkAccount('sam@example.com');
+    expectVitest(fetchImpl).toHaveBeenCalledTimes(1);
+    expectVitest(fetchImpl).toHaveBeenCalledWith('/team_1/api/auth/links/claim', expectVitest.objectContaining({
+      method: 'POST', body: JSON.stringify({ email: 'sam@example.com' }), credentials: 'same-origin',
+    }));
+    expectVitest(onAccountChanged).toHaveBeenCalledWith({ previous: state.account, next: OTHER_MOCK_ACCOUNT });
+    expectVitest(client.blocked).toBe(true);
+  });
+
   it('rejects a PAT response in the Entra HTTP adapter instead of selecting PAT', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify(createMockAuth('pat_current').state)));
     const adapter = createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl, presentLogin: vi.fn() });

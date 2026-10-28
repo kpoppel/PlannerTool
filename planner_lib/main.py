@@ -133,12 +133,31 @@ def _build_services(
     if provider == 'entra' or staged_broker:
         from planner_lib.session.broker import BrokerClient, BrokerSettings, BrokerLoginAdapter
         broker_settings = BrokerSettings.from_env()
+        if provider == 'entra' and broker_settings.upstream_mode == 'entra':
+            from planner_lib.session.identity import initialize_legacy_claims
+            initialize_legacy_claims(storage_diskcache)
         container.register_factory('broker_client', lambda: BrokerClient(broker_settings))
         container.register_factory('entra_link_adapter',
             lambda: BrokerLoginAdapter(storage_diskcache, container.get('account_manager'),
                                      container.get('session_manager'), container.get('broker_client')))
     auth_settings = storage_diskcache.load('config', 'authentication')
-    if provider != auth_settings['active']:
+    authority_changed = (provider == 'entra'
+                         and storage_diskcache.load('system', 'broker_authority') != broker_settings.metadata())
+    if authority_changed:
+        with storage_diskcache.transaction():
+            for namespace in ('auth_grants', 'auth_transactions', 'auth_link_approvals'):
+                for key in list(storage_diskcache.list_keys(namespace)):
+                    if storage_diskcache.exists(namespace, key):
+                        storage_diskcache.delete(namespace, key)
+            for key in list(storage_diskcache.list_keys('auth_sessions')):
+                if storage_diskcache.load('auth_sessions', key)['source'] == 'entra':
+                    storage_diskcache.delete('auth_sessions', key)
+            for key in list(storage_diskcache.list_keys('external_identities')):
+                record = storage_diskcache.load('external_identities', key)
+                if record['environment']['upstream_mode'] == 'mock':
+                    storage_diskcache.delete('external_identities', key)
+            storage_diskcache.save('system', 'broker_authority', broker_settings.metadata())
+    if provider != auth_settings['active'] or authority_changed:
         storage_diskcache.save('config', 'authentication', {
             'version': 1, 'selected': provider, 'active': provider,
             'backend_credentials': 'delegated' if provider == 'entra' else 'pat',

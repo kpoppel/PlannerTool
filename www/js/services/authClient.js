@@ -79,6 +79,13 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
       finally { recovery = null; }
     },
     async saveSettings(settings) { return adapter.saveSettings(settings); },
+    async linkAccount(email) {
+      const started = generation;
+      const next = await adapter.linkAccount(email);
+      if (started !== generation) throw new Error('Stale authentication response');
+      await apply(next);
+      return state;
+    },
     async logout() {
       generation += 1;
       await apply(await adapter.logout());
@@ -141,6 +148,7 @@ export function createBrokerHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLog
       return request('login/complete', 'POST', completion);
     },
     completeLogin: completion => request('login/complete', 'POST', completion),
+    linkAccount: email => request('links/claim', 'POST', { email }),
     async logout() {
       const state = await request('logout', 'POST');
       onLogout(state);

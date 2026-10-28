@@ -22,7 +22,7 @@ def config(tmp_path):
     secret.write_text(secrets.token_urlsafe(32))
     secret.chmod(0o600)
     return broker.BrokerConfig(
-        'sandbox', 'test-1', 'mock', 'http://localhost:8080/auth/',
+        'mock', 'http://localhost:8080/auth/',
         str(tmp_path / 'state' / 'broker.sqlite'), Fernet.generate_key().decode(),
         {'alpha': {'completion_url': 'http://localhost:8080/alpha/api/auth/login/callback',
                    'secret_file': str(secret), 'scenario': 'success'}},
@@ -96,15 +96,14 @@ def test_permission_denial_does_not_revoke_a_session_grant(config):
     assert store.grant('alpha', grant, 'status')['status'] == 'active'
 
 
-def test_store_is_encrypted_and_rejects_environment_key_or_generation_changes(config):
+def test_store_is_encrypted_and_rejects_key_changes(config):
     store = broker.BrokerStore(config)
     reference, code, verifier = prepared(store)
     result = store.redeem('alpha', reference, code, verifier)
     raw = Path(config.store_path).read_bytes()
     for value in (reference, code, verifier, result['grant'], 'synthetic'):
         assert value.encode() not in raw
-    for changed in (replace(config, environment_id='other'), replace(config, generation='test-2'),
-                    replace(config, key=Fernet.generate_key().decode())):
+    for changed in (replace(config, key=Fernet.generate_key().decode()),):
         with pytest.raises(ValueError, match='mismatch'):
             broker.BrokerStore(changed)
 
@@ -131,6 +130,150 @@ def test_shared_versioned_protocol_fixture(config):
     assert broker.TRANSACTION_TTL == CONTRACT['ttl_seconds']['transaction']
     assert broker.CODE_TTL == CONTRACT['ttl_seconds']['handoff']
     assert broker.GRANT_TTL == CONTRACT['ttl_seconds']['grant']
+
+
+@pytest.fixture
+def live_broker(config):
+    import time
+    from fastapi.testclient import TestClient
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from app import Settings, create_app
+
+    origin = 'https://planner.example.test'
+    configured = replace(config, mode='entra', public_url=origin + '/auth/', ado_transport='live',
+                         instances={'alpha': {**config.instances['alpha'],
+                                    'completion_url': origin + '/alpha/api/auth/login/callback'}})
+    settings = Settings('11111111-1111-1111-1111-111111111111',
+                        '22222222-2222-2222-2222-222222222222', 'synthetic', 'example',
+                        origin + '/auth/callback', auth_mode='entra', broker_config=configured)
+    calls = {'token': 0, 'error': None, 'email': 'legacy@example.test'}
+
+    class IdentityClient:
+        def __init__(self, client_id, *, token_cache, **kwargs):
+            self.cache = token_cache
+
+        def initiate_auth_code_flow(self, *, state, **kwargs):
+            return {'state': state, 'auth_uri': 'https://login.microsoftonline.com/authorize',
+                    'code_verifier': 'private-pkce-verifier'}
+
+        def acquire_token_by_auth_code_flow(self, flow, response):
+            if response['state'] != flow['state']:
+                raise ValueError('state mismatch')
+            if response.get('error') == 'access_denied':
+                return {'error': 'access_denied'}
+            self.cache._cache['test_account'] = 'private-refresh-token'
+            claims = {'iss': f'https://login.microsoftonline.com/{settings.tenant_id}/v2.0',
+                      'tid': settings.tenant_id, 'aud': settings.client_id,
+                      'sub': 'opaque-live-subject', 'name': 'Live User'}
+            if calls['email'] is not None:
+                claims['email'] = calls['email']
+            return {'access_token': 'private-initial-token', 'id_token_claims': claims}
+
+        def get_accounts(self):
+            return [{'home_account_id': 'opaque-live-subject'}] if 'test_account' in self.cache._cache else []
+
+        def acquire_token_silent_with_error(self, scopes, account):
+            calls['token'] += 1
+            if calls['error'] is not None:
+                return {'error': calls['error']}
+            self.cache._cache['renewals'] = calls['token']
+            return {'access_token': 'private-live-token', 'token_type': 'Bearer',
+                    'expires_on': str(time.time() + 3600)}
+
+    app = create_app(settings, IdentityClient)
+    headers = {'X-Planner-Instance': 'alpha', 'Authorization': 'Bearer ' +
+               Path(configured.instances['alpha']['secret_file']).read_text()}
+    with TestClient(app, base_url=origin + '/auth/', follow_redirects=False) as client:
+        yield client, app, headers, calls, settings, IdentityClient
+
+
+def begin_live(client, app, headers):
+    verifier = secrets.token_urlsafe(32)
+    result = client.post('/v1/transactions/begin', headers=headers, json={
+        **app.state.broker_store.metadata(), 'completion_url': app.state.broker_store.config.instances['alpha']['completion_url'],
+        'challenge': broker.challenge(verifier), 'state': secrets.token_urlsafe(32),
+    })
+    assert result.status_code == 200
+    begun = result.json()
+    response = client.get(begun['authorization_url'])
+    assert response.status_code == 303
+    assert response.headers['location'].startswith('https://login.microsoftonline.com/')
+    assert 'SameSite=none' in response.headers['set-cookie']
+    assert 'Secure' in response.headers['set-cookie']
+    return begun, verifier
+
+
+def redeem_live(client, app, headers, begun, verifier):
+    from urllib.parse import parse_qs, urlsplit
+
+    callback = client.post('/callback', data={'state': begun['transaction'], 'code': 'synthetic-code'})
+    assert callback.status_code == 303
+    query = parse_qs(urlsplit(callback.headers['location']).query)
+    result = client.post('/v1/transactions/redeem', headers=headers, json={
+        **app.state.broker_store.metadata(), 'transaction': begun['transaction'],
+        'code': query['code'][0], 'verifier': verifier,
+    })
+    assert result.status_code == 200
+    assert 'private-' not in result.text
+    return result.json()
+
+
+def test_live_broker_persists_cache_and_renews_only_on_token_requests(live_broker):
+    client, app, headers, calls, settings, factory = live_broker
+    assert client.get('/v1/readiness').json()['live_capable'] is True
+    begun, verifier = begin_live(client, app, headers)
+    result = redeem_live(client, app, headers, begun, verifier)
+    assert result['identity']['email'] == 'legacy@example.test'
+    assert 'link_existing_by_email' not in result['identity']
+    payload = {**app.state.broker_store.metadata(), 'grant': result['grant']}
+    assert client.post('/v1/grants/status', headers=headers, json=payload).status_code == 200
+    assert calls['token'] == 0
+    token = client.post('/v1/grants/token', headers=headers, json={**payload, 'resource': 'ado'})
+    assert token.status_code == 200
+    assert token.json()['token_kind'] == 'bearer'
+    assert 'refresh_token' not in token.text
+    from app import create_app
+    from fastapi.testclient import TestClient
+    restarted = create_app(settings, factory)
+    with TestClient(restarted, base_url=settings.origin + '/auth/') as browser:
+        assert browser.post('/v1/grants/token', headers=headers,
+                            json={**payload, 'resource': 'ado'}).status_code == 200
+    assert calls['token'] == 2
+    assert b'private-refresh-token' not in Path(settings.broker_config.store_path).read_bytes()
+    assert client.post('/callback', data={'state': begun['transaction'], 'code': 'replay'}).status_code == 400
+
+
+@pytest.mark.parametrize('upstream_error,status', [
+    ('interaction_required', 409), ('invalid_grant', 409), ('temporarily_unavailable', 503),
+])
+def test_live_renewal_errors_preserve_grant(live_broker, upstream_error, status):
+    client, app, headers, calls, settings, factory = live_broker
+    begun, verifier = begin_live(client, app, headers)
+    result = redeem_live(client, app, headers, begun, verifier)
+    payload = {**app.state.broker_store.metadata(), 'grant': result['grant']}
+    calls['error'] = upstream_error
+    assert client.post('/v1/grants/token', headers=headers,
+                       json={**payload, 'resource': 'ado'}).status_code == status
+    assert client.post('/v1/grants/status', headers=headers, json=payload).json()['status'] == 'active'
+    calls['error'] = None
+    assert client.post('/v1/grants/revoke', headers=headers, json=payload).status_code == 200
+    assert client.post('/v1/grants/token', headers=headers,
+                       json={**payload, 'resource': 'ado'}).status_code == 409
+
+
+def test_live_callback_requires_bound_browser_and_supports_missing_email(live_broker):
+    client, app, headers, calls, settings, factory = live_broker
+    begun, verifier = begin_live(client, app, headers)
+    assert client.get('/callback', params={'state': begun['transaction'], 'code': 'code'}).status_code == 405
+    assert client.post('/v1/browser/choose', data={}).status_code == 404
+    browser_cookie = client.cookies.get('planner_broker_browser')
+    client.cookies.clear()
+    assert client.post('/callback', data={'state': begun['transaction'], 'code': 'code'}).status_code == 400
+    client.cookies.set('planner_broker_browser', browser_cookie)
+    calls['email'] = None
+    result = redeem_live(client, app, headers, begun, verifier)
+    assert 'email' not in result['identity']
 
 
 def test_grant_owner_and_revocation_token_race(config):
@@ -227,8 +370,7 @@ def test_startup_rejects_missing_malformed_or_mismatched_sandbox_configuration(
         'ENTRA_REDIRECT_URI': 'http://localhost:8080/auth/callback',
         'ENTRA_CLIENT_SECRET_FILE': config.instances['alpha']['secret_file'],
         'ENTRA_BROKER_KEY_FILE': str(key_path), 'ENTRA_BROKER_REGISTRY_FILE': str(registry_path),
-        'ENTRA_BROKER_PUBLIC_URL': config.public_url, 'ENTRA_BROKER_ENVIRONMENT': 'sandbox',
-        'ENTRA_BROKER_GENERATION': 'test-1', 'ENTRA_BROKER_STORE': config.store_path,
+        'ENTRA_BROKER_PUBLIC_URL': config.public_url, 'ENTRA_BROKER_STORE': config.store_path,
         'ENTRA_ADO_TRANSPORT': 'fixture', 'ENTRA_NETWORK': 'loopback',
     }.items():
         monkeypatch.setenv(name, setting)
@@ -281,7 +423,7 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
         body = {**envelope, 'completion_url': config.instances['alpha']['completion_url'],
                 'challenge': broker.challenge(verifier), 'state': secrets.token_urlsafe(32)}
         assert client.post('/v1/transactions/begin', json=body).status_code == 403
-        wrong_environment = {**body, 'environment_id': 'production'}
+        wrong_environment = {**body, 'broker_url': 'https://other.example.test/auth/'}
         assert client.post('/v1/transactions/begin', json=wrong_environment, headers=headers).status_code == 403
         begun = client.post('/v1/transactions/begin', json=body, headers=headers).json()
         page = client.get(begun['authorization_url'])

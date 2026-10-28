@@ -466,13 +466,31 @@ def test_deployment_owns_credential_mode_not_backend_selection(mode, valid):
 @pytest.fixture
 def sandbox_manifest(tmp_path):
     import yaml
-    from auth_sandbox import create_sandbox
+    from tests.fakes.auth_sandbox import create_sandbox
     from deploy_auth import load_auth_services
 
     manifest = create_sandbox(tmp_path / 'sandbox')
     config = yaml.safe_load(manifest.read_text())
     services = load_auth_services(config, manifest, None)
     return config, services, manifest
+
+
+def test_sandbox_fixture_cli_runs_from_test_tooling(tmp_path):
+    import subprocess
+    import yaml
+
+    generator = Path(__file__).resolve().parents[2] / 'tests' / 'fakes' / 'auth_sandbox.py'
+    directory = tmp_path / 'sandbox'
+    result = subprocess.run([
+        sys.executable, str(generator), '--directory', str(directory), '--port', '18885',
+        '--ado-authentication', 'pat',
+    ], cwd=tmp_path, check=True, capture_output=True, text=True)
+    manifest = directory / 'manifest.yml'
+    config = yaml.safe_load(manifest.read_text())
+    assert str(manifest) in result.stdout
+    assert config['ado_authentication'] == 'pat'
+    assert config['auth_services']['sandbox']['public_url'] == 'http://localhost:18885/auth/'
+    assert (directory / 'broker-key').stat().st_mode & 0o077 == 0
 
 
 def test_mixed_sandbox_generation_is_isolated_and_secret_scoped(sandbox_manifest):
@@ -726,7 +744,7 @@ def test_operator_manifest_manages_auth_wiring_without_a_sandbox_generator(tmp_p
     config = {
         'ado_authentication': 'entra',
         'auth_services': {'central': {
-            'mode': 'mock', 'environment_id': 'preview', 'generation': 'initial',
+            'mode': 'mock',
             'public_url': 'http://localhost:18884/auth/', 'volume_source': 'auth-central-state',
             'registration': {
                 'tenant_id': '11111111-1111-1111-1111-111111111111',
@@ -790,3 +808,70 @@ def test_source_build_policy_requires_a_boolean(sandbox_manifest, kind):
     target['build_from_source'] = 'true'
     with pytest.raises(ValueError, match='boolean'):
         load_auth_services(config, manifest, None)
+
+
+def test_managed_live_registration_needs_only_real_ids_and_secret_file(tmp_path):
+    import yaml
+    from deploy_auth import load_auth_services
+
+    secret = tmp_path / 'entra-secret'
+    secret.write_text('synthetic-live-client-secret')
+    secret.chmod(0o600)
+    config = {'ado_authentication': 'entra', 'auth_services': {'central': {
+        'mode': 'entra', 'public_url': 'https://planner.example.test/auth/',
+        'volume_source': 'auth-central-state', 'registration': {
+            'tenant_id': '11111111-1111-1111-1111-111111111111',
+            'client_id': '22222222-2222-2222-2222-222222222222', 'organization': 'example',
+            'client_secret_file': str(secret),
+        },
+    }}, 'instances': [{'name': 'planning', 'auth_service': 'central'}]}
+    manifest = tmp_path / 'instances.yml'
+    manifest.write_text(yaml.safe_dump(config))
+    output = tmp_path / 'generated'
+    services = load_auth_services(config, manifest, 'planner.example.test', output_dir=output, apply=True)
+    compose = generate_docker_compose(config['instances'], 'test', 'planner.example.test', services)
+    environment = compose['services']['auth-central']['environment']
+    assert environment['ENTRA_AUTH_MODE'] == 'entra'
+    assert environment['ENTRA_ADO_TRANSPORT'] == 'live'
+    assert environment['ENTRA_BROKER_STORE'].endswith('broker-v2-entra.sqlite')
+    assert not any('GENERATION' in key or 'ENVIRONMENT' in key for key in environment)
+    assert compose['secrets']['auth-central-entra-secret']['file'] == str(secret)
+    assert secret.read_text() not in str(compose)
+    assert not (output / '.auth' / 'central' / 'client-secret').exists()
+
+
+def test_auth_configuration_migration_is_explicit_backed_up_and_preserves_secrets(tmp_path):
+    import json
+    import yaml
+    from deploy_auth import migrate_auth_configuration, load_auth_services
+
+    output = tmp_path / 'generated'
+    directory = output / '.auth' / 'central'
+    directory.mkdir(parents=True, mode=0o700)
+    marker = directory / 'managed.json'
+    original = {'version': 1, 'identity': {'mode': 'mock', 'environment_id': 'preview',
+                'generation': 'initial', 'public_url': 'https://planner.example.test/auth/'},
+                'instances': ['planning']}
+    marker.write_text(json.dumps(original))
+    marker.chmod(0o600)
+    secret = directory / 'client-planning'
+    secret.write_text('retain-this-secret')
+    config = {'ado_authentication': 'entra', 'auth_services': {'central': {
+        **original['identity'], 'volume_source': 'auth-state', 'registration': {
+            'tenant_id': '11111111-1111-1111-1111-111111111111',
+            'client_id': '22222222-2222-2222-2222-222222222222', 'organization': 'example',
+        },
+    }}, 'instances': [{'name': 'planning', 'auth_service': 'central'}]}
+    manifest = tmp_path / 'instances.yml'
+    manifest.write_text(yaml.safe_dump(config))
+    before = manifest.read_bytes()
+    assert migrate_auth_configuration(manifest, output)
+    assert manifest.read_bytes() == before
+    assert json.loads(marker.read_text()) == original
+    assert migrate_auth_configuration(manifest, output, apply=True)
+    assert 'environment_id' not in manifest.read_text()
+    assert 'generation' not in manifest.read_text()
+    assert json.loads(marker.read_text())['version'] == 2
+    assert secret.read_text() == 'retain-this-secret'
+    assert len(list(tmp_path.glob('instances.yml.before-auth-v2-*'))) == 1
+    assert migrate_auth_configuration(manifest, output, apply=True) == []

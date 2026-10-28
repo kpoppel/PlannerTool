@@ -35,17 +35,14 @@ class BrokerSettings:
     instance: str
     url: str
     public_url: str
-    environment: str
-    generation: str
     upstream_mode: str
     secret: str = field(repr=False)
 
     def __post_init__(self):
         if not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', self.upstream_mode):
             raise ValueError('Unknown expected broker mode')
-        for value in (self.instance, self.environment, self.generation):
-            if not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', value):
-                raise ValueError('Invalid broker instance, environment or generation')
+        if not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', self.instance):
+            raise ValueError('Invalid broker instance')
         public = urlsplit(self.public_url)
         internal = urlsplit(self.url)
         for parsed in (public, internal):
@@ -69,14 +66,13 @@ class BrokerSettings:
             raise ValueError('Instance broker secret requires mode 0600')
         return cls(
             os.environ['PLANNER_AUTH_INSTANCE'], os.environ['PLANNER_AUTH_URL'],
-            os.environ['PLANNER_AUTH_PUBLIC_URL'], os.environ['PLANNER_AUTH_ENVIRONMENT'],
-            os.environ['PLANNER_AUTH_GENERATION'], os.environ['PLANNER_AUTH_UPSTREAM_MODE'],
+            os.environ['PLANNER_AUTH_PUBLIC_URL'], os.environ['PLANNER_AUTH_UPSTREAM_MODE'],
             secret_file.read_text().strip(),
         )
 
     def metadata(self):
-        return {'protocol': PROTOCOL, 'environment_id': self.environment,
-                'generation': self.generation, 'upstream_mode': self.upstream_mode}
+        return {'protocol': PROTOCOL, 'upstream_mode': self.upstream_mode,
+            'broker_url': self.public_url}
 
     @property
     def completion_url(self):
@@ -92,8 +88,9 @@ class BrokerClient:
     def request(self, operation, payload=None):
         headers = {'Accept': 'application/json', 'X-Planner-Instance': self.settings.instance,
                    'Authorization': 'Bearer ' + self.settings.secret}
+        timeout = 30 if operation == 'v1/grants/token' else 5
         try:
-            with httpx.Client(timeout=httpx.Timeout(5, connect=2), follow_redirects=False,
+            with httpx.Client(timeout=httpx.Timeout(timeout, connect=2), follow_redirects=False,
                               trust_env=False, transport=self.transport) as client:
                 with client.stream('GET' if payload is None else 'POST', self.settings.url + operation,
                                    headers=headers, json=None if payload is None else {
@@ -214,7 +211,7 @@ class BrokerLoginAdapter:
             if (result.get('transaction') != record['transaction'] or not isinstance(identity, dict)
                     or not isinstance(result.get('grant'), str)
                     or not result['grant'] or type(result.get('expires_at')) not in (int, float)
-                    or not time.time() < result['expires_at'] <= time.time() + 3610):
+                    or not time.time() < result['expires_at'] <= time.time() + 30 * 24 * 3600 + 10):
                 raise AuthFailure('auth_configuration_error')
             target = None
             if self.storage.exists('auth_link_approvals', key):
@@ -274,7 +271,18 @@ class BrokerLoginAdapter:
             'permissions': [] if context is None else self.accounts.get_account_by_id(context['account_id'])['permissions'],
             'capabilities': {
                     'pat': False, 'enrollment': False, 'reauthenticate': account is not None,
-                    'logout': account is not None, 'deleteAccount': False}}
+                    'logout': account is not None, 'deleteAccount': False,
+                    'linkAccount': context is not None and self.settings.upstream_mode == 'entra'
+                        and self.accounts.get_account_by_id(context['account_id'])['email'].endswith('@identity.invalid')
+                        and bool(self.storage.load('system', 'legacy_email_claims')['accounts'])}}
+
+    def claim_account(self, context, email):
+        with self.storage.transaction():
+            local = dict(self.storage.load('auth_grants', context['binding']))
+            account = self.identities.claim(context['account_id'], email)
+            local['account_id'] = account['id']
+            self.storage.save('auth_grants', context['binding'], local)
+            return self.sessions.create(account['email'], source='entra', binding=context['binding'])
 
     def logout(self, sid):
         reference = None

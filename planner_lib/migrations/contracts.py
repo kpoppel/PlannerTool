@@ -13,7 +13,7 @@ BASELINE_REVISION = 24
 # Startup (including dev-server reload) applies pending revisions before serving HTTP.
 # Never rewrite applied revisions or ledger entries: edits do not rerun an upgrade.
 # Use a new revision for further changes, or isolated pre-upgrade data to test iterations.
-TARGET_REVISION = 47
+TARGET_REVISION = 48
 MIGRATION_IDS = {
     26: '0026.migrate-ttl-cache-to-remote-cache-storage',
     27: '0027.add-missing-scenario-metadata-to-scenarios',
@@ -37,6 +37,7 @@ MIGRATION_IDS = {
     45: '0045.external-identity-links',
     46: '0046.deployment-authentication-transition',
     47: '0047.provider-neutral-identity-links',
+    48: '0048.single-broker-live-authentication',
 }
 
 

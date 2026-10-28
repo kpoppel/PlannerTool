@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create new, ignored synthetic configuration; never modify an existing stack."""
+"""Generate synthetic auth fixtures for tests; never modify an existing stack."""
 import argparse
 import json
 import os
@@ -60,15 +60,14 @@ def create_sandbox(directory, port=18880, ado_authentication='entra'):
         'ENTRA_TENANT_ID=' + registration['tenant_id'],
         'ENTRA_CLIENT_ID=' + registration['client_id'],
         'ADO_ORGANIZATION=' + registration['organization'],
-        f'SANDBOX_PORT={port}', 'ENTRA_BROKER_ENVIRONMENT=sandbox',
-        'ENTRA_BROKER_GENERATION=sandbox-1',
+        f'SANDBOX_PORT={port}',
         'SANDBOX_REGISTRY_FILE=' + str(directory / 'standalone-instances.json'),
         'SANDBOX_ENTRA_SECRET_FILE=' + str(directory / 'entra-secret'),
         'SANDBOX_KEY_FILE=' + str(directory / 'broker-key'),
         'SANDBOX_INSTANCE_SECRET_FILE=' + str(directory / 'client-alpha'), '',
     ]))
     manifest = {'ado_authentication': ado_authentication, 'auth_services': {'sandbox': {
-        'mode': 'mock', 'environment_id': 'sandbox', 'generation': 'sandbox-1',
+        'mode': 'mock',
         'public_url': public, 'env_file': 'registration.env', 'registry_file': 'instances.json',
         'key_file': 'broker-key', 'client_secret_file': 'entra-secret',
         'volume_source': 'auth-sandbox-state', 'image': 'plannertool-auth:phase-d-sandbox',

@@ -23,8 +23,27 @@ not prompt for login or replay the operation. Backend and organization configura
 remain unchanged. Broker mode does not determine credential validity.
 
 Verified identities use a trusted broker issuer and opaque subject. A new identity
-gets an unprivileged account. Production linking requires administrator-approved
-identity proof; matching contact email alone never grants access.
+gets an unprivileged account, except that the first verified account on a genuinely
+empty live installation becomes administrator. Restrict access during initial setup.
+At first live activation, PlannerTool snapshots existing accounts as eligible for
+one-time email claims. A validated Entra ID token's `email` claim may claim a matching
+eligible account, preserving its UUID, permissions and owned data. Later-created
+accounts are never added to this snapshot. Matching is case-insensitive; a claim
+is consumed permanently and subsequent sign-ins use issuer/subject, not email.
+
+If Entra omits `email`, PlannerTool creates a separate account with an empty contact
+email. Configuration offers **Existing account email > Link account** while legacy
+accounts remain eligible. The user-confirmed action moves the fresh external identity
+and its saved views/scenarios into the existing account, keeps the destination UUID
+and permissions, ends old source-account sessions and reloads the tool. A data-key
+collision rejects the entire merge rather than overwriting either account's data.
+
+This manual migration claim deliberately requires only the entered email, not proof
+of the old account. Any signed-in Entra user who knows an eligible account's email
+can claim it, including an administrator account. This is an explicitly accepted
+migration policy, not email verification. Restrict the enterprise application's
+audience until migration is complete. Already-linked accounts cannot be claimed or
+reassigned, and changes to an identity's email cannot move an established link.
 
 Mock sign-in deliberately allows entering an existing account email, including an
 administrator's, and reuses that account's UUID, permissions and saved data. The
@@ -37,6 +56,14 @@ handoffs and external sessions. Local accounts, permissions, saved data, PATs an
 enrollment credentials remain. Sign in again after upgrading; existing sandbox
 administrators can enter their account email. Deploy the application, browser
 assets and broker together; there is no legacy identity-payload compatibility path.
+
+Revision 48 removes operator environment/generation labels and resets obsolete
+broker links, grants and handoffs, including broker-created sessions. It preserves
+accounts, permissions, saved data, PATs and enrollment credentials. Broker metadata
+is pinned to its public URL, upstream mode and protocol; each instance still has its
+own protected service secret and exact registered callback. Changing broker authority
+advances the existing application auth epoch and discards mock links before live
+account claims. Restarts with unchanged authority do not advance the epoch.
 
 PlannerTool uses generated browser credentials, not user-chosen passwords or
 email verification. Each installation has independent accounts and credentials.
@@ -263,14 +290,15 @@ running authentication service.
 External links use a broker-authenticated `issuer` and opaque `subject`; PlannerTool
 does not interpret the subject or decode tokens. The key hashes the structured
 issuer/subject pair, so equal subjects from different issuers cannot collide.
-Links are additionally pinned to the broker environment and generation. A new
-verified identity receives a new account UUID and no permissions; its internal
+Links are additionally pinned to the broker public URL, protocol and upstream mode.
+A new verified identity receives a new account UUID and no permissions, subject to
+the first-admin bootstrap and one-time legacy claims described above; its internal
 account lookup key ends in `@identity.invalid`. Display/contact email and name
 come from the verified identity link. Existing accounts retain their UUIDs and
-permissions through explicit administrator-approved identity links. The sandbox
-email-impersonation exception above is accepted only from a configured mock broker.
+permissions through one-time legacy claims or explicit administrator-approved identity
+links. The sandbox impersonation assertion is accepted only from a configured mock broker.
 
-The login handoff returns `{identity: {issuer, subject, name, email}, grant,
+The login handoff returns `{identity: {issuer, subject, name, email?}, grant,
 expires_at}` inside the authenticated protocol envelope. The optional
 `link_existing_by_email: true` identity field is reserved for mock deployments.
 Browser discovery/profile responses use `mode: broker`; the generic Sign in control
@@ -289,8 +317,10 @@ administrator and starts the existing browser-bound proof flow. Completion
 requires the same still-valid approving session, current admin permission and
 the verified returning identity. Existing links cannot be reassigned, and an
 account cannot acquire a conflicting second link. Linking never changes local
-permissions or bypasses final-admin deletion protection. There is no production
-email-based linking or unlink/reassignment API.
+permissions or bypasses final-admin deletion protection. The separate
+`POST /api/auth/links/claim` accepts `{email}` from a same-origin authenticated live
+broker session and implements the one-way legacy merge described above. There is
+no unlink/reassignment API.
 
 Each login owns a separate local binding and broker grant. Ordinary logout
 revokes only that session/grant, including local revocation during broker outage.
@@ -298,7 +328,7 @@ Other sessions, instances and corporate SSO remain independent. Deleted accounts
 cannot acquire or renew credentials; their external links are removed.
 
 The selected delegated provider requires request-scoped identity plus the exact
-session binding. Token acquisition validates environment/generation, resource,
+session binding. Token acquisition validates broker URL, protocol, mode, resource,
 credential kind and fresh-enough expiry. Credentials carry acting UUID, binding,
 epoch, expiry and explicit fixture/live transport metadata; no refresh token is
 accepted. Profile reads never acquire a token. SDK/wiki authentication selects
@@ -322,6 +352,18 @@ above supersedes earlier unresolved lifetime, disablement-check and outage-deadl
 requirements. Mock session/cache implementation is covered by the Phase G report;
 live acceptance remains outstanding. Mock grant expiry is not evidence of
 upstream account disablement.
+
+The live broker now owns authorization-code flow with PKCE and encrypted durable
+MSAL caches. HTTPS uses a browser-bound `form_post` callback; verified identities
+must match the configured tenant, audience and issuer. Only a validated `email`
+claim is used for automatic legacy claims; `preferred_username` is not substituted.
+Delegated tokens are acquired on demand through MSAL, including renewal in active
+jobs. Status/profile requests never refresh tokens. Each local broker grant has a
+30-day maximum lifetime; local application session expiry remains independent.
+Broker logout revokes its session-owned grant without signing out other sessions.
+MSAL cache data and refresh tokens remain encrypted in the broker and never enter
+the handoff or PlannerTool responses. Registration/consent, Conditional Access and
+real ADO access/renewal still require tenant-backed acceptance.
 
 ### Frontend Adapter Contract (Phase C)
 

@@ -13,6 +13,8 @@ class ConfigModal extends LitElement {
     authentication: { attribute: false },
     open: { type: Boolean },
     _signingOut: { state: true },
+    _linking: { state: true },
+    _linkError: { state: true },
   };
 
   constructor() {
@@ -21,6 +23,8 @@ class ConfigModal extends LitElement {
     new AuthPresentationController(this);
     this.open = false;
     this._signingOut = false;
+    this._linking = false;
+    this._linkError = '';
     this._deletionDialog = null;
   }
 
@@ -74,6 +78,25 @@ class ConfigModal extends LitElement {
       console.error('Signing out failed', error);
       status.textContent = 'Could not sign out. Please try again.';
       this._signingOut = false;
+    }
+  }
+
+  async _onLinkAccount() {
+    if (this._linking) return;
+    const input = this._qs('#legacyAccountEmail');
+    if (!input.reportValidity()) return;
+    const email = input.value.trim();
+    if (!window.confirm(`Permanently link this sign-in to ${email} and reload PlannerTool?`)) return;
+    this._linking = true;
+    this._linkError = '';
+    try {
+      await this.authentication.linkAccount(email);
+    } catch (error) {
+      console.error('Account linking failed', error);
+      this._linkError = error.code === 'access_denied'
+        ? 'This account is not eligible for linking.' : 'Could not link the account. Please try again.';
+    } finally {
+      this._linking = false;
     }
   }
 
@@ -175,6 +198,14 @@ class ConfigModal extends LitElement {
               <label for="configEmail">Account email</label>
               <output id="configEmail" class="account-email"></output>
             </div>
+            ${capabilities.linkAccount === true ? html`<div class="form-row">
+              <label for="legacyAccountEmail">Existing account email</label>
+              <input id="legacyAccountEmail" type="email" autocomplete="email" required
+                ?disabled=${this._linking} />
+              <button type="button" id="linkAccountBtn" class="btn" ?disabled=${this._linking}
+                @click=${this._onLinkAccount}>${this._linking ? 'Linking...' : 'Link account'}</button>
+              <div class="status" role="status">${this._linkError}</div>
+            </div>` : ''}
             ${capabilities.pat ? html`<div class="form-row">
               <label for="configPat">Personal Access Token (PAT)</label>
               <input type="password" id="configPat" placeholder="••••••••" />

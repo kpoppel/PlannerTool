@@ -4,7 +4,8 @@ Keep the normal operator workflow: define `instances.yml`, retain the installati
 encryption key, then run `python scripts/deploy.py --apply --start`. The optional
 auth service, your own named PlannerTool instances and Caddy are built and started
 in the **same generated Docker Compose project**. Do not start a separate auth
-Compose stack or run `scripts/auth_sandbox.py` to prepare an operator deployment.
+Compose stack or use the sandbox fixture generator under `tests/fakes/` to prepare
+an operator deployment.
 
 The manifest owns hosting, routing, storage, auth-service connections and the
 deployment-wide ADO credential policy. Each instance's **Admin > Data Sources**
@@ -49,8 +50,6 @@ ado_authentication: entra
 auth_services:
    central:
       mode: mock
-      environment_id: preview
-      generation: initial
       public_url: https://planner.example.test/auth/
       volume_source: auth-central-state
       registration:
@@ -81,12 +80,51 @@ with a generated instance registry, synthetic registration and distinct secrets
 (mode 0600). Dry-run creates no files. Subsequent runs reuse keys and secrets;
 missing retained secrets fail instead of being silently regenerated. The operator
 manifest is never rewritten. Back up this directory with the instance/auth volumes.
-Changing mode, environment, generation or public URL on retained mock authority
-requires a separate explicit transition; do not delete keys to bypass this check.
+Environment and generation labels are no longer configured. Before upgrading an
+older auth deployment or changing its mode/public URL, stop that Compose stack,
+back up its data and run the explicit configuration migration:
+
+```bash
+source .venv/bin/activate
+python scripts/migrate-py auth --config instances.yml --output-dir deployment
+python scripts/migrate-py auth --config instances.yml --output-dir deployment --apply
+```
+
+The first invocation previews changes. `--apply` backs up every changed file before
+removing obsolete labels and updating managed metadata. It does not start services,
+delete broker stores or replace secrets. Deploy application, browser assets and
+broker together. Revision 48 expires old broker sessions/links while preserving
+local accounts and data. New mode-specific broker stores coexist with retained old
+stores in the same volume; never delete the volume to change modes.
+
+### Live Entra Registration
+
+Register a single-tenant **Web** application with the exact callback
+`https://planner.example.test/auth/callback`. Configure delegated Azure DevOps
+`user_impersonation` permission and obtain tenant-required consent. Users need
+their own ADO organization access. Keep implicit grants and public-client flows off.
+
+Set `mode: entra` and use the real tenant/client IDs in `registration`. Add
+`client_secret_file` beneath `registration`, pointing to the secret **value** in a
+mode-0600 file, for example `/etc/plannertool/entra-client-secret`. Do not put that
+value in YAML, shell history, chat or source control. The generator mounts the real
+file rather than generating a live client secret. The existing `organization`
+field is the ADO organization name; select each instance's backend in Admin as usual.
+The live broker needs outbound HTTPS to Microsoft Entra; PlannerTool needs outbound
+HTTPS to ADO. HTTPS/DNS and client trust remain deployment prerequisites.
+
+For retained mock configuration, run the migration above after editing the mode and
+registration, then use `python scripts/deploy.py --apply --start`. For a new
+installation, the ordinary deployment command is sufficient. No source changes or
+guard removal are required. The first verified account on empty data becomes admin;
+existing accounts use the one-time email claim policy documented in
+[Authentication](AUTHENTICATION.md). Restrict the initial sign-in audience accordingly.
+Live registration, consent, tenant policy and real ADO renewal are not proven by
+offline tests: verify them with a limited test audience before wider cutover.
 
 Caddy owns the only published ports. The apps and broker communicate on the
-private isolated Compose network, which blocks outbound live ADO. Caddy alone
-also joins the ingress network for browser access and certificate renewal. Services
+private Compose network. Mock broker egress remains blocked by its fixture-only
+process guard; live mode permits the required upstream HTTPS. Services
 without an explicit image build from the checkout; pinned images remain image-only
 unless `build_from_source: true` is specified.
 
@@ -125,7 +163,8 @@ curl --fail --silent --show-error https://planner.example.test/auth/v1/readiness
 ```
 
 Expect Caddy, the auth service and your instances in the same project, and readiness
-with `upstream_mode: mock`, `ready: true`, `live_capable: false`. `--start` waits for
+with the configured `upstream_mode`, `ready: true`, `live_capable: true`. Readiness
+validates local configuration, not consent or connectivity to Microsoft. `--start` waits for
 Compose startup; check HTTP readiness separately as above. If startup fails,
 inspect the same project with `logs --tail 100 auth-central planner-planning caddy`
 (substitute your service names). Never paste secret

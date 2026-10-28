@@ -17,8 +17,11 @@ from broker import BrokerStore, CODE_TTL, ProtocolError, digest, read_secret
 BROWSER_COOKIE = 'planner_broker_browser'
 
 
-def install_broker(app, settings, config):
-    store = BrokerStore(config)
+def install_broker(app, settings, config, client_factory):
+    from upstream import EntraUpstream
+
+    upstream = EntraUpstream(settings, client_factory) if config.mode == 'entra' else None
+    store = BrokerStore(config, upstream=upstream)
     app.state.broker_store = store
     origin = settings.origin
     secret_hashes = {name: digest(read_secret(value['secret_file']))
@@ -41,7 +44,7 @@ def install_broker(app, settings, config):
         return await call_next(request)
 
     def require_ready():
-        if config.mode != 'mock':
+        if settings.missing:
             raise ProtocolError('auth_configuration_error', 503)
 
     def throttle(request):
@@ -88,8 +91,8 @@ def install_broker(app, settings, config):
 
     @app.get('/v1/readiness')
     def readiness():
-        return JSONResponse({**store.metadata(), 'ready': config.mode == 'mock',
-                             'live_capable': False}, status_code=200 if config.mode == 'mock' else 503)
+        return JSONResponse({**store.metadata(), 'ready': not settings.missing,
+                     'live_capable': True}, status_code=503 if settings.missing else 200)
 
     @app.post('/v1/transactions/begin')
     async def begin(request: Request):
@@ -112,11 +115,13 @@ def install_broker(app, settings, config):
 
     @app.post('/v1/grants/{operation}')
     async def grant_operation(operation: str, request: Request):
+        from starlette.concurrency import run_in_threadpool
+
         if operation not in ('status', 'token', 'revoke'):
             raise ProtocolError('unknown_operation', 404)
         fields = {'grant', 'resource'} if operation == 'token' else {'grant'}
         owner, payload = await authenticate(request, fields)
-        return store.grant(owner, payload['grant'], operation, payload.get('resource'))
+        return await run_in_threadpool(store.grant, owner, payload['grant'], operation, payload.get('resource'))
 
     @app.get('/v1/browser/authorize')
     def authorize(request: Request):
@@ -127,6 +132,18 @@ def install_broker(app, settings, config):
         reference = request.query_params['transaction']
         browser = secrets.token_urlsafe(32)
         store.bind_browser(reference, browser)
+        if upstream is not None:
+            flow, cache = upstream.begin(reference)
+            with store.connection() as connection:
+                transaction = store.get(connection, reference, 'transaction')
+                transaction['upstream_flow'] = flow
+                transaction['token_cache'] = cache
+                store.put(connection, reference, 'transaction', transaction['owner'],
+                          transaction['expires'], transaction)
+            response = RedirectResponse(flow['auth_uri'], status_code=303)
+            response.set_cookie(BROWSER_COOKIE, browser, httponly=True, samesite='none',
+                                secure=True, path=settings.root_path + '/', max_age=300)
+            return response
         response = HTMLResponse(
             '<!doctype html><html lang="en"><title>Sandbox sign-in</title><h1>Sandbox sign-in</h1>'
             f'<form method="post" action="{settings.root_path}/v1/browser/choose">'
@@ -145,6 +162,8 @@ def install_broker(app, settings, config):
 
         throttle(request)
         require_ready()
+        if upstream is not None:
+            raise ProtocolError('unknown_operation', 404)
         if request.headers.get('origin') != origin:
             raise ProtocolError('invalid_origin', 403)
         try:
@@ -181,10 +200,29 @@ def install_broker(app, settings, config):
         return RedirectResponse(settings.root_path + '/callback?' + urlencode({
             'state': reference, 'code': upstream_code}), status_code=303)
 
-    @app.get('/callback')
-    def callback(request: Request):
+    @app.api_route('/callback', methods=['GET', 'POST'])
+    async def callback(request: Request):
+        from urllib.parse import parse_qs
+        from starlette.concurrency import run_in_threadpool
+
         throttle(request)
         require_ready()
+        if upstream is not None:
+            if request.method != 'POST':
+                raise ProtocolError('invalid_request', 405)
+            if request.headers.get('content-type', '').split(';')[0] != 'application/x-www-form-urlencoded':
+                raise ProtocolError('invalid_request', 415)
+            try:
+                fields = parse_qs((await request.body()).decode(), keep_blank_values=True, strict_parsing=True)
+            except (ValueError, UnicodeDecodeError) as error:
+                raise ProtocolError('invalid_request') from error
+            if (request.query_params or 'state' not in fields
+                    or any(len(values) != 1 for values in fields.values())):
+                raise ProtocolError('invalid_request')
+            return await run_in_threadpool(live_callback, request, {
+                key: values[0] for key, values in fields.items()})
+        if request.method != 'GET':
+            raise ProtocolError('invalid_request', 405)
         if (set(request.query_params) != {'state', 'code'}
                 or len(request.query_params.multi_items()) != 2):
             raise ProtocolError('invalid_request')
@@ -192,16 +230,45 @@ def install_broker(app, settings, config):
         upstream_code = request.query_params['code']
         browser = request.cookies.get(BROWSER_COOKIE, '')
         with store.connection() as connection:
-            upstream = store.get(connection, upstream_code, 'upstream')
-            if (upstream['transaction'] != reference
-                    or not hmac.compare_digest(upstream['browser'], digest(browser))):
+            upstream_record = store.get(connection, upstream_code, 'upstream')
+            if (upstream_record['transaction'] != reference
+                    or not hmac.compare_digest(upstream_record['browser'], digest(browser))):
                 raise ProtocolError('invalid_browser')
             transaction = store.get(connection, reference, 'transaction')
             connection.execute('DELETE FROM records WHERE id=?', (digest(upstream_code),))
-            if upstream['identity'] is None or transaction['scenario'] == 'cancel':
+            if upstream_record['identity'] is None or transaction['scenario'] == 'cancel':
                 connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
                 return RedirectResponse(transaction['completion'] + '?' + urlencode({
                     'state': transaction['state'], 'error': 'cancelled'}), status_code=303)
-        transaction, code = store.authorize(reference, browser, upstream['identity'])
+        transaction, code = store.authorize(reference, browser, upstream_record['identity'])
+        return RedirectResponse(transaction['completion'] + '?' + urlencode({
+            'state': transaction['state'], 'code': code}), status_code=303)
+
+    def live_callback(request, response):
+        reference = response['state']
+        browser = request.cookies.get(BROWSER_COOKIE, '')
+        with store.connection() as connection:
+            transaction = store.get(connection, reference, 'transaction')
+            if (transaction['browser'] is None
+                    or not hmac.compare_digest(transaction['browser'], digest(browser))
+                    or 'upstream_flow' not in transaction or transaction['code'] is not None):
+                raise ProtocolError('invalid_browser')
+            try:
+                identity, cache = upstream.complete(
+                    transaction['upstream_flow'], transaction['token_cache'], response)
+            except ProtocolError as error:
+                if error.code not in ('cancelled', 'interaction_required'):
+                    raise
+                connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
+                return RedirectResponse(transaction['completion'] + '?' + urlencode({
+                    'state': transaction['state'], 'error': 'cancelled'}), status_code=303)
+            code = secrets.token_urlsafe(32)
+            transaction['identity'] = identity
+            transaction['token_cache'] = cache
+            del transaction['upstream_flow']
+            transaction['code'] = digest(code)
+            transaction['code_expires'] = store.clock() + CODE_TTL
+            store.put(connection, reference, 'transaction', transaction['owner'],
+                      transaction['expires'], transaction)
         return RedirectResponse(transaction['completion'] + '?' + urlencode({
             'state': transaction['state'], 'code': code}), status_code=303)

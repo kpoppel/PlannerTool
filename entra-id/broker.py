@@ -21,6 +21,7 @@ RESOURCE = 'ado'
 TRANSACTION_TTL = 300
 CODE_TTL = 60
 GRANT_TTL = 3600
+LIVE_GRANT_TTL = 30 * 24 * 3600
 MAX_RECORDS = 4096
 
 
@@ -44,8 +45,6 @@ def read_secret(path):
 
 @dataclass(frozen=True)
 class BrokerConfig:
-    environment_id: str
-    generation: str
     mode: str
     public_url: str
     store_path: str
@@ -55,9 +54,6 @@ class BrokerConfig:
     ado_transport: str = 'fixture'
 
     def __post_init__(self):
-        for value in (self.environment_id, self.generation):
-            if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', value):
-                raise ValueError('Broker environment and generation require explicit safe identifiers')
         if self.mode not in ('mock', 'entra'):
             raise ValueError('Unknown broker mode')
         Fernet(self.key.encode())
@@ -98,6 +94,8 @@ class BrokerConfig:
             if registration['scenario'] not in (
                     'success', 'cancel', 'expired', 'revoked', 'interaction_required', 'unavailable', 'access_denied'):
                 raise ValueError('Unknown sandbox scenario')
+            if self.mode == 'entra' and registration['scenario'] != 'success':
+                raise ValueError('Live broker prohibits sandbox scenarios')
 
     @classmethod
     def from_env(cls, settings):
@@ -118,8 +116,6 @@ class BrokerConfig:
             if not source.is_absolute():
                 registration['secret_file'] = str(registry_path.parent / source)
         return cls(
-            environment_id=os.environ['ENTRA_BROKER_ENVIRONMENT'],
-            generation=os.environ['ENTRA_BROKER_GENERATION'],
             mode=settings.auth_mode,
             public_url=os.environ['ENTRA_BROKER_PUBLIC_URL'],
             store_path=os.environ['ENTRA_BROKER_STORE'],
@@ -138,9 +134,10 @@ class ProtocolError(Exception):
 
 
 class BrokerStore:
-    def __init__(self, config, clock=time.time):
+    def __init__(self, config, clock=time.time, upstream=None):
         self.config = config
         self.clock = clock
+        self.upstream = upstream
         self.cipher = Fernet(config.key.encode())
         path = Path(config.store_path)
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -152,17 +149,16 @@ class BrokerStore:
                                '(id TEXT PRIMARY KEY, kind TEXT NOT NULL, owner TEXT NOT NULL, '
                                'expires REAL NOT NULL, payload BLOB NOT NULL)')
             expected = json.dumps({'protocol': PROTOCOL, 'mode': config.mode,
-                                   'environment': config.environment_id,
-                                   'generation': config.generation, 'key': digest(config.key)}, sort_keys=True)
+                                   'broker_url': config.public_url, 'key': digest(config.key)}, sort_keys=True)
             row = connection.execute('SELECT value FROM metadata WHERE id=1').fetchone()
             if row is not None and row[0] != expected:
-                raise ValueError('Broker store environment, mode, generation or key mismatch; use a separate store')
+                raise ValueError('Broker store URL, mode or key mismatch; migrate the store explicitly')
             connection.execute('INSERT OR IGNORE INTO metadata VALUES (1, ?)', (expected,))
         path.chmod(0o600)
 
     @contextmanager
     def connection(self):
-        connection = sqlite3.connect(self.config.store_path, timeout=5)
+        connection = sqlite3.connect(self.config.store_path, timeout=30)
         try:
             connection.execute('PRAGMA secure_delete=ON')
             connection.execute('BEGIN IMMEDIATE')
@@ -250,18 +246,20 @@ class BrokerStore:
                 raise ProtocolError('invalid_binding')
             if transaction['code_expires'] <= self.clock() or transaction['scenario'] == 'expired':
                 raise ProtocolError('expired')
-            expires = self.clock() + GRANT_TTL
+            expires = self.clock() + (LIVE_GRANT_TTL if self.config.mode == 'entra' else GRANT_TTL)
             payload = {'identity': transaction['identity'], 'transaction': reference,
                        'expires_at': expires, 'revoked': transaction['scenario'] == 'revoked',
                        'scenario': transaction['scenario']}
+            if self.config.mode == 'entra':
+                payload['token_cache'] = transaction['token_cache']
             self.put(connection, grant, 'grant', owner, expires, payload)
             connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
         return {**self.metadata(), 'transaction': reference, 'identity': payload['identity'],
                 'grant': grant, 'expires_at': expires}
 
     def metadata(self):
-        return {'protocol': PROTOCOL, 'environment_id': self.config.environment_id,
-                'generation': self.config.generation, 'upstream_mode': self.config.mode}
+        return {'protocol': PROTOCOL, 'broker_url': self.config.public_url,
+            'upstream_mode': self.config.mode}
 
     def grant(self, owner, reference, operation, resource=None):
         with self.connection() as connection:
@@ -281,8 +279,12 @@ class BrokerStore:
                 raise ProtocolError('interaction_required', 409)
             if payload['scenario'] == 'access_denied':
                 raise ProtocolError('access_denied', 403)
-            if self.config.mode != 'mock':
-                raise ProtocolError('auth_unavailable', 503)
+            if self.config.mode == 'entra':
+                token, expires, cache = self.upstream.token(payload['token_cache'])
+                payload['token_cache'] = cache
+                self.put(connection, reference, 'grant', owner, payload['expires_at'], payload)
+                return {**self.metadata(), 'resource': RESOURCE, 'token_kind': 'bearer',
+                        'access_token': token, 'expires_at': min(expires, payload['expires_at'])}
             return {**self.metadata(), 'resource': RESOURCE, 'token_kind': 'fixture',
                     'access_token': 'invalid-sandbox-ado-' + secrets.token_urlsafe(24),
                     'expires_at': min(self.clock() + 300, payload['expires_at'])}

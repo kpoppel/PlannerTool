@@ -18,24 +18,25 @@ This version adds EntraID authentication.
 
 ### Added
 - Option to configure EntraID authentication
-- Add an isolated, authenticated Entra broker sandbox with encrypted durable handoffs/grants, source-bound PlannerTool sessions, and manifest-generated deployment. Live Entra activation remains unavailable.
-- Add sandbox-tested stable Entra identity links, unprivileged just-in-time accounts and admin-approved browser identity proof while preserving existing account ownership and permissions.
+- Support mock and live Entra broker authentication with encrypted persistent MSAL caches, browser-bound PKCE handoffs, on-demand delegated ADO renewal and manifest-managed registration secrets. Real-tenant acceptance remains required.
+- Support first-admin bootstrap on empty live installations and one-time email claims for pre-existing accounts, including a Configuration action that merges fresh Entra accounts into existing ownership. Manual migration claims deliberately accept email entry alone and require a restricted migration audience.
 - Add session-owned delegated credentials and explicit SDK/wiki Bearer transport with renewal and revocation-checked task snapshot publication; fixture credentials cannot enter live Azure DevOps transport.
-- Preview PAT / Entra ID selection for live Azure DevOps in Data Sources, showing the active mode without enabling Entra activation or changing saved authentication settings.
-- Add isolated authentication UI previews for mode-dependent account controls, Entra sign-in, recovery and logout, without enabling real Entra authentication or changing active PAT/local behavior.
+- Show deployment-controlled PAT / Entra ID selection and readiness in Data Sources without changing authentication through backend configuration saves.
+- Add mode-dependent account controls, broker sign-in, recovery and instance-scoped logout.
 - Option to enable automatic HTTPS in generated multi-instance Docker deployments
 - Guide HTTPS certificate prerequisites during deployment and verify a trusted hostname-matching certificate before reporting HTTPS startup success, with actionable Caddy diagnostics when issuance is not ready.
 - Support private HTTPS deployments with company-supplied certificates or Caddy's internal CA, including public root export and explicit CA trust for startup checks, without public DNS or ACME challenges.
 - Support DNS/HTTPS ingress for shared mock authentication while retaining private broker transport and blocking live ADO.
 
 ### Changed
+- Remove operator environment/generation labels from broker configuration. Revision 48 resets obsolete broker state while preserving local accounts and data; an explicit backed-up configuration migration upgrades existing manifests and managed metadata.
 - Use provider-neutral broker issuer/subject identities and generic sign-in discovery; revision 47 resets obsolete development external links and sessions while preserving local accounts and data. Mock sign-in accepts an account email to reuse existing permissions, including administration.
 - Make PlannerTool independent of mock-auth sandbox storage: allow copied server data and normal ADO configuration, preserve accounts and credentials on deployment login changes, and reject fake ADO credentials during acquisition with a notification before any ADO fetch. Keep local sessions and cached tasks available. Remove automatic demo provisioning, Planner network isolation and the credential-purging fleet transition command.
 - Build and start source-declared PlannerTool instances and the auth service in one generated Compose project, with explicit protected environment-file and project-name options for operators.
 - Use the standard image startup command for auth-connected instances, with proxy and access-log settings supplied through environment variables instead of per-instance command overrides.
-- Make ADO authentication deployment-controlled, with read-only instance readiness and an explicit, recoverable offline sandbox fleet transition. Instances without an auth-service connection remain independent of the broker; live activation remains blocked.
+- Make ADO authentication deployment-controlled with read-only instance readiness. Instances without an auth-service connection remain independent of the broker.
 - Exclude PATs, enrollment keys, active login policy and broker authority from logical backups. Account restore requires fresh operator-reset enrollment credentials and cannot replace Entra accounts.
-- Share frontend authentication client contracts and typed recovery across planner and administration, with mocked Entra HTTP flows while real activation remains disabled.
+- Share frontend authentication client contracts and typed recovery across planner and administration.
 - Discover the active login source in normal planner/admin pages and support isolated broker-backed Entra sandbox sign-in, reauthentication and instance logout without PAT or enrollment prompts.
 - Keep backend selection in each instance's admin configuration; deployment manifests specify hosting, auth-service connections and shared credential policy without duplicating backend or login-provider settings.
 - Invalidate existing sessions once during the revision-44 source/epoch upgrade, preserving accounts, permissions and PATs.

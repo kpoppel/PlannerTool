@@ -134,6 +134,27 @@ describe('config-modal', () => {
     expect(modal._qs('#retryStaffingBtn').hidden).to.equal(true);
   });
 
+  it('offers a one-way legacy account link only when the server permits it', async () => {
+    const state = createMockAuth('entra_signed_in').state;
+    const linkAccount = vi.fn().mockResolvedValue(undefined);
+    modal.authentication = { state: { ...state,
+      capabilities: { ...state.capabilities, linkAccount: true } },
+      subscribe: () => () => {}, linkAccount };
+    await modal.updateComplete;
+    modal._qs('#legacyAccountEmail').value = 'existing@example.test';
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await modal._onLinkAccount();
+    expect(linkAccount.mock.calls.length).to.equal(0);
+    window.confirm.mockReturnValue(true);
+    await modal._onLinkAccount();
+    expect(linkAccount.mock.calls[0]).to.deep.equal(['existing@example.test']);
+    linkAccount.mockRejectedValue(Object.assign(new Error('Denied'), { code: 'access_denied' }));
+    await modal._onLinkAccount();
+    await modal.updateComplete;
+    expect(modal._linkError).to.equal('This account is not eligible for linking.');
+    expect(modal._qs('#linkAccountBtn').disabled).to.equal(false);
+  });
+
   it('offers account deletion without any pairing controls', async () => {
     await modal.updateComplete;
     expect(modal._qs('#pairBrowserBtn')).to.equal(null);

@@ -2,8 +2,7 @@
   "protocol": "plannertool-auth/1",
   "metadata": {
     "protocol": "plannertool-auth/1",
-    "environment_id": "sandbox",
-    "generation": "test-1",
+    "broker_url": "http://localhost:8080/auth/",
     "upstream_mode": "mock"
   },
   "ttl_seconds": { "transaction": 300, "handoff": 60, "grant": 3600, "token_fixture": 300 },
@@ -12,7 +11,7 @@
     "status": "signed_in",
     "capabilities": {
       "pat": false, "enrollment": false, "reauthenticate": true,
-      "logout": true, "deleteAccount": false
+      "logout": true, "deleteAccount": false, "linkAccount": false
     }
   },
   "identity": {

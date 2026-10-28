@@ -1,9 +1,11 @@
 # Entra ID / Azure DevOps PoC
 
-Phase D now adds an authenticated sandbox broker beside the preserved PoC. The
-broker is independently runnable and never imports PlannerTool. See
-`../docs/AUTH_BROKER_PHASE_D.md` for protocol, registry and tandem deployment.
-The existing PoC sections below describe live diagnostics, not broker acceptance.
+The authenticated broker supports mock and live Entra modes, is independently
+runnable and never imports PlannerTool. Use the normal manifest-driven deployment
+in [Deployment](../docs/DEPLOYMENT.md) for connected PlannerTool instances. The
+broker persists encrypted MSAL caches and session-owned grants; mock mode never
+initializes MSAL or contacts Microsoft. Environment/generation labels are not used.
+The standalone PoC sections below describe live diagnostics, not broker acceptance.
 Set `ENTRA_AUTH_MODE=entra` and an explicit `ENTRA_REDIRECT_URI` for that workflow.
 
 ## Registration-Free Broker Sandbox
@@ -20,7 +22,7 @@ From a repository checkout, the generator can produce compatible ignored inputs:
 
 ```bash
 source .venv/bin/activate
-python scripts/auth_sandbox.py --directory deployment/phase-d-standalone --port 18881
+python tests/fakes/auth_sandbox.py --directory deployment/phase-d-standalone --port 18881
 docker compose --env-file deployment/phase-d-standalone/standalone.env \
   -f entra-id/compose.sandbox.yaml config --quiet
 docker compose --env-file deployment/phase-d-standalone/standalone.env \
@@ -36,7 +38,7 @@ For a direct Python launch, activate this component's environment, load the
 synthetic tenant/client/organization from `registration.env`, and set
 `ENTRA_AUTH_MODE=mock`, `ENTRA_REDIRECT_URI=http://localhost:PORT/auth/callback`,
 `ENTRA_CLIENT_SECRET_FILE`, `ENTRA_ADO_TRANSPORT=fixture`,
-`ENTRA_BROKER_ENVIRONMENT`, `ENTRA_BROKER_GENERATION`, `ENTRA_BROKER_PUBLIC_URL`,
+`ENTRA_BROKER_PUBLIC_URL`,
 `ENTRA_BROKER_KEY_FILE`, `ENTRA_BROKER_STORE` (inside a mode-0700 directory) and
 `ENTRA_BROKER_REGISTRY_FILE` (`direct-instances.json` from the generator).
 Run `python app.py`; the listener remains loopback-only. Both launch methods use
@@ -53,9 +55,9 @@ outbound HTTPS to Microsoft Entra and Azure DevOps.
 The PoC signs in individual users through MSAL authorization code flow with PKCE,
 reads their ADO identity/projects, and tests token refresh. It never writes to ADO.
 It is deployed at `/auth/`, with its single Entra callback at `/auth/callback`.
-It is the starting point for a shared token service; the instance-facing API,
-secure handoff, encrypted persistent storage, and service authentication are not
-implemented yet. Planner instances are not connected to this PoC.
+The diagnostic PoC is separate from the implemented broker's instance API, secure
+handoff, encrypted persistence and service authentication. Planner instances connect
+to the broker, not the diagnostic PoC. Real-tenant acceptance remains outstanding.
 
 ## 1. Get the registration and hostname
 

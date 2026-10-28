@@ -3,10 +3,61 @@ import json
 import os
 import re
 import secrets
+import shutil
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import yaml
+
+
+def migrate_auth_configuration(manifest_path, output_dir, *, apply=False):
+    manifest_path = Path(manifest_path).resolve()
+    config = yaml.safe_load(manifest_path.read_text())
+    changes = []
+    updates = []
+    for name, service in config.get('auth_services', {}).items():
+        if not re.fullmatch(r'[a-z][a-z0-9-]{0,40}', name):
+            raise ValueError('Invalid auth service name')
+        for field in ('environment_id', 'generation'):
+            if field in service:
+                del service[field]
+                changes.append(f'{name}: remove {field}')
+        if service['mode'] not in ('mock', 'entra'):
+            raise ValueError('Unknown auth service mode')
+        if 'registration' not in service:
+            env_path = Path(protected_file(manifest_path.parent, service['env_file']))
+            lines = env_path.read_text().splitlines()
+            retained = [line for line in lines if line.partition('=')[0] not in (
+                'ENTRA_BROKER_ENVIRONMENT', 'ENTRA_BROKER_GENERATION')]
+            if retained != lines:
+                updates.append((env_path, '\n'.join(retained) + '\n'))
+                changes.append(f'{name}: remove obsolete registration settings')
+            continue
+        marker = Path(output_dir).resolve() / '.auth' / name / 'managed.json'
+        if marker.exists():
+            previous = json.loads(Path(protected_file(marker.parent, marker.name)).read_text())
+            if (set(previous) != {'version', 'identity', 'instances'}
+                    or previous['version'] not in (1, 2)):
+                raise ValueError('Unsupported managed auth metadata')
+            updated = {'version': 2, 'identity': {
+                'mode': service['mode'], 'public_url': service['public_url'],
+            }, 'instances': previous['instances']}
+            if updated != previous:
+                updates.append((marker, json.dumps(updated, indent=2) + '\n'))
+                changes.append(f'{name}: migrate managed auth metadata')
+    if changes:
+        updates.append((manifest_path, yaml.safe_dump(config, sort_keys=False)))
+    if apply:
+        stamp = str(time.time_ns())
+        for path, content in updates:
+            shutil.copy2(path, path.with_name(path.name + '.before-auth-v2-' + stamp))
+            temporary = path.with_name(path.name + '.auth-v2-' + stamp)
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, 'w') as stream:
+                stream.write(content)
+            os.replace(temporary, path)
+    return changes
 
 
 def validate_deployment_policy(config):
@@ -52,19 +103,22 @@ def write_managed_auth(service, registry, *, apply):
 
     directory = Path(service['key_file']).parent
     marker = directory / 'managed.json'
-    identity = {key: service[key] for key in ('mode', 'environment_id', 'generation', 'public_url')}
+    identity = {key: service[key] for key in ('mode', 'public_url')}
     members = sorted(registry['instances'])
-    expected_secrets = {'broker-key', 'client-secret'} | {'client-' + name for name in members}
+    shared_secrets = {'broker-key'}
+    if service['mode'] == 'mock':
+        shared_secrets.add('client-secret')
+    expected_secrets = shared_secrets | {'client-' + name for name in members}
     existing_members = set()
     if directory.exists():
         if directory.stat().st_mode & 0o077:
             raise ValueError('Managed authentication directory requires mode 0700')
         previous = json.loads(Path(protected_file(directory, 'managed.json')).read_text())
-        if (set(previous) != {'version', 'identity', 'instances'} or previous['version'] != 1
+        if (set(previous) != {'version', 'identity', 'instances'} or previous['version'] != 2
                 or previous['identity'] != identity):
-            raise ValueError('Managed auth environment/mode/URL changed; explicit transition with separate storage required')
+            raise ValueError('Managed auth configuration changed; run scripts/migrate-py auth before deployment')
         existing_members = set(previous['instances'])
-        for name in {'broker-key', 'client-secret'} | {'client-' + name for name in existing_members}:
+        for name in shared_secrets | {'client-' + name for name in existing_members}:
             protected_file(directory, name)
         Fernet(Path(service['key_file']).read_text().strip().encode())
     if not apply:
@@ -82,7 +136,7 @@ def write_managed_auth(service, registry, *, apply):
     files = {
         'registration.env': '\n'.join(key + '=' + value for key, value in service['_environment'].items()) + '\n',
         'instances.json': json.dumps(registry, indent=2) + '\n',
-        'managed.json': json.dumps({'version': 1, 'identity': identity, 'instances': members}, indent=2) + '\n',
+        'managed.json': json.dumps({'version': 2, 'identity': identity, 'instances': members}, indent=2) + '\n',
     }
     for name, value in files.items():
         temporary = directory / (name + '.tmp')
@@ -112,7 +166,7 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
             raise ValueError('Unknown auth service reference')
         service = dict(config['auth_services'][name])
         managed = name in managed_services
-        required = {'mode', 'environment_id', 'generation', 'public_url', 'volume_source'}
+        required = {'mode', 'public_url', 'volume_source'}
         required |= {'registration'} if managed else {'env_file', 'registry_file', 'key_file', 'client_secret_file'}
         if not required <= set(service) or set(service) - required - {'image', 'build_from_source'}:
             raise ValueError('Auth service requires explicit configuration, registry, secrets and persistent volume')
@@ -122,9 +176,9 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
             raise ValueError('Image-only auth services require an explicit image')
         if service['mode'] not in ('mock', 'entra'):
             raise ValueError('Unknown auth service mode')
-        for field in ('environment_id', 'generation', 'volume_source'):
+        for field in ('volume_source',):
             if not re.fullmatch(r'[a-z][a-z0-9-]{0,63}', service[field]):
-                raise ValueError('Invalid auth environment, generation or volume name')
+                raise ValueError('Invalid auth volume name')
         public = urlsplit(service['public_url'])
         if (public.path != '/auth/' or public.query or public.fragment or public.username
                 or not public.hostname or public.password):
@@ -140,15 +194,21 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
             raise ValueError('Live broker requires matching explicit HTTPS ingress')
         if managed:
             registration = service.pop('registration')
-            if set(registration) != {'tenant_id', 'client_id', 'organization'}:
-                raise ValueError('Auth registration requires tenant_id, client_id and organization')
-            if service['mode'] != 'mock':
-                raise ValueError('Managed live Entra activation requires the separately approved live broker gate')
+            fields = {'tenant_id', 'client_id', 'organization'}
+            if service['mode'] == 'entra':
+                fields.add('client_secret_file')
+            if set(registration) != fields:
+                raise ValueError('Auth registration requires tenant_id, client_id, organization '
+                                 'and a client_secret_file in live mode')
             directory = Path(output_dir).resolve() / '.auth' / name
             service.update({field: str(directory / filename) for field, filename in {
                 'env_file': 'registration.env', 'registry_file': 'instances.json',
                 'key_file': 'broker-key', 'client_secret_file': 'client-secret',
             }.items()})
+            if service['mode'] == 'entra':
+                service['client_secret_file'] = protected_file(base, registration['client_secret_file'])
+                if not Path(service['client_secret_file']).read_text().strip():
+                    raise ValueError('Entra client secret file must not be empty')
             env = {'ENTRA_TENANT_ID': registration['tenant_id'], 'ENTRA_CLIENT_ID': registration['client_id'],
                    'ADO_ORGANIZATION': registration['organization']}
         else:
@@ -167,8 +227,7 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
                     raise ValueError('Auth env files must not contain secrets; use secret files')
                 env[key] = value
         expected = {
-            'ENTRA_AUTH_MODE': service['mode'], 'ENTRA_BROKER_ENVIRONMENT': service['environment_id'],
-            'ENTRA_BROKER_GENERATION': service['generation'], 'ENTRA_BROKER_PUBLIC_URL': service['public_url'],
+            'ENTRA_AUTH_MODE': service['mode'], 'ENTRA_BROKER_PUBLIC_URL': service['public_url'],
             'ENTRA_REDIRECT_URI': service['public_url'] + 'callback',
             'ENTRA_ADO_TRANSPORT': 'fixture' if service['mode'] == 'mock' else 'live',
         }
@@ -259,7 +318,7 @@ def add_auth_compose(compose, instances, services, version):
                        'ENTRA_CLIENT_SECRET_FILE': '/run/secrets/entra-secret',
                        'ENTRA_BROKER_KEY_FILE': '/run/secrets/broker-key',
                        'ENTRA_BROKER_REGISTRY_FILE': '/app/config/instances.json',
-                       'ENTRA_BROKER_STORE': '/app/state/protected/broker.sqlite'}
+                       'ENTRA_BROKER_STORE': '/app/state/protected/broker-v2-' + service['mode'] + '.sqlite'}
         auth = {
             'image': service.get('image', 'plannertool-auth:' + version),
             'environment': environment,
@@ -290,8 +349,6 @@ def add_auth_compose(compose, instances, services, version):
                 'PLANNER_AUTH_INSTANCE=' + instance_name,
                 'PLANNER_AUTH_URL=http://' + dns + ':8000/auth/',
                 'PLANNER_AUTH_PUBLIC_URL=' + service['public_url'],
-                'PLANNER_AUTH_ENVIRONMENT=' + service['environment_id'],
-                'PLANNER_AUTH_GENERATION=' + service['generation'],
                 'PLANNER_AUTH_UPSTREAM_MODE=' + service['mode'],
                 'PLANNER_AUTH_SECRET_FILE=/run/secrets/auth-client',
             ])

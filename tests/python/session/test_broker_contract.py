@@ -18,6 +18,25 @@ SANDBOX_TENANT = '11111111-1111-1111-1111-111111111111'
 BROKER_ISSUER = 'https://auth.example.test'
 
 
+def test_broker_settings_require_no_environment_or_generation(monkeypatch, tmp_path):
+    secret = tmp_path / 'service-secret'
+    secret.write_text(secrets.token_urlsafe(32))
+    secret.chmod(0o600)
+    for key in ('PLANNER_AUTH_ENVIRONMENT', 'PLANNER_AUTH_GENERATION'):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in {
+        'PLANNER_AUTH_INSTANCE': 'alpha', 'PLANNER_AUTH_URL': 'http://auth-central/auth/',
+        'PLANNER_AUTH_PUBLIC_URL': 'https://planner.example.test/auth/',
+        'PLANNER_AUTH_UPSTREAM_MODE': 'entra', 'PLANNER_AUTH_SECRET_FILE': str(secret),
+    }.items():
+        monkeypatch.setenv(key, value)
+    settings = BrokerSettings.from_env()
+    assert settings.metadata() == {
+        'protocol': 'plannertool-auth/1', 'upstream_mode': 'entra',
+        'broker_url': 'https://planner.example.test/auth/',
+    }
+
+
 @pytest.fixture
 def sandbox(monkeypatch, tmp_path, request):
     origin = getattr(request, 'param', 'http://localhost:8765')
@@ -28,7 +47,6 @@ def sandbox(monkeypatch, tmp_path, request):
         'PLANNER_AUTH_PROVIDER': 'entra', 'PLANNER_AUTH_INSTANCE': 'alpha',
         'PLANNER_AUTH_URL': 'http://localhost:8765/auth/',
         'PLANNER_AUTH_PUBLIC_URL': origin + '/auth/',
-        'PLANNER_AUTH_ENVIRONMENT': 'sandbox', 'PLANNER_AUTH_GENERATION': 'test-1',
         'PLANNER_AUTH_UPSTREAM_MODE': 'mock',
         'PLANNER_AUTH_SECRET_FILE': str(secret_file),
     }.items():
@@ -48,7 +66,7 @@ def sandbox(monkeypatch, tmp_path, request):
     for index, (subject, (email, name)) in enumerate(identities.items()):
         accounts.create_account(AccountCredentialsPayload(email=email), permissions=['admin'] if index == 0 else [])
         storage.save('external_identities', identity_key(BROKER_ISSUER, subject), {
-            'version': 2, 'issuer': BROKER_ISSUER, 'subject': subject,
+            'version': 3, 'issuer': BROKER_ISSUER, 'subject': subject,
             'account_id': accounts.get_account_id(email), 'environment': settings.metadata(),
             'name': name, 'email': email,
         })
@@ -116,6 +134,160 @@ def test_external_identity_keys_are_opaque_and_issuer_scoped():
                             ('issuer', 'user\n'), ('issuer', 'x' * 513)]:
         with pytest.raises(ValueError):
             identity_key(issuer, subject)
+
+
+def prepare_live_accounts(client, identity):
+    import time
+    from dataclasses import replace
+    from planner_lib.session.identity import initialize_legacy_claims
+
+    container = client.app.state.container
+    storage = container.get('storage')
+    for key in list(storage.list_keys('external_identities')):
+        storage.delete('external_identities', key)
+    initialize_legacy_claims(storage)
+    broker = container.get('broker_client')
+    login = container.get('login_adapter')
+    settings = replace(broker.settings, upstream_mode='entra')
+    broker.settings = settings
+    login.settings = settings
+    login.identities.settings = settings
+
+    def transport(request):
+        metadata = settings.metadata()
+        if request.url.path.endswith('/readiness'):
+            return httpx.Response(200, json={**metadata, 'ready': True, 'live_capable': True})
+        payload = json.loads(request.content)
+        if request.url.path.endswith('/begin'):
+            value = {'transaction': 'live-transaction', 'expires_at': time.time() + 300,
+                     'authorization_url': settings.public_url + 'v1/browser/authorize?transaction=live-transaction'}
+        elif request.url.path.endswith('/redeem'):
+            value = {'transaction': payload['transaction'], 'identity': identity,
+                     'grant': 'live-grant', 'expires_at': time.time() + 3600}
+        elif request.url.path.endswith('/status'):
+            value = {'status': 'active'}
+        else:
+            raise AssertionError('Unexpected operation')
+        return httpx.Response(200, json={**metadata, **value})
+
+    broker.transport = httpx.MockTransport(transport)
+    return login
+
+
+def test_live_email_claim_is_one_time_and_keeps_existing_permissions(sandbox):
+    from planner_lib.accounts.config import AccountCredentialsPayload
+    client, requests = sandbox
+    identity = {'issuer': BROKER_ISSUER, 'subject': 'live-subject',
+                'name': 'Live User', 'email': 'ALEX@EXAMPLE.TEST'}
+    login = prepare_live_accounts(client, identity)
+    original = login.accounts.get_account_id('alex@example.test')
+    assert login.identities.resolve(identity)['id'] == original
+    assert login.identities.resolve({**identity, 'email': 'changed@example.test'})['id'] == original
+    assert login.accounts.get_account_by_id(original)['permissions'] == ['admin']
+    assert original not in login.storage.load('system', 'legacy_email_claims')['accounts']
+    new = login.identities.resolve({**identity, 'subject': 'different-identity'})
+    assert new['id'] != original
+    assert new['permissions'] == []
+    later = login.accounts.create_account(AccountCredentialsPayload(email='later@example.test'), permissions=[])
+    another = login.identities.resolve({**identity, 'subject': 'later-identity', 'email': 'later@example.test'})
+    assert another['id'] != later['id']
+
+
+def test_missing_email_manual_claim_moves_owned_data_and_rotates_session(sandbox):
+    from planner_lib.storage.user_store import UserDataStore
+    client, requests = sandbox
+    login = prepare_live_accounts(client, {'issuer': BROKER_ISSUER,
+        'subject': 'missing-email-subject', 'name': 'Live User'})
+    destination = login.accounts.get_account_id('alex@example.test')
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    signed_in = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    assert signed_in.status_code == 200
+    source = signed_in.json()['account']['uuid']
+    assert source != destination
+    assert signed_in.json()['account']['email'] == ''
+    assert signed_in.json()['capabilities']['linkAccount'] is True
+    for namespace, register in (('views', 'view_register'), ('scenarios', 'scenario_register')):
+        store = UserDataStore(namespace, register, register + '.lock', login.storage)
+        store.save_item(destination, 'existing', {'name': 'Existing'})
+        store.save_item(source, 'fresh', {'name': 'Fresh'})
+    assert client.post('/api/auth/links/claim', json={'email': 'alex@example.test'},
+                       headers={'Origin': 'https://other.example.test'}).status_code == 403
+    claimed = client.post('/api/auth/links/claim', json={'email': 'alex@example.test'},
+                          headers={'Origin': 'http://localhost:8765'})
+    assert claimed.status_code == 200
+    assert claimed.json()['account']['uuid'] == destination
+    assert claimed.json()['permissions'] == ['admin']
+    assert client.get('/api/auth/me').json()['account']['uuid'] == destination
+    with pytest.raises(KeyError):
+        login.accounts.get_account_by_id(source)
+    for namespace, register in (('views', 'view_register'), ('scenarios', 'scenario_register')):
+        assert login.storage.load(namespace, destination + '_existing')['name'] == 'Existing'
+        assert login.storage.load(namespace, destination + '_fresh')['name'] == 'Fresh'
+        assert login.storage.load(namespace, register)[destination + '_fresh']['user'] == destination
+    assert client.post('/api/auth/links/claim', json={'email': 'sam@example.test'},
+                       headers={'Origin': 'http://localhost:8765'}).status_code == 403
+
+
+def test_fresh_live_installation_first_account_is_only_initial_admin(sandbox):
+    client, requests = sandbox
+    login = prepare_live_accounts(client, {'issuer': BROKER_ISSUER, 'subject': 'first', 'name': 'First'})
+    for email in list(login.storage.list_keys('accounts')):
+        login.storage.delete('accounts', email)
+    login.storage.save('system', 'legacy_email_claims', {'initialized': True, 'accounts': []})
+    first = login.identities.resolve({'issuer': BROKER_ISSUER, 'subject': 'first', 'name': 'First'})
+    second = login.identities.resolve({'issuer': BROKER_ISSUER, 'subject': 'second', 'name': 'Second'})
+    assert first['permissions'] == ['admin']
+    assert second['permissions'] == []
+
+
+def test_mock_to_live_startup_preserves_accounts_and_consumed_claims(sandbox, tmp_path, monkeypatch):
+    from planner_lib.accounts.config import AccountCredentialsPayload
+    client, requests = sandbox
+    root = tmp_path / 'cutover'
+    config = Config(data_dir=str(root), static_dir='www')
+    mock_app = create_app(config)
+    with TestClient(mock_app):
+        login = mock_app.state.container.get('login_adapter')
+        existing = login.accounts.create_account(AccountCredentialsPayload(email='owner@example.test'),
+                                                 permissions=['admin'])['id']
+        login.identities.resolve({'issuer': login.settings.public_url, 'subject': 'mock-subject',
+            'name': 'Mock Owner', 'email': 'owner@example.test', 'link_existing_by_email': True})
+        epoch = login.policy()['epoch']
+    monkeypatch.setenv('PLANNER_AUTH_UPSTREAM_MODE', 'entra')
+    live_app = create_app(config)
+    with TestClient(live_app):
+        login = live_app.state.container.get('login_adapter')
+        assert login.policy()['epoch'] == epoch + 1
+        assert not list(login.storage.list_keys('external_identities'))
+        account = login.identities.resolve({'issuer': BROKER_ISSUER, 'subject': 'live-owner',
+            'name': 'Live Owner', 'email': 'owner@example.test'})
+        assert account['id'] == existing
+        assert account['permissions'] == ['admin']
+        assert login.storage.load('system', 'legacy_email_claims')['accounts'] == []
+    restarted = create_app(config)
+    with TestClient(restarted):
+        login = restarted.state.container.get('login_adapter')
+        assert login.policy()['epoch'] == epoch + 1
+        assert login.storage.load('system', 'legacy_email_claims')['accounts'] == []
+
+
+def test_manual_claim_collision_rolls_back_identity_and_data(sandbox):
+    from planner_lib.storage.user_store import UserDataStore
+    client, requests = sandbox
+    login = prepare_live_accounts(client, {'issuer': BROKER_ISSUER,
+        'subject': 'unclaimed-subject', 'name': 'New User'})
+    source = login.identities.resolve({'issuer': BROKER_ISSUER,
+        'subject': 'unclaimed-subject', 'name': 'New User'})['id']
+    target = login.accounts.get_account_id('alex@example.test')
+    store = UserDataStore('views', 'view_register', 'view_register.lock', login.storage)
+    store.save_item(source, 'same-id', {'name': 'Fresh'})
+    store.save_item(target, 'same-id', {'name': 'Existing'})
+    with pytest.raises(ValueError, match='collision'):
+        login.identities.claim(source, 'alex@example.test')
+    assert store.load_item(source, 'same-id')['name'] == 'Fresh'
+    assert store.load_item(target, 'same-id')['name'] == 'Existing'
+    assert login.accounts.get_account_by_id(source)
+    assert target in login.storage.load('system', 'legacy_email_claims')['accounts']
 
 
 def test_other_broker_provider_uses_the_same_identity_contract(sandbox):
@@ -573,7 +745,7 @@ def test_delegated_acquisition_keeps_denial_interaction_and_outage_distinct(sand
 @pytest.mark.parametrize('change', [
     {'resource': 'other'}, {'token_kind': 'unsupported'}, {'access_token': ''},
     {'expires_at': 0}, {'expires_at': float('inf')}, {'refresh_token': 'forbidden'},
-    {'generation': 'wrong-generation'},
+    {'broker_url': 'https://wrong.example.test/auth/'},
 ])
 def test_delegated_token_response_fails_closed(sandbox, change):
     import time

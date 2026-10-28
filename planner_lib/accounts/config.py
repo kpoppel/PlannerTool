@@ -295,8 +295,44 @@ class AccountManager:
                 self._storage.delete('release_acknowledgements', account_id)
             if self._storage.exists('account_activity', account_id):
                 self._storage.delete('account_activity', account_id)
+            for key in list(self._storage.list_keys('auth_grants')):
+                grant = self._storage.load('auth_grants', key)
+                if grant['account_id'] == account_id:
+                    grant['revoked'] = True
+                    self._storage.save('auth_grants', key, grant)
+            if self._storage.exists('system', 'legacy_email_claims'):
+                claims = self._storage.load('system', 'legacy_email_claims')
+                if account_id in claims['accounts']:
+                    claims['accounts'].remove(account_id)
+                    self._storage.save('system', 'legacy_email_claims', claims)
             self._storage.delete(self.DEFAULT_NS, email)
         logger.info('Deleted account %s', email)
+
+    def merge_external_account(self, source_id: str, target_id: str) -> None:
+        """Move a fresh external account into an existing account without changing its UUID."""
+        from planner_lib.storage.user_store import UserDataStore
+
+        with self._storage.transaction():
+            source = self.get_account_by_id(source_id)
+            self.get_account_by_id(target_id)
+            if source_id == target_id or not source['email'].endswith('@identity.invalid'):
+                raise ValueError('Only a fresh external account can be merged')
+            for namespace, register_key in (('views', 'view_register'), ('scenarios', 'scenario_register')):
+                store = UserDataStore(namespace, register_key, register_key + '.lock', self._storage)
+                register = store.load_register()
+                for key in list(self._storage.list_keys(namespace)):
+                    if not key.startswith(source_id + '_'):
+                        continue
+                    destination = target_id + key[len(source_id):]
+                    if self._storage.exists(namespace, destination) or destination in register:
+                        raise ValueError('Account data collision prevents linking')
+                    self._storage.save(namespace, destination, self._storage.load(namespace, key))
+                    self._storage.delete(namespace, key)
+                    if key in register:
+                        metadata = register.pop(key)
+                        register[destination] = {**metadata, 'user': target_id}
+                store.save_register(register)
+            self.delete_account(source_id)
 
     def _delete_user_data(self, account_id: str) -> None:
         from planner_lib.storage.user_store import UserDataStore

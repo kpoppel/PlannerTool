@@ -15,12 +15,10 @@ services:
       ENTRA_NETWORK: private-compose
       ENTRA_INTERNAL_HOST: auth-standalone
       ENTRA_ADO_TRANSPORT: fixture
-      ENTRA_BROKER_ENVIRONMENT: ${ENTRA_BROKER_ENVIRONMENT:?Set sandbox environment}
-      ENTRA_BROKER_GENERATION: ${ENTRA_BROKER_GENERATION:?Set sandbox generation}
       ENTRA_BROKER_PUBLIC_URL: http://localhost:${SANDBOX_PORT}/auth/
       ENTRA_BROKER_KEY_FILE: /run/secrets/broker-key
       ENTRA_BROKER_REGISTRY_FILE: /app/config/instances.json
-      ENTRA_BROKER_STORE: /app/state/protected/broker.sqlite
+      ENTRA_BROKER_STORE: /app/state/protected/broker-v2-mock.sqlite
     secrets:
       - source: entra-secret
         target: entra-secret

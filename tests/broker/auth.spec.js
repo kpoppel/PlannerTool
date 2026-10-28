@@ -461,7 +461,7 @@ test('copied accounts retain identity and permissions across deployment login ch
   ], { stdio: 'pipe', timeout: 90000 });
   const generate = () => python('scripts/deploy.py', '--config', `${root}/manifest.yml`,
     '--output-dir', output, '--apply');
-  python('scripts/auth_sandbox.py', '--directory', root, '--port', '18881',
+  python('tests/fakes/auth_sandbox.py', '--directory', root, '--port', '18881',
     '--ado-authentication', 'pat');
   generate();
   copyFileSync(`${root}/.env`, `${output}/.env`);

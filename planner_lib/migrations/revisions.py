@@ -609,6 +609,23 @@ def upgrade_47(storage):
         storage.save('system', 'external_identity_schema', {'version': 2})
 
 
+def upgrade_48(storage):
+    from planner_lib.session.policy import initial_transition
+
+    with storage.transaction():
+        for namespace in ('external_identities', 'auth_grants', 'auth_transactions', 'auth_link_approvals'):
+            for key in list(storage.list_keys(namespace)):
+                if storage.exists(namespace, key):
+                    storage.delete(namespace, key)
+        for key in list(storage.list_keys('auth_sessions')):
+            if storage.load('auth_sessions', key)['source'] == 'entra':
+                storage.delete('auth_sessions', key)
+        storage.save('system', 'external_identity_schema', {'version': 3})
+        storage.save('system', 'authentication_transition', initial_transition())
+        storage.save('system', 'legacy_email_claims', {'initialized': False, 'accounts': []})
+        storage.save('system', 'broker_authority', None)
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -622,6 +639,7 @@ REGISTRY = tuple(
         (45, 44, upgrade_45),
         (46, 45, upgrade_46),
         (47, 46, upgrade_47),
+        (48, 47, upgrade_48),
     )
 )
 
@@ -646,7 +664,9 @@ def initialize(storage):
         if not storage.exists('config', key):
             storage.save('config', key, value)
     storage.save('system', 'schema_state', schema_state(TARGET_REVISION, initialized=True))
-    storage.save('system', 'external_identity_schema', {'version': 2})
+    storage.save('system', 'external_identity_schema', {'version': 3})
+    storage.save('system', 'legacy_email_claims', {'initialized': False, 'accounts': []})
+    storage.save('system', 'broker_authority', None)
     upgrade_46(storage)
     storage.save('system', 'workforce_backend_refresh_required', False)
 
@@ -804,8 +824,25 @@ def validate_records(storage, revision, *, server_config=None):
                     raise SchemaError('Invalid source-bound session record')
         if revision >= 47:
             from planner_lib.session.identity import validate_identity_records
-            validate_identity_records(storage)
-        elif revision >= 45:
+            validate_identity_records(storage, version=3 if revision >= 48 else 2)
+        if revision >= 48:
+            claims = storage.load('system', 'legacy_email_claims')
+            if (not isinstance(claims, dict) or set(claims) != {'initialized', 'accounts'}
+                    or type(claims['initialized']) is not bool or not isinstance(claims['accounts'], list)
+                    or any(not isinstance(account_id, str) or account_id not in account_ids
+                           for account_id in claims['accounts'])
+                    or len(claims['accounts']) != len(set(claims['accounts']))
+                    or (not claims['initialized'] and claims['accounts'])):
+                raise SchemaError('Invalid legacy account claim eligibility')
+            authority = storage.load('system', 'broker_authority')
+            if authority is not None and (
+                    not isinstance(authority, dict)
+                    or set(authority) != {'protocol', 'broker_url', 'upstream_mode'}
+                    or authority['protocol'] != 'plannertool-auth/1'
+                    or not isinstance(authority['broker_url'], str)
+                    or authority['upstream_mode'] not in ('mock', 'entra')):
+                raise SchemaError('Invalid broker authority')
+        if 45 <= revision < 47:
             if storage.load('system', 'external_identity_schema') != {'version': 1}:
                 raise SchemaError('Invalid external identity schema')
         if revision >= 46:

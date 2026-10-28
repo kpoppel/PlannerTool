@@ -235,7 +235,7 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
     if settings.broker_config is not None:
         from broker_routes import install_broker
-        install_broker(app, settings, settings.broker_config)
+        install_broker(app, settings, settings.broker_config, client_factory)
     request_ado = mock_ado_get if settings.auth_mode == 'mock' else ado_get
     sessions = {}
     registry_lock = threading.RLock()

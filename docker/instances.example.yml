@@ -18,14 +18,15 @@ ado_authentication: pat
 # auth_services:
 #   central:
 #     mode: mock
-#     environment_id: preview
-#     generation: initial
 #     public_url: https://planner.example.test/auth/
 #     volume_source: auth-central-state
 #     registration:
 #       tenant_id: 11111111-1111-1111-1111-111111111111
 #       client_id: 22222222-2222-2222-2222-222222222222
 #       organization: example
+# For live mode use mode: entra, real tenant_id/client_id, and add:
+#       client_secret_file: /etc/plannertool/entra-client-secret
+# Keep the secret value in that mode-0600 file, not in this manifest.
 # Generated registry and secrets are managed in deployment/.auth/ on --apply.
 # Match public_url to https_hostname and use your server's DNS name.
 # Mock identities are synthetic and publicly selectable: never use production data.
