@@ -97,7 +97,9 @@ export class ProviderREST extends RestProviderBase {
     if (this._authentication !== null) {
       const state = await this._authentication.status();
       if (state.status === 'signed_out' || state.status === 'session_expired') {
-        return this._authentication.signIn();
+        const { showAuthDialog } = await import('../components/AuthDialog.lit.js');
+        await showAuthDialog(this._resolveUrl('/api'), this._authentication);
+        return this._authentication.state.account !== null;
       }
       return true;
     }

@@ -68,7 +68,8 @@ def test_signed_out_and_unconfigured():
 
 
 def test_local_mock_sign_in_and_ado_fixtures_never_use_live_services():
-    settings = Settings('', '', '', '', ORIGIN + '/auth/callback', auth_mode='mock')
+    settings = Settings(TENANT, CLIENT, 'synthetic-secret', 'example',
+                        ORIGIN + '/auth/callback', auth_mode='mock')
     client_factory = Mock(side_effect=AssertionError('MSAL must not run in mock mode'))
     ado_get = Mock(side_effect=AssertionError('Live ADO must not run in mock mode'))
     app = create_app(settings, client_factory, ado_get)
@@ -111,20 +112,37 @@ def test_local_mock_authentication_cannot_be_exposed_remotely():
                  listen_host='0.0.0.0', auth_mode='mock')
 
 
-def test_mock_mode_does_not_read_a_client_secret_file(monkeypatch, tmp_path):
+def test_mock_mode_reads_the_normal_client_secret_file(monkeypatch, tmp_path):
     monkeypatch.setenv('ENTRA_AUTH_MODE', 'mock')
     monkeypatch.setenv('ENTRA_REDIRECT_URI', ORIGIN + '/auth/callback')
-    monkeypatch.setenv('ENTRA_CLIENT_SECRET_FILE', str(tmp_path / 'not-created'))
+    secret_file = tmp_path / 'synthetic-secret'
+    secret_file.write_text('synthetic-secret\n')
+    monkeypatch.setenv('ENTRA_CLIENT_SECRET_FILE', str(secret_file))
     monkeypatch.delenv('ENTRA_CLIENT_SECRET', raising=False)
-    monkeypatch.delenv('ENTRA_TENANT_ID', raising=False)
-    monkeypatch.delenv('ENTRA_CLIENT_ID', raising=False)
-    monkeypatch.delenv('ADO_ORGANIZATION', raising=False)
+    monkeypatch.setenv('ENTRA_TENANT_ID', TENANT)
+    monkeypatch.setenv('ENTRA_CLIENT_ID', CLIENT)
+    monkeypatch.setenv('ADO_ORGANIZATION', 'example')
 
     settings = Settings.from_env()
 
     assert settings.auth_mode == 'mock'
-    assert settings.client_secret == ''
+    assert settings.client_secret == 'synthetic-secret'
     assert settings.missing == []
+
+
+def test_mock_mode_missing_registration_is_not_a_login_bypass():
+    settings = Settings('', '', '', '', auth_mode='mock')
+    assert settings.missing == list(poc_app.ENV_NAMES)
+    with TestClient(create_app(settings), base_url=ORIGIN + '/auth/') as browser:
+        assert browser.get('/login').status_code == 503
+
+
+def test_mock_mode_missing_secret_file_fails_startup(monkeypatch, tmp_path):
+    monkeypatch.setenv('ENTRA_AUTH_MODE', 'mock')
+    monkeypatch.delenv('ENTRA_CLIENT_SECRET', raising=False)
+    monkeypatch.setenv('ENTRA_CLIENT_SECRET_FILE', str(tmp_path / 'missing'))
+    with pytest.raises(FileNotFoundError):
+        Settings.from_env()
 
 
 def test_login_callback_rotation_and_no_token_disclosure(setup):

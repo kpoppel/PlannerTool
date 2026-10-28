@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, Response, Request
-from pydantic import BaseModel
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
+from pydantic import BaseModel, ConfigDict
+from typing import Literal
 
 from planner_lib.middleware.session import (
     DEVICE_COOKIE, SESSION_COOKIE, get_session_id_from_request, get_session_context_from_request,
@@ -12,6 +14,223 @@ from planner_lib.accounts.config import CredentialValidationError
 
 router = APIRouter()
 CURRENT_RELEASE = 'v5.0.0'
+
+
+def _is_entra(request):
+    return resolve_service(request, 'authentication_provider') == 'entra'
+
+
+def _auth_failure(error):
+    return JSONResponse({'error': error.code}, status_code=error.status,
+                        headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
+
+
+@router.get('/auth/config')
+async def authentication_config(request: Request, response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    if _is_entra(request):
+        return {'mode': 'entra', 'capabilities': resolve_service(request, 'sandbox_login').profile()['capabilities']}
+    accounts = resolve_service(request, 'account_manager')
+    return {'mode': 'pat' if accounts.requires_pat() else 'local', 'capabilities': {
+        'pat': accounts.requires_pat(), 'enrollment': True, 'reauthenticate': False,
+        'logout': True, 'deleteAccount': True}}
+
+
+@router.post('/auth/login/begin')
+async def login_begin(request: Request, response: Response):
+    from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
+    if not _is_entra(request):
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    login = resolve_service(request, 'sandbox_login')
+    if request.headers.get('origin') != login.settings.completion_url.split('/' + login.settings.instance + '/')[0]:
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    try:
+        binding, result = login.begin(request.headers.get('x-planner-login-target', 'diagnostic'))
+    except AuthFailure as error:
+        return _auth_failure(error)
+    response.set_cookie(LOGIN_COOKIE, binding, httponly=True, samesite='lax', max_age=300,
+                        path=request.scope.get('root_path', '').rstrip('/') + '/api/auth/',
+                        secure=request.url.scheme == 'https')
+    response.headers['Cache-Control'] = 'no-store'
+    return result
+
+
+class LoginCompletion(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    state: str
+    code: str
+
+
+class AuthenticationSelection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    selected: Literal['enrollment', 'entra']
+
+
+@router.get('/auth/settings')
+@require_admin_session
+async def authentication_settings(request: Request, response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    return resolve_service(request, 'storage').load('config', 'authentication')
+
+
+@router.post('/auth/settings')
+@require_admin_session
+async def stage_authentication(payload: AuthenticationSelection, request: Request, response: Response):
+    from planner_lib.admin.config_manager import ConfigManager
+
+    storage = resolve_service(request, 'storage')
+    current = storage.load('config', 'authentication')
+    staged = {**current, 'selected': payload.selected}
+    ConfigManager(storage).save_config('authentication', staged)
+    response.headers['Cache-Control'] = 'no-store'
+    return staged
+
+
+def _complete_login(request, state, code):
+    from planner_lib.session.broker import LOGIN_COOKIE
+    return resolve_service(request, 'sandbox_login').complete(state, code, request.cookies.get(LOGIN_COOKIE, ''))
+
+
+@router.get('/auth/sandbox', response_class=HTMLResponse)
+async def sandbox_diagnostics(request: Request):
+    import html
+    from planner_lib.session.broker import AuthFailure
+
+    if not _is_entra(request):
+        raise HTTPException(404)
+    login = resolve_service(request, 'sandbox_login')
+    if not login.settings.isolated_sandbox:
+        raise HTTPException(404)
+    context = resolve_service(request, 'session_manager').get(request.cookies.get(SESSION_COOKIE, ''))
+    try:
+        profile = login.profile(context)
+    except AuthFailure as error:
+        return _auth_failure(error)
+    prefix = request.scope.get('root_path', '').rstrip('/')
+    identity = '<p>Signed out</p>' if profile['account'] is None else (
+        '<p>' + html.escape(profile['account']['name']) + '</p><p>'
+        + html.escape(profile['account']['email']) + '</p><p>'
+        + html.escape(profile['account']['uuid']) + '</p>')
+    return HTMLResponse(
+        '<!doctype html><html lang="en"><title>PlannerTool sandbox</title>'
+        '<meta name="referrer" content="same-origin"><h1>PlannerTool Sandbox</h1>'
+        + identity + f'<form method="post" action="{prefix}/api/auth/login/redirect">'
+        '<button>Sign in</button></form>'
+        + f'<form method="post" action="{prefix}/api/auth/sandbox/logout"><button>Sign out</button></form></html>',
+        headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'same-origin',
+                 'Content-Security-Policy': "default-src 'none'; form-action 'self'; frame-ancestors 'none'"})
+
+
+@router.post('/auth/login/redirect')
+async def sandbox_login_redirect(request: Request):
+    response = Response()
+    result = await login_begin(request, response)
+    if isinstance(result, Response):
+        return result
+    redirect = RedirectResponse(result['authorization_url'], status_code=303)
+    for key, value in response.raw_headers:
+        if key in (b'set-cookie', b'cache-control'):
+            redirect.raw_headers.append((key, value))
+    return redirect
+
+
+@router.post('/auth/sandbox/logout')
+async def sandbox_logout(request: Request):
+    if not _is_entra(request):
+        raise HTTPException(404)
+    response = RedirectResponse(request.scope.get('root_path', '').rstrip('/') + '/api/auth/sandbox', status_code=303)
+    await logout(response, request)
+    return response
+
+
+@router.post('/auth/login/complete')
+async def login_complete(payload: LoginCompletion, request: Request, response: Response):
+    from planner_lib.session.broker import AuthFailure
+    if not _is_entra(request):
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    try:
+        sid = _complete_login(request, payload.state, payload.code)
+    except AuthFailure as error:
+        return _auth_failure(error)
+    response.headers['x-set-session-id'] = sid
+    response.headers['Cache-Control'] = 'no-store'
+    context = resolve_service(request, 'session_manager').get(sid)
+    try:
+        return resolve_service(request, 'sandbox_login').profile(context)
+    except AuthFailure as error:
+        return _auth_failure(error)
+
+
+@router.get('/auth/login/callback')
+async def login_callback(request: Request):
+    from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
+    if not _is_entra(request):
+        return JSONResponse({'error': 'access_denied'}, status_code=403)
+    login = resolve_service(request, 'sandbox_login')
+    try:
+        pending = login.pending(request.query_params.get('state', ''), request.cookies.get(LOGIN_COOKIE, ''))
+    except AuthFailure as error:
+        return _auth_failure(error)
+    target = pending['return_target']
+    if request.query_params.get('error') == 'cancelled':
+        if set(request.query_params) != {'state', 'error'} or len(request.query_params.multi_items()) != 2:
+            return JSONResponse({'error': 'invalid_session'}, status_code=401)
+        try:
+            resolve_service(request, 'sandbox_login').cancel(
+                request.query_params['state'], request.cookies.get(LOGIN_COOKIE, ''))
+        except AuthFailure as error:
+            return _auth_failure(error)
+        response = RedirectResponse(request.scope.get('root_path', '').rstrip('/') + '/api/auth/sandbox', status_code=303)
+    else:
+        if set(request.query_params) != {'state', 'code'} or len(request.query_params.multi_items()) != 2:
+            return JSONResponse({'error': 'invalid_session'}, status_code=401)
+        try:
+            sid = _complete_login(request, request.query_params['state'], request.query_params['code'])
+        except AuthFailure as error:
+            if target != 'diagnostic':
+                response = _popup_completion(request, pending['state'], target, error.code)
+                response.status_code = error.status
+                return response
+            return _auth_failure(error)
+        response = RedirectResponse(request.scope.get('root_path', '').rstrip('/') + '/api/auth/sandbox', status_code=303)
+        response.headers['x-set-session-id'] = sid
+    if target != 'diagnostic':
+        popup_response = _popup_completion(request, pending['state'], target,
+                                           request.query_params.get('error'))
+        if 'x-set-session-id' in response.headers:
+            popup_response.headers['x-set-session-id'] = response.headers['x-set-session-id']
+        response = popup_response
+    response.delete_cookie(LOGIN_COOKIE, path=request.scope.get('root_path', '').rstrip('/') + '/api/auth/')
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
+
+
+def _popup_completion(request, state, target, error=None):
+    import html
+    import json
+    import secrets
+    from urllib.parse import urlsplit
+
+    settings = resolve_service(request, 'sandbox_login').settings
+    public = urlsplit(settings.public_url)
+    origin = public.scheme + '://' + public.netloc
+    destination = '/' + settings.instance + ('/admin' if target == 'admin' else '/')
+    nonce = secrets.token_urlsafe(24)
+    message = json.dumps({'type': 'planner-auth-complete', 'state': state,
+                          'instance': '/' + settings.instance, 'error': error})
+    return HTMLResponse(
+        '<!doctype html><html lang="en"><title>PlannerTool sign-in</title>'
+        + ('<p>Sign-in cancelled.</p>' if error else '<p>Sign-in complete.</p>')
+        + '<a href="' + html.escape(destination) + '">Return to PlannerTool</a>'
+        + '<script nonce="' + nonce + '">'
+        + 'if(window.opener){window.opener.postMessage(' + message + ',' + json.dumps(origin)
+        + ');window.close();}else{window.location.replace(' + json.dumps(destination) + ');}'
+        + '</script></html>', headers={
+            'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
+            'Content-Security-Policy': "default-src 'none'; script-src 'nonce-" + nonce
+            + "'; frame-ancestors 'none'; base-uri 'none'",
+        })
 
 
 class ReleaseAcknowledgement(BaseModel):
@@ -124,12 +343,21 @@ async def api_session_post(response: Response, request: Request):
 
 @router.get('/auth/me')
 async def current_account(request: Request):
+    if _is_entra(request):
+        from planner_lib.session.broker import AuthFailure
+        sid = request.cookies.get(SESSION_COOKIE, '')
+        context = resolve_service(request, 'session_manager').get(sid)
+        try:
+            return resolve_service(request, 'sandbox_login').profile(context)
+        except AuthFailure as error:
+            return _auth_failure(error)
     context = get_session_context_from_request(request)
     email = context['email']
     accounts = resolve_service(request, 'account_manager')
     profile = resolve_service(request, 'login_adapter').profile(context['account_id'])
     return {'email': email, 'name': profile['name'],
-            'patRequired': accounts.requires_pat(), 'patError': accounts.pat_error(email),
+            'patRequired': accounts.requires_pat(),
+            'patError': resolve_service(request, 'credential_policy').credential_error(context['account_id']),
             'permissions': [permission for permission in AccountPermissions.ALL
                             if accounts.has_permission(email, permission)],
             'currentDeviceId': context['device_id'],
@@ -174,6 +402,19 @@ async def revoke_device(device_id: str, request: Request):
 
 @router.post('/auth/logout')
 async def logout(response: Response, request: Request):
+    if _is_entra(request):
+        from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
+        login = resolve_service(request, 'sandbox_login')
+        revocation_pending = False
+        try:
+            login.logout(request.cookies.get(SESSION_COOKIE, ''))
+        except AuthFailure as error:
+            import logging
+            logging.getLogger(__name__).warning('Local logout complete; broker revocation pending: %s', error.code)
+            revocation_pending = True
+        _clear_auth_cookies(response, request)
+        response.delete_cookie(LOGIN_COOKIE, path=request.scope.get('root_path', '').rstrip('/') + '/api/auth/')
+        return {**login.profile(), 'revocation_pending': revocation_pending}
     sid = get_session_id_from_request(request)
     sessions = resolve_service(request, 'session_manager')
     account = get_session_context_from_request(request)

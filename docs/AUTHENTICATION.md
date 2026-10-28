@@ -1,4 +1,14 @@
-# Device Authentication
+# Authentication
+
+Phase D adds an isolated, authenticated broker sandbox and canonical revision 44.
+Existing application sessions expire once on upgrade; account UUIDs, permissions,
+enrollment keys and PATs are retained. Production Entra activation remains blocked.
+See [the broker protocol and operator runbook](AUTH_BROKER_PHASE_D.md).
+
+Normal planner and admin pages now discover the active login source. Explicit
+isolated Entra sandboxes use the shared HTTP client and the running broker;
+enrollment/PAT installations retain their existing login path. This is not live
+Entra activation or authorization to change an existing instance's active mode.
 
 PlannerTool uses generated browser credentials, not user-chosen passwords or
 email verification. Each installation has independent accounts and credentials.
@@ -82,7 +92,8 @@ Enrollment and save-key screens retain a contextual enrollment-help link.
 ### Authentication mode preview
 
 **Admin > Data Sources** shows an authentication mode selector only for the live
-Azure DevOps backend. PAT remains active. Selecting Entra ID changes only the
+Azure DevOps backend. PAT remains active in enrollment installations; an isolated
+Entra sandbox reports Entra as active. Selecting a different mode changes only the
 in-memory draft; activation is disabled until the authentication integration and
 transition checks are complete. Cancel or reopening the panel discards the draft.
 Save still saves ordinary data-source settings, without persisting or activating
@@ -92,14 +103,16 @@ enrollment behavior.
 The component accepts a non-persisted `authenticationSettings` model containing
 `activeMode` (`pat` or `entra`) and `activationUnavailableReason`. Tests can inject
 synthetic settings without an authentication service. The production model reports
-PAT; this presentation-only contract cannot authenticate users or enable activation.
+PAT outside an explicitly isolated Entra composition; this presentation-only
+contract cannot authenticate users or enable activation.
 No configuration API or stored data shape changes are introduced by this preview.
 
 ### Isolated Authentication Clients (Phases B-C)
 
 The Data Sources editor, enrollment dialog, account Settings and Users editor
 accept an explicit, non-attribute `authentication` dependency for isolated tests.
-It is `null` in production. No query parameter, persisted preference, network
+It is `null` in enrollment/PAT installations and supplied by discovery in an
+explicitly isolated Entra sandbox. No query parameter, persisted preference, network
 failure or configuration save selects a mock identity. The sole scenario model
 lives in `tests/helpers/mockAuth.js`; it is not shipped with application assets.
 
@@ -116,7 +129,10 @@ do not select fixture identities.
 
 The injected Entra presentation hides PAT editing, remembered-browser management,
 enrollment and key reset. Admin account creation is hidden because Entra
-provisioning is undecided. Local permissions, ordinary admin account removal and
+provisioning is not implemented. The approved Phase E direction is unprivileged
+JIT creation for verified identities in the approved tenant, including admitted
+guests, and explicit admin-approved identity-proven links to existing UUIDs.
+Local permissions, ordinary admin account removal and
 signed-in account deletion remain independent of enrollment capabilities.
 PAT and local installations retain their existing production controls.
 
@@ -132,8 +148,9 @@ Selecting an admin draft updates only an injected preview, never the active mode
 Cancel or reopening resets the preview. Tests supply the same model to dependent
 components explicitly. Browser tests inject the test helper from Playwright,
 without exposing a fixture route in the application. This is UI coverage only:
-server-side endpoint restrictions, real Entra sessions and broker integration
-remain later phase gates.
+the Phase D sandbox separately enforces endpoint restrictions and source-bound
+sessions on the server and exercises the running broker. Live Entra remains a
+later gate.
 
 ### Frontend Adapter Contract (Phase C)
 
@@ -141,13 +158,13 @@ remain later phase gates.
 Clients expose `discover`, `status`, `signIn`, `completeLogin`, `recover`,
 `handleDecision`, `saveSettings`, `logout` and `deleteAccount` alongside state and
 subscriptions. The existing enrollment adapter retains the current session route
-and enrollment dialog; production does not discover or activate Entra. Both REST
+and enrollment dialog; discovery cannot activate a source. Both REST
 providers accept the same explicitly injected `authentication` client. Their
-default composition remains enrollment/PAT, including the admin cookie behavior.
+enrollment/PAT composition retains the existing admin cookie behavior.
 
-The following is a provisional PlannerTool HTTP contract, exercised only with
-mocked responses. It is not a broker protocol or a set of implemented server
-routes. URLs are relative to the instance API URL, including its subpath.
+The following PlannerTool HTTP contract is implemented against the isolated
+sandbox and also covered by mocked frontend contracts. It is not the broker
+protocol. URLs are relative to the instance API URL, including its subpath.
 
 | Operation | Request | Successful response |
 | --- | --- | --- |
@@ -156,6 +173,48 @@ routes. URLs are relative to the instance API URL, including its subpath.
 | Begin sign-in/reauthentication | `POST /auth/login/begin` | Browser transaction passed to the injected login presenter |
 | Complete sign-in | `POST /auth/login/complete` | Client state; presenter supplies the browser-bound completion object |
 | Instance logout | `POST /auth/logout` | Signed-out client state |
+
+Entra profiles also return locally owned `permissions`. Logout includes the
+boolean `revocation_pending`: local revocation is complete even if remote grant
+cleanup failed. The browser displays a one-time instance-scoped cleanup notice;
+the remote grant expires within its configured TTL. No grant/token is placed in
+browser storage. Neither ordinary logout nor this notice logs out other instances
+or corporate Entra.
+
+### Normal UI Sandbox Composition
+
+`www/js/services/authStartup.js` discovers policy once per page/instance, reads
+the initial profile, and shares one client with both REST providers. Normal
+planner startup and the admin login page offer Entra sign-in; account Settings,
+Users, Data Sources and top-menu PAT repair follow its capabilities. Entra local
+preference saves do not call the unsupported PAT settings operation.
+
+Sign-in opens a user-initiated popup. `X-Planner-Login-Target` accepts only `app`
+or `admin` for this composition; the server records that target with the bound
+transaction. The callback alone redeems the handoff and sends a CSP-protected
+completion message containing only instance, state and error/success. The opener
+checks its exact origin, window, instance and state, then reads status; it never
+redeems the same code again. Without an opener, the callback returns to a fixed
+instance-local app/admin destination. The existing diagnostic path remains scoped
+to sandbox use. Closing/cancelling the popup does not authenticate a user.
+
+Same-account repair leaves the page and drafts intact. A different returning UUID
+blocks stale provider responses, clears old-account browser data and reloads.
+Authentication writes are never automatically replayed. An invalid local session
+cannot read cached server data. An authenticated Entra user without local admin
+permission receives 403, not a session-expiry recovery loop.
+
+Discovery does not contact the broker. A valid local profile can report
+`status: 'unavailable'` with its existing UUID and permissions during a broker
+outage; local/admin access remains available. Begin/remote acquisition still fail
+with typed errors. This is not an approved live offboarding grace period: the
+upstream disablement check, maximum local-access window and session lifetime
+remain policy gates before affected real behavior is implemented.
+
+Enrollment profile PAT status uses existing stored presence/rejection metadata,
+without acquiring or decrypting a PAT. Presence is not proof of token usability;
+credential acquisition and remote validation remain separate operation boundaries.
+No additional migration or session invalidation is introduced by this close-out.
 
 State and discovery responses must declare Entra mode; a PAT response is rejected,
 not used as a fallback. Authenticated profiles require a string `uuid`. No token

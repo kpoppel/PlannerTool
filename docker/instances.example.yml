@@ -1,20 +1,24 @@
 instances:
   # Default: uses a Docker named volume (data-alpha) and the latest build version
   - name: alpha
+    authentication_provider: enrollment
 
   # Explicitly use a local bind mount
   - name: beta
+    authentication_provider: enrollment
     volume_type: bind
     volume_source: ./data/beta
 
   # Explicitly use a custom Docker named volume and deploy a specific version
   - name: esw
+    authentication_provider: enrollment
     image: plannertool:v2.0.0
     volume_type: volume
     volume_source: custom-esw-data
 
   # Example with an external people database mapped into the container
   - name: gamma
+    authentication_provider: enrollment
     external_database: /opt/shared/company-people-db.yaml
 
 # Environment variables (set these before running docker compose):

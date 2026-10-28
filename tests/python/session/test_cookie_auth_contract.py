@@ -207,7 +207,6 @@ def test_profile_uses_login_adapter_projection_for_authenticated_uuid(client, mo
     session_id = sessions.create('profile@example.com')
     client.cookies.clear()
     client.cookies.set('sessionId', session_id)
-    container.get('storage').delete('account_auth', account_id)
     projection = Mock(return_value={'name': 'Adapter Name', 'devices': []})
     monkeypatch.setattr(container.get('login_adapter'), 'profile', projection)
 
@@ -222,25 +221,36 @@ def test_profile_uses_login_adapter_projection_for_authenticated_uuid(client, mo
     projection.assert_called_once_with(account_id)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='Live ADO /api/auth/me derives patError by loading the stored PAT',
-)
-def test_live_ado_profile_does_not_load_pat(client, monkeypatch):
+@pytest.mark.parametrize('stored_pat,rejected,error', [
+    (None, False, 'pat_required'),
+    ('opaque-encrypted-pat', False, None),
+    ('opaque-encrypted-pat', True, 'pat_invalid'),
+])
+def test_live_ado_profile_does_not_load_pat(client, monkeypatch, stored_pat, rejected, error):
     from unittest.mock import Mock
 
     assert client.post('/api/auth/enroll', json={
         'email': 'profile@example.com', 'name': 'Profile User',
     }).status_code == 200
     accounts = client.app.state.container.get('account_manager')
-    client.app.state.container.get('storage').save(
+    storage = client.app.state.container.get('storage')
+    record = storage.load('accounts', 'profile@example.com')
+    storage.save('accounts', 'profile@example.com', {
+        **record, 'pat': stored_pat, 'pat_invalid': rejected,
+    })
+    storage.save(
         'config', 'ado_config', {'organization_url': 'ExampleOrg', 'feature_flags': {}},
     )
     load_account = Mock(wraps=accounts.load)
     monkeypatch.setattr(accounts, 'load', load_account)
+    decrypt = Mock(side_effect=AssertionError('Profile must not decrypt credentials'))
+    monkeypatch.setattr('planner_lib.accounts.config._get_fernet', decrypt)
 
-    assert client.get('/api/auth/me').status_code == 200
+    response = client.get('/api/auth/me')
+    assert response.status_code == 200
+    assert response.json()['patError'] == error
     load_account.assert_not_called()
+    decrypt.assert_not_called()
 
 
 def test_auth_cookies_keep_subpath_scope(client):

@@ -20,6 +20,27 @@ vi.mock('../../www/js/components/AuthDialog.lit.js', async (importOriginal) => {
 });
 
 describe('ProviderREST /api/session tests', () => {
+  it('composes one discovered client and binds app/admin providers before use', async () => {
+    const { initializeAuthentication, getAuthentication } = await import('../../www/js/services/authStartup.js');
+    const state = createMockAuth('entra_signed_in').state;
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(state)));
+    const [authentication, shared] = await Promise.all([
+      initializeAuthentication('/api', { fetchImpl, presentLogin: vi.fn() }),
+      initializeAuthentication('/api', { fetchImpl, presentLogin: vi.fn() }),
+    ]);
+    expectVitest(shared).toBe(authentication);
+    expectVitest(getAuthentication()).toBe(authentication);
+    expectVitest(fetchImpl.mock.calls.map(call => call[0])).toEqual(['/api/auth/config', '/api/auth/me']);
+    const app = new ProviderREST();
+    const admin = new AdminProviderREST();
+    app.setAuthentication(authentication);
+    admin.setAuthentication(authentication);
+    expectVitest(app._authentication).toBe(admin._authentication);
+    expectVitest(authentication.blocked).toBe(false);
+    expectVitest(() => admin.setAuthentication(createMockAuth('entra_signed_in')))
+      .toThrow('Authentication source changed');
+  });
+
   it('shares single-flight recovery across app and admin for one client', async () => {
     const state = createMockAuth('entra_signed_in').state;
     const signIn = vi.fn(async () => state);
@@ -128,6 +149,18 @@ describe('ProviderREST /api/session tests', () => {
     expectVitest(fetchImpl.mock.calls[2][0]).toBe('/team_1/api/auth/login/complete');
     await adapter.logout();
     expectVitest(fetchImpl.mock.calls[3][0]).toBe('/team_1/api/auth/logout');
+  });
+
+  it('reads status without redeeming again after a server-completed popup', async () => {
+    const state = createMockAuth('entra_signed_in').state;
+    const fetchImpl = vi.fn(async url => new Response(JSON.stringify(
+      url.endsWith('/begin') ? { state: 'bound-state' } : state)));
+    const adapter = createEntraHttpAdapter({ apiUrl: '/api', fetchImpl,
+      presentLogin: async () => ({ completed: true }) });
+    expectVitest(await adapter.signIn()).toEqual(state);
+    expectVitest(fetchImpl.mock.calls.map(call => call[0])).toEqual([
+      '/api/auth/login/begin', '/api/auth/me',
+    ]);
   });
 
   it('rejects a PAT response in the Entra HTTP adapter instead of selecting PAT', async () => {

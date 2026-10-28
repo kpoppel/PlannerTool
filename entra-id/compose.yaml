@@ -4,10 +4,11 @@ services:
   entra-id:
     build: .
     environment:
+      ENTRA_AUTH_MODE: ${ENTRA_AUTH_MODE:-entra}
       ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:?Set ENTRA_TENANT_ID in .env}
       ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:?Set ENTRA_CLIENT_ID in .env}
       ADO_ORGANIZATION: ${ADO_ORGANIZATION:?Set ADO_ORGANIZATION in .env}
-      ENTRA_REDIRECT_URI: https://${POC_HOSTNAME:?Set POC_HOSTNAME in .env}/auth/callback
+      ENTRA_REDIRECT_URI: ${ENTRA_REDIRECT_URI:?Set exact central callback URL}
       ENTRA_CLIENT_SECRET_FILE: /run/secrets/entra_client_secret
       ENTRA_LISTEN_HOST: 0.0.0.0
       ENTRA_LISTEN_PORT: '8000'

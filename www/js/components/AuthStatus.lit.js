@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { AUTH_DECISIONS } from '../services/authClient.js';
+import { takeLogoutNotice } from '../services/authStartup.js';
 
 export class AuthPresentationController {
   constructor(host) {
@@ -31,6 +32,7 @@ export class AuthPresentationController {
 
 const STATUS_MESSAGES = {
   connected: 'Connected',
+  signed_in: 'Connected',
   signed_out: 'Signed out',
   session_expired: 'Your PlannerTool session has expired.',
   interaction_required: 'Azure DevOps requires reauthentication. Local work is still available.',
@@ -64,6 +66,7 @@ export class AuthStatus extends LitElement {
     this.authentication = null;
     this._busy = false;
     this._message = '';
+    this._logoutPending = takeLogoutNotice();
     new AuthPresentationController(this);
   }
 
@@ -101,11 +104,14 @@ export class AuthStatus extends LitElement {
   render() {
     if (this.authentication === null) return '';
     const { mode, status, account, capabilities } = this.authentication.state;
-    const needsLogin = status === 'signed_out' || status === 'session_expired';
+    const needsLogin = account === null || status === 'session_expired';
     return html`
       <p><strong>${mode === 'entra' ? 'Entra ID' : mode === 'pat' ? 'PAT' : 'Local'}</strong></p>
+      ${this._logoutPending ? html`<p role="status">Signed out of this instance.
+        Authentication service cleanup is pending; the delegated grant will expire.</p>` : ''}
       ${account === null ? '' : html`<p data-auth-account>${account.email}</p>`}
-      <p role="status">${STATUS_MESSAGES[status]}</p>
+      <p role="status">${status === 'unavailable' && account === null
+        ? 'Authentication service unavailable. Please try again later.' : STATUS_MESSAGES[status]}</p>
       ${capabilities.pat && (status === 'pat_required' || status === 'pat_invalid') ? html`
         <form @submit=${this._onRepairPat}>
           <label for="previewPat">Azure DevOps PAT</label>

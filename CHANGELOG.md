@@ -18,13 +18,18 @@ This version adds EntraID authentication.
 
 ### Added
 - Option to configure EntraID authentication
+- Add an isolated, authenticated Entra broker sandbox with encrypted durable handoffs/grants, source-bound PlannerTool sessions, and manifest-generated loopback-only deployment. Live Entra activation and account linking remain unavailable.
 - Preview PAT / Entra ID selection for live Azure DevOps in Data Sources, showing the active mode without enabling Entra activation or changing saved authentication settings.
 - Add isolated authentication UI previews for mode-dependent account controls, Entra sign-in, recovery and logout, without enabling real Entra authentication or changing active PAT/local behavior.
 - Option to enable automatic HTTPS in generated multi-instance Docker deployments
 
 ### Changed
 - Share frontend authentication client contracts and typed recovery across planner and administration, with mocked Entra HTTP flows while real activation remains disabled.
+- Discover the active login source in normal planner/admin pages and support isolated broker-backed Entra sandbox sign-in, reauthentication and instance logout without PAT or enrollment prompts.
+- Require explicit login providers in deployment manifests and invalidate existing sessions once during the revision-44 source/epoch upgrade, preserving accounts, permissions and PATs.
 ### Fixed
+- Report expired or replayed login handoffs as invalid sessions instead of outages, preserve valid local admin access during broker outages, and disclose pending remote logout cleanup.
+- Read account-profile PAT status without acquiring or decrypting credentials.
 - Prevent automatic replay of writes after session repair or ambiguous network failures; preserve partial results and discard old-account drafts when recovery changes identity.
 - Keep authenticated administrators' local configuration access available without an Azure DevOps PAT, and make PAT recovery nonblocking and explicitly actionable.
 - Serve local configuration and cached user data when a PAT is invalid; keep live Azure DevOps reads and refreshes gated.

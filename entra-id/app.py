@@ -43,10 +43,19 @@ class Settings:
     listen_host: str = '127.0.0.1'
     listen_port: int = 8765
     auth_mode: str = 'entra'
+    network: str = 'loopback'
+    internal_host: str = ''
+    broker_config: object = field(default=None, repr=False)
 
     def __post_init__(self):
         if self.auth_mode not in ('entra', 'mock'):
             raise ValueError('ENTRA_AUTH_MODE must be "entra" or "mock"')
+        if self.network not in ('loopback', 'private-compose'):
+            raise ValueError('ENTRA_NETWORK must be loopback or private-compose')
+        if self.network == 'private-compose' and (
+                not re.fullmatch(r'auth-[a-z][a-z0-9-]*', self.internal_host)
+                or self.listen_host != '0.0.0.0'):
+            raise ValueError('Private Compose listeners require an explicit auth service hostname')
         for value in (self.tenant_id, self.client_id):
             if value:
                 if str(UUID(value)) != value:
@@ -66,24 +75,23 @@ class Settings:
             raise ValueError('Ports must be between 1 and 65535')
         if self.auth_mode == 'mock' and (
                 parsed.scheme != 'http' or parsed.hostname != 'localhost'
-                or self.listen_host not in ('127.0.0.1', 'localhost', '::1')):
+                or (self.network != 'private-compose'
+                    and self.listen_host not in ('127.0.0.1', 'localhost', '::1'))):
             raise ValueError('Mock authentication is allowed only on localhost')
 
     @classmethod
     def from_env(cls):
         auth_mode = os.environ.get('ENTRA_AUTH_MODE', 'entra')
         redirect_uri = os.environ.get('ENTRA_REDIRECT_URI', 'http://localhost:8765/auth/callback')
-        secret = ''
-        if auth_mode != 'mock':
-            secret = os.environ.get('ENTRA_CLIENT_SECRET', '')
-            secret_file = os.environ.get('ENTRA_CLIENT_SECRET_FILE', '')
-            if secret_file:
-                if secret:
-                    raise ValueError('Set ENTRA_CLIENT_SECRET or ENTRA_CLIENT_SECRET_FILE, not both')
-                secret = Path(secret_file).read_text().strip()
+        secret = os.environ.get('ENTRA_CLIENT_SECRET', '')
+        secret_file = os.environ.get('ENTRA_CLIENT_SECRET_FILE', '')
+        if secret_file:
+            if secret:
+                raise ValueError('Set ENTRA_CLIENT_SECRET or ENTRA_CLIENT_SECRET_FILE, not both')
+            secret = Path(secret_file).read_text().strip()
         parsed = urlsplit(redirect_uri)
         default_port = parsed.port if parsed.scheme == 'http' else 8765
-        return cls(
+        settings = cls(
             tenant_id=os.environ.get('ENTRA_TENANT_ID', ''),
             client_id=os.environ.get('ENTRA_CLIENT_ID', ''),
             client_secret=secret,
@@ -92,12 +100,20 @@ class Settings:
             listen_host=os.environ.get('ENTRA_LISTEN_HOST', '127.0.0.1'),
             listen_port=int(os.environ.get('ENTRA_LISTEN_PORT', str(default_port))),
             auth_mode=auth_mode,
+            network=os.environ.get('ENTRA_NETWORK', 'loopback'),
+            internal_host=os.environ.get('ENTRA_INTERNAL_HOST', ''),
         )
+        if 'ENTRA_BROKER_REGISTRY_FILE' in os.environ:
+            from broker import BrokerConfig
+            object.__setattr__(settings, 'broker_config', BrokerConfig.from_env(settings))
+            if settings.broker_config.public_url != settings.origin + settings.root_path + '/':
+                raise ValueError('Broker public URL must match the configured callback')
+        elif settings.network == 'private-compose':
+            raise ValueError('Private Compose exposure requires validated broker configuration')
+        return settings
 
     @property
     def missing(self):
-        if self.auth_mode == 'mock':
-            return []
         values = (self.tenant_id, self.client_id, self.client_secret, self.organization)
         return [name for name, value in zip(ENV_NAMES, values) if not value]
 
@@ -214,7 +230,13 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
     if settings is None:
         settings = Settings.from_env()
     app = FastAPI(root_path=settings.root_path, docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlsplit(settings.redirect_uri).hostname])
+    allowed_hosts = [urlsplit(settings.redirect_uri).hostname]
+    if settings.network == 'private-compose':
+        allowed_hosts.append(settings.internal_host)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+    if settings.broker_config is not None:
+        from broker_routes import install_broker
+        install_broker(app, settings, settings.broker_config)
     request_ado = mock_ado_get if settings.auth_mode == 'mock' else ado_get
     sessions = {}
     registry_lock = threading.RLock()
@@ -233,7 +255,9 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
     async def protect_responses(request, call_next):
         response = await call_next(request)
         response.headers['Cache-Control'] = 'no-store'
-        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['Referrer-Policy'] = (
+            'same-origin' if request.url.path.endswith('/v1/browser/authorize') else 'no-referrer'
+        )
         response.headers['X-Content-Type-Options'] = 'nosniff'
         if settings.secure:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000'
@@ -241,6 +265,9 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
             "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"
         )
         return response
+
+    if settings.broker_config is not None:
+        return app
 
     def current_session(request):
         with registry_lock:
@@ -461,5 +488,8 @@ if __name__ == '__main__':
     import uvicorn
 
     configuration = Settings.from_env()
+    if configuration.auth_mode == 'mock':
+        from egress import install_sandbox_egress
+        install_sandbox_egress()
     uvicorn.run(create_app(configuration), host=configuration.listen_host,
                 port=configuration.listen_port, access_log=False, proxy_headers=False)

@@ -92,23 +92,10 @@
     <div class="login-card">
       <h1 id="form-title">Admin</h1>
       <div id="error-message" class="error"></div>
-      <p>Open the planner to enroll or add this browser.</p>
+      <p id="login-guidance">Open the planner to enroll or add this browser.</p>
       <a id="planner-link" href="/">Open planner</a>
     </div>
 
-    <script>
-      const base = window.APP_BASE_URL;
-      document.getElementById('planner-link').href = base + '/';
-      fetch(base + '/api/session', { method: 'POST', headers: { Accept: 'application/json' } })
-        .then((response) => {
-          if (!response.ok) return;
-          return fetch(base + '/admin/check', { headers: { Accept: 'application/json' } })
-            .then((check) => {
-              if (check.ok) window.location.replace(base + '/admin/');
-              else document.getElementById('error-message').textContent = 'This account has no administration permissions.';
-            });
-        })
-        .catch((error) => console.error('Admin session renewal failed', error));
-    </script>
+    <script type="module" src="js/login.js"></script>
   </body>
 </html>

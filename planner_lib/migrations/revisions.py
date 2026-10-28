@@ -577,6 +577,15 @@ def upgrade_43(storage) -> None:
         storage.save('config', 'iterations', validate_iteration_sets({'iteration_sets': sets}))
 
 
+def upgrade_44(storage):
+    from planner_lib.session.policy import initial_authentication
+
+    with storage.transaction():
+        storage.save('config', 'authentication', initial_authentication())
+        for key in list(storage.list_keys('auth_sessions')):
+            storage.delete('auth_sessions', key)
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -586,12 +595,15 @@ REGISTRY = tuple(
         (35, 34, upgrade_35), (36, 35, upgrade_36), (37, 36, upgrade_37),
         (38, 37, upgrade_38), (39, 38, upgrade_39), (40, 39, upgrade_40),
         (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
+        (44, 43, upgrade_44),
     )
 )
 
 
 def initialize(storage):
+    from planner_lib.session.policy import initial_authentication
     defaults = {
+        'authentication': initial_authentication(),
         'server_config': {'schema_version': 2, 'log_level': 'INFO', 'feature_flags': {}},
         'projects': {'schema_version': 4, 'project_map': [], 'container_types': ['project', 'team'],
                  'allocation_defaults': {'project': [], 'team': []}},
@@ -717,6 +729,9 @@ def validate_records(storage, revision, *, server_config=None):
         if revision >= 43:
             from planner_lib.domain.iteration_sets import validate_iteration_sets
             validate_iteration_sets(storage.load('config', 'iterations'))
+        if revision >= 44:
+            from planner_lib.session.policy import validate_authentication
+            validate_authentication(storage.load('config', 'authentication'))
         account_ids = set()
         for email in storage.list_keys('accounts'):
             account = storage.load('accounts', email)
@@ -746,6 +761,19 @@ def validate_records(storage, revision, *, server_config=None):
                                      for key in storage.list_keys('auth_control')},
                 },
             })
+        if revision >= 44:
+            policy = storage.load('config', 'authentication')
+            for key in storage.list_keys('auth_sessions'):
+                session = storage.load('auth_sessions', key)
+                if (set(session) != {'account_id', 'device_id', 'created', 'last_seen',
+                                     'source', 'epoch', 'authenticated_at', 'binding'}
+                        or session['account_id'] not in account_ids
+                        or session['source'] != policy['active'] or session['epoch'] != policy['epoch']
+                        or any(type(session[field]) not in (int, float)
+                               for field in ('created', 'last_seen', 'authenticated_at'))
+                        or (session['source'] == 'enrollment' and session['binding'] != session['device_id'])
+                        or (session['source'] == 'entra' and not isinstance(session['binding'], str))):
+                    raise SchemaError('Invalid source-bound session record')
         for namespace in ('views', 'scenarios'):
             for key, payload in _payloads(storage, namespace):
                 if not isinstance(payload, dict):

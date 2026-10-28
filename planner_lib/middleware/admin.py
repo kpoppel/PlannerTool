@@ -80,7 +80,8 @@ def _require_permissions(func: Callable, permissions: tuple[str, ...]) -> Callab
                 logger.warning('Admin access denied (not admin) path=%s email=%s', path, email)
             except Exception:
                 logger.warning('Admin access denied (not admin)')
-            status = 403 if has_admin_access(request, *AccountPermissions.DELEGATED) else 401
+            status = 403 if (resolve_service(request, 'authentication_provider') == 'entra'
+                             or has_admin_access(request, *AccountPermissions.DELEGATED)) else 401
             raise HTTPException(status_code=status, detail={'error': 'access_denied', 'message': '300 - Admin access required.'})
 
         return await func(*args, **kwargs)

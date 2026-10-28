@@ -1,3 +1,12 @@
+# Authentication Manifest Upgrade
+
+All instance entries now require `authentication_provider: enrollment|entra`.
+Add `enrollment` to existing manifests, including ADO/PAT installations. This key
+selects login, not the data backend; it cannot activate Entra on existing accounts.
+Do not edit generated files to enable the broker. The isolated Phase D workflow,
+strict broker schema, secret ownership and generate/build/start/stop commands are
+documented in [AUTH_BROKER_PHASE_D.md](AUTH_BROKER_PHASE_D.md).
+
 # How to deploy the application for production or development
 
 The application has two deployment methods:

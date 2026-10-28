@@ -1,4 +1,7 @@
 *
 !app.py
+!broker.py
+!broker_routes.py
+!egress.py
 !requirements.txt
 !Dockerfile

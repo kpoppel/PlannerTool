@@ -203,6 +203,7 @@ def test_get_backup_covers_all_live_config_keys():
     """Every key in CONFIG_KEYS must appear in the backup output (regression guard)."""
     from planner_lib.admin.config_manager import ConfigManager
     expected = {
+        'authentication',
         "projects", "teams", "workforce",
         "area_plan_map", "iterations", "global_settings", "ado_config", "ado_processes", "plugin_runtime_config", "server_config",
     }

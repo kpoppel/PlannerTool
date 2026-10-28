@@ -9,6 +9,8 @@ class EnrollmentSessionBinding:
 
     def validate(self, account_id, device_id, now, *, refresh):
         auth = self._storage.load('account_auth', account_id)
+        if device_id is None:
+            return type(auth['enrolled']) is bool
         device = auth['devices'].get(device_id)
         if device is None or device['expires'] <= now:
             return False

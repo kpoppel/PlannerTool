@@ -1,3 +1,4 @@
+import { getAuthentication } from '../../../../js/services/authStartup.js';
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 import { showAccountKeyDialog } from '../../../../js/components/AuthDialog.lit.js';
@@ -127,7 +128,7 @@ export class AdminUsers extends LitElement {
 
   constructor() {
     super();
-    this.authentication = null;
+    this.authentication = getAuthentication();
     new AuthPresentationController(this);
     this.users = [];
     this.loading = false;

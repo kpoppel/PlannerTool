@@ -116,14 +116,34 @@ def _build_services(
     # (removed — diskcache handles memory via OS page cache automatically)
 
     # --- Accounts / session ---
+    provider = os.environ.get('PLANNER_AUTH_PROVIDER', 'enrollment')
+    if provider not in ('enrollment', 'entra'):
+        raise ValueError('PLANNER_AUTH_PROVIDER must be enrollment or entra')
+    auth_settings = storage_diskcache.load('config', 'authentication')
+    if provider == 'enrollment' and auth_settings['active'] != 'enrollment':
+        raise ValueError('Manifest login policy conflicts with persisted active authentication')
+    if provider == 'entra':
+        from planner_lib.session.broker import BrokerClient, BrokerSettings, SandboxLogin, prepare_sandbox
+        broker_settings = BrokerSettings.from_env()
+        prepare_sandbox(storage_diskcache, broker_settings)
+        from planner_lib.session.isolation import install_sandbox_egress
+        from urllib.parse import urlsplit
+        install_sandbox_egress(urlsplit(broker_settings.url).hostname)
+        container.register_factory('broker_client', lambda: BrokerClient(broker_settings))
+        container.register_factory('sandbox_login', lambda: SandboxLogin(
+            storage_diskcache, container.get('account_manager'), container.get('session_manager'),
+            container.get('broker_client')))
+    container.register_singleton('authentication_provider', provider)
     container.register_factory("account_manager",
         lambda: AccountManager(storage=storage_diskcache))
     from planner_lib.session.enrollment import EnrollmentLoginAdapter, EnrollmentSessionBinding
+    from planner_lib.session.policy import SessionPolicy
     container.register_factory("session_manager",
         lambda: SessionManager(
             account_manager=container.get("account_manager"),
             storage=storage_diskcache,
             session_binding_factory=EnrollmentSessionBinding,
+            auth_policy=SessionPolicy(storage_diskcache),
         ))
     from planner_lib.session.auth import AuthManager
     container.register_factory("auth_manager",

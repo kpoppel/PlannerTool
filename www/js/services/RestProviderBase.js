@@ -1,4 +1,5 @@
 import { ok, fail } from './result.js';
+import { createAuthRecovery } from './authRecovery.js';
 
 /** @typedef {{ APP_BASE_URL?: string }} WindowWithBaseUrl */
 
@@ -38,6 +39,18 @@ export class RestProviderBase {
             }
             return '';
           };
+  }
+
+  setAuthentication(authentication) {
+    if (authentication === null) return;
+    if (this._authentication !== null && this._authentication !== authentication) {
+      throw new Error('Authentication source changed; reload required');
+    }
+    this._authentication = authentication;
+    this._session = true;
+    const recovery = createAuthRecovery({ authentication });
+    this._onSessionExpired = recovery.onSessionExpired;
+    this._onCredentialFailure = recovery.onCredentialFailure;
   }
 
   _resolveUrl(url) {

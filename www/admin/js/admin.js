@@ -10,13 +10,18 @@ import './components/admin/Utilities.lit.js';
 import './components/admin/BackupSnapshots.lit.js';
 import { dataService } from '/static/js/services/dataService.js';
 import { adminProvider } from './services/providerREST.js';
+import { initializeAuthentication, showAuthenticationStartupFailure } from '/static/js/services/authStartup.js';
 
 async function mountAdminApp() {
   // Ensure the dataService attempts to initialize (may create a session
   // if a stored email exists). This mirrors the main app bootstrap.
   try {
+    const authentication = await initializeAuthentication(`${window.APP_BASE_URL}/api`);
+    dataService.providers.rest.setAuthentication(authentication);
+    adminProvider.setAuthentication(authentication);
     await dataService.init();
   } catch (err) {
+    showAuthenticationStartupFailure(err);
     console.error('admin: initialization failed', err);
     throw err;
   }

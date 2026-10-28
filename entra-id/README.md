@@ -1,5 +1,49 @@
 # Entra ID / Azure DevOps PoC
 
+Phase D now adds an authenticated sandbox broker beside the preserved PoC. The
+broker is independently runnable and never imports PlannerTool. See
+`../docs/AUTH_BROKER_PHASE_D.md` for protocol, registry and tandem deployment.
+The existing PoC sections below describe live diagnostics, not broker acceptance.
+Set `ENTRA_AUTH_MODE=entra` and an explicit `ENTRA_REDIRECT_URI` for that workflow.
+
+## Registration-Free Broker Sandbox
+
+Mock mode requires the same well-formed registration fields and client-secret-file
+loading as live mode. It never initializes MSAL or contacts Microsoft/ADO. Prepare
+mode-0600 synthetic registration, Fernet key and distinct per-instance secret files.
+The standalone `compose.sandbox.yaml` expects the documented sandbox environment
+fields, registry JSON and file references. `SANDBOX_PORT` is loopback-only;
+the broker has no published port and runs as UID 1000 with protected persistent
+storage. `Caddyfile.sandbox` preserves the central `/auth/` callback.
+
+From a repository checkout, the generator can produce compatible ignored inputs:
+
+```bash
+source .venv/bin/activate
+python scripts/auth_sandbox.py --directory deployment/phase-d-standalone --port 18881
+docker compose --env-file deployment/phase-d-standalone/standalone.env \
+  -f entra-id/compose.sandbox.yaml config --quiet
+docker compose --env-file deployment/phase-d-standalone/standalone.env \
+  -f entra-id/compose.sandbox.yaml up -d --build --wait
+```
+
+Readiness is `http://localhost:18881/auth/v1/readiness`. This independently starts
+the broker, not a registered PlannerTool instance. Copy this directory and the
+protected input files to run it without the repository, adjusting file references.
+Stop with the same Compose arguments and `down` (never `down -v` for routine use).
+
+For a direct Python launch, activate this component's environment, load the
+synthetic tenant/client/organization from `registration.env`, and set
+`ENTRA_AUTH_MODE=mock`, `ENTRA_REDIRECT_URI=http://localhost:PORT/auth/callback`,
+`ENTRA_CLIENT_SECRET_FILE`, `ENTRA_ADO_TRANSPORT=fixture`,
+`ENTRA_BROKER_ENVIRONMENT`, `ENTRA_BROKER_GENERATION`, `ENTRA_BROKER_PUBLIC_URL`,
+`ENTRA_BROKER_KEY_FILE`, `ENTRA_BROKER_STORE` (inside a mode-0700 directory) and
+`ENTRA_BROKER_REGISTRY_FILE` (`direct-instances.json` from the generator).
+Run `python app.py`; the listener remains loopback-only. Both launch methods use
+`Settings.from_env` and `BrokerConfig.from_env`, with the same required fields,
+binding validation and secret-file reading. A standalone broker needs an actual
+registered instance/reverse proxy to complete the tandem browser handoff.
+
 Copy this entire directory to the target machine. Nothing outside this folder is
 needed: no Planner image, code, configuration, accounts, data, or Python environment.
 Docker Engine with the Compose plugin is the only runtime prerequisite. Building

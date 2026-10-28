@@ -56,7 +56,7 @@ def test_session_binding_can_validate_without_enrollment_storage(monkeypatch):
     assert not sessions.is_valid(session_id)
 
 
-def test_unbound_session_does_not_consult_login_binding():
+def test_unbound_session_validates_its_enrollment_binding():
     from unittest.mock import Mock
 
     storage = MemoryStorage()
@@ -64,12 +64,47 @@ def test_unbound_session_does_not_consult_login_binding():
     account_id = accounts.create_account(AccountCredentialsPayload(email='local@example.com'))['id']
     storage.delete('account_auth', account_id)
     binding = Mock()
+    binding.validate.return_value = True
     sessions = SessionManager(accounts, storage, session_binding_factory=Mock(return_value=binding))
     session_id = sessions.create('local@example.com')
 
     assert sessions.get(session_id)['account_id'] == account_id
     assert sessions.is_valid(session_id)
-    binding.validate.assert_not_called()
+    assert binding.validate.call_count == 2
+    assert binding.validate.call_args.args[:2] == (account_id, None)
+    binding.validate.return_value = False
+    assert sessions.get(session_id) is None
+
+
+def test_source_and_epoch_mismatches_fail_closed():
+    from planner_lib.session.policy import SessionPolicy, initial_authentication
+
+    storage = MemoryStorage()
+    accounts = AccountManager(storage)
+    accounts.create_account(AccountCredentialsPayload(email='epoch@example.test'))
+    settings = initial_authentication()
+    storage.save('config', 'authentication', settings)
+    sessions = SessionManager(accounts, storage, auth_policy=SessionPolicy(storage))
+    sid = sessions.create('epoch@example.test')
+    assert sessions.is_valid(sid)
+    storage.save('config', 'authentication', {**settings, 'epoch': 2})
+    assert not sessions.is_valid(sid)
+    with pytest.raises(PermissionError, match='Inactive'):
+        sessions.create('epoch@example.test', source='entra')
+
+
+def test_revision_44_invalidates_sessions_but_preserves_accounts():
+    from planner_lib.migrations.revisions import upgrade_44
+
+    storage = MemoryStorage()
+    accounts = AccountManager(storage)
+    account = accounts.create_account(AccountCredentialsPayload(email='upgrade@example.test'))
+    sid = SessionManager(accounts, storage).create('upgrade@example.test')
+    assert sid
+    upgrade_44(storage)
+    assert list(storage.list_keys('auth_sessions')) == []
+    assert accounts.get_account_id('upgrade@example.test') == account['id']
+    assert storage.load('config', 'authentication')['active'] == 'enrollment'
 
 
 def test_last_active_survives_session_expiration_and_is_not_updated_by_validity_checks(monkeypatch):

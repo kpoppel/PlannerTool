@@ -1043,6 +1043,8 @@ def test_logical_backup_includes_canonical_workforce(manager: WorkforceConfigMan
     from planner_lib.migrations.contracts import TARGET_REVISION
 
     manager._storage.save('system', 'schema_state', {'schema_revision': TARGET_REVISION})
+    from planner_lib.session.policy import initial_authentication
+    manager._storage.save('config', 'authentication', initial_authentication())
     backup = ConfigManager(manager._storage).get_backup()
     assert backup['config']['workforce'] == manager.read_snapshot()['workforce']
 
@@ -1099,6 +1101,8 @@ def workforce_client(manager: WorkforceConfigManager) -> Iterator[TestClient]:
     accounts = Mock()
     accounts.pat_error.return_value = None
     account_ids = {'admin@fixture.test': 'admin-id', 'member@fixture.test': 'member-id'}
+    for account_id in account_ids.values():
+        manager._storage.save('account_auth', account_id, {'enrolled': False})
     accounts.get_account_id.side_effect = account_ids.__getitem__
     accounts.get_account_by_id.side_effect = lambda identity: {
         'email': next(email for email, account_id in account_ids.items() if account_id == identity),
@@ -1107,8 +1111,11 @@ def workforce_client(manager: WorkforceConfigManager) -> Iterator[TestClient]:
         email == 'admin@fixture.test' and permission == AccountPermissions.ADMIN
     )
     sessions = SessionManager(accounts, manager._storage)
+    from planner_lib.backend.credential import PatCredentialPolicy
     services = {
+        'authentication_provider': 'enrollment',
         'account_manager': accounts,
+        'credential_policy': PatCredentialPolicy(accounts),
         'session_manager': sessions,
         'admin_service': WorkforceAdminService(manager._storage, None, accounts, None,
                           task_storage=manager._storage),
@@ -1266,6 +1273,8 @@ def test_logical_backup_restore_round_trips_canonical_workforce_and_ids(
     from planner_lib.migrations.contracts import TARGET_REVISION
 
     manager._storage.save('system', 'schema_state', {'schema_revision': TARGET_REVISION})
+    from planner_lib.session.policy import initial_authentication
+    manager._storage.save('config', 'authentication', initial_authentication())
     backup = ConfigManager(manager._storage).get_backup()
     original = manager.read_snapshot()
     changed = deepcopy(original)

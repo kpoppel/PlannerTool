@@ -1,3 +1,4 @@
+import { getAuthentication } from '../../../../js/services/authStartup.js';
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 import {
@@ -261,8 +262,11 @@ export class DataSources extends LitElement {
 
   constructor() {
     super();
-    this.authentication = null;
-    this.authenticationSettings = PAT_AUTHENTICATION_SETTINGS;
+    this.authentication = getAuthentication();
+    this.authenticationSettings = this.authentication === null ? PAT_AUTHENTICATION_SETTINGS : {
+      activeMode: this.authentication.state.mode,
+      activationUnavailableReason: 'Authentication transitions require separate approval.',
+    };
     this._draftAuthMode = this.authenticationSettings.activeMode;
     this._loading             = false;
 

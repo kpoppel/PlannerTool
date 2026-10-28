@@ -172,11 +172,10 @@ class AccountManager:
     def pat_error(self, email: str) -> str | None:
         if not self.requires_pat():
             return None
-        pat = self.load(email)['pat']
-        if not pat:
-            return 'pat_required'
         record = self._storage.load(self.DEFAULT_NS, email)
-        if not _is_valid_pat(pat) or record.get('pat_invalid', False):
+        if not record['pat']:
+            return 'pat_required'
+        if record.get('pat_invalid', False):
             return 'pat_invalid'
         return None
 

@@ -48,19 +48,31 @@ class SessionManager:
         account_manager: AccountManagerProtocol,
         storage: StorageBackend,
         session_binding_factory=EnrollmentSessionBinding,
+        auth_policy=None,
     ) -> None:
         self._lock = threading.Lock()
         self._account_manager = account_manager
         self._storage = storage
         self._session_binding = session_binding_factory(storage)
+        from planner_lib.session.policy import SessionPolicy
+        self._auth_policy = SessionPolicy() if auth_policy is None else auth_policy
 
-    def create(self, email: str, device_id: Optional[str] = None) -> str:
+    @property
+    def authentication_source(self):
+        return self._auth_policy.current()['active']
+
+    def create(self, email: str, device_id: Optional[str] = None, *, source='enrollment', binding=None) -> str:
         account_id = self._account_manager.get_account_id(email)
+        policy = self._auth_policy.current()
+        if source != policy['active']:
+            raise PermissionError('Inactive authentication source')
         sid = secrets.token_urlsafe(32)
         now = time.time()
         self._storage.save('auth_sessions', hashlib.sha256(sid.encode()).hexdigest(), {
             'account_id': account_id,
             'device_id': device_id, 'created': now, 'last_seen': now,
+            'source': source, 'epoch': policy['epoch'], 'authenticated_at': now,
+            'binding': device_id if source == 'enrollment' else binding,
         }, ttl_seconds=SESSION_MAX)
         self._record_activity(account_id, now)
         return sid
@@ -88,6 +100,11 @@ class SessionManager:
         except KeyError:
             return None
         now = time.time()
+        policy = self._auth_policy.current()
+        if (record.get('source') != policy['active'] or record.get('epoch') != policy['epoch']
+                or record.get('source') not in ('enrollment', 'entra')):
+            self._storage.delete('auth_sessions', key)
+            return None
         if now - record['last_seen'] > SESSION_IDLE or now - record['created'] > SESSION_MAX:
             self._storage.delete('auth_sessions', key)
             return None
@@ -97,7 +114,7 @@ class SessionManager:
         except KeyError:
             self._storage.delete('auth_sessions', key)
             return None
-        if record['device_id'] is not None:
+        if record['source'] == 'enrollment':
             try:
                 valid_binding = self._session_binding.validate(
                     account_id, record['device_id'], now, refresh=refresh,
@@ -107,11 +124,24 @@ class SessionManager:
             if not valid_binding:
                 self._storage.delete('auth_sessions', key)
                 return None
+        else:
+            binding = record.get('binding')
+            if (not isinstance(binding, str) or not self._storage.exists('auth_grants', binding)):
+                self._storage.delete('auth_sessions', key)
+                return None
+            grant = self._storage.load('auth_grants', binding)
+            if (grant['account_id'] != account_id or grant['epoch'] != policy['epoch']
+                    or grant['expires_at'] <= now or grant['revoked']):
+                self._storage.delete('auth_sessions', key)
+                return None
         if refresh:
             record['last_seen'] = now
             self._storage.save('auth_sessions', key, record, ttl_seconds=SESSION_MAX - (now - record['created']))
             self._record_activity(account_id, now)
-        return {'account_id': account_id, 'email': email, 'device_id': record['device_id']}
+        context = {'account_id': account_id, 'email': email, 'device_id': record['device_id']}
+        if record['source'] == 'entra':
+            context['binding'] = record['binding']
+        return context
 
     def is_valid(self, sid: str) -> bool:
         cache = getattr(self._storage, '_cache', None)
@@ -187,6 +217,22 @@ class SessionMiddleware(BaseHTTPMiddleware):
         self.session_manager = session_manager
 
     async def dispatch(self, request: Request, call_next):
+        route_path = request.url.path.removeprefix(request.scope.get('root_path', ''))
+        if route_path.startswith('/api/auth/login/') and request.method == 'POST':
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > 16384:
+                    return JSONResponse({'error': 'invalid_session'}, status_code=401)
+            request._body = bytes(body)
+        if self.session_manager.authentication_source == 'entra':
+            forbidden = route_path in {
+                '/api/session', '/api/auth/enroll', '/api/auth/enrollment-status',
+                '/api/auth/delete-account',
+            } or route_path.startswith(('/api/auth/admin-reset/', '/api/auth/devices/')) or (
+                request.method == 'POST' and route_path in {'/api/config', '/admin/v1/users'})
+            if forbidden:
+                return JSONResponse({'error': 'access_denied'}, status_code=403)
         if request.method == 'POST' and request.url.path.endswith((
             '/auth/enroll', '/auth/enrollment-status', '/auth/delete-account',
         )):
@@ -212,6 +258,9 @@ class SessionMiddleware(BaseHTTPMiddleware):
         path = request.scope.get('root_path', '').rstrip('/') + '/'
         route_path = request.url.path.removeprefix(request.scope.get('root_path', ''))
         credential_routes = {
+            '/api/auth/config', '/api/auth/login/begin', '/api/auth/login/complete', '/api/auth/login/callback',
+            '/api/auth/sandbox', '/api/auth/login/redirect', '/api/auth/sandbox/logout',
+            '/api/auth/settings',
             '/api/config', '/api/session', '/api/auth/me', '/api/auth/logout',
             '/api/auth/release-notes',
             '/api/auth/enroll', '/api/auth/enrollment-status', '/api/auth/delete-account',

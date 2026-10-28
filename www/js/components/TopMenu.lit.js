@@ -16,6 +16,7 @@ import {
 import { pluginManager } from '../core/PluginManager.js';
 import { dataService } from '../services/dataService.js';
 import { getAdminSections } from '../services/adminNavigation.js';
+import { getAuthentication } from '../services/authStartup.js';
 import './PlanMenu.lit.js';
 import './ScenarioMenu.lit.js';
 import './ViewMenu.lit.js';
@@ -877,10 +878,11 @@ export class TopMenuBarLit extends LitElement {
           @keydown=${this._onMenuKeyDown}>
           <button class="settings-action" role="menuitem" id="configurationMenuItem"
             @click=${this._onConfig}>Configuration</button>
+          ${getAuthentication() === null || getAuthentication().state.capabilities.pat ? html`
           <button class="settings-action" role="menuitem" id="setPatMenuItem"
             @click=${() => this._runNotificationAction(NotificationActionIds.SET_PAT, 'pat_required')}>
             Set or update Azure DevOps PAT
-          </button>
+          </button>` : ''}
           ${this.canOpenAdmin ? html`<div class="settings-group" role="group" aria-label="Administration">
             <div class="settings-group-label" aria-hidden="true">Administration</div>
             ${this.adminSections.map((section) => html`

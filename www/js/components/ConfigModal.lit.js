@@ -6,6 +6,7 @@ import { dataService } from '../services/dataService.js';
 import { showAccountDeletionDialog } from './AuthDialog.lit.js';
 import { cmd, sel } from '../application/imports.js';
 import { AuthPresentationController } from './AuthStatus.lit.js';
+import { getAuthentication } from '../services/authStartup.js';
 
 class ConfigModal extends LitElement {
   static properties = {
@@ -16,7 +17,7 @@ class ConfigModal extends LitElement {
 
   constructor() {
     super();
-    this.authentication = null;
+    this.authentication = getAuthentication();
     new AuthPresentationController(this);
     this.open = false;
     this._signingOut = false;
@@ -45,6 +46,9 @@ class ConfigModal extends LitElement {
     const autosaveInput = this._qs('#autosaveInterval');
     const storedEmail = await dataService.getLocalPref('user.email');
     if (storedEmail && this.authentication === null) emailInput.value = storedEmail;
+    if (this.authentication !== null && this.authentication.state.account !== null) {
+      emailInput.value = this.authentication.state.account.email;
+    }
     const storedAutosave = await dataService.getLocalPref('autosave.interval');
     if (storedAutosave !== undefined && autosaveInput)
       autosaveInput.value = storedAutosave;
@@ -306,9 +310,11 @@ class ConfigModal extends LitElement {
         let patText = '';
         if (pat) patText = 'Access token updated.';
         try {
-          const res = this.authentication === null
-            ? await dataService.saveConfig({ email, pat })
-            : await this.authentication.saveSettings({ email, pat });
+          let res;
+          if (this.authentication === null) res = await dataService.saveConfig({ email, pat });
+          else if (this.authentication.state.capabilities.pat) {
+            res = await this.authentication.saveSettings({ email, pat });
+          } else res = { ok: true };
           if (patInput !== null) patInput.value = '';
           if (res && res.ok) {
             status.textContent = 'Configuration saved. ' + patText;

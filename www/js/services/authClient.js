@@ -105,7 +105,7 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
   return client;
 }
 
-export function createEntraHttpAdapter({ apiUrl, fetchImpl, presentLogin }) {
+export function createEntraHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLogout = () => {} }) {
   async function request(path, method = 'GET', body = undefined) {
     const options = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
     if (body !== undefined) {
@@ -135,10 +135,15 @@ export function createEntraHttpAdapter({ apiUrl, fetchImpl, presentLogin }) {
       const transaction = await request('login/begin', 'POST');
       const completion = await presentLogin(transaction);
       if (completion === false) return false;
+      if (completion.completed === true) return request('me');
       return request('login/complete', 'POST', completion);
     },
     completeLogin: completion => request('login/complete', 'POST', completion),
-    logout: () => request('logout', 'POST'),
+    async logout() {
+      const state = await request('logout', 'POST');
+      onLogout(state);
+      return state;
+    },
     saveSettings: async () => { throw new Error('Entra does not support PAT settings'); },
     deleteAccount: async () => { throw new Error('Entra account deletion policy is not configured'); },
   };

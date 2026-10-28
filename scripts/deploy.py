@@ -4,6 +4,7 @@ import re
 import sys
 import subprocess
 import argparse
+from deploy_auth import add_auth_compose, load_auth_services, validate_instances
 
 try:
     import yaml
@@ -53,9 +54,18 @@ def validate_https_hostname(value):
         )
     return value.lower()
 
-def generate_caddyfile(instances, https_hostname=None):
+def generate_caddyfile(instances, https_hostname=None, auth_services=None):
+    validate_instances(instances)
     site_address = https_hostname if https_hostname else ":80"
     lines = [f"{site_address} {{"]
+    if auth_services:
+        for name in auth_services:
+            lines.extend([
+                '    redir /auth /auth/',
+                '    handle /auth/* {',
+                f'        reverse_proxy auth-{name}:8000',
+                '    }',
+            ])
     for inst in instances:
         name = inst['name']
         lines.extend([
@@ -74,7 +84,8 @@ def generate_caddyfile(instances, https_hostname=None):
     lines.append("}")
     return "\n".join(lines)
 
-def generate_docker_compose(instances, version, https_hostname=None):
+def generate_docker_compose(instances, version, https_hostname=None, auth_services=None):
+    validate_instances(instances)
     caddy_ports = ["80:80"]
     caddy_volumes = [
         "./Caddyfile:/etc/caddy/Caddyfile",
@@ -107,8 +118,6 @@ def generate_docker_compose(instances, version, https_hostname=None):
             vol_source = inst.get('volume_source', f"./data/{name}")
             # Ensure host directory exists to prevent Docker creating it as root.
             # Resolve relative to 'deployment/' since docker-compose runs from there.
-            target_dir = os.path.join('deployment', vol_source) if not os.path.isabs(vol_source) else vol_source
-            os.makedirs(target_dir, exist_ok=True)
         else:
             vol_source = inst.get('volume_source', f"data-{name}")
         
@@ -132,12 +141,17 @@ def generate_docker_compose(instances, version, https_hostname=None):
         if vol_type == 'volume':
             compose["volumes"][vol_source] = {}
         
+    add_auth_compose(compose, instances, {} if auth_services is None else auth_services, version)
     return compose
 
 def main():
     parser = argparse.ArgumentParser(
         description="Generate deployment files for PlannerTool instances and optionally start them.",
         formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        '--output-dir', default='deployment',
+        help='Generated stack directory; use a distinct directory for isolated smoke stacks.'
     )
     parser.add_argument(
         '--config',
@@ -190,8 +204,12 @@ def main():
     
     # Generate file contents (always performed) then either print as a dry-run
     # or write them into `deployment/` when --apply is specified.
-    caddy_contents = generate_caddyfile(instances, args.https_hostname)
-    compose_obj = generate_docker_compose(instances, version, args.https_hostname)
+    try:
+        auth_services = load_auth_services(config, instances_file, args.https_hostname)
+        caddy_contents = generate_caddyfile(instances, args.https_hostname, auth_services)
+        compose_obj = generate_docker_compose(instances, version, args.https_hostname, auth_services)
+    except (ValueError, KeyError, OSError) as error:
+        parser.error(str(error))
     index_contents = generate_index_html(instances)
 
     if not args.apply:
@@ -212,18 +230,18 @@ def main():
         sys.exit(0)
 
     # Apply: write files into deployment/ and optionally build/start
-    os.makedirs('deployment', exist_ok=True)
+    os.makedirs(args.output_dir, exist_ok=True)
 
-    with open('deployment/Caddyfile', 'w') as f:
+    with open(os.path.join(args.output_dir, 'Caddyfile'), 'w') as f:
         f.write(caddy_contents)
 
-    with open('deployment/docker-compose.yml', 'w') as f:
+    with open(os.path.join(args.output_dir, 'docker-compose.yml'), 'w') as f:
         yaml.dump(compose_obj, f, sort_keys=False)
 
-    with open('deployment/index.html', 'w') as f:
+    with open(os.path.join(args.output_dir, 'index.html'), 'w') as f:
         f.write(index_contents)
 
-    print(f"Generated Caddyfile, docker-compose.yml, and index.html in the 'deployment/' directory for {len(instances)} instance(s).")
+    print(f"Generated Caddyfile, docker-compose.yml, and index.html in '{args.output_dir}' for {len(instances)} instance(s).")
 
     build_images = args.build_images or args.start
     if build_images:
@@ -234,7 +252,12 @@ def main():
         else:
             print("Building requested images using scripts/build-image.sh...")
             try:
-                subprocess.run([build_script], check=True)
+                if any('image' not in instance for instance in instances):
+                    subprocess.run([build_script], check=True)
+                for service in auth_services.values():
+                    if 'image' not in service:
+                        subprocess.run(['docker', 'build', '-t', f'plannertool-auth:{version}',
+                                        os.path.join(root_dir, 'entra-id')], check=True)
             except subprocess.CalledProcessError as e:
                 print(f"ERROR: build script failed with code {e.returncode}")
                 sys.exit(e.returncode)
@@ -242,19 +265,15 @@ def main():
     if args.start:
         print("Deploying instances...")
         try:
-            subprocess.run(["docker", "compose", "up", "-d", "--remove-orphans"], cwd="deployment", check=True)
+            subprocess.run(["docker", "compose", "up", "-d"], cwd=args.output_dir, check=True)
             print("\nDeployment successful!")
 
-            print("\nCleaning up dangling Docker images...")
-            # The -f flag forces the prune without a confirmation prompt
-            subprocess.run(["docker", "image", "prune", "-f"], check=True)
-            print("Cleanup complete.")
         except subprocess.CalledProcessError as e:
             print(f"\nDeployment failed with error code {e.returncode}")
             sys.exit(e.returncode)
     else:
         print("\nConfiguration files generated. To start the stack, run the following command:")
-        print("  cd deployment && docker compose up -d")
+        print(f"  docker compose --project-directory {args.output_dir} up -d")
 
 if __name__ == '__main__':
     main()

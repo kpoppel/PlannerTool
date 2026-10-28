@@ -7,6 +7,7 @@ import { initKeyboardShortcuts } from './services/KeyboardShortcuts.js';
 import { createUiCommands } from './application/commands/uiCommands.js';
 import { DataCommandEvents } from './application/commands/dataCommands.js';
 import { store } from './application/store.js';
+import { initializeAuthentication, showAuthenticationStartupFailure } from './services/authStartup.js';
 
 const uiCommands = createUiCommands(store, bus);
 
@@ -110,6 +111,13 @@ async function init() {
 
     // Populate the app state from the backend through the store-backed bootstrap.
     const { dataService } = await import('./services/dataService.js');
+    try {
+      const authentication = await initializeAuthentication(`${window.APP_BASE_URL}/api`);
+      dataService.providers.rest.setAuthentication(authentication);
+    } catch (error) {
+      showAuthenticationStartupFailure(error);
+      throw error;
+    }
     await dataService.init();
     const { showReleaseNotes } = await import('./components/ReleaseNotes.lit.js');
     hideModal();

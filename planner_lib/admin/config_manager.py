@@ -36,6 +36,7 @@ class ConfigManager:
 
     # Keys written during a full backup.
     CONFIG_KEYS = [
+        'authentication',
         "projects", "teams", "workforce",
         "area_plan_map", "iterations", "global_settings", "ado_config", "ado_processes", "plugin_runtime_config", "server_config",
     ]
@@ -72,6 +73,9 @@ class ConfigManager:
         (default), only the canonical value is persisted and no ghost entries
         accumulate in diskcache.
         """
+        if key == 'authentication':
+            self._validate_auth_policy_change(content)
+        self._validate_sandbox_config(key, content)
         if self._should_backup():
             self._backup_config(key)
 
@@ -104,7 +108,32 @@ class ConfigManager:
         an automated refresh) where the data is always derived and the
         canonical version is the latest computed result.
         """
+        if key == 'authentication':
+            self._validate_auth_policy_change(content)
+        self._validate_sandbox_config(key, content)
         self._storage.save('config', key, content)
+
+    def _validate_sandbox_config(self, key, content):
+        if not self._storage.exists('system', 'sandbox_auth'):
+            return
+        if key in ('ado_config', 'server_config'):
+            from planner_lib.backend.registry import get_active_class
+            from planner_lib.backend.mock import MockFixtureBackend
+
+            flags = {}
+            for name in ('server_config', 'ado_config'):
+                value = content if key == name else self._storage.load('config', name)
+                flags.update(value['feature_flags'])
+            if get_active_class(flags) is not MockFixtureBackend:
+                raise ValueError('Sandbox requires the explicit ADO fixture transport')
+
+    def _validate_auth_policy_change(self, content):
+        from planner_lib.session.policy import validate_authentication
+
+        validate_authentication(content)
+        current = self._storage.load('config', 'authentication')
+        if any(content[key] != current[key] for key in ('active', 'backend_credentials', 'epoch')):
+            raise ValueError('Authentication activation requires an approved transition, not save/import')
 
     def _backup_config(self, key: str) -> None:
         """Create a timestamped backup of an existing config key.
@@ -212,6 +241,9 @@ class ConfigManager:
         if len(parts) != 2:
             raise ValueError(f"Invalid backup key format: {key}")
         canonical_key = parts[0]
+        if canonical_key == 'authentication':
+            self._validate_auth_policy_change(content)
+        self._validate_sandbox_config(canonical_key, content)
         self._storage.save('config', canonical_key, content)
         return content
 
@@ -341,6 +373,13 @@ class ConfigManager:
         config = data.get('config', {})
         if not isinstance(config, dict) or set(config) - set(self.CONFIG_KEYS):
             raise ValueError('Logical backup contains unsupported configuration keys')
+        if 'authentication' in config:
+            self._validate_auth_policy_change(config['authentication'])
+        if self._storage.exists('system', 'sandbox_auth') and 'accounts' in data:
+            raise ValueError('Sandbox account import requires an approved provisioning policy')
+        for key, value in config.items():
+            if value is not None:
+                self._validate_sandbox_config(key, value)
         projects = config.get('projects')
         if projects is not None and (
             not isinstance(projects, dict) or 'container_types' not in projects
@@ -546,7 +585,7 @@ class ConfigManager:
             for key, content in data["scenarios"].items():
                 self._storage.save('scenarios', key, content)
 
-        for namespace in ('auth_sessions',):
+        for namespace in ('auth_sessions', 'auth_transactions', 'auth_grants'):
             for key in list(self._storage.list_keys(namespace)):
                 if self._storage.exists(namespace, key):
                     self._storage.delete(namespace, key)
