@@ -600,6 +600,12 @@ def upgrade_45(storage):
             seed_sandbox_links(storage, AccountManager(storage), SimpleNamespace(metadata=lambda: metadata))
 
 
+def upgrade_46(storage):
+    from planner_lib.session.policy import initial_transition
+
+    storage.save('system', 'authentication_transition', initial_transition())
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -611,6 +617,7 @@ REGISTRY = tuple(
         (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
         (44, 43, upgrade_44),
         (45, 44, upgrade_45),
+        (46, 45, upgrade_46),
     )
 )
 
@@ -636,6 +643,7 @@ def initialize(storage):
             storage.save('config', key, value)
     storage.save('system', 'schema_state', schema_state(TARGET_REVISION, initialized=True))
     storage.save('system', 'external_identity_schema', {'version': 1})
+    upgrade_46(storage)
     storage.save('system', 'workforce_backend_refresh_required', False)
 
 
@@ -793,6 +801,9 @@ def validate_records(storage, revision, *, server_config=None):
         if revision >= 45:
             from planner_lib.session.identity import validate_identity_records
             validate_identity_records(storage)
+        if revision >= 46:
+            from planner_lib.session.policy import validate_transition
+            validate_transition(storage.load('system', 'authentication_transition'))
         for namespace in ('views', 'scenarios'):
             for key, payload in _payloads(storage, namespace):
                 if not isinstance(payload, dict):

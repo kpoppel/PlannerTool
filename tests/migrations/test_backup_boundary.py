@@ -22,6 +22,21 @@ def test_logical_backup_exports_revision_without_recovery_metadata(manager):
     assert 'active-generation' not in backup
     assert 'external_identities' not in backup
     assert 'auth_grants' not in backup
+    assert 'authentication' not in backup['config']
+
+
+def test_logical_backup_strips_pat_and_enrollment_authority(manager):
+    account_id = '11111111-1111-4111-8111-111111111111'
+    manager._storage.save('accounts', 'alex@example.test', {
+        'email': 'alex@example.test', 'account_id': account_id,
+        'pat': 'must-not-export', 'pat_invalid': True, 'permissions': ['admin']})
+    manager._storage.save('account_auth', account_id, {
+        'enrolled': True, 'account_key_hash': 'must-not-export', 'devices': {'secret': 'binding'}})
+    backup = manager.get_backup()
+    assert backup['accounts']['users']['alex@example.test']['pat'] is None
+    assert 'pat_invalid' not in backup['accounts']['users']['alex@example.test']
+    assert backup['authentication']['account_auth'] == {account_id: {'enrolled': False}}
+    assert 'must-not-export' not in str(backup)
 
 
 @pytest.mark.parametrize('payload', [

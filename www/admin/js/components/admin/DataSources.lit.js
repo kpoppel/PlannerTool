@@ -90,6 +90,8 @@ function resultErrorMessage(result, fallback = 'Request failed') {
 
 export const PAT_AUTHENTICATION_SETTINGS = Object.freeze({
   activeMode: 'pat',
+  deploymentControlled: true,
+  readiness: 'Deployment policy',
   activationUnavailableReason: 'Entra ID activation is unavailable until authentication integration and transition checks are complete.',
 });
 
@@ -265,6 +267,8 @@ export class DataSources extends LitElement {
     this.authentication = getAuthentication();
     this.authenticationSettings = this.authentication === null ? PAT_AUTHENTICATION_SETTINGS : {
       activeMode: this.authentication.state.mode,
+      deploymentControlled: true,
+      readiness: 'Deployment policy',
       activationUnavailableReason: 'Authentication transitions require separate approval.',
     };
     this._draftAuthMode = this.authenticationSettings.activeMode;
@@ -347,6 +351,25 @@ export class DataSources extends LitElement {
     this._onAuthenticationPreview(this._draftAuthMode);
     this._loading = true;
     try {
+      if (this.authenticationSettings.deploymentControlled === true) {
+        const result = await adminProvider.getAuthenticationSettings();
+        if (!result.ok) throw new Error('Failed to load deployment authentication policy');
+        const settings = result.data;
+        const readiness = {
+          sandbox_only: 'Sandbox ready. Live activation blocked.',
+          unavailable: 'Authentication service unavailable. Live activation blocked.',
+          local: 'Local enrollment. No broker required.',
+          pat: 'User-owned PAT credentials.',
+        };
+        if (!Object.hasOwn(readiness, settings.readiness)) throw new Error('Unknown authentication readiness');
+        this.authenticationSettings = {
+          activeMode: settings.active === 'entra' ? 'entra' : 'pat',
+          deploymentControlled: true,
+          readiness: readiness[settings.readiness],
+          activationUnavailableReason: 'Authentication is controlled by the deployment operator.',
+        };
+        this._draftAuthMode = this.authenticationSettings.activeMode;
+      }
       const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult] = await Promise.all([
         adminProvider.getEventsConfig(),
         adminProvider.getAdo(),

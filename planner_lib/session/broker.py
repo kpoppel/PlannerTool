@@ -238,6 +238,18 @@ class EntraLoginAdapter:
             email = account['email']
             account_id = account['id']
             name = self.identities.profile(account_id)['name']
+            if self.policy()['active'] == 'enrollment':
+                if target is None or target != approval['approved_by']:
+                    raise AuthFailure('access_denied', 403)
+                self.storage.save('auth_transition_proofs', account_id, {
+                    'epoch': self.policy()['epoch'], 'environment': self.settings.metadata(),
+                    'session': _get_fernet().encrypt(session_id.encode()).decode(),
+                    'grant': _get_fernet().encrypt(result['grant'].encode()).decode(),
+                    'expires_at': min(result['expires_at'], time.time() + 600),
+                }, ttl_seconds=600)
+                self.storage.delete('auth_transactions', key)
+                self.storage.delete('auth_link_approvals', key)
+                return None
             local_binding = secrets.token_urlsafe(32)
             encrypted_grant = _get_fernet().encrypt(result['grant'].encode()).decode()
             self.storage.save('auth_grants', local_binding, {
@@ -293,7 +305,7 @@ class EntraLoginAdapter:
             self.client.request('v1/grants/revoke', {'grant': reference})
 
 
-def prepare_sandbox(storage, settings):
+def prepare_sandbox(storage, settings, *, activate=True):
     if not settings.isolated_sandbox or settings.upstream_mode != 'mock':
         raise ValueError('Phase D permits Entra activation only in isolated sandbox data')
     marker = settings.metadata()
@@ -313,8 +325,9 @@ def prepare_sandbox(storage, settings):
             accounts.create_account(AccountCredentialsPayload(email=email), permissions=['admin'] if index == 0 else [])
         from planner_lib.session.identity import seed_sandbox_links
         seed_sandbox_links(storage, accounts, settings)
-        storage.save('config', 'authentication', {
-            'version': 1, 'selected': 'entra', 'active': 'entra', 'backend_credentials': 'delegated', 'epoch': 1})
+        if activate:
+            storage.save('config', 'authentication', {
+                'version': 1, 'selected': 'entra', 'active': 'entra', 'backend_credentials': 'delegated', 'epoch': 1})
         storage.save('config', 'ado_config', {
             'organization_url': 'example', 'feature_flags': {'use_azure_mock': True}})
         storage.save('system', 'sandbox_auth', marker)

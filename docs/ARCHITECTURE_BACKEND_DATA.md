@@ -38,6 +38,16 @@ live transport. Background task snapshots renew through that provider and hold
 an authoritative grant/account/epoch validation guard through cache publication.
 These are sandbox-tested contracts, not production Entra activation.
 
+Deployment policy owns ADO PAT versus delegated Entra composition; instance
+settings cannot override it. Local-only deployments retain enrollment without a
+broker and reject remote task/wiki configuration. `session/transition.py` uses
+exclusive database leases and a revision-46 journal to fence a complete registered
+sandbox fleet before atomic per-instance epoch/purge commits. Serving resumes
+only after fleet completion; there is no authentication fallback. Logical exports
+contain account/data records, never login authority or transition state. Restored
+enrollment accounts require fresh operator reset; Entra account replacement is
+rejected. Full recovery/activation contracts are in [Phase F](PHASE_F_REPORT.md).
+
 ## 2. System Components & Boundary Map
 
 ### Directory & File Layout

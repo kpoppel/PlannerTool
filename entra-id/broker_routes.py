@@ -105,6 +105,13 @@ def install_broker(app, settings, config):
         return {**store.metadata(), 'transaction': reference, 'expires_at': expires,
                 'authorization_url': config.public_url + 'v1/browser/authorize?' + urlencode({'transaction': reference})}
 
+    @app.post('/v1/deployment/readiness')
+    async def deployment_readiness(request: Request):
+        owner, payload = await authenticate(request, set())
+        return {**store.metadata(), 'ready': True, 'instances': sorted(config.instances),
+                'completion_urls': {name: value['completion_url'] for name, value in config.instances.items()},
+                'tenant': settings.tenant_id, 'organization': settings.organization}
+
     @app.post('/v1/transactions/redeem')
     async def redeem(request: Request):
         owner, payload = await authenticate(request, {'transaction', 'code', 'verifier'})

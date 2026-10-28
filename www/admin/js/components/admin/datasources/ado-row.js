@@ -100,9 +100,10 @@ export function renderAdoSubForm(comp, type, errs) {
     return html`
       <div class="sub-form">
         <div class="field full" data-authentication-settings>
-          <label for="ado-authentication-mode">Authentication mode (preview)</label>
+          <label for="ado-authentication-mode">ADO authentication</label>
           <select id="ado-authentication-mode" class="backend-select"
             .value=${comp._draftAuthMode}
+            ?disabled=${comp.authenticationSettings.deploymentControlled === true}
             aria-describedby="ado-authentication-status"
             @change=${(event) => {
               comp._draftAuthMode = event.target.value;
@@ -114,7 +115,9 @@ export function renderAdoSubForm(comp, type, errs) {
           </select>
           <div id="ado-authentication-status" role="status">
             Active: ${comp.authenticationSettings.activeMode === 'pat' ? 'PAT' : 'Entra ID'}.
-            Selected: ${comp._draftAuthMode === 'pat' ? 'PAT' : 'Entra ID'}.
+            ${comp.authenticationSettings.deploymentControlled === true
+              ? html`Deployment controlled. ${comp.authenticationSettings.readiness}`
+              : html`Selected: ${comp._draftAuthMode === 'pat' ? 'PAT' : 'Entra ID'}.`}
           </div>
           ${comp._draftAuthMode !== comp.authenticationSettings.activeMode ? html`
             <div class="desc" id="ado-authentication-unavailable">

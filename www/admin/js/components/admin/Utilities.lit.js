@@ -200,7 +200,7 @@ export class AdminUtilities extends LitElement {
     config: 'Config', accounts: 'User accounts', views: 'Views', scenarios: 'Scenarios',
   };
 
-  static accountRestoreWarning = 'Restoring user accounts replaces current account access with the backup state. Account keys may revert to older keys, newer keys may stop working, revoked browsers may regain access, and deleted accounts may return. Users who cannot enroll, sign in again, or delete their account may need an administrator to use Users > Reset access and provide a replacement account key. Active sessions will end. Ensure an administrator can regain access using the restored credentials before continuing. If no administrator can sign in, use the documented operator reset procedure.';
+  static accountRestoreWarning = 'Account restore excludes credentials and ends active sessions. Restored accounts cannot use old PATs, account keys or browser devices. Fresh keys require Users > Reset access or the offline operator reset procedure before anyone can sign in again. Entra account replacement is not supported. Confirm an operator recovery path before continuing.';
 
   constructor() {
     super();

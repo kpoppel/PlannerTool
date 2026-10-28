@@ -3,13 +3,20 @@
 Phase D adds an isolated, authenticated broker sandbox and canonical revision 44.
 Existing application sessions expire once on upgrade; account UUIDs, permissions,
 enrollment keys and PATs are retained. Production Entra activation remains blocked.
-See [the broker protocol and operator runbook](AUTH_BROKER_PHASE_D.md).
+See [the current sandbox operator and recovery procedure](PHASE_F_REPORT.md).
 
 Phase E adds revision 45, stable tenant/object identity links, unprivileged JIT
 accounts, session-owned delegated credentials and SDK/wiki Bearer transport.
 It is exercised only against the isolated mock broker. Neither migration nor
 ordinary settings saves enable production Entra, purge PATs or invalidate sessions.
 See [the Phase E report](PHASE_E_REPORT.md).
+
+Phase F adds revision 46 and deployment-owned ADO policy, read-only instance
+readiness, staged administrator identity proof and offline sandbox fleet activation.
+The migration adds only an idle journal; it does not purge credentials or expire
+sessions. See [the Phase F report and recovery procedure](PHASE_F_REPORT.md).
+Live activation, live session/offboarding policy and production transitions remain
+blocked. No gateway or organization tenancy is introduced.
 
 Normal planner and admin pages now discover the active login source. Explicit
 isolated Entra sandboxes use the shared HTTP client and the running broker;
@@ -95,23 +102,40 @@ Enrollment and save-key screens retain a contextual enrollment-help link.
 
 ## Azure DevOps credentials
 
-### Authentication mode preview
+### Deployment Authentication Policy
 
 **Admin > Data Sources** shows an authentication mode selector only for the live
 Azure DevOps backend. PAT remains active in enrollment installations; an isolated
-Entra sandbox reports Entra as active. Selecting a different mode changes only the
-in-memory draft; activation is disabled until the authentication integration and
-transition checks are complete. Cancel or reopening the panel discards the draft.
-Save still saves ordinary data-source settings, without persisting or activating
-the authentication selection. It does not purge PATs, log users out or change
-enrollment behavior.
+Entra sandbox reports Entra as active. The production selector is disabled and
+shows effective mode and broker readiness. Instance administrators cannot stage
+or override deployment policy: `POST /api/auth/settings` returns HTTP 409 with
+`deployment_policy_required`. Ordinary Save cannot change mode, epoch, sessions
+or credentials. The injected preview remains only a test composition.
 
 The component accepts a non-persisted `authenticationSettings` model containing
 `activeMode` (`pat` or `entra`) and `activationUnavailableReason`. Tests can inject
 synthetic settings without an authentication service. The production model reports
-PAT outside an explicitly isolated Entra composition; this presentation-only
-contract cannot authenticate users or enable activation.
-No configuration API or stored data shape changes are introduced by this preview.
+the effective mode outside an explicitly injected preview. Production models have
+`deploymentControlled: true` and load non-secret `/api/auth/settings` readiness.
+This operation never acquires an ADO access token.
+
+Manifests require top-level `ado_authentication: disabled|pat|entra` and explicit
+`backend: local|ado` per instance. All ADO instances use the same policy; a local
+instance always uses enrollment and has no broker reference. A wiki-only remote
+configuration is an ADO instance, even when its task backend is local/mock.
+Generated `PLANNER_ADO_AUTHENTICATION` and `PLANNER_INSTANCE_BACKEND` settings are
+validated alongside login source; local-only instances cannot enable live ADO or
+wiki transport through settings or import. A staged sandbox broker may be
+registered while PAT/enrollment remains active, without activation or purge.
+
+Logical backup excludes active authentication policy, PATs, enrollment keys,
+devices, sessions, external links, grants and transition proofs/journals. Imported
+credential-bearing backups are rejected before writes. Restored enrollment
+accounts receive fresh unknown key hashes and no devices, preventing public
+claiming of privileged accounts; use an explicit operator reset to issue fresh
+keys. Entra account replacement is rejected to preserve the destination's proven
+admin links. Physical backups can still contain old credentials and require
+separate offline recovery and revocation review.
 
 ### Isolated Authentication Clients (Phases B-C)
 

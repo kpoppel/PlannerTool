@@ -259,6 +259,13 @@ def test_authenticated_http_browser_handoff_and_replay(config):
     with TestClient(app, base_url='http://localhost:8080/auth/', follow_redirects=False) as client:
         metadata = client.get('/v1/readiness').json()
         envelope = {key: metadata[key] for key in app.state.broker_store.metadata()}
+        assert client.post('/v1/deployment/readiness', json=envelope).status_code == 403
+        deployment = client.post('/v1/deployment/readiness', json=envelope, headers=headers)
+        assert deployment.status_code == 200
+        assert deployment.json()['instances'] == ['alpha']
+        assert deployment.json()['completion_urls']['alpha'] == config.instances['alpha']['completion_url']
+        assert deployment.json()['organization'] == 'example'
+        assert secret not in deployment.text
         verifier = secrets.token_urlsafe(32)
         body = {**envelope, 'completion_url': config.instances['alpha']['completion_url'],
                 'challenge': broker.challenge(verifier), 'state': secrets.token_urlsafe(32)}

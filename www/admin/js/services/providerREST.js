@@ -123,6 +123,10 @@ export class AdminProviderREST extends RestProviderBase {
     return this._getContent('/admin/v1/ado', null);
   }
 
+  async getAuthenticationSettings() {
+    return this._requestJson('/api/auth/settings', { method: 'GET' });
+  }
+
   async getBrowseConfig() {
     return this._getContent('/admin/v1/browse-config');
   }

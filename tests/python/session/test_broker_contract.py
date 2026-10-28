@@ -38,7 +38,9 @@ def sandbox(monkeypatch, tmp_path):
         requests.append(request)
         metadata = settings.metadata()
         if request.url.path.endswith('/readiness'):
-            return httpx.Response(200, json={**metadata, 'ready': True, 'live_capable': False})
+            return httpx.Response(200, json={**metadata, 'ready': True, 'live_capable': False,
+                'instances': ['alpha'], 'completion_urls': {'alpha': settings.completion_url},
+                'tenant': SANDBOX_TENANT, 'organization': 'example'})
         payload = json.loads(request.content)
         assert all(payload[key] == value for key, value in metadata.items())
         if request.url.path.endswith('/begin'):
@@ -249,9 +251,9 @@ def test_config_save_and_restore_cannot_activate_a_source(sandbox):
     manager = ConfigManager(storage)
     current = storage.load('config', 'authentication')
     incompatible = {**current, 'active': 'enrollment', 'backend_credentials': 'pat'}
-    with pytest.raises(ValueError, match='transition'):
+    with pytest.raises(ValueError, match='deployment-controlled'):
         manager.save_config('authentication', incompatible)
-    with pytest.raises(ValueError, match='transition'):
+    with pytest.raises(ValueError, match='deployment-controlled'):
         manager.restore_backup({'schema_revision': TARGET_REVISION, 'config': {'authentication': incompatible}})
     with pytest.raises(ValueError, match='fixture transport'):
         manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
@@ -482,13 +484,281 @@ def test_cancellation_validates_browser_and_consumes_pending_state(sandbox):
     assert client.post('/api/auth/login/complete', json={'state': begin['state'], 'code': 'code'}).status_code == 401
 
 
-def test_admin_selection_stages_without_activation_or_session_invalidation(client):
+def test_staged_link_proves_admin_without_issuing_entra_session(sandbox):
+    from planner_lib.session.enrollment import EnrollmentLoginAdapter
+
+    client, requests = sandbox
+    container = client.app.state.container
+    storage = container.get('storage')
+    accounts = container.get('account_manager')
+    sessions = container.get('session_manager')
+    admin = accounts.get_account_by_id(accounts.get_account_id('alex@example.test'))
+    storage.save('config', 'authentication', {
+        'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
+        'backend_credentials': 'pat', 'epoch': 1})
+    login = EnrollmentLoginAdapter(container.get('auth_manager'), accounts, storage)
+    device, sid, enrolled = login.enroll('alex@example.test', 'Alex Sandbox')
+    adapter = container.get('login_adapter')
+    binding, begun = adapter.begin_link(admin['id'], admin['id'], sid)
+    assert adapter.complete(begun['state'], 'code', binding, sid) is None
+    assert sessions.is_valid(sid)
+    assert storage.load('config', 'authentication')['active'] == 'enrollment'
+    proof = storage.load('auth_transition_proofs', admin['id'])
+    assert proof['epoch'] == 1
+    assert not list(storage.list_keys('auth_grants'))
+
+
+def test_staged_browser_callback_and_admin_proof_need_no_pat(sandbox, monkeypatch, tmp_path):
+    from planner_lib.middleware.session import SESSION_COOKIE
+    from planner_lib.accounts.config import AccountCredentialsPayload
+
+    source = sandbox[0].app.state.container
+    monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'enrollment')
+    app = create_app(Config(storage_backend='memory', data_dir=str(tmp_path / 'staged'), static_dir='www'))
+    app.state.container.get('broker_client').transport = source.get('broker_client').transport
+    with TestClient(app, base_url='http://localhost:8765') as client:
+        assert client.post('/api/auth/enroll', json={
+            'email': 'alex@example.test', 'name': 'Alex Sandbox'}).status_code == 200
+        sid = client.cookies.get(SESSION_COOKIE)
+        accounts = app.state.container.get('account_manager')
+        admin_id = accounts.get_account_id('alex@example.test')
+        monkeypatch.setattr(app.state.container.get('credential_policy'), 'credential_error', lambda user: 'pat_invalid')
+        begun = client.post('/api/auth/links/begin', json={'account_id': admin_id},
+                            headers={'Origin': 'http://localhost:8765'})
+        assert begun.status_code == 200
+        assert client.get('/api/auth/login/callback', params={
+            'state': begun.json()['state'], 'code': 'code'}).status_code == 200
+        assert client.cookies.get(SESSION_COOKIE) == sid
+        assert app.state.container.get('session_manager').is_valid(sid)
+        assert app.state.container.get('storage').exists('auth_transition_proofs', admin_id)
+        assert client.post('/api/auth/settings', json={'selected': 'entra'}).status_code == 409
+
+
+def test_entra_rejects_pat_at_account_storage_boundary(sandbox):
+    from planner_lib.accounts.config import AccountCredentialsPayload
+
+    accounts = sandbox[0].app.state.container.get('account_manager')
+    with pytest.raises(ValueError, match='forbids PAT'):
+        accounts.update_credentials(AccountCredentialsPayload(email='alex@example.test', pat='new-synthetic-pat'))
+
+
+def test_sandbox_wiki_events_use_renewed_acting_session_fixture(sandbox):
+    client, requests = sandbox
+    begun = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()
+    profile = client.post('/api/auth/login/complete', json={'state': begun['state'], 'code': 'code'}).json()
+    response = client.post('/api/auth/sandbox/wiki')
+    assert response.status_code == 200
+    assert response.json() == {'account_id': profile['account']['uuid'], 'transport': 'fixture', 'status': 'completed'}
+    storage = client.app.state.container.get('storage')
+    records = [storage.load('sandbox_wiki', key) for key in storage.list_keys('sandbox_wiki')]
+    assert len(records) == 1
+    assert records[0]['account_id'] == profile['account']['uuid']
+    assert records[0]['revision'] == 3
+    assert sum(request.url.path.endswith('/token') for request in requests) >= 7
+def test_admin_selection_rejected_without_activation_or_session_invalidation(client):
     assert client.post('/api/auth/enroll', json={
         'email': 'staging@example.test', 'name': 'Staging Administrator',
     }).status_code == 200
     before = client.get('/api/auth/settings').json()
     response = client.post('/api/auth/settings', json={'selected': 'entra'})
-    assert response.status_code == 200
-    assert response.json() == {**before, 'selected': 'entra'}
+    assert response.status_code == 409
+    assert response.json() == {'error': 'deployment_policy_required'}
+    assert client.get('/api/auth/settings').json() == before
     assert client.get('/api/auth/me').status_code == 200
     assert client.post('/api/auth/settings', json={'selected': 'entra', 'active': 'entra'}).status_code == 422
+
+
+def test_sandbox_fleet_transition_requires_proof_and_resumes_after_commit(sandbox):
+    from types import SimpleNamespace
+    from uuid import uuid4
+    from planner_lib.session.enrollment import EnrollmentLoginAdapter
+    from planner_lib.session.policy import require_serving_policy
+    from planner_lib.session.transition import SandboxFleetTransition
+
+    client, requests = sandbox
+    container = client.app.state.container
+    storage = container.get('storage')
+    accounts = container.get('account_manager')
+    sessions = container.get('session_manager')
+    storage.save('config', 'authentication', {
+        'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
+        'backend_credentials': 'pat', 'epoch': 1})
+    login = EnrollmentLoginAdapter(container.get('auth_manager'), accounts, storage)
+    device, sid, enrolled = login.enroll('alex@example.test', 'Alex Sandbox')
+    admin_id = accounts.get_account_id('alex@example.test')
+    instance = SimpleNamespace(storage=storage, accounts=accounts, sessions=sessions,
+                               client=container.get('broker_client'))
+    transition_id = str(uuid4())
+    transition = SandboxFleetTransition({'alpha': instance}, transition_id)
+    with pytest.raises(ValueError, match='confirmation'):
+        transition.execute()
+    with pytest.raises(ValueError, match='proof'):
+        transition.execute(confirmed=True)
+    adapter = container.get('login_adapter')
+    binding, begun = adapter.begin_link(admin_id, admin_id, sid)
+    adapter.complete(begun['state'], 'code', binding, sid)
+    original = accounts.get_account_by_id(admin_id)
+
+    def crash(name, state):
+        if state == 'committed':
+            raise RuntimeError('injected crash')
+
+    transition.fault = crash
+    with pytest.raises(RuntimeError, match='injected crash'):
+        transition.execute(confirmed=True)
+    assert storage.load('config', 'authentication')['epoch'] == 2
+    assert not list(storage.list_keys('auth_sessions'))
+    assert storage.load('account_auth', admin_id) == {'enrolled': False}
+    assert accounts.get_account_by_id(admin_id)['permissions'] == original['permissions']
+    with pytest.raises(PermissionError, match='fenced'):
+        require_serving_policy(storage)
+    with pytest.raises(ValueError, match='Cannot abort'):
+        transition.abort()
+    transition.fault = None
+    transition.execute(confirmed=True)
+    require_serving_policy(storage)
+    assert storage.load('system', 'authentication_transition')['state'] == 'released'
+    transition.execute(confirmed=True)
+    assert storage.load('config', 'authentication')['epoch'] == 2
+
+
+@pytest.mark.parametrize('failed_state', ['prepared', 'fenced', 'committed', 'released'])
+def test_two_instance_transition_failure_is_recoverable_without_mixed_serving(sandbox, failed_state):
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from uuid import uuid4
+    from planner_lib.accounts.config import AccountManager
+    from planner_lib.middleware.session import SessionManager
+    from planner_lib.session.auth import AuthManager
+    from planner_lib.session.broker import EntraLoginAdapter
+    from planner_lib.session.policy import SessionPolicy, require_serving_policy
+    from planner_lib.session.transition import SandboxFleetTransition
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    source = sandbox[0].app.state.container
+    instances = {}
+    for name in ('alpha', 'beta'):
+        storage = MemoryStorage()
+        for namespace in ('system', 'config', 'accounts', 'account_auth', 'external_identities'):
+            for key in source.get('storage').list_keys(namespace):
+                storage.save(namespace, key, source.get('storage').load(namespace, key))
+        storage.save('config', 'authentication', {
+            'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
+            'backend_credentials': 'pat', 'epoch': 1})
+        accounts = AccountManager(storage)
+        sessions = SessionManager(accounts, storage, auth_policy=SessionPolicy(storage))
+        auth = AuthManager(storage, accounts, sessions)
+        device, account_key, sid = auth.enroll('alex@example.test', 'Alex')
+        settings = replace(source.get('broker_client').settings, instance=name)
+
+        def transport(request, settings=settings):
+            if request.url.path.endswith('/deployment/readiness'):
+                return httpx.Response(200, json={**settings.metadata(), 'ready': True,
+                    'instances': ['alpha', 'beta'],
+                    'completion_urls': {settings.instance: settings.completion_url},
+                    'tenant': SANDBOX_TENANT, 'organization': 'example'})
+            return source.get('broker_client').transport.handle_request(request)
+
+        client = BrokerClient(settings, transport=httpx.MockTransport(transport))
+        login = EntraLoginAdapter(storage, accounts, sessions, client)
+        admin_id = accounts.get_account_id('alex@example.test')
+        binding, begun = login.begin_link(admin_id, admin_id, sid)
+        login.complete(begun['state'], 'code', binding, sid)
+        instances[name] = SimpleNamespace(storage=storage, accounts=accounts, sessions=sessions, client=client)
+
+    def crash(name, state):
+        if name == 'alpha' and state == failed_state:
+            raise RuntimeError('injected fleet crash')
+
+    transition = SandboxFleetTransition(instances, str(uuid4()), fault=crash)
+    with pytest.raises(RuntimeError, match='fleet crash'):
+        transition.execute(confirmed=True)
+    if failed_state in ('committed', 'released'):
+        for instance in instances.values():
+            if instance.storage.load('system', 'authentication_transition')['state'] != 'released':
+                with pytest.raises(PermissionError):
+                    require_serving_policy(instance.storage)
+        with pytest.raises(ValueError, match='Cannot abort'):
+            transition.abort()
+    else:
+        transition.abort()
+        for instance in instances.values():
+            assert instance.storage.load('system', 'authentication_transition')['state'] == 'idle'
+            assert instance.storage.load('config', 'authentication')['epoch'] == 1
+    SandboxFleetTransition(instances, transition.transition_id).execute(confirmed=True)
+    for instance in instances.values():
+        require_serving_policy(instance.storage)
+        assert instance.storage.load('config', 'authentication')['epoch'] == 2
+        assert instance.storage.load('system', 'authentication_transition')['state'] == 'released'
+
+
+@pytest.mark.parametrize('failure', ['expired', 'revoked_session', 'revoked_grant', 'lost_admin', 'lost_link', 'omitted_member'])
+def test_transition_rejects_lost_authority_before_fencing(sandbox, failure):
+    import time
+    from types import SimpleNamespace
+    from uuid import uuid4
+    from planner_lib.session.enrollment import EnrollmentLoginAdapter
+    from planner_lib.session.transition import SandboxFleetTransition
+
+    container = sandbox[0].app.state.container
+    storage = container.get('storage')
+    accounts = container.get('account_manager')
+    sessions = container.get('session_manager')
+    client = container.get('broker_client')
+    storage.save('config', 'authentication', {
+        'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
+        'backend_credentials': 'pat', 'epoch': 1})
+    device, sid, enrollment = EnrollmentLoginAdapter(container.get('auth_manager'), accounts, storage).enroll(
+        'alex@example.test', 'Alex')
+    admin_id = accounts.get_account_id('alex@example.test')
+    adapter = container.get('login_adapter')
+    binding, begun = adapter.begin_link(admin_id, admin_id, sid)
+    adapter.complete(begun['state'], 'code', binding, sid)
+    proof = storage.load('auth_transition_proofs', admin_id)
+    if failure == 'expired':
+        storage.save('auth_transition_proofs', admin_id, {**proof, 'expires_at': time.time() - 1})
+    elif failure == 'revoked_session':
+        sessions.delete(sid)
+    elif failure == 'lost_admin':
+        account = storage.load('accounts', 'alex@example.test')
+        storage.save('accounts', 'alex@example.test', {**account, 'permissions': []})
+    elif failure == 'lost_link':
+        for key in list(storage.list_keys('external_identities')):
+            storage.delete('external_identities', key)
+    else:
+        original = client.transport
+
+        def transport(request):
+            response = original.handle_request(request)
+            value = json.loads(response.content)
+            if failure == 'revoked_grant' and request.url.path.endswith('/status'):
+                value['status'] = 'revoked'
+            if failure == 'omitted_member' and request.url.path.endswith('/deployment/readiness'):
+                value['instances'] = ['alpha', 'beta']
+            return httpx.Response(200, json=value)
+
+        client.transport = httpx.MockTransport(transport)
+    transition = SandboxFleetTransition({'alpha': SimpleNamespace(
+        storage=storage, accounts=accounts, sessions=sessions, client=client)}, str(uuid4()))
+    with pytest.raises(ValueError):
+        transition.execute(confirmed=True)
+    assert storage.load('system', 'authentication_transition')['state'] == 'idle'
+    assert storage.load('config', 'authentication')['epoch'] == 1
+    assert storage.load('account_auth', admin_id)['enrolled'] is True
+
+
+@pytest.mark.parametrize('invalid', [{'state': 'idle'}, {'state': 'unknown'}, {'id': 'not-a-uuid'}, {'secret': 'forbidden'}])
+def test_transition_journal_is_strict_without_any_sessions(sandbox, invalid):
+    from planner_lib.migrations.contracts import SchemaError
+    from planner_lib.migrations.revisions import validate_records
+
+    storage = sandbox[0].app.state.container.get('storage')
+    assert not list(storage.list_keys('auth_sessions'))
+    record = storage.load('system', 'authentication_transition')
+    if invalid == {'state': 'idle'}:
+        del record['fleet']
+    else:
+        record.update(invalid)
+    storage.save('system', 'authentication_transition', record)
+    with pytest.raises(SchemaError, match='transition'):
+        validate_records(storage, TARGET_REVISION)

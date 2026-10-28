@@ -109,6 +109,13 @@ class AzureWikiEventBackend:
                 "Set it under Admin → Events Configuration → Azure DevOps Wiki Settings."
             )
 
+        if credential.get('transport') == 'fixture':
+            if self._credential_provider is None:
+                raise ValueError('Wiki fixture requires a session-bound credential provider')
+            from planner_lib.azure.AzureMockClient import SandboxWikiClient
+            return SandboxWikiClient(self._credential_provider.storage, self._credential_provider,
+                                     credential, org_url)
+
         from azure.devops.connection import Connection
 
         creds = (azure_devops_pat_authentication(token) if credential['kind'] == 'pat'
@@ -125,6 +132,8 @@ class AzureWikiEventBackend:
         Returns empty registers and a sentinel ETag of ``"-1"`` when the
         page does not yet exist.
         """
+        from planner_lib.backend.errors import BackendDecisionError
+
         try:
             resp = wiki_client.get_page(
                 project=self._project,
@@ -135,6 +144,8 @@ class AzureWikiEventBackend:
             content = (resp.page.content or "") if resp.page else ""
             etag = resp.eTag or "-1"
             return self._parse_events(content), self._parse_categories(content), etag
+        except BackendDecisionError:
+            raise
         except Exception as exc:
             logger.debug(
                 "wiki_events: page '%s' not found or unreadable (%s) — treating as empty",

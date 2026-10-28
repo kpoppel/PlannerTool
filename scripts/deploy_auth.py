@@ -21,6 +21,7 @@ def validate_deployment_policy(config):
             raise ValueError('ADO instances require a deployment ADO authentication policy')
         if instance['authentication_provider'] != expected:
             raise ValueError('Instance login contradicts deployment ADO authentication policy')
+        instance['_ado_authentication'] = mode
     return mode
 
 
@@ -37,8 +38,8 @@ def validate_instances(instances):
         if instance['authentication_provider'] == 'entra':
             if not instance.get('auth_service') or not instance.get('auth_client_secret_file'):
                 raise ValueError('Entra instances require auth_service and auth_client_secret_file')
-        elif 'auth_service' in instance or 'auth_client_secret_file' in instance:
-            raise ValueError('Enrollment instances must not reference broker credentials')
+        elif ('auth_service' in instance) != ('auth_client_secret_file' in instance):
+            raise ValueError('Staged broker requires both service reference and secret file')
 
 
 def protected_file(base, value):
@@ -53,9 +54,11 @@ def protected_file(base, value):
 def load_auth_services(config, manifest_path, https_hostname):
     instances = config['instances']
     validate_instances(instances)
+    validate_deployment_policy(config)
     base = Path(manifest_path).resolve().parent
-    referenced = {instance['auth_service'] for instance in instances
-                  if instance['authentication_provider'] == 'entra'}
+    referenced = {instance['auth_service'] for instance in instances if 'auth_service' in instance}
+    if any(instance['backend'] == 'local' and 'auth_service' in instance for instance in instances):
+        raise ValueError('Local-only instances must not depend on the ADO broker')
     if referenced - set(config.get('auth_services', {})):
         raise ValueError('Unknown auth service reference')
     services = {}
@@ -154,6 +157,11 @@ def add_auth_compose(compose, instances, services, version):
     for instance in instances:
         environment = compose['services']['planner-' + instance['name']]['environment']
         environment.append('PLANNER_AUTH_PROVIDER=' + instance['authentication_provider'])
+        if '_ado_authentication' in instance:
+            environment.extend([
+                'PLANNER_ADO_AUTHENTICATION=' + instance['_ado_authentication'],
+                'PLANNER_INSTANCE_BACKEND=' + instance['backend'],
+            ])
     if not services:
         return
     compose['secrets'] = {}

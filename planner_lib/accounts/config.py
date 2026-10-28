@@ -302,6 +302,9 @@ class AccountManager:
 
     def _save_account(self, config: AccountPayload) -> dict:
         """Persist a complete internal account representation."""
+        if (config.pat and self._storage.exists('config', 'authentication')
+            and self._storage.load('config', 'authentication')['active'] == 'entra'):
+            raise ValueError('Deployment Entra policy forbids PAT creation or import')
         # load from file storage to not change the PAT if empty
         try:
             existing = self._storage.load(self.DEFAULT_NS, config.email)

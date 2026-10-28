@@ -113,16 +113,21 @@ class ConfigManager:
         self._validate_sandbox_config(key, content)
         self._storage.save('config', key, content)
 
-    def _validate_sandbox_config(self, key, content):
+    def _validate_sandbox_config(self, key, content, *, overrides=None):
+        from planner_lib.session.policy import validate_backend_policy
+        validate_backend_policy(self._storage, key, content, overrides=overrides)
         if not self._storage.exists('system', 'sandbox_auth'):
             return
-        if key in ('ado_config', 'server_config'):
+        if key in ('ado_config', 'server_config') or overrides is not None:
             from planner_lib.backend.registry import get_active_class
             from planner_lib.backend.mock import MockFixtureBackend
 
             flags = {}
             for name in ('server_config', 'ado_config'):
-                value = content if key == name else self._storage.load('config', name)
+                if overrides is not None and name in overrides:
+                    value = overrides[name]
+                else:
+                    value = content if key == name else self._storage.load('config', name)
                 flags.update(value['feature_flags'])
             if get_active_class(flags) is not MockFixtureBackend:
                 raise ValueError('Sandbox requires the explicit ADO fixture transport')
@@ -132,8 +137,8 @@ class ConfigManager:
 
         validate_authentication(content)
         current = self._storage.load('config', 'authentication')
-        if any(content[key] != current[key] for key in ('active', 'backend_credentials', 'epoch')):
-            raise ValueError('Authentication activation requires an approved transition, not save/import')
+        if content != current:
+            raise ValueError('Authentication policy is deployment-controlled; no save/import override')
 
     def _backup_config(self, key: str) -> None:
         """Create a timestamped backup of an existing config key.
@@ -260,12 +265,7 @@ class ConfigManager:
             return self._get_backup()
 
     def _get_backup(self) -> dict:
-        """Create a full backup snapshot of configuration and data.
-
-        PATs are decrypted to plaintext before being written into the JSON
-        so the backup can be restored to a fresh installation using a
-        different ``PLANNER_SECRET_KEY``.
-        """
+        """Create a logical data backup without authentication authority."""
         backup_data: dict = {
             "schema_revision": self._storage.load('system', 'schema_state')['schema_revision'],
             "config": {},
@@ -276,24 +276,20 @@ class ConfigManager:
 
         # Configuration files (all keys go to storage under 'config' namespace)
         for key in self.CONFIG_KEYS:
+            if key == 'authentication':
+                continue
             try:
                 backup_data["config"][key] = self._storage.load('config', key)
             except KeyError:
                 backup_data["config"][key] = None
 
-        # User accounts.
-        # PATs are decrypted so the backup JSON is portable across key rotations.
-        # Permissions are stored inline in each user record.
         try:
-            from planner_lib.accounts.config import _try_decrypt_pat
             users: dict = {}
             for user_key in self._storage.list_keys('accounts'):
                 raw = self._storage.load('accounts', user_key)
-                if isinstance(raw, dict) and raw.get('pat'):
-                    # Decrypt to plaintext; falls back to None on corrupt/missing ciphertext.
-                    raw = dict(raw)
-                    raw['pat'] = _try_decrypt_pat(raw['pat'])
-                users[user_key] = raw
+                users[user_key] = {key: value for key, value in raw.items()
+                                   if key not in ('pat', 'pat_invalid')}
+                users[user_key]['pat'] = None
             backup_data["accounts"] = {"users": users}
         except Exception as e:
             logger.error("Failed to backup accounts: %s", e)
@@ -302,16 +298,10 @@ class ConfigManager:
         account_auth = {}
         for account in backup_data['accounts']['users'].values():
             account_id = account['account_id']
-            if self._storage.exists('account_auth', account_id):
-                account_auth[account_id] = self._storage.load('account_auth', account_id)
-            else:
-                account_auth[account_id] = {'enrolled': False}
+            account_auth[account_id] = {'enrolled': False}
         backup_data['authentication'] = {
             'account_auth': account_auth,
-            'auth_control': {
-                key: self._storage.load('auth_control', key)
-                for key in self._storage.list_keys('auth_control')
-            },
+            'auth_control': {'bootstrap_claimed': True} if account_auth else {},
         }
 
         # Views
@@ -360,7 +350,7 @@ class ConfigManager:
             'schema_revision', 'config', 'accounts', 'authentication', 'views', 'scenarios', '_meta'
         }:
             raise ValueError('Logical backups cannot restore recovery metadata or unknown sections')
-        if '_meta' in data and data['_meta'] != {'pat_format': 'plaintext'}:
+        if '_meta' in data and data['_meta'] != {'authentication': 'excluded'}:
             raise ValueError('Unsupported logical backup metadata')
         self._validate_user_data_ownership(data)
         if 'schema_revision' not in data:
@@ -374,12 +364,24 @@ class ConfigManager:
         if not isinstance(config, dict) or set(config) - set(self.CONFIG_KEYS):
             raise ValueError('Logical backup contains unsupported configuration keys')
         if 'authentication' in config:
-            self._validate_auth_policy_change(config['authentication'])
+            raise ValueError('Authentication policy is deployment-controlled; no logical import')
+        if 'accounts' in data:
+            if (self._storage.exists('config', 'authentication')
+                    and self._storage.load('config', 'authentication')['active'] == 'entra'):
+                raise ValueError('Entra account replacement requires independent operator recovery')
+            self._validate_authentication(data)
+            if any(record.get('pat') for record in data['accounts']['users'].values()):
+                raise ValueError('Logical restore cannot import PAT authority; supply fresh credentials')
+            if any(record != {'enrolled': False}
+                   for record in data['authentication']['account_auth'].values()):
+                raise ValueError('Logical restore cannot import enrollment authority; enroll afresh')
         if self._storage.exists('system', 'sandbox_auth') and 'accounts' in data:
             raise ValueError('Sandbox account import requires an approved provisioning policy')
         for key, value in config.items():
             if value is not None:
                 self._validate_sandbox_config(key, value)
+        self._validate_sandbox_config(None, None,
+            overrides={key: value for key, value in config.items() if value is not None})
         projects = config.get('projects')
         if projects is not None and (
             not isinstance(projects, dict) or 'container_types' not in projects
@@ -551,20 +553,6 @@ class ConfigManager:
             ):
                 raise ValueError("Cannot remove the current admin account.")
 
-            # Overwrite the account storage with the backup data.  This is simpler than trying to
-            # diff and merge with existing data, and the backup is expected to be a complete snapshot of all accounts.
-            from planner_lib.accounts.config import _encrypt_pat
-            for record in users.values():
-                if not isinstance(record, dict):
-                    continue
-                if record.get('pat'):
-                    try:
-                        record['pat'] = _encrypt_pat(record['pat'])
-                    except Exception as exc:
-                        raise RuntimeError(
-                            f"Could not re-encrypt PAT for {record.get('email', '?')} during restore"
-                        ) from exc
-
             if sync_accounts_fn is not None:
                 # Derive admin set from permissions field in each user record.
                 from planner_lib.accounts.constants import AccountPermissions
@@ -575,7 +563,15 @@ class ConfigManager:
                 for key in list(self._storage.list_keys(namespace)):
                     self._storage.delete(namespace, key)
                 for key, content in data['authentication'][namespace].items():
-                    self._storage.save(namespace, key, content)
+                    if namespace == 'auth_control':
+                        self._storage.save(namespace, key, content)
+            import hashlib
+            import secrets
+            for email, account in users.items():
+                self._storage.save('account_auth', account['account_id'], {
+                    'enrolled': True, 'name': email, 'devices': {},
+                    'account_key_hash': hashlib.sha256(secrets.token_urlsafe(32).encode()).hexdigest(),
+                })
 
         if "views" in data:
             for key, content in data["views"].items():
@@ -588,7 +584,8 @@ class ConfigManager:
         if 'accounts' in data:
             for key in list(self._storage.list_keys('external_identities')):
                 self._storage.delete('external_identities', key)
-        for namespace in ('auth_sessions', 'auth_transactions', 'auth_grants', 'auth_link_approvals'):
+        for namespace in ('auth_sessions', 'auth_transactions', 'auth_grants', 'auth_link_approvals',
+                  'auth_transition_proofs'):
             for key in list(self._storage.list_keys(namespace)):
                 if self._storage.exists(namespace, key):
                     self._storage.delete(namespace, key)
@@ -596,10 +593,8 @@ class ConfigManager:
         result = {"ok": True, "message": "Restore completed successfully."}
         if 'accounts' in data:
             result['warning'] = (
-                'User accounts restored. Account keys may now be older than users\' saved keys. '
-                'Newer keys may no longer work, revoked browsers may regain access, and deleted '
-                'accounts may return. Active sessions have ended. If users cannot enroll, sign '
-                'in again, or delete their account, use Users > Reset access and provide the '
-                'replacement account key. If no administrator can sign in, use the operator reset procedure.'
+                'Accounts and permissions restored without credentials. Active sessions have ended. '
+                'Use the explicit operator enrollment recovery procedure and fresh user credentials. '
+                'No old PAT, account key, browser binding or broker grant was imported.'
             )
         return result

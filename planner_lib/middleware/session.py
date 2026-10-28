@@ -271,7 +271,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         credential_routes = {
             '/api/auth/config', '/api/auth/login/begin', '/api/auth/login/complete', '/api/auth/login/callback',
             '/api/auth/sandbox', '/api/auth/login/redirect', '/api/auth/sandbox/logout',
-            '/api/auth/settings',
+            '/api/auth/settings', '/api/auth/links/begin',
             '/api/config', '/api/session', '/api/auth/me', '/api/auth/logout',
             '/api/auth/release-notes',
             '/api/auth/enroll', '/api/auth/enrollment-status', '/api/auth/delete-account',

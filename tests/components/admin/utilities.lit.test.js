@@ -113,16 +113,16 @@ describe('admin-utilities Result handling', () => {
     expect(globalThis.confirm.mock.calls[0][0]).not.toContain('older');
   });
 
-  it('includes authentication with accounts and warns about older keys and Reset access', async () => {
+  it('includes sanitized authentication and requires fresh operator-reset credentials', async () => {
     comp.restoreData = {
       accounts: { users: {} }, authentication: { account_auth: {}, auth_control: {} },
     };
     const restore = vi.spyOn(adminProvider, 'restoreBackup').mockResolvedValue({ ok: true, data: {} });
     await comp.updateComplete;
     const warning = comp.renderRoot.querySelector('#accountRestoreWarning').textContent;
-    expect(warning).toContain('older');
+    expect(warning).toContain('excludes credentials');
     expect(warning).toContain('Reset access');
-    expect(warning).toContain('delete their account');
+    expect(warning).toContain('offline operator reset');
     await comp.handleRestore();
     expect(restore).toHaveBeenCalledWith(comp.restoreData);
     expect(globalThis.confirm.mock.calls[0][0]).toContain('Reset access');

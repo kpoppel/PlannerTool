@@ -1,11 +1,25 @@
 # Authentication Manifest Upgrade
 
-All instance entries now require `authentication_provider: enrollment|entra`.
-Add `enrollment` to existing manifests, including ADO/PAT installations. This key
-selects login, not the data backend; it cannot activate Entra on existing accounts.
-Do not edit generated files to enable the broker. The isolated Phase D workflow,
-strict broker schema, secret ownership and generate/build/start/stop commands are
-documented in [AUTH_BROKER_PHASE_D.md](AUTH_BROKER_PHASE_D.md).
+Manifests require top-level `ado_authentication: disabled|pat|entra` and explicit
+`backend: local|ado` plus `authentication_provider: enrollment|entra` per instance.
+Choose one ADO policy for the whole deployment. Local-only instances always use
+enrollment without a broker; a wiki-only remote installation counts as ADO.
+ADO/PAT uses enrollment, while ADO/Entra uses Entra login. Contradictions fail
+generation and startup rather than receiving defaults or per-instance overrides.
+Upgrade operator manifests explicitly; ordinary settings saves cannot activate
+modes, invalidate sessions or purge credentials. No operator manifest is modified
+automatically. See [the Phase F sandbox and recovery procedure](PHASE_F_REPORT.md).
+
+For a new disposable PAT-to-Entra rehearsal, run the activated-venv command
+`python scripts/auth_sandbox.py --directory <new-ignored-directory> --port 18881
+--ado-authentication pat` as one command, then generate with
+`python scripts/deploy.py --config <directory>/manifest.yml --output-dir
+<directory>/generated --apply`. The generated loopback-only stack keeps isolated
+app volumes and protected broker state. Supply its protected `.env` to Compose;
+never print secrets or use an operator deployment directory. Registered ADO
+instances may stage the mock broker while retaining enrollment. Obtain browser
+admin proofs, stop all app writers and use the exclusive offline fleet command
+before changing deployment policy to Entra. Live activation remains blocked.
 
 # How to deploy the application for production or development
 

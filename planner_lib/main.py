@@ -116,20 +116,35 @@ def _build_services(
     # (removed — diskcache handles memory via OS page cache automatically)
 
     # --- Accounts / session ---
+    from planner_lib.session.policy import require_serving_policy, validate_backend_policy
+    require_serving_policy(storage_diskcache)
+    validate_backend_policy(storage_diskcache)
     provider = os.environ.get('PLANNER_AUTH_PROVIDER', 'enrollment')
     if provider not in ('enrollment', 'entra'):
         raise ValueError('PLANNER_AUTH_PROVIDER must be enrollment or entra')
-    auth_settings = storage_diskcache.load('config', 'authentication')
-    if provider == 'enrollment' and auth_settings['active'] != 'enrollment':
-        raise ValueError('Manifest login policy conflicts with persisted active authentication')
-    if provider == 'entra':
+    deployment_mode = os.environ.get('PLANNER_ADO_AUTHENTICATION')
+    instance_backend = os.environ.get('PLANNER_INSTANCE_BACKEND')
+    if deployment_mode is not None or instance_backend is not None:
+        if deployment_mode not in ('disabled', 'pat', 'entra') or instance_backend not in ('local', 'ado'):
+            raise ValueError('Explicit deployment ADO mode and instance backend are required together')
+        expected = 'entra' if instance_backend == 'ado' and deployment_mode == 'entra' else 'enrollment'
+        if provider != expected or (instance_backend == 'ado' and deployment_mode == 'disabled'):
+            raise ValueError('Login provider contradicts deployment policy')
+    staged_broker = 'PLANNER_AUTH_SECRET_FILE' in os.environ
+    if provider == 'entra' or staged_broker:
         from planner_lib.session.broker import BrokerClient, BrokerSettings, EntraLoginAdapter, prepare_sandbox
         broker_settings = BrokerSettings.from_env()
-        prepare_sandbox(storage_diskcache, broker_settings)
+        prepare_sandbox(storage_diskcache, broker_settings, activate=provider == 'entra')
         from planner_lib.session.isolation import install_sandbox_egress
         from urllib.parse import urlsplit
         install_sandbox_egress(urlsplit(broker_settings.url).hostname)
         container.register_factory('broker_client', lambda: BrokerClient(broker_settings))
+        container.register_factory('entra_link_adapter',
+            lambda: EntraLoginAdapter(storage_diskcache, container.get('account_manager'),
+                                     container.get('session_manager'), container.get('broker_client')))
+    auth_settings = storage_diskcache.load('config', 'authentication')
+    if provider != auth_settings['active']:
+        raise ValueError('Deployment login policy conflicts with persisted active authentication; transition required')
     container.register_singleton('authentication_provider', provider)
     container.register_factory("account_manager",
         lambda: AccountManager(storage=storage_diskcache))

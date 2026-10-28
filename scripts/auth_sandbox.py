@@ -10,7 +10,9 @@ from cryptography.fernet import Fernet
 import yaml
 
 
-def create_sandbox(directory, port=18880):
+def create_sandbox(directory, port=18880, ado_authentication='entra'):
+    if ado_authentication not in ('pat', 'entra'):
+        raise ValueError('Sandbox ADO policy must be pat or entra')
     directory = Path(directory).resolve()
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     public = f'http://localhost:{port}/auth/'
@@ -42,10 +44,11 @@ def create_sandbox(directory, port=18880):
             'completion_url': f'http://localhost:{port}/{name}/api/auth/login/callback',
             'secret_file': '/run/secrets/client-' + name, 'scenario': 'success',
         }
-        instances.append({'name': name, 'authentication_provider': 'entra',
+        instances.append({'name': name, 'backend': 'ado',
+                  'authentication_provider': 'entra' if ado_authentication == 'entra' else 'enrollment',
                           'auth_service': 'sandbox', 'auth_client_secret_file': 'client-' + name,
                           'image': 'plannertool:phase-d-sandbox'})
-    instances.append({'name': 'local', 'authentication_provider': 'enrollment',
+    instances.append({'name': 'local', 'backend': 'local', 'authentication_provider': 'enrollment',
                       'image': 'plannertool:phase-d-sandbox'})
     write('instances.json', json.dumps(registry, indent=2) + '\n')
     direct_registry = json.loads(json.dumps(registry))
@@ -65,7 +68,7 @@ def create_sandbox(directory, port=18880):
         'SANDBOX_KEY_FILE=' + str(directory / 'broker-key'),
         'SANDBOX_INSTANCE_SECRET_FILE=' + str(directory / 'client-alpha'), '',
     ]))
-    manifest = {'auth_services': {'sandbox': {
+    manifest = {'ado_authentication': ado_authentication, 'auth_services': {'sandbox': {
         'mode': 'mock', 'environment_id': 'sandbox', 'generation': 'sandbox-1',
         'public_url': public, 'env_file': 'registration.env', 'registry_file': 'instances.json',
         'key_file': 'broker-key', 'client_secret_file': 'entra-secret',
@@ -79,7 +82,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', required=True)
     parser.add_argument('--port', type=int, default=18880)
+    parser.add_argument('--ado-authentication', choices=('pat', 'entra'), default='entra')
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error('Sandbox port must be between 1024 and 65535')
-    print('Created synthetic configuration: ' + str(create_sandbox(args.directory, args.port)))
+    print('Created synthetic configuration: ' + str(create_sandbox(
+        args.directory, args.port, args.ado_authentication)))

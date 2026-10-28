@@ -36,7 +36,7 @@ config. The v4.2.1 server config can still be the owned writable
 used as a runtime fallback. Its `people` record may lack a schema-version field.
 
 The explicit post-baseline chain is `24 -> 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
--> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43 -> 44 -> 45`;
+-> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43 -> 44 -> 45 -> 46`;
 there was no migration 25. Revisions preserve their historical IDs.
 Revision 26 drops disposable remote records, 27 fills scenario metadata, 28 adds
 account IDs, 29 converts view Context flags, 30 adds plan container types, 31
@@ -45,10 +45,23 @@ plugin settings using a fixed packaged menu resource. Revision 34 persists packe
 Unplanned preferences in saved views. The server registry has no
 pre-v4.2.1 migrations or reverse functions; older IDs are admission evidence only.
 
-Fresh installations initialize revision 45 directly and invoke no upgrades.
+Fresh installations initialize revision 46 directly and invoke no upgrades.
 External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
+
+### Revision 46 Deployment Transition Journal
+
+`0046.deployment-authentication-transition` adds
+`system/authentication_transition`, initially
+`{version: 1, state: idle, id: null, fleet: [], target: null, epoch: null,
+admin_id: null, environment: null}`. Non-idle records require a canonical transition
+UUID, complete sorted fleet, target Entra, next epoch, linked admin UUID and exact
+mock broker environment. Allowed states are prepared, fenced, committed and
+released. Unknown fields/states fail admission; fenced/committed stores cannot
+serve. Migration/fresh initialization use the same shape and preserve existing
+sessions, PATs, permissions and epochs. Destructive changes happen only in the
+explicit offline sandbox command. See [Phase F](PHASE_F_REPORT.md).
 
 ### Revision 45 External Identities
 
@@ -331,15 +344,20 @@ It is not a backup retention policy.
 ## Logical administrator backups
 
 JSON exports include `schema_revision`, not schema-state records or pointer files.
-Versioned payloads must match the current revision. Existing unversioned selective
-payloads are admitted only when their established contracts are current: account-ID
-ownership, complete authentication, Context view flags, scenario metadata, ordered
-project containers, schema-v2 plugin config, and saved views satisfying the
-revision-34 packed-mode preference contract. The established plaintext-PAT marker
-remains accepted. Unsupported older payloads are rejected before writes;
-live request handlers never migrate them. Selective restores preserve schema state
-and forward the revision even when accounts are excluded. Credential warnings and
-session invalidation remain in effect. JSON backups contain plaintext PATs.
+Payloads must declare the current revision and satisfy account-ID ownership,
+Context view flags, scenario metadata, ordered project containers, schema-v2
+plugin config and the revision-34 packed-mode preference. Unversioned or older
+payloads are rejected before writes; live handlers never migrate them. Selective
+restores preserve schema state and forward the revision even without accounts.
+
+Revision-46 logical exports exclude PATs, enrollment keys/devices, active auth
+policy, sessions, external links, grants and transition authority. The old
+plaintext-PAT marker and credential-bearing imports are rejected. Account records
+are exported with `pat: null` and `{enrolled: false}` metadata, preserving UUIDs
+and permissions. Restore installs fresh unknown enrollment hashes and no devices,
+requiring explicit operator reset rather than allowing public account claiming.
+Entra account replacement is rejected. Physical backups remain independent and
+can contain old credentials; active-store purge does not erase those copies.
 
 ## Verification
 

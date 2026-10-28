@@ -20,6 +20,14 @@ def _is_entra(request):
     return resolve_service(request, 'authentication_provider') == 'entra'
 
 
+def _link_adapter(request):
+    import os
+
+    if not _is_entra(request) and 'PLANNER_AUTH_SECRET_FILE' not in os.environ:
+        raise HTTPException(403, detail={'error': 'access_denied'})
+    return resolve_service(request, 'entra_link_adapter')
+
+
 def _auth_failure(error):
     return JSONResponse({'error': error.code}, status_code=error.status,
                         headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
@@ -76,9 +84,10 @@ class IdentityLinkApproval(BaseModel):
 async def begin_identity_link(payload: IdentityLinkApproval, request: Request, response: Response):
     from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
 
-    if not _is_entra(request):
+    login = _link_adapter(request)
+    context = get_session_context_from_request(request)
+    if not _is_entra(request) and payload.account_id != context['account_id']:
         return JSONResponse({'error': 'access_denied'}, status_code=403)
-    login = resolve_service(request, 'login_adapter')
     if request.headers.get('origin') != login.settings.completion_url.split('/' + login.settings.instance + '/')[0]:
         return JSONResponse({'error': 'access_denied'}, status_code=403)
     try:
@@ -98,26 +107,34 @@ async def begin_identity_link(payload: IdentityLinkApproval, request: Request, r
 @router.get('/auth/settings')
 @require_admin_session
 async def authentication_settings(request: Request, response: Response):
+    import os
+    from planner_lib.session.broker import AuthFailure
+
     response.headers['Cache-Control'] = 'no-store'
-    return resolve_service(request, 'storage').load('config', 'authentication')
+    storage = resolve_service(request, 'storage')
+    policy = storage.load('config', 'authentication')
+    readiness = 'pat' if resolve_service(request, 'account_manager').requires_pat() else 'local'
+    if _is_entra(request) or 'PLANNER_AUTH_SECRET_FILE' in os.environ:
+        try:
+            resolve_service(request, 'broker_client').ready()
+            readiness = 'sandbox_only'
+        except AuthFailure:
+            readiness = 'unavailable'
+    return {**policy, 'deployment_controlled': True, 'readiness': readiness,
+            'live_activation': False,
+            'transition': storage.load('system', 'authentication_transition')['state']}
 
 
 @router.post('/auth/settings')
 @require_admin_session
 async def stage_authentication(payload: AuthenticationSelection, request: Request, response: Response):
-    from planner_lib.admin.config_manager import ConfigManager
-
-    storage = resolve_service(request, 'storage')
-    current = storage.load('config', 'authentication')
-    staged = {**current, 'selected': payload.selected}
-    ConfigManager(storage).save_config('authentication', staged)
-    response.headers['Cache-Control'] = 'no-store'
-    return staged
+    return JSONResponse({'error': 'deployment_policy_required'}, status_code=409,
+                        headers={'Cache-Control': 'no-store'})
 
 
 def _complete_login(request, state, code):
     from planner_lib.session.broker import LOGIN_COOKIE
-    return resolve_service(request, 'login_adapter').complete(
+    return _link_adapter(request).complete(
         state, code, request.cookies.get(LOGIN_COOKIE, ''), request.cookies.get(SESSION_COOKIE, ''))
 
 
@@ -189,6 +206,23 @@ async def sandbox_logout(request: Request):
     return response
 
 
+@router.post('/auth/sandbox/wiki')
+async def sandbox_wiki_operation(request: Request, response: Response):
+    from planner_lib.azure.wiki_events import AzureWikiEventBackend
+    from planner_lib.middleware.session import get_session_credential_from_request
+
+    if not _is_entra(request) or not _link_adapter(request).settings.isolated_sandbox:
+        raise HTTPException(404)
+    credential = get_session_credential_from_request(request)
+    backend = AzureWikiEventBackend('example', 'sandbox-project', 'sandbox-wiki',
+        resolve_service(request, 'project_repository'),
+        credential_provider=resolve_service(request, 'credential_provider'))
+    event = backend.create_event('2026-10-28', 'Sandbox event', 'sandbox-plan', credential=credential)
+    backend.update_event(event['id'], title='Updated sandbox event', credential=credential)
+    assert backend.fetch_event(event['id'], credential=credential)['title'] == 'Updated sandbox event'
+    backend.delete_event(event['id'], credential=credential)
+    response.headers['Cache-Control'] = 'no-store'
+    return {'account_id': credential['user_id'], 'transport': 'fixture', 'status': 'completed'}
 @router.post('/auth/login/complete')
 async def login_complete(payload: LoginCompletion, request: Request, response: Response):
     from planner_lib.session.broker import AuthFailure
@@ -210,9 +244,7 @@ async def login_complete(payload: LoginCompletion, request: Request, response: R
 @router.get('/auth/login/callback')
 async def login_callback(request: Request):
     from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
-    if not _is_entra(request):
-        return JSONResponse({'error': 'access_denied'}, status_code=403)
-    login = resolve_service(request, 'login_adapter')
+    login = _link_adapter(request)
     try:
         pending = login.pending(request.query_params.get('state', ''), request.cookies.get(LOGIN_COOKIE, ''))
     except AuthFailure as error:
@@ -222,7 +254,7 @@ async def login_callback(request: Request):
         if set(request.query_params) != {'state', 'error'} or len(request.query_params.multi_items()) != 2:
             return JSONResponse({'error': 'invalid_session'}, status_code=401)
         try:
-            resolve_service(request, 'login_adapter').cancel(
+            login.cancel(
                 request.query_params['state'], request.cookies.get(LOGIN_COOKIE, ''))
         except AuthFailure as error:
             return _auth_failure(error)
@@ -239,7 +271,8 @@ async def login_callback(request: Request):
                 return response
             return _auth_failure(error)
         response = RedirectResponse(request.scope.get('root_path', '').rstrip('/') + '/api/auth/sandbox', status_code=303)
-        response.headers['x-set-session-id'] = sid
+        if sid is not None:
+            response.headers['x-set-session-id'] = sid
     if target != 'diagnostic':
         popup_response = _popup_completion(request, pending['state'], target,
                                            request.query_params.get('error'))
@@ -258,7 +291,7 @@ def _popup_completion(request, state, target, error=None):
     import secrets
     from urllib.parse import urlsplit
 
-    settings = resolve_service(request, 'login_adapter').settings
+    settings = _link_adapter(request).settings
     public = urlsplit(settings.public_url)
     origin = public.scheme + '://' + public.netloc
     destination = '/' + settings.instance + ('/admin' if target == 'admin' else '/')

@@ -9,6 +9,8 @@ const mockSettings = Object.freeze({
 });
 
 async function mount(settings = mockSettings) {
+  vi.spyOn(adminProvider, 'getAuthenticationSettings').mockResolvedValue({ ok: true,
+    data: { active: 'enrollment', readiness: 'pat', deployment_controlled: true } });
   vi.spyOn(adminProvider, 'getEventsConfig').mockResolvedValue({ ok: true, data: { event_backend: 'local' } });
   vi.spyOn(adminProvider, 'getAdo').mockResolvedValue({ ok: true,
     data: { organization_url: 'example', feature_flags: {} } });
@@ -61,12 +63,14 @@ describe('Data Sources authentication preview', () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(adminProvider.saveAdo).not.toHaveBeenCalled();
   });
-  it('uses PAT in production and exposes exactly two mode choices', async () => {
+  it('shows read-only deployment policy in production', async () => {
     const element = await mount(null);
     const control = element.shadowRoot.querySelector('#ado-authentication-mode');
     expect(control.value).toBe('pat');
+    expect(control.disabled).toBe(true);
     expect([...control.options].map(option => option.textContent)).toEqual(['PAT', 'Entra ID']);
     expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent).toContain('Active: PAT');
+    expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent).toContain('Deployment controlled');
   });
 
   it.each(['ado_mock_fixture', 'ado_mock_generator', 'ado_static'])(

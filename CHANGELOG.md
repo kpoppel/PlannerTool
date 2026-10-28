@@ -26,6 +26,8 @@ This version adds EntraID authentication.
 - Option to enable automatic HTTPS in generated multi-instance Docker deployments
 
 ### Changed
+- Make ADO authentication deployment-controlled, with read-only instance readiness and an explicit, recoverable offline sandbox fleet transition. Local-only instances remain independent of the broker; live activation remains blocked.
+- Exclude PATs, enrollment keys, active login policy and broker authority from logical backups. Account restore requires fresh operator-reset enrollment credentials and cannot replace Entra accounts.
 - Share frontend authentication client contracts and typed recovery across planner and administration, with mocked Entra HTTP flows while real activation remains disabled.
 - Discover the active login source in normal planner/admin pages and support isolated broker-backed Entra sandbox sign-in, reauthentication and instance logout without PAT or enrollment prompts.
 - Require explicit login providers in deployment manifests and invalidate existing sessions once during the revision-44 source/epoch upgrade, preserving accounts, permissions and PATs.
