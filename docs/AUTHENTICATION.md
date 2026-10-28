@@ -403,8 +403,12 @@ and rejected credentials return HTTP 400 `pat_required` or `pat_invalid` without
 creating an account, rotating its account key, or overwriting its stored PAT.
 Validation outages return HTTP 503 `backend_unavailable` instead.
 
-Data and administration APIs return HTTP 403 `pat_required` or `pat_invalid` when
-the signed-in account needs a credential. Both frontends post a deduplicated
+Only operations that need Azure DevOps request credentials. Local updates,
+including account-key resets and permission changes, do not require a valid PAT.
+The credential policy owns PAT acquisition and withholds missing or rejected
+credentials without blocking cached reads. Actual ADO operations return HTTP 403
+`pat_required` or `pat_invalid` through the central backend error handler.
+Both frontends post a deduplicated
 notification with an action to open the cancellable **Set your Azure DevOps PAT**
 dialog. The failed request does not wait for repair or replay after it. Account
 identity, enrollment, session renewal, credential configuration, sign-out,

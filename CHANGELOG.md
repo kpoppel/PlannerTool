@@ -38,6 +38,7 @@ This version adds EntraID authentication.
 - Keep backend selection in each instance's admin configuration; deployment manifests specify hosting, auth-service connections and shared credential policy without duplicating backend or login-provider settings.
 - Invalidate existing sessions once during the revision-44 source/epoch upgrade, preserving accounts, permissions and PATs.
 ### Fixed
+- Keep local updates, including account-key resets and permission changes, independent of PAT validity; centralize credential acquisition and ADO credential errors in the credential policy.
 - Apply changed HTTPS configuration to running Caddy instances before certificate checks, and report internal CA export errors instead of silently waiting on failed copies.
 - Report expired or replayed login handoffs as invalid sessions instead of outages, preserve valid local admin access during broker outages, and disclose pending remote logout cleanup.
 - Preserve valid PlannerTool sessions and cached task access when delegated ADO authority expires or the broker is unavailable, without adding application timeouts or replaying writes; verified in the isolated mock service.

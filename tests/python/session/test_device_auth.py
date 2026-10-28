@@ -87,6 +87,81 @@ def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monke
     assert storage.exists('accounts', 'new@example.com')
 
 
+@pytest.mark.parametrize('pat_state', ['missing', 'invalid'])
+def test_local_permission_update_does_not_request_ado_credentials(client, app, monkeypatch, pat_state):
+    from unittest.mock import Mock
+    from planner_lib.azure.AzureClient import AzureClient
+
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    client.post('/api/auth/enroll', json={'email': 'admin@example.com', 'name': 'Admin'})
+    container = app.state.container
+    accounts = container.get('account_manager')
+    account_id = accounts.get_account_id('admin@example.com')
+    container.get('storage').save('config', 'ado_config', {
+        'organization_url': 'example', 'feature_flags': {},
+    })
+    if pat_state == 'invalid':
+        assert client.post('/api/config', json={
+            'email': 'admin@example.com', 'pat': 'revoked-pat',
+        }).status_code == 200
+        accounts.reject_pat('admin@example.com', 'revoked-pat')
+    acquire = Mock(side_effect=AssertionError('Local permissions must not acquire credentials'))
+    monkeypatch.setattr(container.get('credential_provider'), 'get_credential', acquire)
+
+    response = client.put('/admin/v1/users/' + account_id + '/permissions', json={
+        'permissions': ['admin', 'manage_projects'],
+    })
+
+    assert response.status_code == 200, response.text
+    assert accounts.has_permission('admin@example.com', 'manage_projects')
+    acquire.assert_not_called()
+    accounts.set_permissions(account_id, [])
+    assert client.put('/admin/v1/users/' + account_id + '/permissions', json={
+        'permissions': ['admin'],
+    }).status_code == 401
+
+
+@pytest.mark.parametrize('pat_state', ['missing', 'invalid'])
+def test_admin_reset_without_valid_pat_rotates_key_and_revokes_devices(
+    client, app, monkeypatch, pat_state,
+):
+    from unittest.mock import Mock
+    from planner_lib.azure.AzureClient import AzureClient
+
+    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
+    enrollment = client.post('/api/auth/enroll', json={
+        'email': 'admin@example.com', 'name': 'Administrator',
+    }).json()
+    container = app.state.container
+    accounts = container.get('account_manager')
+    account_id = accounts.get_account_id('admin@example.com')
+    container.get('storage').save('config', 'ado_config', {
+        'organization_url': 'example', 'feature_flags': {},
+    })
+    if pat_state == 'invalid':
+        assert client.post('/api/config', json={
+            'email': 'admin@example.com', 'pat': 'rejected-pat',
+        }).status_code == 200
+        accounts.reject_pat('admin@example.com', 'rejected-pat')
+    acquire = Mock(side_effect=AssertionError('Reset must not acquire an ADO credential'))
+    monkeypatch.setattr(container.get('credential_provider'), 'get_credential', acquire)
+
+    reset = client.post('/api/auth/admin-reset/' + account_id)
+
+    assert reset.status_code == 200, reset.text
+    assert reset.headers['cache-control'] == 'no-store'
+    key = reset.json()['accountKey']
+    assert key != enrollment['accountKey']
+    assert client.post('/api/session').status_code == 401
+    assert client.post('/api/auth/enroll', json={
+        'email': 'admin@example.com', 'accountKey': enrollment['accountKey'],
+    }).status_code == 401
+    assert client.post('/api/auth/enroll', json={
+        'email': 'admin@example.com', 'accountKey': key,
+    }).status_code == 200
+    acquire.assert_not_called()
+
+
 def test_existing_account_enrollment_does_not_revalidate_or_replace_pat(client, app, monkeypatch):
     from planner_lib.azure.AzureClient import AzureClient
     first = client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'}).json()
@@ -245,6 +320,7 @@ def test_local_record_mutations_do_not_require_pat(client, app, monkeypatch, end
 @pytest.mark.parametrize('endpoint', ['events', 'event-categories'])
 def test_wiki_event_mutations_still_require_pat(client, app, endpoint):
     from unittest.mock import Mock
+    from planner_lib.backend.errors import BackendAuthError
     from planner_lib.repository.event_repository import EventRepository
     from tests.helpers import register_service_on_client
 
@@ -256,14 +332,21 @@ def test_wiki_event_mutations_still_require_pat(client, app, endpoint):
         'organization_url': 'example', 'feature_flags': {},
     })
     backend = Mock()
+    backend.create_event.side_effect = BackendAuthError('Wiki requires a credential')
+    backend.create_category.side_effect = BackendAuthError('Wiki requires a credential')
     repository = EventRepository(backend, container.get('credential_provider'))
     register_service_on_client(client, 'event_repository', repository)
 
-    response = client.post('/api/' + endpoint, json={})
+    payload = {'name': 'Category'} if endpoint == 'event-categories' else {
+        'title': 'Event', 'date': '2026-10-28', 'plan_id': '',
+    }
+    response = client.post('/api/' + endpoint, json=payload)
 
     assert response.status_code == 403
     assert response.json()['error'] == 'pat_required'
-    assert backend.mock_calls == []
+    operation = backend.create_category if endpoint == 'event-categories' else backend.create_event
+    operation.assert_called_once()
+    assert operation.call_args.kwargs['credential'] is None
 
 
 @pytest.mark.parametrize('status_code', [401, 403])

@@ -65,6 +65,9 @@ def _register_azure_services(authenticated_client, pat='test-pat', inner_client=
             pat_error=lambda email: None,
         ),
         'credential_provider': SimpleNamespace(get_credential=Mock(return_value=credential)),
+        'credential_policy': SimpleNamespace(
+            credential_error=lambda user_id: 'pat_required' if credential is None else None,
+        ),
         'azure_client': FakeAzureService(fake_client),
     })
     return fake_client
@@ -107,12 +110,11 @@ def test_browse_projects_returns_project_list(authenticated_client):
     provider.get_credential.assert_called_once_with('test-account')
 
 
-def test_browse_projects_missing_pat_returns_401(authenticated_client):
+def test_browse_projects_missing_pat_uses_credential_policy(authenticated_client):
     _register_azure_services(authenticated_client, pat=None)
     resp = authenticated_client.get('/api/azure/projects?org_url=test-org', headers={'Accept': 'application/json'})
-    assert resp.status_code == 401
-    # access_denied_response puts the error dict directly at the root (not under 'detail')
-    assert resp.json()['error'] == 'missing_pat'
+    assert resp.status_code == 403
+    assert resp.json()['error'] == 'pat_required'
 
 
 def test_local_task_backend_does_not_bypass_live_wiki_credentials(authenticated_client):
@@ -124,8 +126,8 @@ def test_local_task_backend_does_not_bypass_live_wiki_credentials(authenticated_
             'project': 'Example', 'org_url': 'example',
         }, headers={'Accept': 'application/json'})
 
-    assert response.status_code == 401
-    assert response.json()['error'] == 'missing_pat'
+    assert response.status_code == 403
+    assert response.json()['error'] == 'pat_required'
     connect.assert_not_called()
 
 
@@ -149,10 +151,11 @@ def test_browse_area_paths_missing_project_param_returns_422(authenticated_clien
     assert resp.status_code == 422
 
 
-def test_browse_area_paths_missing_pat_returns_401(authenticated_client):
+def test_browse_area_paths_missing_pat_uses_credential_policy(authenticated_client):
     _register_azure_services(authenticated_client, pat=None)
     resp = authenticated_client.get('/api/azure/area-paths?project=ProjectA', headers={'Accept': 'application/json'})
-    assert resp.status_code == 401
+    assert resp.status_code == 403
+    assert resp.json()['error'] == 'pat_required'
 
 
 def test_cache_refresh_uses_active_projects_and_rejects_archived_areas(authenticated_client):

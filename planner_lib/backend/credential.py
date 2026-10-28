@@ -45,6 +45,20 @@ class PatCredentialPolicy:
         email = self._account_manager.get_account_by_id(user_id)['email']
         return self._account_manager.pat_error(email)
 
+    def get_credential(self, user_id: str) -> Optional[BackendCredential]:
+        try:
+            email = self._account_manager.get_account_by_id(user_id)['email']
+            if self._account_manager.pat_error(email):
+                return None
+            account = self._account_manager.load(email)
+        except KeyError as exc:
+            logger.warning("CredentialProvider: failed to load account for '%s': %s", user_id, exc)
+            return None
+        token = account['pat']
+        if not token:
+            return None
+        return BackendCredential(kind='pat', token=token, user_id=user_id)
+
     def authentication_failed(self, credential: Optional[BackendCredential]) -> str:
         if credential is not None:
             if credential['kind'] != 'pat':
@@ -66,7 +80,7 @@ class AccountManagerCredentialProvider:
     """
 
     def __init__(self, account_manager) -> None:
-        self._account_manager = account_manager
+        self._policy = PatCredentialPolicy(account_manager)
 
     def get_credential(self, user_id: str) -> Optional[BackendCredential]:
         """Return a BackendCredential for *user_id*, or None if no PAT is stored.
@@ -83,18 +97,7 @@ class AccountManagerCredentialProvider:
             ``user_id`` when a
             PAT is found, otherwise None.
         """
-        try:
-            email = self._account_manager.get_account_by_id(user_id)['email']
-            account = self._account_manager.load(email)
-        except KeyError as exc:
-            logger.warning("CredentialProvider: failed to load account for '%s': %s", user_id, exc)
-            return None
-
-        token = account['pat']
-        if not token:
-            return None
-
-        return BackendCredential(kind='pat', token=token, user_id=user_id)
+        return self._policy.get_credential(user_id)
 
 
 class DelegatedCredentialProvider:

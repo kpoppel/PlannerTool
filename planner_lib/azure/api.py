@@ -173,10 +173,8 @@ async def cache_refresh(
 
     credential = get_session_credential_from_request(request, backend=backend)
     if backend.is_remote and credential is None:
-        raise HTTPException(
-            status_code=401,
-            detail={'error': 'missing_pat', 'message': 'Personal Access Token required'}
-        )
+        from planner_lib.backend.errors import BackendAuthError
+        raise BackendAuthError('Azure DevOps refresh requires a credential')
 
     explicit_areas = bool(areas)
     area_list = areas.split(',') if explicit_areas else _get_all_configured_areas(request)
@@ -266,10 +264,8 @@ def _get_credential_or_raise(request: Request) -> BackendCredential:
     """Return the authenticated account's credential or raise HTTP 401."""
     credential = get_session_credential_from_request(request)
     if credential is None:
-        raise HTTPException(
-            status_code=401,
-            detail={'error': 'missing_pat', 'message': 'Personal Access Token required in session'}
-        )
+        from planner_lib.backend.errors import BackendAuthError
+        raise BackendAuthError('Azure DevOps browsing requires a credential')
     return credential
 
 
@@ -332,9 +328,8 @@ async def azure_browse_area_paths(
     azure_svc = resolve_service(request, 'azure_client')
     credential = get_session_credential_from_request(request, backend=azure_svc)
     if azure_svc.is_remote and credential is None:
-        raise HTTPException(status_code=401, detail={
-            'error': 'missing_pat', 'message': 'Personal Access Token required in session',
-        })
+        from planner_lib.backend.errors import BackendAuthError
+        raise BackendAuthError('Azure DevOps browsing requires a credential')
     with azure_svc.connect(credential) as client:
         area_paths = client.get_area_paths(project)
     return {'area_paths': area_paths}

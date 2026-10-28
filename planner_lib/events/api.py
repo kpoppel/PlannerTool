@@ -24,6 +24,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, field_validator
 from typing import Optional
 
+from planner_lib.backend.errors import BackendError
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_context_from_request
 from planner_lib.services.resolver import resolve_service
@@ -186,6 +187,8 @@ async def api_events_list(request: Request):
         return await asyncio.to_thread(
             _repo(request).list_events, plan_id=plan_id, user_id=_user_id(request)
         )
+    except BackendError:
+        raise
     except Exception as e:
         logger.error("Error listing events: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -199,6 +202,8 @@ async def api_events_get(event_id: str, request: Request):
         return await asyncio.to_thread(_repo(request).get_event, event_id, user_id=_user_id(request))
     except KeyError:
         raise HTTPException(status_code=404, detail="Event not found")
+    except BackendError:
+        raise
     except Exception as e:
         logger.error("Error fetching event %s: %s", event_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -222,6 +227,8 @@ async def api_events_create(request: Request, payload: dict = Body(default={})):
             end_date=data.end_date,
             user_id=_user_id(request),
         )
+    except BackendError:
+        raise
     except Exception as e:
         logger.error("Error creating event: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -248,6 +255,8 @@ async def api_events_update(event_id: str, request: Request, payload: dict = Bod
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Event not found")
+    except BackendError:
+        raise
     except Exception as e:
         logger.error("Error updating event %s: %s", event_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -264,6 +273,8 @@ async def api_events_delete(event_id: str, request: Request):
         return {"ok": True, "id": event_id}
     except HTTPException:
         raise
+    except BackendError:
+        raise
     except Exception as e:
         logger.error("Error deleting event %s: %s", event_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -279,6 +290,8 @@ async def api_categories_list(request: Request):
     """List all event categories."""
     try:
         return await asyncio.to_thread(_repo(request).list_categories, user_id=_user_id(request))
+    except BackendError:
+        raise
     except Exception as e:
         logger.error("Error listing categories: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -299,6 +312,8 @@ async def api_categories_create(request: Request, payload: dict = Body(default={
             is_special=data.is_special,
             user_id=_user_id(request),
         )
+    except BackendError:
+        raise
     except Exception as e:
         logger.error("Error creating category: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -322,6 +337,8 @@ async def api_categories_update(category_id: str, request: Request, payload: dic
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Category not found")
+    except BackendError:
+        raise
     except Exception as e:
         logger.error("Error updating category %s: %s", category_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -339,6 +356,8 @@ async def api_categories_delete(category_id: str, request: Request):
             raise HTTPException(status_code=404, detail="Category not found")
         return {"ok": True, "id": category_id}
     except HTTPException:
+        raise
+    except BackendError:
         raise
     except Exception as e:
         logger.error("Error deleting category %s: %s", category_id, e, exc_info=True)

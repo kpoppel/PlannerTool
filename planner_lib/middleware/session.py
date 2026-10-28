@@ -266,58 +266,6 @@ class SessionMiddleware(BaseHTTPMiddleware):
             ):
                 return JSONResponse(status_code=403, content={'error': 'cross_origin_request'})
         path = request.scope.get('root_path', '').rstrip('/') + '/'
-        route_path = request.url.path.removeprefix(request.scope.get('root_path', ''))
-        credential_routes = {
-            '/api/auth/config', '/api/auth/login/begin', '/api/auth/login/complete', '/api/auth/login/callback',
-            '/api/auth/sandbox', '/api/auth/login/redirect', '/api/auth/sandbox/logout',
-            '/api/auth/settings', '/api/auth/links/begin',
-            '/api/config', '/api/session', '/api/auth/me', '/api/auth/logout',
-            '/api/auth/release-notes',
-            '/api/auth/enroll', '/api/auth/enrollment-status', '/api/auth/delete-account',
-        }
-        local_admin_config_routes = {
-            '/admin/check', '/admin/v1/ado', '/admin/v1/events-config',
-            '/admin/v1/groups-config', '/admin/v1/system',
-        }
-        local_record_route = (
-            route_path in {'/api/view', '/api/scenario', '/api/groups'}
-            or route_path.startswith('/api/groups/')
-        )
-        event_route = (
-            route_path in {'/api/events', '/api/event-categories'}
-            or route_path.startswith(('/api/events/', '/api/event-categories/'))
-        )
-        if event_route and request.cookies.get(SESSION_COOKIE):
-            local_record_route = not resolve_service(request, 'event_repository').requires_credential
-        cached_or_local_read_routes = {
-            '/api/teams', '/api/projects', '/api/tasks', '/api/markers',
-            '/api/iterations', '/api/history/tasks', '/api/cost', '/api/cost/teams',
-            '/api/cache/load', '/api/cache/metrics', '/api/scenario', '/api/view',
-            '/api/groups', '/api/plugins/config', '/api/plugins/schemas',
-            '/api/v1/server/projects', '/api/v1/server/teams', '/api/v1/server/tasks',
-        }
-        read_only_local_or_cached = (
-            request.method in ('GET', 'HEAD')
-            and (
-                route_path in cached_or_local_read_routes
-                or route_path.startswith('/admin/v1/')
-            )
-        )
-        protected_api = route_path.startswith(('/api/', '/admin/v1/')) or route_path == '/admin/check'
-        if (protected_api and route_path not in credential_routes
-                and route_path not in local_admin_config_routes
-            and not local_record_route
-                and not read_only_local_or_cached
-                and request.cookies.get(SESSION_COOKIE)):
-            try:
-                context = get_session_context_from_request(request)
-            except HTTPException:
-                context = None
-            if context is not None:
-                policy = resolve_service(request, 'credential_policy')
-                error = policy.credential_error(context['account_id'])
-                if error:
-                    return JSONResponse(status_code=403, content={'error': error})
         response: Response = await call_next(request)
 
         # If the app set our helper header, convert it into a cookie

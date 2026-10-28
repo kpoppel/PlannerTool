@@ -465,7 +465,13 @@ def _build_app(
         credential = get_session_credential_from_request(request, acquire=False)
         if isinstance(exc, BackendAuthError) and exc.credential is not None:
             credential = exc.credential
-        error = resolve_service(request, 'credential_policy').authentication_failed(credential)
+        policy = resolve_service(request, 'credential_policy')
+        error = None
+        if credential is None:
+            from planner_lib.middleware.session import get_session_context_from_request
+            error = policy.credential_error(get_session_context_from_request(request)['account_id'])
+        if error is None:
+            error = policy.authentication_failed(credential)
         return JSONResponse(status_code=403, content={'error': error})
 
     from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError
