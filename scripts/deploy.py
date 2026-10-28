@@ -280,9 +280,10 @@ def main():
         help="Enable HTTPS for this hostname; select certificate management with manifest https_tls."
     )
     parser.add_argument(
-        '-b', '--build-images',
+        '-b', '--build', '--build-images',
         action='store_true',
-        help="Build source-declared services in the generated Compose project; image-only services are not rebuilt."
+        dest='build_images',
+        help="Build all project images, then build source-declared services with their configured image tags."
     )
     parser.add_argument(
         '--apply',
@@ -392,6 +393,15 @@ def main():
             subprocess.run(compose_command + ['config', '--quiet'], cwd=args.output_dir, check=True)
         except subprocess.CalledProcessError as error:
             print(f'Compose configuration validation failed with code {error.returncode}; nothing was started.')
+            sys.exit(error.returncode)
+
+    if args.build_images:
+        print('Building all project images...')
+        try:
+            subprocess.run(['bash', str(Path(__file__).resolve().with_name('build-image.sh'))],
+                           cwd=args.output_dir, check=True)
+        except subprocess.CalledProcessError as error:
+            print(f'Project image build failed with code {error.returncode}; nothing was started.')
             sys.exit(error.returncode)
 
     if (args.build_images or args.start) and any('build' in service for service in compose_obj['services'].values()):

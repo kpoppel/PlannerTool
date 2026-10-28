@@ -231,17 +231,19 @@ With the key stored in `.encryption_key`, select one of the deployment methods.
 You can deploy using Docker as s single container in a manual way, or using the tools
 to setup a Caddy + PlannerTool stack where multiple instances can run side-by-side.
 
-## Building the image
+## Building the images
 
-Build he containerr and tag it with the version in `VERSION`:
+Build both project images (`plannertool` and `plannertool-auth`), each tagged with
+the version in `VERSION` and `latest`:
 
-```
+```bash
 ./scripts/build-image.sh
 ```
 
 Or manually:
-```
+```bash
 docker build -f docker/Dockerfile -t plannertool:latest -t plannertool:$(cat VERSION) .
+docker build -f entra-id/Dockerfile -t plannertool-auth:latest -t plannertool-auth:$(cat VERSION) entra-id
 docker image prune
 ```
 
@@ -402,12 +404,15 @@ To start the services, either run the script with the `--start` flag, or do it m
 The `scripts/deploy.py` script generates a dynamic `Caddyfile`, `docker-compose.yml`, and `index.html` for your configured instances.
 By default the script performs a dry-run: it prints usage help and displays the generated files without writing anything to disk. To write the files into the `deployment/` directory and perform actions, pass `--apply`.
 
-With `--apply` and either `-b/--build-images` or `--start`, the script validates
-Compose configuration with `config --quiet` and builds source-declared services
-using `docker compose build` in the generated project. `--apply --start` then runs
+With `--apply` and either `--build` (also `-b` or `--build-images`) or `--start`, the
+script validates Compose configuration with `config --quiet`. Explicit `--build`
+invokes `scripts/build-image.sh` to build both project images, even if the manifest
+uses image-only services or has no auth service. Source-declared services are also
+built using `docker compose build` to honor their configured tags. `--apply --start` then runs
 `docker compose up -d --wait`. The auth service and PlannerTool instances are built
 and started together, with persistent per-service volumes and private service DNS.
-Generation/startup does not prune images or remove orphaned services/volumes.
+Caddy uses its upstream image and is not built locally. Any build failure prevents
+startup. Generation/startup does not prune images or remove orphaned services/volumes.
 
 Use `--env-file path/to/protected/.env` to select the Compose environment file
 explicitly; it must have no group/other access (normally mode 0600). A missing or

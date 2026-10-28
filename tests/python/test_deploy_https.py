@@ -16,6 +16,92 @@ from deploy import (
 INSTANCES = [{"name": "planning"}]
 
 
+def test_build_script_builds_all_project_images(tmp_path, monkeypatch):
+    import json
+    import os
+    import subprocess
+
+    root = Path(__file__).resolve().parents[2]
+    log = tmp_path / 'docker-commands.jsonl'
+    docker = tmp_path / 'docker'
+    docker.write_text(
+        '#!' + sys.executable + '\n'
+        'import json, os, sys\n'
+        'with open(os.environ["DOCKER_ARGUMENT_LOG"], "a") as stream:\n'
+        '    stream.write(json.dumps(sys.argv[1:]) + "\\n")\n'
+    )
+    docker.chmod(0o700)
+    monkeypatch.setenv('PATH', str(tmp_path) + os.pathsep + os.environ['PATH'])
+    monkeypatch.setenv('DOCKER_ARGUMENT_LOG', str(log))
+
+    subprocess.run(['bash', str(root / 'scripts' / 'build-image.sh')], cwd=tmp_path,
+                   check=True, capture_output=True, text=True)
+
+    version = (root / 'VERSION').read_text().strip()
+    commands = [json.loads(line) for line in log.read_text().splitlines()]
+    assert commands == [
+        ['build', '-f', str(root / 'scripts' / '..' / 'docker' / 'Dockerfile'),
+         '-t', 'plannertool:' + version, '-t', 'plannertool:latest', str(root / 'scripts' / '..')],
+        ['build', '-f', str(root / 'scripts' / '..' / 'entra-id' / 'Dockerfile'),
+         '-t', 'plannertool-auth:' + version, '-t', 'plannertool-auth:latest',
+         str(root / 'scripts' / '..' / 'entra-id')],
+    ]
+
+
+@pytest.mark.parametrize('build_flag', ['--build', '--build-images', '-b'])
+@pytest.mark.parametrize('build_from_source', [False, True])
+def test_deploy_builds_all_images_and_configured_sources(tmp_path, monkeypatch, build_flag, build_from_source):
+    import yaml
+    from deploy import main
+
+    manifest = tmp_path / 'instances.yml'
+    manifest.write_text(yaml.safe_dump({
+        'ado_authentication': 'pat',
+        'instances': [{'name': 'planning', 'image': 'plannertool:pinned',
+                   'build_from_source': build_from_source}],
+    }))
+    output = tmp_path / 'deployment'
+    commands = []
+    monkeypatch.setattr('deploy.subprocess.run', lambda command, **options: commands.append(command))
+    monkeypatch.setattr(sys, 'argv', [
+        'deploy.py', '--config', str(manifest), '--output-dir', str(output), '--apply', build_flag,
+    ])
+
+    main()
+
+    assert commands == [
+        ['docker', 'compose', 'config', '--quiet'],
+        ['bash', str(Path(__file__).resolve().parents[2] / 'scripts' / 'build-image.sh')],
+    ] + ([['docker', 'compose', 'build']] if build_from_source else [])
+
+
+def test_project_image_build_failure_prevents_deployment(sandbox_manifest, monkeypatch, tmp_path):
+    import subprocess
+    from deploy import main
+
+    config, services, manifest = sandbox_manifest
+    commands = []
+
+    def reject_build(command, **options):
+        commands.append(command)
+        if command[0] == 'bash':
+            raise subprocess.CalledProcessError(7, command)
+
+    monkeypatch.setattr('deploy.subprocess.run', reject_build)
+    monkeypatch.setattr(sys, 'argv', [
+        'deploy.py', '--config', str(manifest), '--output-dir', str(tmp_path / 'deployment'),
+        '--apply', '--build', '--start',
+    ])
+    with pytest.raises(SystemExit) as result:
+        main()
+
+    assert result.value.code == 7
+    assert commands == [
+        ['docker', 'compose', 'config', '--quiet'],
+        ['bash', str(Path(__file__).resolve().parents[2] / 'scripts' / 'build-image.sh')],
+    ]
+
+
 def test_https_readiness_checks_trust_and_hostname(monkeypatch):
     from unittest.mock import MagicMock
     from deploy import wait_for_https
