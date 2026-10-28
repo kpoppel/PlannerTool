@@ -24,6 +24,8 @@ This version adds EntraID authentication.
 - Preview PAT / Entra ID selection for live Azure DevOps in Data Sources, showing the active mode without enabling Entra activation or changing saved authentication settings.
 - Add isolated authentication UI previews for mode-dependent account controls, Entra sign-in, recovery and logout, without enabling real Entra authentication or changing active PAT/local behavior.
 - Option to enable automatic HTTPS in generated multi-instance Docker deployments
+- Guide HTTPS certificate prerequisites during deployment and verify a trusted hostname-matching certificate before reporting HTTPS startup success, with actionable Caddy diagnostics when issuance is not ready.
+- Support private HTTPS deployments with company-supplied certificates or Caddy's internal CA, including public root export and explicit CA trust for startup checks, without public DNS or ACME challenges.
 - Support DNS/HTTPS ingress for shared mock authentication while retaining private broker transport and blocking live ADO.
 
 ### Changed

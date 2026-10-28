@@ -16,6 +16,106 @@ from deploy import (
 INSTANCES = [{"name": "planning"}]
 
 
+def test_https_readiness_checks_trust_and_hostname(monkeypatch):
+    from unittest.mock import MagicMock
+    from deploy import wait_for_https
+
+    context = MagicMock()
+    connection = MagicMock()
+    monkeypatch.setattr('deploy.ssl.create_default_context', lambda: context)
+    connect = MagicMock(return_value=connection)
+    monkeypatch.setattr('deploy.socket.create_connection', connect)
+    wait_for_https('planner.example.com')
+    connect.assert_called_once_with(('127.0.0.1', 443), timeout=5)
+    context.wrap_socket.assert_called_once_with(
+        connection.__enter__.return_value, server_hostname='planner.example.com',
+    )
+
+
+def test_https_readiness_uses_explicit_ca_without_disabling_verification(monkeypatch):
+    import ssl
+    from unittest.mock import MagicMock
+    from deploy import wait_for_https
+
+    context = ssl.create_default_context()
+    monkeypatch.setattr(context, 'wrap_socket', MagicMock())
+    create_context = MagicMock(return_value=context)
+    monkeypatch.setattr('deploy.ssl.create_default_context', create_context)
+    monkeypatch.setattr('deploy.socket.create_connection', MagicMock())
+    wait_for_https('planner.example.test', cafile='/private/company-ca.pem')
+    create_context.assert_called_once_with(cafile='/private/company-ca.pem')
+    assert context.check_hostname is True
+    assert context.verify_mode == ssl.CERT_REQUIRED
+
+
+def test_https_readiness_retries_until_certificate_is_ready(monkeypatch):
+    import ssl
+    from unittest.mock import MagicMock
+    from deploy import wait_for_https
+
+    context = MagicMock()
+    context.wrap_socket.side_effect = [ssl.SSLError('certificate pending'), MagicMock()]
+    monkeypatch.setattr('deploy.ssl.create_default_context', lambda: context)
+    monkeypatch.setattr('deploy.socket.create_connection', MagicMock())
+    pause = MagicMock()
+    monkeypatch.setattr('deploy.time.sleep', pause)
+    wait_for_https('planner.example.com')
+    assert context.wrap_socket.call_count == 2
+    pause.assert_called_once_with(2)
+
+
+def test_https_readiness_timeout_reports_tls_failure(monkeypatch):
+    import ssl
+    from unittest.mock import MagicMock
+    from deploy import wait_for_https
+
+    monkeypatch.setattr('deploy.socket.create_connection', MagicMock(
+        side_effect=ssl.SSLCertVerificationError('hostname mismatch'),
+    ))
+    monkeypatch.setattr('deploy.time.monotonic', MagicMock(side_effect=[0, 121]))
+    with pytest.raises(RuntimeError, match='hostname mismatch'):
+        wait_for_https('planner.example.com')
+
+
+def test_https_start_failure_reports_certificate_diagnostics(tmp_path, monkeypatch, capsys):
+    import shlex
+    from deploy import main
+
+    manifest = tmp_path / 'instances.yml'
+    manifest.write_text(
+        'ado_authentication: pat\nhttps_hostname: planner.example.com\n'
+        'instances:\n  - name: planning\n    image: plannertool:test\n'
+    )
+    env_file = tmp_path / 'protected.env'
+    env_file.write_text('PLANNER_SECRET_KEY=isolated-test-key\n')
+    env_file.chmod(0o600)
+    output = tmp_path / 'generated stack'
+    commands = []
+    monkeypatch.setattr('deploy.subprocess.run', lambda command, **options: commands.append(command))
+
+    def reject_certificate(hostname):
+        assert hostname == 'planner.example.com'
+        raise RuntimeError('HTTPS certificate is not ready')
+
+    monkeypatch.setattr('deploy.wait_for_https', reject_certificate)
+    monkeypatch.setattr(sys, 'argv', [
+        'deploy.py', '--config', str(manifest), '--output-dir', str(output),
+        '--env-file', str(env_file), '--project-name', 'planner-test', '--apply', '--start',
+    ])
+    with pytest.raises(SystemExit) as result:
+        main()
+    assert result.value.code == 1
+    rendered = capsys.readouterr().out
+    assert 'Deployment successful!' not in rendered
+    assert 'Containers remain running' in rendered
+    assert 'DNS A/AAAA' in rendered
+    assert commands[-1][-3:] == ['up', '-d', '--wait']
+    assert shlex.split(rendered.splitlines()[-1].strip()) == [
+        'docker', 'compose', '--project-name', 'planner-test', '--env-file', str(env_file),
+        '--project-directory', str(output), 'logs', '--tail=100', 'caddy',
+    ]
+
+
 def test_http_generation_remains_the_default():
     caddyfile = generate_caddyfile(INSTANCES)
     compose = generate_docker_compose(INSTANCES, "test")
@@ -45,6 +145,166 @@ def test_https_generation_enables_caddy_tls_and_persists_state():
         "caddy_config": {},
         "data-planning": {},
     }
+
+
+def test_internal_tls_generation_uses_local_ca_without_acme():
+    from deploy import load_https_tls
+
+    tls = load_https_tls({'https_tls': {'mode': 'internal'}}, 'instances.yml', 'planner.example.test')
+    caddyfile = generate_caddyfile(INSTANCES, 'planner.example.test', https_tls=tls)
+    assert '    tls internal\n' in caddyfile
+    compose = generate_docker_compose(INSTANCES, 'test', 'planner.example.test', https_tls=tls)
+    assert 'caddy_data:/data' in compose['services']['caddy']['volumes']
+
+
+def test_provided_tls_generation_mounts_certificate_and_key_read_only():
+    tls = {'mode': 'provided', 'certificate_file': '/private/company.pem', 'key_file': '/private/key.pem'}
+    caddyfile = generate_caddyfile(INSTANCES, 'planner.example.test', https_tls=tls)
+    assert 'auto_https disable_certs' in caddyfile
+    assert 'tls /etc/caddy/tls/certificate.pem /etc/caddy/tls/key.pem' in caddyfile
+    compose = generate_docker_compose(INSTANCES, 'test', 'planner.example.test', https_tls=tls)
+    mounts = compose['services']['caddy']['volumes'][-2:]
+    assert [mount['source'] for mount in mounts] == ['/private/company.pem', '/private/key.pem']
+    assert all(mount['read_only'] and not mount['bind']['create_host_path'] for mount in mounts)
+
+
+@pytest.fixture
+def tls_files(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'planner.example.test')])
+    now = datetime.now(timezone.utc)
+    certificate = (x509.CertificateBuilder().subject_name(subject).issuer_name(subject)
+                   .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                   .not_valid_before(now - timedelta(minutes=1))
+                   .not_valid_after(now + timedelta(days=1))
+                   .add_extension(x509.SubjectAlternativeName([x509.DNSName('planner.example.test')]), critical=False)
+                   .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+                   .sign(key, hashes.SHA256()))
+    certificate_file = tmp_path / 'certificate.pem'
+    certificate_file.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+    key_file = tmp_path / 'key.pem'
+    key_file.write_bytes(key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption(),
+    ))
+    key_file.chmod(0o600)
+    return {'mode': 'provided', 'certificate_file': certificate_file.name,
+            'key_file': key_file.name, 'ca_file': certificate_file.name}
+
+
+def test_provided_tls_validates_pem_files_relative_to_manifest(tls_files, tmp_path):
+    from deploy import load_https_tls
+
+    tls = load_https_tls({'https_tls': tls_files}, tmp_path / 'instances.yml', 'planner.example.test')
+    for field in ('certificate_file', 'key_file', 'ca_file'):
+        assert tls[field] == str(tmp_path / tls_files[field])
+
+
+@pytest.mark.parametrize('defect', ['missing', 'permissions', 'malformed', 'mismatch', 'encrypted'])
+def test_provided_tls_rejects_invalid_key_material(tls_files, tmp_path, defect):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from deploy import load_https_tls
+
+    key = tmp_path / tls_files['key_file']
+    if defect == 'missing':
+        key.unlink()
+    elif defect == 'permissions':
+        key.chmod(0o644)
+    elif defect == 'malformed':
+        key.write_text('not a private key')
+    else:
+        encryption = (serialization.BestAvailableEncryption(b'test-only-password')
+                      if defect == 'encrypted' else serialization.NoEncryption())
+        key.write_bytes(ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, encryption,
+        ))
+    with pytest.raises((ValueError, OSError)):
+        load_https_tls({'https_tls': tls_files}, tmp_path / 'instances.yml', 'planner.example.test')
+
+
+def test_internal_ca_export_retries_and_exports_only_public_root(tmp_path, monkeypatch):
+    import subprocess
+    from unittest.mock import MagicMock
+    from deploy import export_internal_ca
+
+    prefix = ['docker', 'compose', '--project-name', 'preview']
+    run = MagicMock(side_effect=[
+        subprocess.CompletedProcess([], 1), subprocess.CompletedProcess([], 0),
+    ])
+    monkeypatch.setattr('deploy.subprocess.run', run)
+    monkeypatch.setattr('deploy.time.sleep', MagicMock())
+    destination = export_internal_ca(prefix, str(tmp_path))
+    assert destination == str(tmp_path / 'tls' / 'caddy-root.crt')
+    assert run.call_count == 2
+    assert run.call_args.args[0] == prefix + [
+        'cp', 'caddy:/data/caddy/pki/authorities/local/root.crt', destination,
+    ]
+    assert run.call_args.kwargs['cwd'] == str(tmp_path)
+
+
+def test_internal_ca_export_timeout_is_actionable(tmp_path, monkeypatch):
+    import subprocess
+    from unittest.mock import MagicMock
+    from deploy import export_internal_ca
+
+    monkeypatch.setattr('deploy.subprocess.run', MagicMock(return_value=subprocess.CompletedProcess([], 1)))
+    monkeypatch.setattr('deploy.time.monotonic', MagicMock(side_effect=[0, 121]))
+    with pytest.raises(RuntimeError, match='public root certificate'):
+        export_internal_ca(['docker', 'compose'], str(tmp_path))
+
+
+@pytest.mark.parametrize('mode', ['internal', 'provided'])
+def test_private_https_start_uses_selected_trust_without_acme(mode, tls_files, tmp_path, monkeypatch, capsys):
+    import yaml
+    from unittest.mock import MagicMock
+    from deploy import main
+
+    settings = {'mode': 'internal'} if mode == 'internal' else tls_files
+    manifest = tmp_path / 'instances.yml'
+    manifest.write_text(yaml.safe_dump({
+        'ado_authentication': 'pat', 'https_hostname': 'planner.example.test', 'https_tls': settings,
+        'instances': [{'name': 'planning', 'image': 'plannertool:test'}],
+    }))
+    output = tmp_path / 'deployment'
+    monkeypatch.setattr('deploy.subprocess.run', MagicMock())
+    root = str(output / 'tls' / 'caddy-root.crt')
+    export = MagicMock(return_value=root)
+    monkeypatch.setattr('deploy.export_internal_ca', export)
+    verify = MagicMock()
+    monkeypatch.setattr('deploy.wait_for_https', verify)
+    monkeypatch.setattr(sys, 'argv', [
+        'deploy.py', '--config', str(manifest), '--output-dir', str(output), '--apply', '--start',
+    ])
+    main()
+    verify.assert_called_once_with('planner.example.test', cafile=(
+        root if mode == 'internal' else str(tmp_path / tls_files['ca_file'])
+    ))
+    assert export.call_count == (1 if mode == 'internal' else 0)
+    rendered = capsys.readouterr().out
+    assert 'no public ACME challenges' in rendered
+    assert 'Public DNS A/AAAA' not in rendered
+    assert 'Deployment successful!' in rendered
+    directive = 'tls internal' if mode == 'internal' else 'tls /etc/caddy/tls/'
+    assert directive in (output / 'Caddyfile').read_text()
+
+
+@pytest.mark.parametrize('settings,hostname', [
+    ({'mode': 'unknown'}, 'planner.example.test'),
+    ({'mode': 'internal'}, None),
+    ({'mode': 'internal', 'key_file': 'key.pem'}, 'planner.example.test'),
+    ({'mode': 'provided'}, 'planner.example.test'),
+])
+def test_invalid_tls_policy_is_rejected(settings, hostname):
+    from deploy import load_https_tls
+
+    with pytest.raises(ValueError):
+        load_https_tls({'https_tls': settings}, 'instances.yml', hostname)
 
 
 @pytest.mark.parametrize("hostname", [
@@ -371,6 +631,8 @@ def test_operator_manifest_manages_auth_wiring_without_a_sandbox_generator(tmp_p
     commands = []
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr('deploy.subprocess.run', lambda command, **options: commands.append(command))
+    verified = []
+    monkeypatch.setattr('deploy.wait_for_https', lambda hostname: verified.append(hostname))
     monkeypatch.setattr(sys, 'argv', ['deploy.py', '--apply', '--start'])
 
     main()
@@ -399,6 +661,7 @@ def test_operator_manifest_manages_auth_wiring_without_a_sandbox_generator(tmp_p
         ['docker', 'compose', 'config', '--quiet'], ['docker', 'compose', 'build'],
         ['docker', 'compose', 'up', '-d', '--wait'],
     ]
+    assert verified == ([] if https_hostname is None else [https_hostname])
     main()
     assert {path: path.read_bytes() for path in secret_paths} == originals
 

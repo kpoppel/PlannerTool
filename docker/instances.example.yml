@@ -3,6 +3,18 @@ ado_authentication: pat
 # To connect the shared mock auth service, set ado_authentication: entra, uncomment
 # auth_services below and add auth_service: central to the desired instances.
 # https_hostname: planner.example.test
+# HTTPS defaults to public ACME (public DNS, inbound TCP 80/443, outbound DNS/HTTPS).
+# For a private server, select internal and trust the exported root on clients:
+# https_tls:
+#   mode: internal
+# For a company-issued certificate, use this instead (paths relative to this file):
+# https_tls:
+#   mode: provided
+#   certificate_file: /etc/plannertool/tls/fullchain.pem
+#   key_file: /etc/plannertool/tls/key.pem
+#   ca_file: /etc/plannertool/tls/company-ca.pem
+# Private keys must be unencrypted and mode 0600. ca_file is optional if host-trusted.
+# Use --apply --start to generate, start and verify HTTPS certificate readiness.
 # auth_services:
 #   central:
 #     mode: mock

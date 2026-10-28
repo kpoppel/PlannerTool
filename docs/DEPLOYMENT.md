@@ -24,8 +24,10 @@ owns backend selection. Do not specify per-instance `backend` or
    host ownership: the deployment account/protected files must be readable by that
    UID. If your deployment account differs, have the system administrator provision
    suitable ownership first. Do not make secret files group/world-readable.
-- Point the chosen DNS hostname to this server and make ports 80/443 available to
-   Caddy for automatic HTTPS. Localhost is not required for a mock upstream.
+- Make the chosen hostname resolve to this server on client machines and allow
+   TCP 443 to Caddy. Private servers can use company certificates or Caddy's internal
+   CA without public DNS or ACME challenges; public ACME additionally requires
+   public DNS and inbound ports 80/443. See certificate modes below.
 - Activate `.venv` and install `requirements.txt` before running the script. Keep
    the protected `deployment/.env` containing `PLANNER_SECRET_KEY`. For a new
    installation, provision that key as described below; never replace a retained
@@ -41,6 +43,8 @@ instance name with yours:
 
 ```yaml
 https_hostname: planner.example.test
+https_tls:
+   mode: internal
 ado_authentication: entra
 auth_services:
    central:
@@ -91,7 +95,8 @@ unless `build_from_source: true` is specified.
 Browse to `https://planner.example.test/planning/`, substituting your hostname and
 instance name. Caddy terminates TLS and redirects HTTP to HTTPS. The manifest's
 `public_url` must match `https_hostname` exactly; callbacks and browser origins are
-bound to that URL. No SSH tunnel or localhost callback is required. Plain HTTP is
+bound to that URL. For `internal` mode, first install the exported root certificate
+in the client/browser trust store as described below. No SSH tunnel or localhost callback is required. Plain HTTP is
 supported only for explicit `http://localhost:PORT/auth/` configurations without
 `https_hostname`; these publish a loopback-only port for local testing.
 
@@ -286,18 +291,91 @@ the hostname as a command-line option:
 python3 scripts/deploy.py --config instances.yml --https-hostname planner.example.com --apply
 ```
 
-The generated Caddy site uses that hostname, publishes ports 80 and 443 (TCP and
-UDP), and stores Caddy's certificate/account data in named volumes so certificates
+The generated Caddy site uses that hostname, publishes TCP ports 80 and 443 (plus
+UDP 443), and stores Caddy's certificate/account data in named volumes so certificates
 survive container recreation. Start or update the stack with the usual
-`cd deployment && docker compose up -d` command. Caddy obtains and renews its
-certificate automatically and redirects HTTP to HTTPS.
+`cd deployment && docker compose up -d` command. Caddy redirects HTTP to HTTPS.
 
-For public ACME issuance, the hostname must resolve to this server and inbound
-ports 80 and 443 must be available to Caddy. If both manifest and command line
+Select a certificate policy with top-level `https_tls`. Omission means
+`mode: acme`, retaining public automatic certificate issuance. There is no automatic
+fallback between modes.
+
+For a private server without public DNS, start with Caddy's internal CA:
+
+```yaml
+https_hostname: planner.example.test
+https_tls:
+   mode: internal
+```
+
+Caddy issues and renews the server certificate locally; no public DNS, public ACME
+challenge or certificate-authority internet access is needed. Clients must still
+resolve the hostname through internal DNS or hosts files and reach TCP 443.
+On `--apply --start`, deployment exports only the public CA root to
+`deployment/tls/caddy-root.crt` (or `tls/caddy-root.crt` under `--output-dir`) and
+uses it for strict hostname/certificate verification. Install that public root in
+the trusted root store of each client/browser, following company IT policy.
+Deployment does not change host or browser trust stores automatically. The root is
+self-signed; server certificates are signed by that root. Never distribute the CA
+private key from the `caddy_data` volume. Preserve that volume to retain client trust.
+Treat the local CA private key as signing authority, not as a disposable cache.
+
+When a company-issued certificate is available, select supplied PEM files:
+
+```yaml
+https_hostname: planner.example.test
+https_tls:
+   mode: provided
+   certificate_file: /etc/plannertool/tls/fullchain.pem
+   key_file: /etc/plannertool/tls/key.pem
+   ca_file: /etc/plannertool/tls/company-ca.pem
+```
+
+Paths resolve relative to the manifest, not the generated Compose directory.
+`certificate_file` must contain the hostname-matching leaf certificate followed
+by intermediate certificates; `key_file` must be its matching, unencrypted PEM
+private key with mode 0600. Keep private keys outside the repository. Deployment
+validates the pair before generation and mounts both files read-only into Caddy.
+The optional `ca_file` supplies trusted CA certificates for deployment's readiness
+check; omit it if the deployment host already trusts the issuing CA. Client/browser
+trust must be configured separately. An explicit self-signed server certificate
+can also be supplied, with that certificate as `ca_file` and installed client trust.
+This mode performs no public ACME challenges. You own renewal: replace the supplied
+files and restart Caddy to load them, then rerun deployment to verify the result.
+For example, `docker compose --project-directory deployment restart caddy`; preserve
+your usual project-name and environment-file options. Switching from internal to
+provided TLS does not require changing the hostname or auth service public URL.
+
+For public ACME issuance (`https_tls: {mode: acme}`), Caddy obtains and renews
+certificates automatically. The hostname must resolve to this server and inbound
+TCP ports 80 and 443 must be available to Caddy, with no other service occupying
+them. Set public DNS A records (and AAAA records if IPv6 is used) to the server's
+reachable addresses, and forward these ports through any firewall or NAT. Caddy
+also needs outbound DNS and HTTPS access to the certificate authority. Replace
+example hostnames with a domain you control; reserved `.test` names cannot obtain
+publicly trusted certificates. No manual certificate installation is required.
+If both manifest and command line
 specify a hostname, they must agree. Without either setting, generation uses HTTP.
 For deployments without shared auth, another proxy may terminate HTTPS while
 Caddy remains HTTP-only. Shared-auth deployments require the matching HTTPS
 ingress and callback configuration described above.
+
+Use `--apply --start` to generate, start and check HTTPS in one deployment. After
+container startup, the script waits up to 120 seconds for a certificate trusted
+by the configured CA (or the deployment host) and valid for `https_hostname`, connecting to local port
+443 with that hostname as TLS SNI. It does not disable certificate verification.
+This verifies the local Caddy endpoint, not external DNS or firewall reachability.
+If issuance is not ready, deployment exits nonzero and prints a Caddy log command
+preserving the chosen project, output directory and protected environment file.
+Internal CA export may also take up to 120 seconds on first startup. Containers
+remain running for inspection; investigate logs, certificate/trust configuration
+and network settings before rerunning deployment. Starting Compose
+manually does not run this certificate check.
+
+Keep the Compose project name and `caddy_data` volume unchanged across updates;
+do not use `docker compose down -v`, which deletes persisted certificates and
+other application volumes. Caddy handles ACME/internal renewals without rerunning
+deployment; supplied company certificates require operator-managed renewal.
 
 **Set the encryption key**: Before starting the containers, you must set the `PLANNER_SECRET_KEY` environment variable. 
 

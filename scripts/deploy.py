@@ -5,6 +5,9 @@ import sys
 import subprocess
 import argparse
 import shlex
+import socket
+import ssl
+import time
 from pathlib import Path
 from deploy_auth import add_auth_compose, load_auth_services, validate_instances
 
@@ -56,10 +59,51 @@ def validate_https_hostname(value):
         )
     return value.lower()
 
-def generate_caddyfile(instances, https_hostname=None, auth_services=None):
+def load_https_tls(config, manifest_path, hostname):
+    settings = config.get('https_tls', {'mode': 'acme'})
+    if not isinstance(settings, dict) or settings.get('mode') not in ('acme', 'internal', 'provided'):
+        raise ValueError('https_tls requires mode: acme|internal|provided')
+    mode = settings['mode']
+    allowed = {'mode', 'certificate_file', 'key_file', 'ca_file'} if mode == 'provided' else {'mode'}
+    if set(settings) - allowed:
+        raise ValueError('Unsupported https_tls setting for mode ' + mode)
+    if 'https_tls' in config and hostname is None:
+        raise ValueError('https_tls requires https_hostname')
+    result = dict(settings)
+    if mode == 'provided':
+        if not {'certificate_file', 'key_file'} <= set(settings):
+            raise ValueError('Provided TLS requires certificate_file and key_file')
+        base = Path(manifest_path).resolve().parent
+        for field in ('certificate_file', 'key_file', 'ca_file'):
+            if field not in settings:
+                continue
+            if not isinstance(settings[field], str) or not settings[field]:
+                raise ValueError('TLS file paths must be nonempty strings')
+            path = (base / settings[field]).resolve()
+            if not path.is_file():
+                raise ValueError('Missing TLS file: ' + str(path))
+            result[field] = str(path)
+        if Path(result['key_file']).stat().st_mode & 0o077:
+            raise ValueError('TLS private key requires mode 0600')
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(result['certificate_file'], result['key_file'], password=lambda: '')
+        if 'ca_file' in result:
+            ssl.create_default_context(cafile=result['ca_file'])
+    return result
+
+
+def generate_caddyfile(instances, https_hostname=None, auth_services=None, https_tls=None):
     validate_instances(instances)
     site_address = https_hostname if https_hostname else ":80"
-    lines = [f"{site_address} {{"]
+    lines = []
+    if https_tls is not None and https_tls['mode'] == 'provided':
+        lines.extend(['{', '    auto_https disable_certs', '}', ''])
+    lines.append(f"{site_address} {{")
+    if https_tls is not None:
+        if https_tls['mode'] == 'internal':
+            lines.append('    tls internal')
+        elif https_tls['mode'] == 'provided':
+            lines.append('    tls /etc/caddy/tls/certificate.pem /etc/caddy/tls/key.pem')
     if auth_services:
         for name in auth_services:
             lines.extend([
@@ -86,7 +130,7 @@ def generate_caddyfile(instances, https_hostname=None, auth_services=None):
     lines.append("}")
     return "\n".join(lines)
 
-def generate_docker_compose(instances, version, https_hostname=None, auth_services=None):
+def generate_docker_compose(instances, version, https_hostname=None, auth_services=None, https_tls=None):
     validate_instances(instances)
     caddy_ports = ["80:80"]
     caddy_volumes = [
@@ -98,6 +142,13 @@ def generate_docker_compose(instances, version, https_hostname=None, auth_servic
         caddy_ports.extend(["443:443", "443:443/udp"])
         caddy_volumes.extend(["caddy_data:/data", "caddy_config:/config"])
         volumes.update({"caddy_data": {}, "caddy_config": {}})
+    if https_tls is not None and https_tls['mode'] == 'provided':
+        for field, filename in (('certificate_file', 'certificate.pem'), ('key_file', 'key.pem')):
+            caddy_volumes.append({
+                'type': 'bind', 'source': https_tls[field],
+                'target': '/etc/caddy/tls/' + filename, 'read_only': True,
+                'bind': {'create_host_path': False},
+            })
 
     compose = {
         "services": {
@@ -153,6 +204,37 @@ def generate_docker_compose(instances, version, https_hostname=None, auth_servic
     add_auth_compose(compose, instances, {} if auth_services is None else auth_services, version)
     return compose
 
+def wait_for_https(hostname, timeout=120, cafile=None):
+    context = ssl.create_default_context() if cafile is None else ssl.create_default_context(cafile=cafile)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            with socket.create_connection(('127.0.0.1', 443), timeout=5) as connection:
+                with context.wrap_socket(connection, server_hostname=hostname):
+                    return
+        except OSError as error:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(f'HTTPS certificate is not ready for {hostname}: {error}') from error
+            time.sleep(min(2, remaining))
+
+
+def export_internal_ca(compose_command, output_dir, timeout=120):
+    destination = Path(output_dir).resolve() / 'tls' / 'caddy-root.crt'
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    while True:
+        result = subprocess.run(compose_command + [
+            'cp', 'caddy:/data/caddy/pki/authorities/local/root.crt', str(destination),
+        ], cwd=output_dir, capture_output=True, timeout=10)
+        if result.returncode == 0:
+            return str(destination)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError('Caddy internal CA is not ready; could not export its public root certificate')
+        time.sleep(min(2, remaining))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate deployment files for PlannerTool instances and optionally start them.",
@@ -184,7 +266,7 @@ def main():
         '--https-hostname',
         type=validate_https_hostname,
         metavar='HOSTNAME',
-        help="Enable Caddy automatic HTTPS for this DNS hostname (requires public DNS and ports 80/443)."
+        help="Enable HTTPS for this hostname; select certificate management with manifest https_tls."
     )
     parser.add_argument(
         '-b', '--build-images',
@@ -238,15 +320,30 @@ def main():
             if args.https_hostname is not None and args.https_hostname != hostname:
                 raise ValueError('--https-hostname conflicts with manifest https_hostname')
             args.https_hostname = hostname
+        https_tls = load_https_tls(config, instances_file, args.https_hostname)
         auth_services = load_auth_services(config, instances_file, args.https_hostname,
                           output_dir=args.output_dir, apply=args.apply)
-        caddy_contents = generate_caddyfile(instances, args.https_hostname, auth_services)
-        compose_obj = generate_docker_compose(instances, version, args.https_hostname, auth_services)
+        caddy_contents = generate_caddyfile(instances, args.https_hostname, auth_services, https_tls)
+        compose_obj = generate_docker_compose(instances, version, args.https_hostname, auth_services, https_tls)
         if args.project_name is not None:
             compose_obj['name'] = args.project_name
     except (ValueError, KeyError, OSError) as error:
         parser.error(str(error))
     index_contents = generate_index_html(instances)
+
+    if args.https_hostname:
+        if https_tls['mode'] == 'acme':
+            print(f'Automatic HTTPS: Caddy will obtain and renew a certificate for {args.https_hostname}.')
+            print('Public DNS A/AAAA records must point to this server; inbound TCP ports 80 and 443 must reach Caddy.')
+            print('Caddy needs outbound DNS and HTTPS access to the certificate authority.')
+        elif https_tls['mode'] == 'internal':
+            print('Internal HTTPS: Caddy will issue certificates using its persistent local CA; no public ACME challenges.')
+            print('After startup, install the exported public root certificate in client/browser trust stores.')
+        else:
+            print('Provided HTTPS: Caddy will use your certificate and key; no public ACME challenges.')
+            print('You are responsible for certificate renewal and client trust in the issuing CA.')
+        print(f'Clients must resolve {args.https_hostname} to this server and reach TCP port 443.')
+        print('Keep the caddy_data volume and Compose project name unchanged to preserve certificates.')
 
     if not args.apply:
         # Dry-run: print help and show generated files
@@ -298,8 +395,36 @@ def main():
         print("Deploying instances...")
         try:
             subprocess.run(compose_command + ['up', '-d', '--wait'], cwd=args.output_dir, check=True)
+            if args.https_hostname:
+                ca_file = https_tls.get('ca_file')
+                if https_tls['mode'] == 'internal':
+                    ca_file = export_internal_ca(compose_command, args.output_dir)
+                    print('Public internal CA certificate: ' + ca_file)
+                    print('Install this certificate in client/browser trust stores; never distribute the CA private key.')
+                print('Waiting up to 120 seconds for a trusted HTTPS certificate on local port 443...')
+                if ca_file is None:
+                    wait_for_https(args.https_hostname)
+                else:
+                    wait_for_https(args.https_hostname, cafile=ca_file)
+                print(f'HTTPS certificate verified for https://{args.https_hostname}/')
             print("\nDeployment successful!")
 
+        except RuntimeError as error:
+            print(f'\n{error}')
+            print('Containers remain running for inspection.')
+            if https_tls['mode'] == 'acme':
+                print('Check public DNS (including IPv6), inbound ports 80/443, and outbound DNS/HTTPS access.')
+            else:
+                print('Check certificate validity, hostname SANs, issuing CA trust and local port 443.')
+            print('Inspect certificate issuance errors with:')
+            print('  ' + shlex.join(compose_command + [
+                '--project-directory', str(Path(args.output_dir).resolve()),
+                'logs', '--tail=100', 'caddy',
+            ]))
+            sys.exit(1)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            print(f'\nHTTPS setup failed: {error}')
+            sys.exit(1)
         except subprocess.CalledProcessError as e:
             print(f"\nDeployment failed with error code {e.returncode}")
             sys.exit(e.returncode)
