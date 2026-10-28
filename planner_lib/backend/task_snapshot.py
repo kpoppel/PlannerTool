@@ -48,6 +48,12 @@ class TaskSnapshot:
                 return None, None
             return self._load(SNAPSHOT_KEY), metadata
 
+    def read_cached(self, identity, guard):
+        self._served.access_error = None
+        tasks, metadata = self._cached(identity, guard)
+        self._served.metadata = metadata
+        return tasks
+
     def read(self, build, identity, guard, credential):
         self._served.metadata = None
         with self._state_lock:

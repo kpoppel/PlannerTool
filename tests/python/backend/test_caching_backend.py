@@ -135,6 +135,31 @@ def snapshot_repository(inner, storage):
     backend.close()
 
 
+@pytest.mark.parametrize('empty', [False, True])
+def test_cache_only_snapshot_never_builds_refreshes_or_acquires_credentials(snapshot_repository, inner, storage, empty):
+    from planner_lib.backend.task_snapshot import META_KEY, NAMESPACE
+
+    repository, backend, projects = snapshot_repository
+    assert repository.read_cached() is None
+    assert inner.fetch_tasks_calls == []
+    if empty:
+        inner.set_tasks(AREA, [])
+    original = repository.read(credential=CRED)
+    calls = len(inner.fetch_tasks_calls)
+    metadata = storage.load(NAMESPACE, META_KEY)
+    storage.save(NAMESPACE, META_KEY, {**metadata, 'fresh_until': 0})
+
+    assert repository.read_cached() == original
+    assert repository.read_cached(project_id='p') == original
+    assert repository.read_cached(project_id='other') == []
+    assert len(inner.fetch_tasks_calls) == calls
+    assert backend._task_snapshot._thread is None
+    repository._credential_provider.get_credential.assert_not_called()
+    projects.get_project_map.return_value = [{'id': 'changed', 'area_path': AREA}]
+    assert repository.read_cached() is None
+    assert len(inner.fetch_tasks_calls) == calls
+
+
 def test_stale_snapshot_returns_without_waiting_and_refreshes_once(snapshot_repository, inner, storage):
     from threading import Event
     from unittest.mock import Mock

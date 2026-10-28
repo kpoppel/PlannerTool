@@ -93,6 +93,44 @@ def test_source_and_epoch_mismatches_fail_closed():
         sessions.create('epoch@example.test', source='entra')
 
 
+@pytest.mark.parametrize('remote_state', ['expired', 'revoked'])
+@pytest.mark.parametrize('local_end', ['idle', 'absolute', 'account_removed'])
+def test_remote_grant_health_does_not_control_application_expiry(monkeypatch, remote_state, local_end):
+    import hashlib
+    from planner_lib.middleware.session import SESSION_IDLE, SESSION_MAX
+    from planner_lib.session.policy import SessionPolicy
+
+    storage = MemoryStorage()
+    accounts = AccountManager(storage)
+    account = accounts.create_account(AccountCredentialsPayload(email='separate@example.test'))
+    storage.save('config', 'authentication', {
+        'version': 1, 'selected': 'entra', 'active': 'entra',
+        'backend_credentials': 'delegated', 'epoch': 1,
+    })
+    monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: 1000.0)
+    storage.save('auth_grants', 'local-binding', {
+        'account_id': account['id'], 'epoch': 1,
+        'expires_at': 999.0 if remote_state == 'expired' else 4600.0,
+        'revoked': remote_state == 'revoked',
+    })
+    sessions = SessionManager(accounts, storage, auth_policy=SessionPolicy(storage))
+    sid = sessions.create(account['email'], source='entra', binding='local-binding')
+
+    assert sessions.get(sid)['account_id'] == account['id']
+    assert sessions.is_valid(sid)
+
+    if local_end == 'account_removed':
+        accounts.delete_account(account['id'])
+    elif local_end == 'idle':
+        monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: 1001.0 + SESSION_IDLE)
+    else:
+        session_key = hashlib.sha256(sid.encode()).hexdigest()
+        record = storage.load('auth_sessions', session_key)
+        storage.save('auth_sessions', session_key, {**record, 'last_seen': 1000.0 + SESSION_MAX})
+        monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: 1001.0 + SESSION_MAX)
+    assert sessions.get(sid) is None
+
+
 def test_revision_44_invalidates_sessions_but_preserves_accounts():
     from planner_lib.migrations.revisions import upgrade_44
 

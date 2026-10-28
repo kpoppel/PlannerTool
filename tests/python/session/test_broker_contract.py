@@ -16,14 +16,15 @@ CONTRACT = json.loads((Path(__file__).resolve().parents[3] / 'entra-id' / 'proto
 
 
 @pytest.fixture
-def sandbox(monkeypatch, tmp_path):
+def sandbox(monkeypatch, tmp_path, request):
+    origin = getattr(request, 'param', 'http://localhost:8765')
     secret_file = tmp_path / 'instance-secret'
     secret_file.write_text(secrets.token_urlsafe(32))
     secret_file.chmod(0o600)
     for key, value in {
         'PLANNER_AUTH_PROVIDER': 'entra', 'PLANNER_AUTH_INSTANCE': 'alpha',
         'PLANNER_AUTH_URL': 'http://localhost:8765/auth/',
-        'PLANNER_AUTH_PUBLIC_URL': 'http://localhost:8765/auth/',
+        'PLANNER_AUTH_PUBLIC_URL': origin + '/auth/',
         'PLANNER_AUTH_ENVIRONMENT': 'sandbox', 'PLANNER_AUTH_GENERATION': 'test-1',
         'PLANNER_AUTH_UPSTREAM_MODE': 'mock', 'PLANNER_AUTH_ISOLATED_SANDBOX': '1',
         'PLANNER_AUTH_SECRET_FILE': str(secret_file),
@@ -64,18 +65,42 @@ def sandbox(monkeypatch, tmp_path):
         raise AssertionError('Unexpected broker operation')
 
     app.state.container.get('broker_client').transport = httpx.MockTransport(transport)
-    with TestClient(app, base_url='http://localhost:8765') as client:
+    with TestClient(app, base_url=origin) as client:
         yield client, requests
 
 
+def test_mock_auth_preserves_admin_backend_choice_and_authentication(sandbox):
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.session.broker import prepare_sandbox
+
+    client, requests = sandbox
+    container = client.app.state.container
+    storage = container.get('storage')
+    settings = container.get('broker_client').settings
+    authentication = dict(storage.load('config', 'authentication'))
+    manager = ConfigManager(storage)
+    local_config = {'organization_url': 'example', 'feature_flags': {'use_azure_mock_generator': True}}
+    manager.save_config('ado_config', local_config)
+    prepare_sandbox(storage, settings)
+    assert storage.load('config', 'ado_config') == local_config
+    assert storage.load('config', 'authentication') == authentication
+    assert client.get('/api/auth/config').json()['mode'] == 'entra'
+    with pytest.raises(ValueError, match='fixture transport'):
+        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    assert storage.load('config', 'ado_config') == local_config
+    assert requests == []
+
+
+@pytest.mark.parametrize('sandbox', ['http://localhost:8765', 'https://planner.example.test'], indirect=True)
 def test_sandbox_login_profile_logout_and_disabled_enrollment(sandbox):
     client, requests = sandbox
     assert client.get('/api/auth/config').json()['mode'] == 'entra'
     assert client.get('/api/auth/me').json()['account'] is None
     assert client.post('/api/auth/enroll', json={'email': 'new@example.test'}).status_code == 403
-    begin = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'})
+    begin = client.post('/api/auth/login/begin', headers={'Origin': str(client.base_url).rstrip('/')})
     assert begin.status_code == 200
     assert 'HttpOnly' in begin.headers['set-cookie']
+    assert ('Secure' in begin.headers['set-cookie']) == (client.base_url.scheme == 'https')
     state = begin.json()['state']
     completed = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
     assert completed.status_code == 200
@@ -196,6 +221,41 @@ def test_logout_commits_local_revocation_when_broker_is_unavailable(sandbox):
     assert not sessions.is_valid(sid)
     storage = client.app.state.container.get('storage')
     assert all(storage.load('auth_grants', key)['revoked'] for key in storage.list_keys('auth_grants'))
+
+
+@pytest.mark.parametrize('remote_state', ['expired', 'revoked'])
+def test_remote_grant_expiry_preserves_local_routes_and_requires_ado_reauthentication(sandbox, remote_state):
+    import time
+    from planner_lib.middleware.session import SESSION_COOKIE
+
+    client, requests = sandbox
+    state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
+    profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
+    container = client.app.state.container
+    sessions = container.get('session_manager')
+    sid = client.cookies.get(SESSION_COOKIE)
+    context = sessions.get(sid)
+    storage = container.get('storage')
+    grant = storage.load('auth_grants', context['binding'])
+    storage.save('auth_grants', context['binding'], {
+        **grant, 'expires_at': time.time() - 1 if remote_state == 'expired' else grant['expires_at'],
+        'revoked': remote_state == 'revoked',
+    })
+    before_local = len(requests)
+
+    assert client.get('/admin/check').status_code == 200
+    current = client.get('/api/auth/me').json()
+    assert current['account'] == profile['account']
+    assert current['status'] == 'interaction_required'
+    assert len(requests) == before_local
+    result = client.post('/api/auth/sandbox/operation')
+    assert result.status_code == 409
+    assert result.json() == {'error': 'interaction_required'}
+    assert len(requests) == before_local
+    assert sessions.is_valid(sid)
+    assert client.get('/admin/check').status_code == 200
+    assert client.post('/api/auth/logout').status_code == 200
+    assert not sessions.is_valid(sid)
 
 
 def test_transport_rejects_mismatched_environment_and_outage(sandbox):

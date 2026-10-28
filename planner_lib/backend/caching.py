@@ -177,6 +177,9 @@ class CachingBackend:
             return build(self, credential)
         return self._task_snapshot.read(build, identity, guard, credential)
 
+    def read_cached_task_snapshot(self, identity, guard):
+        return self._task_snapshot.read_cached(identity, guard)
+
     def refresh_task_snapshot(self, build, identity, guard, credential):
         if not self._inner_is_remote:
             build(self._inner, credential)

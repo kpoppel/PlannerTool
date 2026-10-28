@@ -129,7 +129,6 @@ class DelegatedCredentialProvider:
         grant = self.storage.load('auth_grants', binding)
         now = time.time()
         if (grant['account_id'] != credential['user_id'] or grant['epoch'] != credential['epoch']
-            or grant['revoked'] or grant['expires_at'] <= now
                 or grant['environment'] != self.client.settings.metadata()):
             raise AuthFailure('invalid_session', 401)
         sessions = (self.storage.load('auth_sessions', key) for key in self.storage.list_keys('auth_sessions'))
@@ -142,6 +141,8 @@ class DelegatedCredentialProvider:
             self.accounts.get_account_by_id(credential['user_id'])
         except KeyError as error:
             raise AuthFailure('invalid_session', 401) from error
+        if grant['revoked'] or grant['expires_at'] <= now:
+            raise AuthFailure('interaction_required', 409)
         return grant
 
     def acquire(self, user_id, binding, epoch):

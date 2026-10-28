@@ -1,3 +1,11 @@
+# Server Deployment
+
+Define your instances and optional shared auth service in `instances.yml`, then run
+`python scripts/deploy.py --apply --start`. The
+[operator guide](docs/DEPLOYMENT.md#shared-auth-service) covers the standard shared
+Compose stack, configuration ownership, protected state and the current mock-upstream
+limitations. Select each instance's backend in Admin > Data Sources.
+
 # Getting started - development
 
 - Clone this git repository `git clone https://github.com/kpoppel/PlannerTool.git`.

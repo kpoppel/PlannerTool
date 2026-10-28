@@ -120,7 +120,7 @@ class ConfigManager:
             return
         if key in ('ado_config', 'server_config') or overrides is not None:
             from planner_lib.backend.registry import get_active_class
-            from planner_lib.backend.mock import MockFixtureBackend
+            from planner_lib.backend.azure import AzureDevOpsBackend
 
             flags = {}
             for name in ('server_config', 'ado_config'):
@@ -129,8 +129,8 @@ class ConfigManager:
                 else:
                     value = content if key == name else self._storage.load('config', name)
                 flags.update(value['feature_flags'])
-            if get_active_class(flags) is not MockFixtureBackend:
-                raise ValueError('Sandbox requires the explicit ADO fixture transport')
+            if get_active_class(flags) is AzureDevOpsBackend:
+                raise ValueError('Mock auth requires fixture transport for ADO; local backends remain available')
 
     def _validate_auth_policy_change(self, content):
         from planner_lib.session.policy import validate_authentication

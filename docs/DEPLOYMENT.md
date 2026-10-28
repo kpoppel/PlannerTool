@@ -1,25 +1,162 @@
+# Shared Auth Service
+
+Keep the normal operator workflow: define `instances.yml`, retain the installation's
+encryption key, then run `python scripts/deploy.py --apply --start`. The optional
+auth service, your own named PlannerTool instances and Caddy are built and started
+in the **same generated Docker Compose project**. Do not start a separate auth
+Compose stack or run `scripts/auth_sandbox.py` to prepare an operator deployment.
+
+The manifest owns hosting, routing, storage, auth-service connections and the
+deployment-wide ADO credential policy. Each instance's **Admin > Data Sources**
+owns backend selection. Do not specify per-instance `backend` or
+`authentication_provider` fields; the generator rejects these duplicated choices.
+
+## Prerequisites
+
+- For mock upstreams, use fresh isolated instance data and auth state, never
+   production accounts or volumes. Commit and push the branch before pulling it
+   on the server; uncommitted changes are not available through a pull.
+- Install Docker Engine, Docker Compose plugin 2.20 or newer, Git and Python 3.13
+   with venv support. Node is not needed on the host; Docker builds the frontend.
+   The deployment account needs permission to use Docker without an interactive
+   privilege prompt.
+- The broker container runs as UID 1000. File-backed Compose secrets preserve
+   host ownership: the deployment account/protected files must be readable by that
+   UID. If your deployment account differs, have the system administrator provision
+   suitable ownership first. Do not make secret files group/world-readable.
+- Point the chosen DNS hostname to this server and make ports 80/443 available to
+   Caddy for automatic HTTPS. Localhost is not required for a mock upstream.
+- Activate `.venv` and install `requirements.txt` before running the script. Keep
+   the protected `deployment/.env` containing `PLANNER_SECRET_KEY`. For a new
+   installation, provision that key as described below; never replace a retained
+   installation's encryption key.
+
+## Configure and Start
+
+Start from [docker/instances.example.yml](../docker/instances.example.yml). Keep
+your own instance names and storage/image settings. To connect an instance to the
+shared mock auth service, set `ado_authentication: entra`, add `auth_services` and
+give that instance an `auth_service` reference. Replace the example hostname and
+instance name with yours:
+
+```yaml
+https_hostname: planner.example.test
+ado_authentication: entra
+auth_services:
+   central:
+      mode: mock
+      environment_id: preview
+      generation: initial
+      public_url: https://planner.example.test/auth/
+      volume_source: auth-central-state
+      registration:
+         tenant_id: 11111111-1111-1111-1111-111111111111
+         client_id: 22222222-2222-2222-2222-222222222222
+         organization: example
+instances:
+   - name: planning
+     auth_service: central
+```
+
+Add as many instances as needed. A connected instance uses Entra login under the
+`entra` credential policy regardless of its admin-selected backend. Unconnected
+instances retain enrollment and local backend access. `pat` retains enrollment
+and can stage an auth connection; `disabled` forbids live ADO and wiki access.
+Under `entra`, an unconnected instance cannot enable live ADO or remote wiki
+transport. Ordinary backend saves never change login mode, epoch or sessions.
+
+Run the same command from the repository root:
+
+```bash
+source .venv/bin/activate
+python scripts/deploy.py --apply --start
+```
+
+On first `--apply`, the script creates `deployment/.auth/central/` (mode 0700)
+with a generated instance registry, synthetic registration and distinct secrets
+(mode 0600). Dry-run creates no files. Subsequent runs reuse keys and secrets;
+missing retained secrets fail instead of being silently regenerated. The operator
+manifest is never rewritten. Back up this directory with the instance/auth volumes.
+Changing mode, environment, generation or public URL on retained mock authority
+requires a separate explicit transition; do not delete keys to bypass this check.
+
+Caddy owns the only published ports. The apps and broker communicate on the
+private isolated Compose network, which blocks outbound live ADO. Caddy alone
+also joins the ingress network for browser access and certificate renewal. Services
+without an explicit image build from the checkout; pinned images remain image-only
+unless `build_from_source: true` is specified.
+
+## Access From Your Computer
+
+Browse to `https://planner.example.test/planning/`, substituting your hostname and
+instance name. Caddy terminates TLS and redirects HTTP to HTTPS. The manifest's
+`public_url` must match `https_hostname` exactly; callbacks and browser origins are
+bound to that URL. No SSH tunnel or localhost callback is required. Plain HTTP is
+supported only for explicit `http://localhost:PORT/auth/` configurations without
+`https_hostname`; these publish a loopback-only port for local testing.
+
+Normal PlannerTool sign-in opens the shared auth service's simulated identity
+selection. Choose **Alex Sandbox** for the prelinked synthetic administrator or
+**Sam Sandbox** for an unprivileged user. The shared callback returns to the
+originating instance. Settings, reauthentication, cancellation, different-account
+recovery and logout use the ordinary application. Logout affects only that instance.
+
+**Mock identity selection is not production authentication.** Anyone with access
+can select the synthetic administrator. Restrict demonstration access appropriately
+and never attach production data, accounts, credentials or volumes.
+
+The initial planning dataset is empty. Select supported local backends in Admin >
+Data Sources as needed. ADO operations use fixtures, never live reads/writes. No
+Entra registration, consent or real PAT is required. `mode: entra` is not yet a
+supported operator switch, pending implementation and acceptance of the live broker.
+
+## Verify and Operate
+
+From the repository root on the server:
+
+```bash
+docker compose --project-directory deployment ps
+curl --fail --silent --show-error https://planner.example.test/auth/v1/readiness
+```
+
+Expect Caddy, the auth service and your instances in the same project, and readiness
+with `upstream_mode: mock`, `ready: true`, `live_capable: false`. `--start` waits for
+Compose startup; check HTTP readiness separately as above. If startup fails,
+inspect the same project with `logs --tail 100 auth-central planner-planning caddy`
+(substitute your service names). Never paste secret
+files or unredacted `docker compose config` output into tickets; use
+`config --quiet` for validation.
+
+For updates, retain the manifest, protected files, project name, port and volumes.
+Pull the reviewed branch with `git pull --ff-only`, activate `.venv`, and rerun
+`python scripts/deploy.py --apply --start`. It rebuilds source services and updates
+the shared stack without regenerating identities or keys.
+
+To stop everything while preserving state:
+
+```bash
+docker compose --project-directory deployment stop
+```
+
+To resume, rerun the deployment command. Never use `down -v`, delete the protected
+directory or rotate its keys as a routine restart. Back up the entire protected
+configuration and all project volumes together. Live activation remains a separate
+approved rollout.
+
 # Authentication Manifest Upgrade
 
-Manifests require top-level `ado_authentication: disabled|pat|entra` and explicit
-`backend: local|ado` plus `authentication_provider: enrollment|entra` per instance.
-Choose one ADO policy for the whole deployment. Local-only instances always use
-enrollment without a broker; a wiki-only remote installation counts as ADO.
-ADO/PAT uses enrollment, while ADO/Entra uses Entra login. Contradictions fail
-generation and startup rather than receiving defaults or per-instance overrides.
-Upgrade operator manifests explicitly; ordinary settings saves cannot activate
-modes, invalidate sessions or purge credentials. No operator manifest is modified
-automatically. See [the Phase F sandbox and recovery procedure](PHASE_F_REPORT.md).
+Keep top-level `ado_authentication: disabled|pat|entra`. Remove any per-instance
+`backend` and `authentication_provider` fields, keep the desired `auth_service`
+connections, and regenerate using the normal deployment command. Generated
+`PLANNER_INSTANCE_BACKEND` is no longer accepted at startup. Existing admin-selected
+backends are retained; removing duplicated manifest fields does not activate a
+different login source, invalidate sessions or purge credentials.
 
-For a new disposable PAT-to-Entra rehearsal, run the activated-venv command
-`python scripts/auth_sandbox.py --directory <new-ignored-directory> --port 18881
---ado-authentication pat` as one command, then generate with
-`python scripts/deploy.py --config <directory>/manifest.yml --output-dir
-<directory>/generated --apply`. The generated loopback-only stack keeps isolated
-app volumes and protected broker state. Supply its protected `.env` to Compose;
-never print secrets or use an operator deployment directory. Registered ADO
-instances may stage the mock broker while retaining enrollment. Obtain browser
-admin proofs, stop all app writers and use the exclusive offline fleet command
-before changing deployment policy to Entra. Live activation remains blocked.
+Adding Entra login to an existing enrollment installation still requires an
+explicit proven transition, not an ordinary backend save or manifest edit. Mock
+bootstrap requires fresh isolated data. For an offline sandbox transition
+rehearsal, see [the Phase F recovery procedure](PHASE_F_REPORT.md); that diagnostic
+utility is not the normal deployment workflow. Live activation remains blocked.
 
 # How to deploy the application for production or development
 
@@ -141,7 +278,9 @@ The script creates a `deployment/` directory, creates a docker-compose file and 
 ### Optional HTTPS
 
 The generated stack uses HTTP on port 80 by default. To enable Caddy-managed HTTPS,
-provide the DNS hostname users will browse to when generating the deployment:
+set top-level `https_hostname: planner.example.com` in `instances.yml`. The normal
+deployment command then retains HTTPS on subsequent runs. Alternatively, supply
+the hostname as a command-line option:
 
 ```bash
 python3 scripts/deploy.py --config instances.yml --https-hostname planner.example.com --apply
@@ -154,11 +293,11 @@ survive container recreation. Start or update the stack with the usual
 certificate automatically and redirects HTTP to HTTPS.
 
 For public ACME issuance, the hostname must resolve to this server and inbound
-ports 80 and 443 must be available to Caddy. Re-run the generator with the same
-`--https-hostname` option after changing instance configuration; omitting the
-option restores the default HTTP-only generated configuration. If another proxy
-already owns ports 80/443, keep this Caddy service HTTP-only and configure that
-proxy to terminate HTTPS and forward to the application containers instead.
+ports 80 and 443 must be available to Caddy. If both manifest and command line
+specify a hostname, they must agree. Without either setting, generation uses HTTP.
+For deployments without shared auth, another proxy may terminate HTTPS while
+Caddy remains HTTP-only. Shared-auth deployments require the matching HTTPS
+ingress and callback configuration described above.
 
 **Set the encryption key**: Before starting the containers, you must set the `PLANNER_SECRET_KEY` environment variable. 
 
@@ -171,10 +310,10 @@ proxy to terminate HTTPS and forward to the application containers instead.
 To start the services, either run the script with the `--start` flag, or do it manually:
    ```bash
    # Option A: Let the script start everything
-   python3 scripts/deploy.py --start
+   python scripts/deploy.py --apply --start
 
    # With a custom config file:
-   python3 scripts/deploy.py --config path/to/my-instances.yml --start
+   python scripts/deploy.py --config path/to/my-instances.yml --apply --start
 
    # Option B: Start manually
    cd deployment && docker compose up -d
@@ -185,15 +324,33 @@ To start the services, either run the script with the `--start` flag, or do it m
 The `scripts/deploy.py` script generates a dynamic `Caddyfile`, `docker-compose.yml`, and `index.html` for your configured instances.
 By default the script performs a dry-run: it prints usage help and displays the generated files without writing anything to disk. To write the files into the `deployment/` directory and perform actions, pass `--apply`.
 
-When `--apply` is used together with `-b/--build-images` or `--start`, the script will invoke `scripts/build-image.sh` to build `plannertool:<VERSION>` (and tag `plannertool:latest`) before starting the stack. To actually start containers the script will run `docker compose up -d --remove-orphans` from the `deployment/` directory only when `--apply` and `--start` are both provided.
+With `--apply` and either `-b/--build-images` or `--start`, the script validates
+Compose configuration with `config --quiet` and builds source-declared services
+using `docker compose build` in the generated project. `--apply --start` then runs
+`docker compose up -d --wait`. The auth service and PlannerTool instances are built
+and started together, with persistent per-service volumes and private service DNS.
+Generation/startup does not prune images or remove orphaned services/volumes.
+
+Use `--env-file path/to/protected/.env` to select the Compose environment file
+explicitly; it must have no group/other access (normally mode 0600). A missing or
+empty `PLANNER_SECRET_KEY` fails Compose validation before build/start. Use
+`--project-name planner-demo` to isolate the deployment; this name is written into
+the generated Compose file. Keep the same environment file and project name for
+updates and maintenance. Without `--output-dir`, files are written to `deployment/`.
 
 #### Versioning and Staged Rollouts
 By default, instances use an image tagged with the version defined in the `VERSION` file (e.g., `plannertool:v2.1.0`). 
-The script instructs Docker Compose to build the current codebase and automatically tag it with both `latest` and the current version.
-To perform a staged rollout or pin an instance to a specific version, you can specify an explicit `image:` property for that instance in `instances.yml` (e.g., `image: plannertool:v2.0.0`). The script will then deploy that instance using the specified image without attempting to rebuild it.
+Services without an explicit image receive a native Compose build context and
+the current version tag. To use a prebuilt image, set `image:` in the manifest;
+it is image-only unless you explicitly add `build_from_source: true`. This setting
+is supported on both instances and auth services. An image-only service is never
+rebuilt or replaced with a source fallback. `build_from_source: false` requires
+an explicit image. Generated demo manifests explicitly opt both codebases into
+source builds with dedicated sandbox tags; they do not tag `latest`.
 
 #### Image Cleanup
-After a successful deployment, the script automatically runs `docker image prune` to remove any dangling images left over from the build process. This helps keep your system clean and saves disk space.
+Image cleanup is an explicit operator task. The deployment script does not run
+`docker image prune` or delete images that another deployment might need.
 
 #### Volume Management
 By default, instances use isolated Docker named volumes (`data-<name>`). 

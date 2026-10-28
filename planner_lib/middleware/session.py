@@ -132,8 +132,7 @@ class SessionManager:
                 self._storage.delete('auth_sessions', key)
                 return None
             grant = self._storage.load('auth_grants', binding)
-            if (grant['account_id'] != account_id or grant['epoch'] != policy['epoch']
-                    or grant['expires_at'] <= now or grant['revoked']):
+            if grant['account_id'] != account_id or grant['epoch'] != policy['epoch']:
                 self._storage.delete('auth_sessions', key)
                 return None
         if refresh:

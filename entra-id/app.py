@@ -73,11 +73,10 @@ class Settings:
             raise ValueError('The callback must use a lowercase DNS hostname')
         if parsed.port == 0 or not 1 <= self.listen_port <= 65535:
             raise ValueError('Ports must be between 1 and 65535')
-        if self.auth_mode == 'mock' and (
-                parsed.scheme != 'http' or parsed.hostname != 'localhost'
-                or (self.network != 'private-compose'
-                    and self.listen_host not in ('127.0.0.1', 'localhost', '::1'))):
-            raise ValueError('Mock authentication is allowed only on localhost')
+        if self.auth_mode == 'mock' and self.network != 'private-compose' and (
+            parsed.scheme != 'http' or parsed.hostname != 'localhost'
+            or self.listen_host not in ('127.0.0.1', 'localhost', '::1')):
+            raise ValueError('Mock listeners require localhost or the private Compose network for HTTPS ingress')
 
     @classmethod
     def from_env(cls):

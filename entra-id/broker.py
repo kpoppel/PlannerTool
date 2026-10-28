@@ -66,8 +66,10 @@ class BrokerConfig:
                 or parsed.path != '/auth/' or not parsed.hostname):
             raise ValueError('Broker public URL must have the exact /auth/ root')
         if self.mode == 'mock':
-            if parsed.scheme != 'http' or parsed.hostname != 'localhost' or not parsed.port:
-                raise ValueError('Sandbox browser ingress must use http://localhost:PORT/auth/')
+            loopback = parsed.scheme == 'http' and parsed.hostname == 'localhost' and parsed.port is not None
+            https = parsed.scheme == 'https' and self.private_network
+            if not (loopback or https):
+                raise ValueError('Mock browser ingress requires HTTPS with private Compose or localhost HTTP')
             if self.ado_transport != 'fixture':
                 raise ValueError('Sandbox prohibits live ADO transport')
         elif parsed.scheme != 'https' or self.ado_transport != 'live':

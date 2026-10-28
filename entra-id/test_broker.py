@@ -244,19 +244,28 @@ def test_configuration_rejects_public_sandbox_and_live_transport(config):
         replace(config, ado_transport='live')
 
 
-def test_authenticated_http_browser_handoff_and_replay(config):
+@pytest.mark.parametrize('origin', ['http://localhost:8080', 'https://planner.example.test'])
+def test_authenticated_browser_handoff_and_replay(config, origin):
     sys.path.insert(0, str(Path(__file__).parent))
     from app import Settings, create_app
     from fastapi.testclient import TestClient
     from urllib.parse import parse_qs, urlsplit
 
+    https = origin.startswith('https:')
+    if https:
+        config = replace(config, public_url=origin + '/auth/', private_network=True,
+                         instances={'alpha': {**config.instances['alpha'],
+                                    'completion_url': origin + '/alpha/api/auth/login/callback'}})
     settings = Settings('11111111-1111-1111-1111-111111111111',
                         '22222222-2222-2222-2222-222222222222', 'synthetic', 'example',
-                        'http://localhost:8080/auth/callback', auth_mode='mock', broker_config=config)
+                        origin + '/auth/callback', auth_mode='mock', broker_config=config,
+                        network='private-compose' if https else 'loopback',
+                        listen_host='0.0.0.0' if https else '127.0.0.1',
+                        internal_host='auth-central' if https else '')
     app = create_app(settings)
     secret = Path(config.instances['alpha']['secret_file']).read_text()
     headers = {'X-Planner-Instance': 'alpha', 'Authorization': 'Bearer ' + secret}
-    with TestClient(app, base_url='http://localhost:8080/auth/', follow_redirects=False) as client:
+    with TestClient(app, base_url=origin + '/auth/', follow_redirects=False) as client:
         metadata = client.get('/v1/readiness').json()
         envelope = {key: metadata[key] for key in app.state.broker_store.metadata()}
         assert client.post('/v1/deployment/readiness', json=envelope).status_code == 403
@@ -275,10 +284,11 @@ def test_authenticated_http_browser_handoff_and_replay(config):
         begun = client.post('/v1/transactions/begin', json=body, headers=headers).json()
         page = client.get(begun['authorization_url'])
         assert page.status_code == 200
+        assert ('Secure' in page.headers['set-cookie']) == https
         assert secret not in page.text
         selected = client.post('/v1/browser/choose', data={'transaction': begun['transaction'], 'identity': '1'},
-                               headers={'Origin': 'http://localhost:8080'})
-        callback_url = 'http://localhost:8080' + selected.headers['location']
+                               headers={'Origin': origin})
+        callback_url = origin + selected.headers['location']
         callback = client.get(callback_url)
         assert callback.status_code == 303
         query = parse_qs(urlsplit(callback.headers['location']).query)

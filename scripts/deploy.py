@@ -4,6 +4,8 @@ import re
 import sys
 import subprocess
 import argparse
+import shlex
+from pathlib import Path
 from deploy_auth import add_auth_compose, load_auth_services, validate_instances
 
 try:
@@ -109,6 +111,7 @@ def generate_docker_compose(instances, version, https_hostname=None, auth_servic
         "volumes": volumes
     }
     
+    source_images = set()
     for inst in instances:
         name = inst['name']
         container_name = f"planner-{name}"
@@ -131,11 +134,17 @@ def generate_docker_compose(instances, version, https_hostname=None, auth_servic
             "image": image,
             "environment": [
                 f"ROOT_PATH=/{name}",
-                "PLANNER_SECRET_KEY=${PLANNER_SECRET_KEY}"
+                "PLANNER_SECRET_KEY=${PLANNER_SECRET_KEY:?Set PLANNER_SECRET_KEY in the protected Compose env file}"
             ],
             "volumes": volumes,
             "restart": "unless-stopped"
         }
+        if (inst.get('build_from_source') is True or 'image' not in inst) and image not in source_images:
+            compose['services'][container_name]['build'] = {
+                'context': str(Path(__file__).resolve().parents[1]),
+                'dockerfile': 'docker/Dockerfile',
+            }
+            source_images.add(image)
         
       
         if vol_type == 'volume':
@@ -159,6 +168,14 @@ def main():
         help="Path to the instances configuration file.\n(default: %(default)s)"
     )
     parser.add_argument(
+        '--env-file',
+        help='Protected Compose environment file (mode 0600); resolved from the current directory.'
+    )
+    parser.add_argument(
+        '--project-name',
+        help='Explicit Compose project name; reuse it for every update, status and stop command.'
+    )
+    parser.add_argument(
         '--start',
         action='store_true',
         help="Start the docker containers after generating the files."
@@ -172,15 +189,26 @@ def main():
     parser.add_argument(
         '-b', '--build-images',
         action='store_true',
-        help="Build required Docker images after generating files (uses top-level VERSION)."
+        help="Build source-declared services in the generated Compose project; image-only services are not rebuilt."
     )
     parser.add_argument(
         '--apply',
         action='store_true',
-        help="Apply changes: write generated files to `deployment/`, optionally build images and start containers. Without this flag the script performs a dry-run and prints the planned files."
+        help="Write files to --output-dir, optionally build images and start containers. Without this flag, print a dry-run only."
     )
     
     args = parser.parse_args()
+
+    compose_command = ['docker', 'compose']
+    if args.project_name is not None:
+        if not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', args.project_name):
+            parser.error('Compose project name must use lowercase letters, digits, underscores or hyphens')
+        compose_command.extend(['--project-name', args.project_name])
+    if args.env_file is not None:
+        env_file = Path(args.env_file).resolve()
+        if not env_file.is_file() or env_file.stat().st_mode & 0o077:
+            parser.error('--env-file must reference an existing protected file (mode 0600)')
+        compose_command.extend(['--env-file', str(env_file)])
 
     instances_file = args.config
     
@@ -205,9 +233,17 @@ def main():
     # Generate file contents (always performed) then either print as a dry-run
     # or write them into `deployment/` when --apply is specified.
     try:
-        auth_services = load_auth_services(config, instances_file, args.https_hostname)
+        if 'https_hostname' in config:
+            hostname = validate_https_hostname(config['https_hostname'])
+            if args.https_hostname is not None and args.https_hostname != hostname:
+                raise ValueError('--https-hostname conflicts with manifest https_hostname')
+            args.https_hostname = hostname
+        auth_services = load_auth_services(config, instances_file, args.https_hostname,
+                          output_dir=args.output_dir, apply=args.apply)
         caddy_contents = generate_caddyfile(instances, args.https_hostname, auth_services)
         compose_obj = generate_docker_compose(instances, version, args.https_hostname, auth_services)
+        if args.project_name is not None:
+            compose_obj['name'] = args.project_name
     except (ValueError, KeyError, OSError) as error:
         parser.error(str(error))
     index_contents = generate_index_html(instances)
@@ -243,29 +279,25 @@ def main():
 
     print(f"Generated Caddyfile, docker-compose.yml, and index.html in '{args.output_dir}' for {len(instances)} instance(s).")
 
-    build_images = args.build_images or args.start
-    if build_images:
-        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        build_script = os.path.join(root_dir, 'scripts', 'build-image.sh')
-        if not os.path.exists(build_script):
-            print(f"WARNING: build script not found at {build_script}; skipping image build.")
-        else:
-            print("Building requested images using scripts/build-image.sh...")
-            try:
-                if any('image' not in instance for instance in instances):
-                    subprocess.run([build_script], check=True)
-                for service in auth_services.values():
-                    if 'image' not in service:
-                        subprocess.run(['docker', 'build', '-t', f'plannertool-auth:{version}',
-                                        os.path.join(root_dir, 'entra-id')], check=True)
-            except subprocess.CalledProcessError as e:
-                print(f"ERROR: build script failed with code {e.returncode}")
-                sys.exit(e.returncode)
+    if args.start or args.build_images:
+        try:
+            subprocess.run(compose_command + ['config', '--quiet'], cwd=args.output_dir, check=True)
+        except subprocess.CalledProcessError as error:
+            print(f'Compose configuration validation failed with code {error.returncode}; nothing was started.')
+            sys.exit(error.returncode)
+
+    if (args.build_images or args.start) and any('build' in service for service in compose_obj['services'].values()):
+        print('Building source-declared services in the shared Compose project...')
+        try:
+            subprocess.run(compose_command + ['build'], cwd=args.output_dir, check=True)
+        except subprocess.CalledProcessError as error:
+            print(f'Compose image build failed with code {error.returncode}; nothing was started.')
+            sys.exit(error.returncode)
 
     if args.start:
         print("Deploying instances...")
         try:
-            subprocess.run(["docker", "compose", "up", "-d"], cwd=args.output_dir, check=True)
+            subprocess.run(compose_command + ['up', '-d', '--wait'], cwd=args.output_dir, check=True)
             print("\nDeployment successful!")
 
         except subprocess.CalledProcessError as e:
@@ -273,7 +305,9 @@ def main():
             sys.exit(e.returncode)
     else:
         print("\nConfiguration files generated. To start the stack, run the following command:")
-        print(f"  docker compose --project-directory {args.output_dir} up -d")
+        print('  ' + shlex.join(compose_command + [
+            '--project-directory', str(Path(args.output_dir).resolve()), 'up', '-d', '--wait',
+        ]))
 
 if __name__ == '__main__':
     main()

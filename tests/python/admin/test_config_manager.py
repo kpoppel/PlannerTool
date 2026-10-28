@@ -79,13 +79,13 @@ def test_fresh_install_uses_generator_and_first_admin_needs_no_pat():
     assert sessions.is_valid(session)
 
 
-def test_local_deployment_cannot_enable_ado_or_wiki(monkeypatch):
+def test_disabled_ado_policy_cannot_enable_ado_or_wiki(monkeypatch):
     from planner_lib.admin.config_manager import ConfigManager
     from planner_lib.storage.memory_backend import MemoryStorage
 
     storage = MemoryStorage()
     initialize(storage)
-    monkeypatch.setenv('PLANNER_INSTANCE_BACKEND', 'local')
+    monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', 'disabled')
     manager = ConfigManager(storage)
     with pytest.raises(ValueError, match='live ADO'):
         manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
@@ -94,7 +94,7 @@ def test_local_deployment_cannot_enable_ado_or_wiki(monkeypatch):
     assert storage.load('config', 'ado_config')['feature_flags'] == {'use_azure_mock_generator': True}
 
 
-def test_local_restore_validates_combined_backend_flags_before_writing(monkeypatch):
+def test_disabled_ado_policy_validates_restore_flags_before_writing(monkeypatch):
     from planner_lib.admin.config_manager import ConfigManager
     from planner_lib.storage.memory_backend import MemoryStorage
 
@@ -104,7 +104,7 @@ def test_local_restore_validates_combined_backend_flags_before_writing(monkeypat
         'schema_version': 2, 'feature_flags': {'use_azure_mock_generator': True}})
     storage.save('config', 'ado_config', {
         'organization_url': 'example', 'feature_flags': {'use_static_backend': True}})
-    monkeypatch.setenv('PLANNER_INSTANCE_BACKEND', 'local')
+    monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', 'disabled')
     with pytest.raises(ValueError, match='live ADO'):
         ConfigManager(storage).restore_backup({'schema_revision': TARGET_REVISION, 'config': {
             'server_config': {'schema_version': 2, 'feature_flags': {}},
@@ -112,6 +112,37 @@ def test_local_restore_validates_combined_backend_flags_before_writing(monkeypat
         }})
     assert storage.load('config', 'ado_config')['feature_flags'] == {'use_static_backend': True}
     assert storage.load('config', 'server_config')['feature_flags'] == {'use_azure_mock_generator': True}
+
+
+@pytest.mark.parametrize('provider,mode', [('enrollment', 'pat'), ('entra', 'entra')])
+def test_admin_owns_backend_selection_without_changing_authentication(monkeypatch, provider, mode):
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    storage = MemoryStorage()
+    initialize(storage)
+    monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', mode)
+    monkeypatch.setenv('PLANNER_AUTH_PROVIDER', provider)
+    manager = ConfigManager(storage)
+    authentication = storage.load('config', 'authentication')
+    for flags in ({}, {'use_azure_mock_generator': True}, {'use_static_backend': True}):
+        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': flags})
+        assert storage.load('config', 'ado_config')['feature_flags'] == flags
+        assert storage.load('config', 'authentication') == authentication
+
+
+def test_delegated_ado_selection_requires_auth_wiring_not_a_backend_manifest_field(monkeypatch):
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    storage = MemoryStorage()
+    initialize(storage)
+    monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', 'entra')
+    monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'enrollment')
+    manager = ConfigManager(storage)
+    with pytest.raises(ValueError, match='connected Entra auth service'):
+        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    assert storage.load('config', 'ado_config')['feature_flags'] == {'use_azure_mock_generator': True}
 
 
 @pytest.mark.parametrize('flags', [{}, {'use_static_backend': True}, {'use_azure_mock': True}])

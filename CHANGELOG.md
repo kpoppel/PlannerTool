@@ -18,21 +18,25 @@ This version adds EntraID authentication.
 
 ### Added
 - Option to configure EntraID authentication
-- Add an isolated, authenticated Entra broker sandbox with encrypted durable handoffs/grants, source-bound PlannerTool sessions, and manifest-generated loopback-only deployment. Live Entra activation remains unavailable.
+- Add an isolated, authenticated Entra broker sandbox with encrypted durable handoffs/grants, source-bound PlannerTool sessions, and manifest-generated deployment. Live Entra activation remains unavailable.
 - Add sandbox-tested stable Entra identity links, unprivileged just-in-time accounts and admin-approved browser identity proof while preserving existing account ownership and permissions.
 - Add session-owned delegated credentials and explicit SDK/wiki Bearer transport with renewal and revocation-checked task snapshot publication; fixture credentials cannot enter live Azure DevOps transport.
 - Preview PAT / Entra ID selection for live Azure DevOps in Data Sources, showing the active mode without enabling Entra activation or changing saved authentication settings.
 - Add isolated authentication UI previews for mode-dependent account controls, Entra sign-in, recovery and logout, without enabling real Entra authentication or changing active PAT/local behavior.
 - Option to enable automatic HTTPS in generated multi-instance Docker deployments
+- Support DNS/HTTPS ingress for shared mock authentication while retaining private broker transport and blocking live ADO.
 
 ### Changed
-- Make ADO authentication deployment-controlled, with read-only instance readiness and an explicit, recoverable offline sandbox fleet transition. Local-only instances remain independent of the broker; live activation remains blocked.
+- Build and start source-declared PlannerTool instances and the auth service in one generated Compose project, with explicit protected environment-file and project-name options for operators.
+- Make ADO authentication deployment-controlled, with read-only instance readiness and an explicit, recoverable offline sandbox fleet transition. Instances without an auth-service connection remain independent of the broker; live activation remains blocked.
 - Exclude PATs, enrollment keys, active login policy and broker authority from logical backups. Account restore requires fresh operator-reset enrollment credentials and cannot replace Entra accounts.
 - Share frontend authentication client contracts and typed recovery across planner and administration, with mocked Entra HTTP flows while real activation remains disabled.
 - Discover the active login source in normal planner/admin pages and support isolated broker-backed Entra sandbox sign-in, reauthentication and instance logout without PAT or enrollment prompts.
-- Require explicit login providers in deployment manifests and invalidate existing sessions once during the revision-44 source/epoch upgrade, preserving accounts, permissions and PATs.
+- Keep backend selection in each instance's admin configuration; deployment manifests specify hosting, auth-service connections and shared credential policy without duplicating backend or login-provider settings.
+- Invalidate existing sessions once during the revision-44 source/epoch upgrade, preserving accounts, permissions and PATs.
 ### Fixed
 - Report expired or replayed login handoffs as invalid sessions instead of outages, preserve valid local admin access during broker outages, and disclose pending remote logout cleanup.
+- Preserve valid PlannerTool sessions and cached task access when delegated ADO authority expires or the broker is unavailable, without adding application timeouts or replaying writes; verified in the isolated mock service.
 - Read account-profile PAT status without acquiring or decrypting credentials.
 - Prevent automatic replay of writes after session repair or ambiguous network failures; preserve partial results and discard old-account drafts when recovery changes identity.
 - Keep authenticated administrators' local configuration access available without an Azure DevOps PAT, and make PAT recovery nonblocking and explicitly actionable.

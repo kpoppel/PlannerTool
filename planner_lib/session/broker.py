@@ -61,11 +61,12 @@ class BrokerSettings:
         if len(self.secret) < 43:
             raise ValueError('Broker service secret must contain at least 256 bits of random material')
         if self.upstream_mode == 'mock':
-            if (not self.isolated_sandbox or public.scheme != 'http' or public.hostname != 'localhost'
-                    or not public.port or internal.scheme != 'http'
+            browser_ingress = (public.scheme == 'https' or (
+                public.scheme == 'http' and public.hostname == 'localhost' and public.port is not None))
+            if (not self.isolated_sandbox or not browser_ingress or internal.scheme != 'http'
                     or not (internal.hostname in ('localhost', '127.0.0.1')
                             or re.fullmatch(r'auth-[a-z][a-z0-9-]*', internal.hostname))):
-                raise ValueError('Sandbox broker requires explicit isolated loopback/private Compose policy')
+                raise ValueError('Mock broker requires isolated private transport and HTTPS or localhost ingress')
         elif public.scheme != 'https' or internal.scheme != 'https' or self.isolated_sandbox:
             raise ValueError('Live broker requires validated HTTPS URLs and live policy')
 
@@ -270,16 +271,19 @@ class EntraLoginAdapter:
             account = self.identities.profile(context['account_id'])
             local = self.storage.load('auth_grants', context['binding'])
             reference = _get_fernet().decrypt(local['grant'].encode()).decode()
-            try:
-                grant = self.client.request('v1/grants/status', {'grant': reference})
-            except AuthFailure as error:
-                if error.code != 'auth_unavailable':
-                    raise
-                status = 'unavailable'
+            if local['revoked'] or local['expires_at'] <= time.time():
+                status = 'interaction_required'
             else:
-                if grant.get('status') not in ('active', 'expired', 'revoked', 'interaction_required'):
-                    raise AuthFailure('auth_configuration_error')
-                status = 'signed_in' if grant['status'] == 'active' else 'interaction_required'
+                try:
+                    grant = self.client.request('v1/grants/status', {'grant': reference})
+                except AuthFailure as error:
+                    if error.code != 'auth_unavailable':
+                        raise
+                    status = 'unavailable'
+                else:
+                    if grant.get('status') not in ('active', 'expired', 'revoked', 'interaction_required'):
+                        raise AuthFailure('auth_configuration_error')
+                    status = 'signed_in' if grant['status'] == 'active' else 'interaction_required'
         return {'mode': 'entra', 'status': status,
             'account': account,
             'permissions': [] if context is None else self.accounts.get_account_by_id(context['account_id'])['permissions'],

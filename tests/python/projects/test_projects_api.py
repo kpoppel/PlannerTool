@@ -93,6 +93,10 @@ def _make_session_mgr(authenticated_client, pat='token', email='test@example.com
         ),
     ))
     register_service_on_client(authenticated_client, 'backend', SimpleNamespace(is_remote=True))
+    register_service_on_client(authenticated_client, 'credential_policy', SimpleNamespace(
+        credential_error=lambda user_id: None,
+        authentication_failed=lambda credential: 'pat_invalid',
+    ))
     class FakeSessionMgr:
         def get(self, sid):
             return {'account_id': account_id, 'email': email}
@@ -227,6 +231,42 @@ def test_tasks_returns_stale_data_with_pat_warning(authenticated_client):
     assert len(r.json()) == 2
     diagnostics = json.loads(r.headers['X-Backend-Diagnostics'])
     assert diagnostics[0]['code'] == 'tasks_stale_invalid_pat'
+
+
+@pytest.mark.parametrize('code,status', [
+    ('interaction_required', 409), ('access_denied', 403), ('auth_unavailable', 503),
+    ('invalid_session', 401), ('auth_configuration_error', 503),
+])
+@pytest.mark.parametrize('cached', [None, [], [{'id': 'cached-task'}]])
+def test_tasks_remote_auth_failure_reads_only_existing_cache(authenticated_client, code, status, cached):
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from planner_lib.session.broker import AuthFailure
+
+    register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
+    provider = Mock()
+    provider.get_credential.side_effect = AuthFailure(code, status)
+    register_service_on_client(authenticated_client, 'credential_provider', provider)
+    repository = SimpleNamespace(
+        read=Mock(side_effect=AssertionError('Remote reads must not run')),
+        read_cached=Mock(return_value=cached), snapshot_diagnostics=lambda: [],
+    )
+    register_service_on_client(authenticated_client, 'task_repository', repository)
+
+    response = authenticated_client.get('/api/tasks?project=42')
+    if cached is not None and code in ('interaction_required', 'access_denied', 'auth_unavailable'):
+        assert response.status_code == 200
+        assert response.json() == cached
+        assert json.loads(response.headers['X-Backend-Diagnostics'])[0]['code'] == code
+        repository.read_cached.assert_called_once_with(project_id='42')
+    else:
+        assert response.status_code == status
+        assert response.json() == {'error': code}
+        if code in ('invalid_session', 'auth_configuration_error'):
+            repository.read_cached.assert_not_called()
+    repository.read.assert_not_called()
+    provider.get_credential.assert_called_once_with('test-account-id')
 
 
 def test_tasks_reports_shared_snapshot_freshness(authenticated_client):

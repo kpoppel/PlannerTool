@@ -9,7 +9,7 @@ from planner_lib.middleware.session import (
 )
 from planner_lib.services.resolver import resolve_service
 from planner_lib.backend.port import DiagnosticBackend
-from planner_lib.backend.errors import BackendConfigError, BackendUnavailableError
+from planner_lib.backend.errors import BackendConfigError, BackendDecisionError, BackendUnavailableError
 import logging
 
 router = APIRouter()
@@ -46,12 +46,31 @@ async def api_projects(request: Request):
 async def api_tasks(request: Request, response: Response):
     logger.debug("Fetching tasks")
     task_repo = resolve_service(request, 'task_repository')
-    credential, account_id = _get_credential(request)
+    credential_failure = None
+    try:
+        credential, account_id = _get_credential(request)
+    except BackendDecisionError as error:
+        if error.code not in ('interaction_required', 'access_denied', 'auth_unavailable'):
+            raise
+        credential_failure = error
+        credential = None
+        account_id = get_session_context_from_request(request)['account_id']
     project_id = request.query_params.get('project')
 
     def read_tasks():
-        tasks = task_repo.read(project_id=project_id or None, credential=credential)
-        return tasks, task_repo.snapshot_diagnostics()
+        if credential_failure is None:
+            tasks = task_repo.read(project_id=project_id or None, credential=credential)
+        else:
+            tasks = task_repo.read_cached(project_id=project_id or None)
+            if tasks is None:
+                raise credential_failure
+        diagnostics = task_repo.snapshot_diagnostics()
+        if credential_failure is not None:
+            diagnostics.append({
+                'code': credential_failure.code, 'severity': 'warning',
+                'message': 'Azure DevOps is unavailable for this account; showing cached tasks.',
+            })
+        return tasks, diagnostics
 
     try:
         tasks, diagnostics = await asyncio.to_thread(read_tasks)

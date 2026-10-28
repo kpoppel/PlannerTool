@@ -96,6 +96,16 @@ class TaskRepository:
             tasks = [task for task in tasks if project_id in task['sourcePlanIds']]
         return self._project_tasks(tasks)
 
+    def read_cached(self, project_id: Optional[str] = None) -> Optional[List[DomainTask]]:
+        if not isinstance(self._backend, TaskSnapshotBackend):
+            return None
+        tasks = self._backend.read_cached_task_snapshot(self._snapshot_identity, self._snapshot_guard)
+        if tasks is None:
+            return None
+        if project_id is not None:
+            tasks = [task for task in tasks if project_id in task['sourcePlanIds']]
+        return self._project_tasks(tasks)
+
     def _fetch_seeds(
         self,
         credential: Optional[BackendCredential],

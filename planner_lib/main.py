@@ -123,12 +123,12 @@ def _build_services(
     if provider not in ('enrollment', 'entra'):
         raise ValueError('PLANNER_AUTH_PROVIDER must be enrollment or entra')
     deployment_mode = os.environ.get('PLANNER_ADO_AUTHENTICATION')
-    instance_backend = os.environ.get('PLANNER_INSTANCE_BACKEND')
-    if deployment_mode is not None or instance_backend is not None:
-        if deployment_mode not in ('disabled', 'pat', 'entra') or instance_backend not in ('local', 'ado'):
-            raise ValueError('Explicit deployment ADO mode and instance backend are required together')
-        expected = 'entra' if instance_backend == 'ado' and deployment_mode == 'entra' else 'enrollment'
-        if provider != expected or (instance_backend == 'ado' and deployment_mode == 'disabled'):
+    if 'PLANNER_INSTANCE_BACKEND' in os.environ:
+        raise ValueError('PLANNER_INSTANCE_BACKEND has been removed; regenerate the deployment configuration')
+    if deployment_mode is not None:
+        if deployment_mode not in ('disabled', 'pat', 'entra'):
+            raise ValueError('Invalid deployment ADO credential policy')
+        if provider == 'entra' and deployment_mode != 'entra':
             raise ValueError('Login provider contradicts deployment policy')
     staged_broker = 'PLANNER_AUTH_SECRET_FILE' in os.environ
     if provider == 'entra' or staged_broker:

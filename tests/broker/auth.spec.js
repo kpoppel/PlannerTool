@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 
 const ORIGIN = 'http://localhost:18880';
@@ -221,6 +221,53 @@ test('an invalid local session cannot read cached data or bypass normal sign-in'
   expect((await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).account).toBeNull();
 });
 
+test('expired delegated authority keeps local drafts and repairs only remote access', async ({ page }) => {
+  await signIn(page, 'alpha', 'Alex Sandbox');
+  const before = await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
+  const cookies = await page.context().cookies();
+  const session = cookies.find(cookie => cookie.name === 'sessionId' && cookie.path === '/alpha/');
+  const sessionHash = createHash('sha256').update(session.value).digest('hex');
+  compose('exec', '-T', 'planner-alpha', 'python', '-c', [
+    'import os, sys, time',
+    'from planner_lib.migrations.coordinator import Database',
+    "assert os.environ['PLANNER_AUTH_ISOLATED_SANDBOX'] == '1'",
+    "assert os.environ['PLANNER_AUTH_UPSTREAM_MODE'] == 'mock'",
+    "database = Database('/app/data').prepare()",
+    'storage = database.storage',
+    "record = storage.load('auth_sessions', sys.argv[1])",
+    "grant = storage.load('auth_grants', record['binding'])",
+    "storage.save('auth_grants', record['binding'], {**grant, 'expires_at': time.time() - 1})",
+    'storage.close()',
+  ].join('\n'), sessionHash);
+
+  const expired = await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
+  expect(expired.account.uuid).toBe(before.account.uuid);
+  expect(expired.status).toBe('interaction_required');
+  expect((await page.request.get(`${ORIGIN}/alpha/admin/check`)).status()).toBe(200);
+  expect((await page.request.get(`${ORIGIN}/alpha/api/tasks`)).status()).toBe(200);
+  for (const operation of ['operation', 'wiki']) {
+    const denied = await page.request.post(`${ORIGIN}/alpha/api/auth/sandbox/${operation}`);
+    expect(denied.status()).toBe(409);
+    expect(await denied.json()).toEqual({ error: 'interaction_required' });
+  }
+  await openSettings(page, 'alpha');
+  await expect(page.locator('config-modal auth-status')).toContainText('Azure DevOps requires reauthentication');
+  const draft = page.locator('config-modal #autosaveInterval');
+  await draft.fill('19');
+  await page.screenshot({ path: test.info().outputPath('expired-grant-local-draft-desktop.png') });
+  const opened = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Reauthenticate', exact: true }).click();
+  const popup = await opened;
+  await popup.getByRole('button', { name: 'Alex Sandbox', exact: true }).click();
+  await expect(page.locator('config-modal auth-status')).toContainText('Connected');
+  await expect(draft).toHaveValue('19');
+  const after = await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
+  expect(after.account.uuid).toBe(before.account.uuid);
+  for (const operation of ['operation', 'wiki']) {
+    expect((await page.request.post(`${ORIGIN}/alpha/api/auth/sandbox/${operation}`)).status()).toBe(200);
+  }
+});
+
 test('outage logout revokes locally and discloses pending service cleanup once', async ({ page }) => {
   test.setTimeout(90000);
   await signIn(page, 'alpha', 'Alex Sandbox');
@@ -324,6 +371,9 @@ test('broker outage preserves admin and encrypted state survives container recre
     const page = await context.newPage();
     await signIn(page, 'alpha', 'Alex Sandbox');
     const before = await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
+    const tasksBefore = await context.request.get(`${ORIGIN}/alpha/api/tasks`);
+    expect(tasksBefore.status()).toBe(200);
+    const cachedTasks = await tasksBefore.json();
     const begun = await context.request.post(`${ORIGIN}/alpha/api/auth/login/begin`, {
       headers: { Origin: ORIGIN },
     });
@@ -335,6 +385,20 @@ test('broker outage preserves admin and encrypted state survives container recre
       expect((await unavailable.json()).mode).toBe('entra');
       expect((await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).status).toBe('unavailable');
       expect((await context.request.get(`${ORIGIN}/alpha/admin/check`)).status()).toBe(200);
+      const tasksDuring = await context.request.get(`${ORIGIN}/alpha/api/tasks`);
+      expect(tasksDuring.status()).toBe(200);
+      expect(await tasksDuring.json()).toEqual(cachedTasks);
+      const views = await context.request.get(`${ORIGIN}/alpha/api/view`);
+      expect(views.status()).toBe(200);
+      const remote = await context.request.post(`${ORIGIN}/alpha/api/auth/sandbox/operation`);
+      expect(remote.status()).toBe(503);
+      expect(await remote.json()).toEqual({ error: 'auth_unavailable' });
+      const outageProfile = await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
+      expect(outageProfile.account.uuid).toBe(before.account.uuid);
+      await page.goto(`${ORIGIN}/alpha/`);
+      await expect(page.getByRole('complementary')).toBeVisible();
+      await expect.poll(() => page.locator('#appSpinner').evaluate(element => element.open)).toBe(false);
+      await page.screenshot({ path: test.info().outputPath('cached-work-during-outage-desktop.png') });
       await page.goto(`${ORIGIN}/alpha/admin/`);
       await expect(page.locator('admin-app')).toBeVisible();
       await page.getByRole('button', { name: 'Settings', exact: true }).click();

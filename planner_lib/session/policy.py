@@ -49,8 +49,15 @@ def validate_backend_policy(storage, key=None, content=None, *, overrides=None):
     from planner_lib.backend.azure import AzureDevOpsBackend
     from planner_lib.backend.registry import get_active_class
 
-    if os.environ.get('PLANNER_INSTANCE_BACKEND') != 'local':
+    mode = os.environ.get('PLANNER_ADO_AUTHENTICATION')
+    if mode is None:
         return
+    if mode not in ('disabled', 'pat', 'entra'):
+        raise ValueError('Invalid deployment ADO credential policy')
+    if mode == 'pat' or (mode == 'entra' and os.environ.get('PLANNER_AUTH_PROVIDER') == 'entra'):
+        return
+    reason = ('Deployment ADO policy disables' if mode == 'disabled'
+              else 'Deployment ADO policy requires a connected Entra auth service for')
     flags = {}
     for name in ('server_config', 'ado_config'):
         if overrides is not None and name in overrides:
@@ -59,7 +66,7 @@ def validate_backend_policy(storage, key=None, content=None, *, overrides=None):
             value = content if key == name else storage.load('config', name)
         flags.update(value['feature_flags'])
     if get_active_class(flags) is AzureDevOpsBackend:
-        raise ValueError('Local-only deployment policy forbids live ADO transport')
+        raise ValueError(reason + ' live ADO transport')
     if overrides is not None and 'events_config' in overrides:
         events = overrides['events_config']
     elif key == 'events_config':
@@ -69,7 +76,7 @@ def validate_backend_policy(storage, key=None, content=None, *, overrides=None):
     else:
         return
     if events['event_backend'] == 'ado_wiki':
-        raise ValueError('Local-only deployment policy forbids remote wiki transport')
+        raise ValueError(reason + ' remote wiki transport')
 
 
 def validate_authentication(value):

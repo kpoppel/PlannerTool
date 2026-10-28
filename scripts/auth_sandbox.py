@@ -44,12 +44,11 @@ def create_sandbox(directory, port=18880, ado_authentication='entra'):
             'completion_url': f'http://localhost:{port}/{name}/api/auth/login/callback',
             'secret_file': '/run/secrets/client-' + name, 'scenario': 'success',
         }
-        instances.append({'name': name, 'backend': 'ado',
-                  'authentication_provider': 'entra' if ado_authentication == 'entra' else 'enrollment',
+        instances.append({'name': name,
                           'auth_service': 'sandbox', 'auth_client_secret_file': 'client-' + name,
-                          'image': 'plannertool:phase-d-sandbox'})
-    instances.append({'name': 'local', 'backend': 'local', 'authentication_provider': 'enrollment',
-                      'image': 'plannertool:phase-d-sandbox'})
+                          'image': 'plannertool:phase-d-sandbox', 'build_from_source': True})
+    instances.append({'name': 'local',
+                      'image': 'plannertool:phase-d-sandbox', 'build_from_source': True})
     write('instances.json', json.dumps(registry, indent=2) + '\n')
     direct_registry = json.loads(json.dumps(registry))
     for name, value in direct_registry['instances'].items():
@@ -73,6 +72,7 @@ def create_sandbox(directory, port=18880, ado_authentication='entra'):
         'public_url': public, 'env_file': 'registration.env', 'registry_file': 'instances.json',
         'key_file': 'broker-key', 'client_secret_file': 'entra-secret',
         'volume_source': 'auth-sandbox-state', 'image': 'plannertool-auth:phase-d-sandbox',
+        'build_from_source': True,
     }}, 'instances': instances}
     write('manifest.yml', yaml.safe_dump(manifest, sort_keys=False))
     return directory / 'manifest.yml'

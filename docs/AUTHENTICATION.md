@@ -15,8 +15,9 @@ Phase F adds revision 46 and deployment-owned ADO policy, read-only instance
 readiness, staged administrator identity proof and offline sandbox fleet activation.
 The migration adds only an idle journal; it does not purge credentials or expire
 sessions. See [the Phase F report and recovery procedure](PHASE_F_REPORT.md).
-Live activation, live session/offboarding policy and production transitions remain
-blocked. No gateway or organization tenancy is introduced.
+Live activation and production transitions remain blocked. The approved Phase G
+policy below does not establish live implementation or acceptance. No gateway or
+organization tenancy is introduced.
 
 Normal planner and admin pages now discover the active login source. Explicit
 isolated Entra sandboxes use the shared HTTP client and the running broker;
@@ -25,6 +26,53 @@ Entra activation or authorization to change an existing instance's active mode.
 
 PlannerTool uses generated browser credentials, not user-chosen passwords or
 email verification. Each installation has independent accounts and credentials.
+
+## Approved Phase G Access Policy
+
+Approved on 2026-10-28. Session separation and cached task access are implemented
+and verified against the isolated mock service; live Entra remains blocked. See
+[the Phase G mock implementation report](PHASE_G_REPORT.md) for evidence and limits.
+
+PlannerTool accounts and permissions govern application access until account
+removal by an administrator. Browser sessions still expire under the existing
+PlannerTool rules. Reuse that expiry mechanism without adding an Entra-specific
+application timeout or periodic directory-disablement checks.
+
+Entra governs delegated ADO authority separately. ADO denial, expired credentials,
+interaction requirements or broker unavailability must not invalidate an otherwise
+valid PlannerTool session. Authorized cached/local work remains available; remote
+operations report their failure without borrowing credentials or changing mode.
+New Entra sign-in still needs the broker, and an expired application session cannot
+use cached data merely because the account still exists.
+
+Acquire/refresh ADO credentials on demand for active-user remote work, including
+renewal during an already-running user job. Do not keep idle credentials alive
+with scheduled refresh. Local/profile reads do not request an ADO token. Honor
+issuer-provided token expiry; the expected one-hour IT setting is not a hardcoded
+PlannerTool timer or a guaranteed disabled-account revocation bound. Renewal and
+remote enforcement depend on tenant policy and MSAL outcomes. Local offboarding
+remains an administrator's task.
+
+Current authorization covers only the mock journey demonstrator, with explicit
+fixtures and live Entra/ADO transport blocked. Live registration, consent,
+deployment, activation and credential purge remain separately gated. Historical
+Phase E/F reports describe their original gates and are not rewritten by this
+policy decision.
+
+Expired or revoked local broker grants now report `interaction_required` without
+deleting the PlannerTool session. Local account removal, logout, source/epoch
+changes, invalid bindings and the existing idle/absolute session limits still
+invalidate application access. `/api/auth/me` retains the local account and never
+acquires an ADO token; known local grant expiry/revocation needs no broker request.
+
+If credential acquisition for `GET /api/tasks` reports `interaction_required`,
+`access_denied` or `auth_unavailable`, the API can return the existing complete
+snapshot with HTTP 200 and the corresponding warning in `X-Backend-Diagnostics`.
+This cache-only read neither starts remote work nor acquires another credential.
+An empty snapshot is valid; no snapshot or a changed configuration preserves the
+original remote failure. Invalid sessions and configuration errors do not enter
+this path. Writes and explicit remote refreshes remain credential-gated, with no
+automatic write replay after recovery.
 
 ## Enrollment and rollout
 
@@ -120,13 +168,28 @@ the effective mode outside an explicitly injected preview. Production models hav
 This operation never acquires an ADO access token.
 
 Manifests require top-level `ado_authentication: disabled|pat|entra` and explicit
-`backend: local|ado` per instance. All ADO instances use the same policy; a local
-instance always uses enrollment and has no broker reference. A wiki-only remote
-configuration is an ADO instance, even when its task backend is local/mock.
-Generated `PLANNER_ADO_AUTHENTICATION` and `PLANNER_INSTANCE_BACKEND` settings are
-validated alongside login source; local-only instances cannot enable live ADO or
-wiki transport through settings or import. A staged sandbox broker may be
-registered while PAT/enrollment remains active, without activation or purge.
+`auth_service` connections for instances that use the shared service. Neither
+`backend` nor `authentication_provider` belongs in the instance manifest. Backend
+selection comes from the instance's persisted Admin > Data Sources configuration.
+The generator derives login wiring from the connection and deployment credential
+policy: connected instances use Entra login under `entra`; otherwise enrollment
+remains active. An Entra login can use a local backend without changing source,
+epoch or sessions. A staged mock broker can remain connected under PAT/enrollment
+without activation or purge.
+
+Generated `PLANNER_ADO_AUTHENTICATION` constrains remote authority, not backend
+selection. `disabled` rejects live ADO and remote wiki configuration; `entra`
+requires a connected Entra login for either remote transport. These checks cover
+startup, settings and import. Mock auth permits supported local backends and
+fixture ADO transport, never live ADO. Regenerate deployments that previously set
+`PLANNER_INSTANCE_BACKEND`; that duplicated backend setting is no longer accepted.
+
+Mock upstreams can use the server's real DNS hostname over HTTPS. Set top-level
+`https_hostname` and the matching auth-service `public_url` in the deployment
+manifest. Caddy terminates TLS; application/broker traffic stays on the isolated
+private Compose network and live ADO remains blocked. HTTP is allowed only for
+explicit localhost callbacks. Mock identities are selectable synthetic accounts,
+not production authentication; never attach production accounts or data.
 
 Logical backup excludes active authentication policy, PATs, enrollment keys,
 devices, sessions, external links, grants and transition proofs/journals. Imported
@@ -223,9 +286,11 @@ interaction stays 409 and outage 503. No failure selects PAT or another grant.
 Logical backups omit external links, approvals, sessions and broker grants; account
 restore clears destination links and requires new identity proof. Cross-instance
 link import is rejected. Physical operator recovery and destructive mode-transition
-rules remain separately gated Phase F work. Live session lifetime, authoritative
-disablement checks and outage deadlines still require explicit policy approval;
-sandbox grant expiry is not evidence of upstream account disablement.
+rules are described in the Phase F report. The approved Phase G access policy
+above supersedes earlier unresolved lifetime, disablement-check and outage-deadline
+requirements. Mock session/cache implementation is covered by the Phase G report;
+live acceptance remains outstanding. Sandbox grant expiry is not evidence of
+upstream account disablement.
 
 ### Frontend Adapter Contract (Phase C)
 
