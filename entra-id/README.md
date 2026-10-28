@@ -189,7 +189,7 @@ hostname site and ensure its container publishes port 443 and persists TLS state
 Open `https://YOUR_HOSTNAME/auth/`, then:
 
 1. Sign in, complete tenant MFA/consent, and return to the HTTPS PoC.
-2. Check the Entra tenant/object identity, then **ADO identity** to see the actual
+2. Check the verified issuer/subject identity, then **ADO identity** to see the actual
    ADO authenticated and authorized users returned by `connectionData`.
 3. Open **Projects** for the first 100 visible projects.
 4. Use **Refresh token** to exercise refresh rather than reuse the access token.
@@ -281,7 +281,7 @@ ENTRA_LISTEN_PORT=8766 \
 ```
 
 Open `http://localhost:8766/auth/` and use **Sign in with mock identity**. This
-mode uses fixed test `tid`/`oid` claims and a deliberately invalid mock access
+mode uses fixed test issuer/subject claims and a deliberately invalid mock access
 token; its ADO identity and project responses are local fixtures. It never calls
 Entra or Azure DevOps, and it refuses non-localhost callback/listener settings.
 The default `ENTRA_AUTH_MODE=entra` continues to use MSAL and real ADO requests.

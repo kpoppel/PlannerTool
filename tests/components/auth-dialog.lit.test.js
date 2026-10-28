@@ -64,7 +64,7 @@ describe('isolated authentication scenarios', () => {
       expect(buttons).toHaveLength(0);
       expect(model.state.account).not.toBeNull();
     }
-    if (model.state.mode === 'entra') {
+    if (model.state.mode === 'broker') {
       expect(status.shadowRoot.querySelector('input')).toBeNull();
       expect(status.shadowRoot.textContent).not.toContain('Enroll this browser');
     }
@@ -191,7 +191,7 @@ describe('isolated authentication scenarios', () => {
     await status.updateComplete;
     expect(dialog.renderRoot.querySelector('input')).toBeNull();
     expect(status.shadowRoot.textContent).not.toContain('Enrollment');
-    expect(status.shadowRoot.querySelector('button').textContent).toBe('Sign in with Entra ID');
+    expect(status.shadowRoot.querySelector('button').textContent).toBe('Sign in');
     status.shadowRoot.querySelector('button').click();
     await completion;
     expect(document.querySelector('auth-dialog')).toBeNull();

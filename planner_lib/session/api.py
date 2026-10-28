@@ -37,7 +37,7 @@ def _auth_failure(error):
 async def authentication_config(request: Request, response: Response):
     response.headers['Cache-Control'] = 'no-store'
     if _is_entra(request):
-        return {'mode': 'entra', 'capabilities': resolve_service(request, 'login_adapter').profile()['capabilities']}
+        return {'mode': 'broker', 'capabilities': resolve_service(request, 'login_adapter').profile()['capabilities']}
     accounts = resolve_service(request, 'account_manager')
     return {'mode': 'pat' if accounts.requires_pat() else 'local', 'capabilities': {
         'pat': accounts.requires_pat(), 'enrollment': True, 'reauthenticate': False,

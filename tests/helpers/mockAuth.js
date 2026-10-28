@@ -17,12 +17,12 @@ export const AUTH_SCENARIOS = Object.freeze({
   pat_missing: { mode: 'pat', status: 'pat_required' },
   pat_invalid: { mode: 'pat', status: 'pat_invalid' },
   local: { mode: 'local', status: 'connected' },
-  entra_signed_out: { mode: 'entra', status: 'signed_out' },
-  entra_signed_in: { mode: 'entra', status: 'connected' },
-  session_expired: { mode: 'entra', status: 'session_expired' },
-  interaction_required: { mode: 'entra', status: 'interaction_required' },
-  access_denied: { mode: 'entra', status: 'access_denied' },
-  unavailable: { mode: 'entra', status: 'unavailable' },
+  entra_signed_out: { mode: 'broker', status: 'signed_out' },
+  entra_signed_in: { mode: 'broker', status: 'connected' },
+  session_expired: { mode: 'broker', status: 'session_expired' },
+  interaction_required: { mode: 'broker', status: 'interaction_required' },
+  access_denied: { mode: 'broker', status: 'access_denied' },
+  unavailable: { mode: 'broker', status: 'unavailable' },
 });
 
 export function createMockAuth(scenario, options = {}) {
@@ -42,8 +42,8 @@ export function createMockAuth(scenario, options = {}) {
       state = Object.freeze({
         mode, status, account: signedIn ? MOCK_ACCOUNT : null,
         capabilities: Object.freeze({
-          pat: mode === 'pat', enrollment: mode !== 'entra',
-          reauthenticate: mode === 'entra' && status === 'interaction_required',
+          pat: mode === 'pat', enrollment: mode !== 'broker',
+          reauthenticate: mode === 'broker' && status === 'interaction_required',
           logout: signedIn, deleteAccount: signedIn,
         }),
       });

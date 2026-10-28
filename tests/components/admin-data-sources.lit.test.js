@@ -52,7 +52,7 @@ describe('Data Sources authentication preview', () => {
     await select(element, '#ado-authentication-mode', 'entra');
     const status = element.shadowRoot.querySelector('auth-status');
     await status.updateComplete;
-    expect(status.shadowRoot.textContent).toContain('Sign in with Entra ID');
+    expect(status.shadowRoot.textContent).toContain('Sign in');
     await status._onSignIn();
     expect(model.state.status).toBe('connected');
     expect(element.authenticationSettings.activeMode).toBe('pat');

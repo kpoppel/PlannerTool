@@ -1,4 +1,4 @@
-import { AUTH_DECISIONS, createAuthClient, createEntraHttpAdapter } from './authClient.js';
+import { AUTH_DECISIONS, createAuthClient, createBrokerHttpAdapter } from './authClient.js';
 
 let authentication = null;
 let initialization = null;
@@ -65,8 +65,8 @@ export async function initializeAuthentication(apiUrl, {
     const config = await response.json();
     if (!response.ok) throw Object.assign(new Error(config.error), { code: config.error });
     if (config.mode === 'pat' || config.mode === 'local') return null;
-    if (config.mode !== 'entra') throw new Error('Unsupported authentication mode');
-    const adapter = createEntraHttpAdapter({ apiUrl, presentLogin,
+    if (config.mode !== 'broker') throw new Error('Unsupported authentication mode');
+    const adapter = createBrokerHttpAdapter({ apiUrl, presentLogin,
       onLogout: state => {
         if (state.revocation_pending === true) {
           sessionStorage.setItem(`planner-auth-logout:${window.APP_BASE_URL}`, 'pending');

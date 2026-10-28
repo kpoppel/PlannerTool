@@ -131,11 +131,11 @@ def _build_services(
             raise ValueError('Login provider contradicts deployment policy')
     staged_broker = 'PLANNER_AUTH_SECRET_FILE' in os.environ
     if provider == 'entra' or staged_broker:
-        from planner_lib.session.broker import BrokerClient, BrokerSettings, EntraLoginAdapter
+        from planner_lib.session.broker import BrokerClient, BrokerSettings, BrokerLoginAdapter
         broker_settings = BrokerSettings.from_env()
         container.register_factory('broker_client', lambda: BrokerClient(broker_settings))
         container.register_factory('entra_link_adapter',
-            lambda: EntraLoginAdapter(storage_diskcache, container.get('account_manager'),
+            lambda: BrokerLoginAdapter(storage_diskcache, container.get('account_manager'),
                                      container.get('session_manager'), container.get('broker_client')))
     auth_settings = storage_diskcache.load('config', 'authentication')
     if provider != auth_settings['active']:
@@ -160,7 +160,7 @@ def _build_services(
         lambda: AuthManager(storage_diskcache, container.get("account_manager"),
                             container.get("session_manager")))
     container.register_factory("login_adapter",
-        lambda: (EntraLoginAdapter(storage_diskcache, container.get('account_manager'),
+        lambda: (BrokerLoginAdapter(storage_diskcache, container.get('account_manager'),
                                   container.get('session_manager'), container.get('broker_client'))
                  if provider == 'entra' else EnrollmentLoginAdapter(container.get('auth_manager'),
                                        container.get('account_manager'), storage_diskcache)))

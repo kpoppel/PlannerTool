@@ -7,7 +7,7 @@ import { showAuthDialog } from '../../www/js/components/AuthDialog.lit.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { SessionEvents } from '../../www/js/core/EventRegistry.js';
 import { dataService } from '../../www/js/services/dataService.js';
-import { createAuthClient, createEntraHttpAdapter, AUTH_DECISIONS } from '../../www/js/services/authClient.js';
+import { createAuthClient, createBrokerHttpAdapter, AUTH_DECISIONS } from '../../www/js/services/authClient.js';
 import { createMockAuth, MOCK_ACCOUNT, OTHER_MOCK_ACCOUNT, AUTH_SCENARIOS } from '../helpers/mockAuth.js';
 import { AdminProviderREST } from '../../www/admin/js/services/providerREST.js';
 import { store } from '../../www/js/application/store.js';
@@ -123,10 +123,10 @@ describe('ProviderREST /api/session tests', () => {
     )).toBe(true);
   });
 
-  itVitest.each(Object.keys(AUTH_SCENARIOS).filter(name => AUTH_SCENARIOS[name].mode === 'entra'))('uses the shared client contract for %s mocks and HTTP', async scenario => {
+  itVitest.each(Object.keys(AUTH_SCENARIOS).filter(name => AUTH_SCENARIOS[name].mode === 'broker'))('uses the shared client contract for %s mocks and HTTP', async scenario => {
     const mock = createMockAuth(scenario);
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify(mock.state)));
-    const adapter = createEntraHttpAdapter({ apiUrl: '/team_1/api', fetchImpl,
+    const adapter = createBrokerHttpAdapter({ apiUrl: '/team_1/api', fetchImpl,
       presentLogin: async () => ({ code: 'one-use-fixture', state: 'browser-bound-fixture' }) });
     const client = createAuthClient({ adapter, initialState: mock.state,
       instance: '/team_1', onAccountChanged: vi.fn() });
@@ -165,7 +165,7 @@ describe('ProviderREST /api/session tests', () => {
       url.endsWith('/begin') ? { transaction: 'synthetic' } : state)));
     const presentLogin = vi.fn().mockResolvedValueOnce(false)
       .mockResolvedValueOnce({ code: 'synthetic', state: 'browser-bound' });
-    const adapter = createEntraHttpAdapter({ apiUrl: '/team_1/api', fetchImpl, presentLogin });
+    const adapter = createBrokerHttpAdapter({ apiUrl: '/team_1/api', fetchImpl, presentLogin });
     expectVitest(await adapter.signIn()).toBe(false);
     expectVitest(fetchImpl).toHaveBeenCalledTimes(1);
     expectVitest(await adapter.signIn()).toEqual(state);
@@ -178,7 +178,7 @@ describe('ProviderREST /api/session tests', () => {
     const state = createMockAuth('entra_signed_in').state;
     const fetchImpl = vi.fn(async url => new Response(JSON.stringify(
       url.endsWith('/begin') ? { state: 'bound-state' } : state)));
-    const adapter = createEntraHttpAdapter({ apiUrl: '/api', fetchImpl,
+    const adapter = createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl,
       presentLogin: async () => ({ completed: true }) });
     expectVitest(await adapter.signIn()).toEqual(state);
     expectVitest(fetchImpl.mock.calls.map(call => call[0])).toEqual([
@@ -188,13 +188,13 @@ describe('ProviderREST /api/session tests', () => {
 
   it('rejects a PAT response in the Entra HTTP adapter instead of selecting PAT', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify(createMockAuth('pat_current').state)));
-    const adapter = createEntraHttpAdapter({ apiUrl: '/api', fetchImpl, presentLogin: vi.fn() });
+    const adapter = createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl, presentLogin: vi.fn() });
     await expectVitest(adapter.status()).rejects.toThrow('incompatible authentication mode');
   });
 
   itVitest.each(Object.entries(AUTH_DECISIONS))('freezes typed HTTP decision %s', async (code, decision) => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: code }), { status: decision.status }));
-    const adapter = createEntraHttpAdapter({ apiUrl: '/api', fetchImpl, presentLogin: vi.fn() });
+    const adapter = createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl, presentLogin: vi.fn() });
     await expectVitest(adapter.status()).rejects.toMatchObject({ code, ...decision });
     expectVitest(fetchImpl).toHaveBeenCalledTimes(1);
   });

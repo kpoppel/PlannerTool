@@ -22,14 +22,14 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 SCOPES = ['https://app.vssps.visualstudio.com/.default']
 COOKIE = 'entra_poc_session'
 ENV_NAMES = ('ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'ADO_ORGANIZATION')
-MOCK_TENANT_ID = '11111111-1111-1111-1111-111111111111'
-MOCK_USER_OID = '33333333-3333-3333-3333-333333333333'
+MOCK_ISSUER = 'https://mock.example.test'
+MOCK_SUBJECT = 'mock-user'
 MOCK_ADO_ACCESS_TOKEN = 'mock-ado-token-not-valid-outside-local-mock'
 MOCK_USER_CLAIMS = {
     'name': 'Alex Mock',
     'preferred_username': 'alex.mock@example.test',
-    'tid': MOCK_TENANT_ID,
-    'oid': MOCK_USER_OID,
+    'iss': MOCK_ISSUER,
+    'sub': MOCK_SUBJECT,
 }
 
 
@@ -318,7 +318,7 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
         claims = session.claims
         identity = ''.join(
             f'<dt>{html.escape(label)}</dt><dd>{html.escape(str(claims[key]))}</dd>'
-            for label, key in [('Name', 'name'), ('Tenant ID', 'tid'), ('Object ID', 'oid')]
+            for label, key in [('Name', 'name'), ('Issuer', 'issuer'), ('Subject', 'subject')]
             if key in claims
         )
         organization = settings.organization or 'Local Mock Organization'
@@ -415,12 +415,15 @@ def create_app(settings=None, client_factory=msal.ConfidentialClientApplication,
             if 'access_token' not in result:
                 raise HTTPException(401, 'Entra denied authorization. Check consent and sign in again.')
             claims = result['id_token_claims']
-            expected_tenant_id = (
-                MOCK_TENANT_ID if settings.auth_mode == 'mock' else settings.tenant_id
+            expected_issuer = (
+                MOCK_ISSUER if settings.auth_mode == 'mock'
+                else f'https://login.microsoftonline.com/{settings.tenant_id}/v2.0'
             )
-            if claims['tid'] != expected_tenant_id or not claims.get('oid'):
-                raise HTTPException(403, 'The signed-in identity is not in the configured tenant.')
-            session.claims = {key: claims[key] for key in ('name', 'tid', 'oid') if key in claims}
+            if claims.get('iss') != expected_issuer or not isinstance(claims.get('sub'), str) or not claims['sub']:
+                raise HTTPException(403, 'The signed-in identity is not from the configured issuer.')
+            session.claims = {'issuer': claims['iss'], 'subject': claims['sub']}
+            if 'name' in claims:
+                session.claims['name'] = claims['name']
             session.expires_at = time.monotonic() + 3600
         new_session_id = secrets.token_urlsafe(32)
         with registry_lock:

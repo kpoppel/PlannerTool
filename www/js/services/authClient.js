@@ -107,7 +107,7 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
   return client;
 }
 
-export function createEntraHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLogout = () => {} }) {
+export function createBrokerHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLogout = () => {} }) {
   async function request(path, method = 'GET', body = undefined) {
     const options = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
     if (body !== undefined) {
@@ -125,8 +125,8 @@ export function createEntraHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLogo
         code: payload.error, status: response.status, action: decision.action,
       });
     }
-    if (path !== 'login/begin' && payload.mode !== 'entra') {
-      throw new Error('Entra adapter received an incompatible authentication mode');
+    if (path !== 'login/begin' && payload.mode !== 'broker') {
+      throw new Error('Broker adapter received an incompatible authentication mode');
     }
     return payload;
   }
@@ -146,8 +146,8 @@ export function createEntraHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLogo
       onLogout(state);
       return state;
     },
-    saveSettings: async () => { throw new Error('Entra does not support PAT settings'); },
-    deleteAccount: async () => { throw new Error('Entra account deletion policy is not configured'); },
+    saveSettings: async () => { throw new Error('Broker sign-in does not support PAT settings'); },
+    deleteAccount: async () => { throw new Error('Broker account deletion policy is not configured'); },
   };
 }
 

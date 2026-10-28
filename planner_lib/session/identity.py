@@ -1,32 +1,36 @@
 """Stable external identity links, independent of email and enrollment secrets."""
-from uuid import UUID, uuid5
+import hashlib
+import json
+import re
 
 from planner_lib.accounts.config import AccountCredentialsPayload, _is_valid_email
 from planner_lib.migrations.contracts import SchemaError
 
 
-def identity_key(tenant, subject):
-    if str(UUID(tenant)) != tenant or str(UUID(subject)) != subject:
-        raise ValueError('External identity requires canonical tenant/object UUIDs')
-    return tenant + ':' + subject
+def identity_key(issuer, subject):
+    for value in (issuer, subject):
+        if (not isinstance(value, str) or not value or len(value) > 512
+                or value != value.strip() or any(ord(character) < 32 for character in value)):
+            raise ValueError('External identity requires a bounded issuer and subject')
+    return hashlib.sha256(json.dumps([issuer, subject], separators=(',', ':')).encode()).hexdigest()
 
 
 def validate_identity_records(storage):
-    if storage.load('system', 'external_identity_schema') != {'version': 1}:
+    if storage.load('system', 'external_identity_schema') != {'version': 2}:
         raise SchemaError('Invalid external identity schema')
     account_ids = {storage.load('accounts', email)['account_id'] for email in storage.list_keys('accounts')}
     linked_accounts = set()
     for key in storage.list_keys('external_identities'):
         record = storage.load('external_identities', key)
-        if (set(record) != {'version', 'tenant', 'subject', 'account_id', 'environment', 'name', 'email'}
-                or record['version'] != 1 or key != identity_key(record['tenant'], record['subject'])
+        if (set(record) != {'version', 'issuer', 'subject', 'account_id', 'environment', 'name', 'email'}
+                or record['version'] != 2 or key != identity_key(record['issuer'], record['subject'])
                 or record['account_id'] not in account_ids or record['account_id'] in linked_accounts
                 or not isinstance(record['name'], str) or not record['name'].strip()
                 or not isinstance(record['email'], str) or not _is_valid_email(record['email'])
                 or not isinstance(record['environment'], dict)
                 or set(record['environment']) != {'protocol', 'environment_id', 'generation', 'upstream_mode'}
                 or record['environment']['protocol'] != 'plannertool-auth/1'
-                or record['environment']['upstream_mode'] not in ('mock', 'entra')):
+                or not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', record['environment']['upstream_mode'])):
             raise SchemaError('Invalid external identity link')
         linked_accounts.add(record['account_id'])
 
@@ -41,9 +45,14 @@ class ExternalIdentityLinks:
         from planner_lib.session.broker import AuthFailure
 
         try:
-            key = identity_key(identity['tid'], identity['oid'])
+            key = identity_key(identity['issuer'], identity['subject'])
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             raise AuthFailure('auth_configuration_error') from error
+        if (set(identity) - {'issuer', 'subject', 'name', 'email', 'link_existing_by_email'}
+                or type(identity.get('link_existing_by_email', False)) is not bool
+                or (identity.get('link_existing_by_email', False)
+                    and self.settings.upstream_mode != 'mock')):
+            raise AuthFailure('auth_configuration_error')
         with self.storage.transaction():
             if self.storage.exists('external_identities', key):
                 link = self.storage.load('external_identities', key)
@@ -55,8 +64,7 @@ class ExternalIdentityLinks:
                     or not _is_valid_email(identity['email']) or len(identity['email']) > 320):
                 raise AuthFailure('auth_configuration_error')
             email = identity['email'].strip().casefold()
-            mock_email_identity = (self.settings.upstream_mode == 'mock'
-                and identity['oid'] == str(uuid5(UUID(identity['tid']), email)))
+            mock_email_identity = identity.get('link_existing_by_email', False)
             if target is None and mock_email_identity:
                 matching_ids = {account['id'] for account in self.accounts.list_accounts()
                                 if account['email'].casefold() == email}
@@ -75,8 +83,7 @@ class ExternalIdentityLinks:
                                 and link['environment'] == self.settings.metadata()):
                             return self.accounts.get_account_by_id(target)
             if target is None:
-                internal_email = (email if mock_email_identity
-                                  else identity['oid'] + '.' + identity['tid'] + '@identity.invalid')
+                internal_email = email if mock_email_identity else key + '@identity.invalid'
                 if self.storage.exists('accounts', internal_email):
                     raise AuthFailure('access_denied', 403)
                 created = self.accounts.create_account(AccountCredentialsPayload(email=internal_email), permissions=[])
@@ -88,7 +95,7 @@ class ExternalIdentityLinks:
                    for item in self.storage.list_keys('external_identities')):
                 raise AuthFailure('access_denied', 403)
             self.storage.save('external_identities', key, {
-                'version': 1, 'tenant': identity['tid'], 'subject': identity['oid'],
+                'version': 2, 'issuer': identity['issuer'], 'subject': identity['subject'],
                 'account_id': target, 'environment': self.settings.metadata(),
                 'name': identity['name'], 'email': identity['email'],
             })

@@ -23,7 +23,7 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
     const path = new URL(route.request().url()).pathname;
     requests.push(path);
     if (path.endsWith('/config')) return route.fulfill({ json: {
-      mode: 'entra', capabilities: connected.capabilities,
+      mode: 'broker', capabilities: connected.capabilities,
     } });
     if (path.endsWith('/begin')) return route.fulfill({ json: { transaction: 'synthetic-browser-transaction' } });
     if (path.endsWith('/logout')) return route.fulfill({ json: createMockAuth('entra_signed_out').state });
@@ -40,12 +40,12 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
     return route.fulfill({ json: { value: 'synthetic-result' } });
   });
   await page.locator('admin-data-sources').evaluate(async (editor, initialState) => {
-    const { createAuthClient, createEntraHttpAdapter } = await import('/static/js/services/authClient.js');
+    const { createAuthClient, createBrokerHttpAdapter } = await import('/static/js/services/authClient.js');
     const { ProviderREST } = await import('/static/js/services/providerREST.js');
     const { AdminProviderREST } = await import('/static/admin/js/services/providerREST.js');
     const { ProviderLocalStorage } = await import('/static/js/services/providerLocalStorage.js');
     window.phaseCCancel = false;
-    const adapter = createEntraHttpAdapter({ apiUrl: '/api', fetchImpl: fetch,
+    const adapter = createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl: fetch,
       presentLogin: async () => window.phaseCCancel ? false : { code: 'synthetic', state: 'synthetic' } });
     const authentication = createAuthClient({ adapter, initialState, instance: '/',
       onAccountChanged: async () => { await new ProviderLocalStorage().clearBrowserData(); } });
@@ -152,8 +152,8 @@ test('authentication capability mocks cover desktop sign-in, recovery and logout
   }, mockAuthSource);
   await editor.getByLabel('Authentication mode (preview)').selectOption('entra');
   const preview = editor.locator('auth-status');
-  await expect(preview.getByRole('button', { name: 'Sign in with Entra ID' })).toBeVisible();
-  await preview.getByRole('button', { name: 'Sign in with Entra ID' }).click();
+  await expect(preview.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+  await preview.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(preview.locator('[data-auth-account]')).toHaveText('alex@example.com');
   await expect(editor.locator('#ado-authentication-status')).toContainText('Active: PAT');
   await page.evaluate(async () => {
@@ -183,10 +183,10 @@ test('authentication capability mocks cover desktop sign-in, recovery and logout
     window.phaseBAuth.select('session_expired');
     window.phaseBAuth.setSignInOutcome({ cancelled: true });
   });
-  await status.getByRole('button', { name: 'Sign in with Entra ID' }).click();
+  await status.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(status).toContainText('Sign-in cancelled.');
   await page.evaluate(() => window.phaseBAuth.setSignInOutcome({ account: window.phaseBOtherAccount }));
-  await status.getByRole('button', { name: 'Sign in with Entra ID' }).click();
+  await status.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(settings.locator('#configEmail')).toHaveText('sam@example.com');
   page.once('dialog', dialog => dialog.accept());
   await settings.getByRole('button', { name: 'Sign out', exact: true }).click();
@@ -215,7 +215,7 @@ test('authentication capability mocks cover desktop sign-in, recovery and logout
   });
   const login = page.locator('auth-dialog');
   await expect(login.locator('input')).toHaveCount(0);
-  await login.getByRole('button', { name: 'Sign in with Entra ID' }).click();
+  await login.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(login).toHaveCount(0);
   expect(authWrites).toEqual([]);
   expect(await page.context().cookies()).toEqual(cookies);

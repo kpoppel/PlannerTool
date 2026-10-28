@@ -35,7 +35,9 @@ def prepared(store):
                                broker.challenge(verifier), secrets.token_urlsafe(32))
     browser = secrets.token_urlsafe(32)
     store.bind_browser(reference, browser)
-    _, code = store.authorize(reference, browser, {'tid': 'synthetic', 'oid': 'one'})
+    _, code = store.authorize(reference, browser, {
+        'issuer': 'https://auth.example.test', 'subject': 'opaque-user',
+        'name': 'Synthetic', 'email': 'user@example.test'})
     return reference, code, verifier
 
 
@@ -68,7 +70,7 @@ def test_invalid_binding_does_not_consume_code(config):
     for owner, value in [('beta', verifier), ('alpha', 'wrong-verifier')]:
         with pytest.raises(broker.ProtocolError, match='invalid_binding'):
             store.redeem(owner, reference, code, value)
-    assert store.redeem('alpha', reference, code, verifier)['identity']['oid'] == 'one'
+    assert store.redeem('alpha', reference, code, verifier)['identity']['subject'] == 'opaque-user'
 
 
 def test_wrong_browser_and_replay_rejected(config):
@@ -304,9 +306,9 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
         body = {**envelope, 'transaction': begun['transaction'], 'code': query['code'][0], 'verifier': verifier}
         response = client.post('/v1/transactions/redeem', json=body, headers=headers)
         assert response.status_code == 200
-        from uuid import UUID, uuid5
         assert response.json()['identity'] == {
-            'tid': settings.tenant_id, 'oid': str(uuid5(UUID(settings.tenant_id), 'admin@example.test')),
-            'name': 'admin@example.test', 'email': 'admin@example.test'}
+            'issuer': config.public_url, 'subject': broker.digest('admin@example.test'),
+            'name': 'admin@example.test', 'email': 'admin@example.test',
+            'link_existing_by_email': True}
         assert client.post('/v1/transactions/redeem', json=body, headers=headers).status_code == 400
         assert client.get(callback_url).status_code == 400

@@ -7,7 +7,6 @@ import secrets
 import threading
 import time
 from urllib.parse import urlencode
-from uuid import UUID, uuid5
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -167,9 +166,9 @@ def install_broker(app, settings, config):
             email = values['email'][0].strip().casefold()
             if len(email) > 254 or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
                 raise ProtocolError('invalid_identity')
-            identity = {'tid': settings.tenant_id,
-                        'oid': str(uuid5(UUID(settings.tenant_id), email)),
-                        'name': email, 'email': email}
+            identity = {'issuer': config.public_url,
+                        'subject': digest(email),
+                        'name': email, 'email': email, 'link_existing_by_email': True}
         browser = request.cookies.get(BROWSER_COOKIE, '')
         upstream_code = secrets.token_urlsafe(32)
         with store.connection() as connection:

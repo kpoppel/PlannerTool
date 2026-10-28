@@ -41,7 +41,7 @@ class BrokerSettings:
     secret: str = field(repr=False)
 
     def __post_init__(self):
-        if self.upstream_mode not in ('mock', 'entra'):
+        if not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', self.upstream_mode):
             raise ValueError('Unknown expected broker mode')
         for value in (self.instance, self.environment, self.generation):
             if not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', value):
@@ -133,7 +133,7 @@ class BrokerClient:
         return value
 
 
-class EntraLoginAdapter:
+class BrokerLoginAdapter:
     def __init__(self, storage, accounts, sessions, client):
         self.storage = storage
         self.accounts = accounts
@@ -269,7 +269,7 @@ class EntraLoginAdapter:
                     if grant.get('status') not in ('active', 'expired', 'revoked', 'interaction_required'):
                         raise AuthFailure('auth_configuration_error')
                     status = 'signed_in' if grant['status'] == 'active' else 'interaction_required'
-        return {'mode': 'entra', 'status': status,
+        return {'mode': 'broker', 'status': status,
             'account': account,
             'permissions': [] if context is None else self.accounts.get_account_by_id(context['account_id'])['permissions'],
             'capabilities': {

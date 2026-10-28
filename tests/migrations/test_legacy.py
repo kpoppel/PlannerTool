@@ -92,7 +92,7 @@ def test_fresh_initialization_is_current_without_upgrades(tmp_path):
         validate_candidate(storage)
         assert storage.load('system', 'schema_state')['initialized_at_revision'] == TARGET_REVISION
         assert storage.load('system', 'schema_state')['last_applied_migration'] is None
-        assert storage.load('system', 'external_identity_schema') == {'version': 1}
+        assert storage.load('system', 'external_identity_schema') == {'version': 2}
     finally:
         storage.close()
 
@@ -109,6 +109,45 @@ def test_identity_link_upgrade_preserves_existing_accounts_and_sessions():
     assert storage.load('accounts', 'existing@example.test') == {'account_id': 'existing-uuid'}
     assert storage.load('auth_sessions', 'existing-hash') == {'account_id': 'existing-uuid'}
     assert list(storage.list_keys('external_identities')) == []
+
+
+def test_neutral_identity_upgrade_resets_external_auth_but_preserves_local_accounts():
+    from planner_lib.migrations.revisions import upgrade_47
+    from planner_lib.session.identity import validate_identity_records
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    storage = MemoryStorage()
+    account = {'account_id': 'existing-admin', 'permissions': ['admin'], 'pat': 'retained'}
+    storage.save('accounts', 'admin@example.test', account)
+    storage.save('account_auth', 'existing-admin', {'enrolled': True})
+    storage.save('auth_sessions', 'external-session', {'source': 'entra', 'account_id': 'existing-admin'})
+    storage.save('auth_sessions', 'local-session', {'source': 'enrollment', 'account_id': 'existing-admin'})
+    for namespace in ('external_identities', 'auth_grants', 'auth_transactions', 'auth_link_approvals'):
+        storage.save(namespace, 'obsolete', {'old_format': True})
+    upgrade_47(storage)
+    for namespace in ('external_identities', 'auth_grants', 'auth_transactions', 'auth_link_approvals'):
+        assert not list(storage.list_keys(namespace))
+    assert not storage.exists('auth_sessions', 'external-session')
+    assert storage.load('auth_sessions', 'local-session') == {
+        'source': 'enrollment', 'account_id': 'existing-admin'}
+    assert storage.load('accounts', 'admin@example.test') == account
+    assert storage.load('account_auth', 'existing-admin') == {'enrolled': True}
+    validate_identity_records(storage)
+
+
+def test_neutral_identity_upgrade_handles_expired_handoffs(tmp_path):
+    from planner_lib.migrations.revisions import upgrade_47
+
+    storage = DiskCacheStorage(tmp_path / 'cache')
+    try:
+        storage.save('auth_transactions', 'expired', 'opaque', ttl_seconds=-1)
+        storage.save('auth_link_approvals', 'expired', {'old_format': True}, ttl_seconds=-1)
+        upgrade_47(storage)
+        assert storage.load('system', 'external_identity_schema') == {'version': 2}
+        assert not storage.exists('auth_transactions', 'expired')
+        assert not storage.exists('auth_link_approvals', 'expired')
+    finally:
+        storage.close()
 
 
 def test_current_candidate_requires_external_identity_schema(tmp_path):

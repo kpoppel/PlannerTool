@@ -27,9 +27,10 @@ The pipeline normalizes provider-specific records into domain objects before the
 rest of the application sees them. The cache can return stale remote data during
 an outage, but it must never be used as the system of record for user changes.
 
-Authentication composition selects enrollment/PAT or the isolated Entra adapter
-once. Entra's `external_identities` records map verified tenant/object UUIDs to
-local account UUIDs; contact email is not an ownership or linking key. Delegated
+Authentication composition selects enrollment/PAT or the broker adapter once.
+Provider-neutral `external_identities` records map verified issuer/subject pairs to
+local account UUIDs; contact email is not a production ownership or linking key.
+Explicit mock-only email impersonation can reuse an existing local account. Delegated
 credentials include `kind: bearer`, acting `user_id`, opaque `token`, local
 `binding`, authentication `epoch`, `expires_at` and explicit `transport` metadata.
 The provider resolves only the current request's session-owned grant. SDK/wiki

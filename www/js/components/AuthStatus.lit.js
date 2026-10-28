@@ -114,7 +114,7 @@ export class AuthStatus extends LitElement {
     const { mode, status, account, capabilities } = this.authentication.state;
     const needsLogin = account === null || status === 'session_expired';
     return html`
-      <p><strong>${mode === 'entra' ? 'Entra ID' : mode === 'pat' ? 'PAT' : 'Local'}</strong></p>
+      <p><strong>${mode === 'broker' ? 'External sign-in' : mode === 'pat' ? 'PAT' : 'Local'}</strong></p>
       ${this._logoutPending ? html`<p role="status">Signed out of this instance.
         Authentication service cleanup is pending; the delegated grant will expire.</p>` : ''}
       ${account === null ? '' : html`<p data-auth-account>${account.email}</p>`}
@@ -128,7 +128,7 @@ export class AuthStatus extends LitElement {
       <div class="actions">
         ${needsLogin || capabilities.reauthenticate ? html`
           <button ?disabled=${this._busy} @click=${this._onSignIn}>${capabilities.reauthenticate
-            ? 'Reauthenticate' : capabilities.enrollment ? 'Enroll this browser' : 'Sign in with Entra ID'}</button>
+            ? 'Reauthenticate' : capabilities.enrollment ? 'Enroll this browser' : 'Sign in'}</button>
         ` : ''}
       </div>
       <p role="status">${this._message}</p>`;

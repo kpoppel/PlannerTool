@@ -38,7 +38,8 @@ def setup(request):
             if response.get('state') != flow['state']:
                 raise ValueError('state mismatch')
             return {'access_token': 'private-token', 'id_token_claims': {
-                'name': 'Test User', 'tid': TENANT, 'oid': f'user-{len(clients)}',
+                'name': 'Test User', 'iss': f'https://login.microsoftonline.com/{TENANT}/v2.0',
+                'sub': f'user-{len(clients)}',
             }}
 
         client.acquire_token_by_auth_code_flow.side_effect = redeem
@@ -91,8 +92,8 @@ def test_local_mock_sign_in_and_ado_fixtures_never_use_live_services():
 
         home = browser.get('/')
         assert 'Alex Mock' in home.text
-        assert '11111111-1111-1111-1111-111111111111' in home.text
-        assert '33333333-3333-3333-3333-333333333333' in home.text
+        assert poc_app.MOCK_ISSUER in home.text
+        assert poc_app.MOCK_SUBJECT in home.text
 
         projects = browser.get('/ado/projects')
         assert projects.status_code == 200
@@ -294,13 +295,13 @@ def test_real_msal_generates_pkce_and_rejects_wrong_state_without_token_exchange
         transport.post.assert_not_called()
 
 
-def test_wrong_tenant_is_not_authorized(setup):
+def test_wrong_issuer_is_not_authorized(setup):
     browser, clients, ado, app = setup
     browser.get('/login')
     clients[0].acquire_token_by_auth_code_flow.side_effect = None
     clients[0].acquire_token_by_auth_code_flow.return_value = {
         'access_token': 'wrong-tenant-token',
-        'id_token_claims': {'tid': CLIENT, 'oid': 'user'},
+        'id_token_claims': {'iss': 'https://wrong.example.test', 'sub': 'user'},
     }
     assert browser.get('/callback?state=expected&code=code').status_code == 403
     assert browser.get('/ado/projects').status_code == 401
@@ -358,7 +359,8 @@ def test_auth_service_path_uses_configured_public_prefix_not_forwarded_headers(s
     client = Mock()
     client.initiate_auth_code_flow.return_value = {'auth_uri': 'https://login.microsoftonline.com'}
     client.acquire_token_by_auth_code_flow.return_value = {
-        'access_token': 'token', 'id_token_claims': {'tid': TENANT, 'oid': 'user'},
+        'access_token': 'token', 'id_token_claims': {
+            'iss': f'https://login.microsoftonline.com/{TENANT}/v2.0', 'sub': 'user'},
     }
     app = create_app(settings, Mock(return_value=client))
     public_origin = 'https://planner.example.com'

@@ -60,21 +60,13 @@ test.beforeAll(() => {
     compose('exec', '-T', `planner-${instance}`, 'python', '-c', [
       'from planner_lib.migrations.coordinator import Database',
       'from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload',
-      'from planner_lib.session.broker import BrokerSettings',
-      'from planner_lib.session.identity import identity_key',
       "database = Database('/app/data').prepare()",
       'storage = database.storage',
       'accounts = AccountManager(storage)',
-      'settings = BrokerSettings.from_env()',
-      "tenant = '11111111-1111-1111-1111-111111111111'",
-      "identities = [('33333333-3333-3333-3333-333333333333', 'alex@example.test', 'Alex Sandbox', ['admin']),",
-      "              ('44444444-4444-4444-4444-444444444444', 'sam@example.test', 'Sam Sandbox', [])]",
-      'for subject, email, name, permissions in identities:',
+      "identities = [('alex@example.test', ['admin']), ('sam@example.test', [])]",
+      'for email, permissions in identities:',
       "    if not storage.exists('accounts', email):",
       '        accounts.create_account(AccountCredentialsPayload(email=email), permissions=permissions)',
-      "    storage.save('external_identities', identity_key(tenant, subject), {",
-      "        'version': 1, 'tenant': tenant, 'subject': subject, 'account_id': accounts.get_account_id(email),",
-      "        'environment': settings.metadata(), 'email': email, 'name': name})",
       "storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {'use_azure_mock': True}})",
       'database.close()',
     ].join('\n'));
@@ -91,7 +83,7 @@ test('normal planner and admin use discovered Entra popup login without enrollme
     }
   });
   await page.goto(`${ORIGIN}/alpha/`);
-  const button = page.getByRole('button', { name: 'Sign in with Entra ID', exact: true });
+  const button = page.getByRole('button', { name: 'Sign in', exact: true });
   await expect(button).toBeVisible();
   const popupOpened = page.waitForEvent('popup');
   await button.click();
@@ -127,13 +119,13 @@ test('normal planner and admin use discovered Entra popup login without enrollme
   await page.getByRole('menuitem', { name: 'Configuration', exact: true }).click();
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Sign in with Entra ID', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
   expect((await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).account).toBeNull();
 });
 
 test('normal admin login supports cancellation and denies an unprivileged identity', async ({ page }) => {
   await page.goto(`${ORIGIN}/beta/admin/`);
-  const signIn = page.getByRole('button', { name: 'Sign in with Entra ID', exact: true });
+  const signIn = page.getByRole('button', { name: 'Sign in', exact: true });
   await expect(signIn).toBeVisible();
   let opened = page.waitForEvent('popup');
   await signIn.click();
@@ -229,7 +221,7 @@ test('real fixture interaction and revocation preserve local UI; expired handoff
   await withBrokerScenario('beta', 'expired', async () => {
     await page.goto(`${ORIGIN}/beta/`);
     const opened = page.waitForEvent('popup');
-    await page.getByRole('button', { name: 'Sign in with Entra ID', exact: true }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     const popup = await opened;
     await selectIdentity(popup, 'alex@example.test');
     await expect(page.locator('auth-dialog auth-status')).toContainText('Your PlannerTool session has expired.');
@@ -246,7 +238,7 @@ test('an invalid local session cannot read cached data or bypass normal sign-in'
   }]);
   expect((await page.request.get(`${ORIGIN}/alpha/api/tasks`)).status()).toBe(401);
   await page.goto(`${ORIGIN}/alpha/`);
-  await expect(page.getByRole('button', { name: 'Sign in with Entra ID', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
   expect((await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).account).toBeNull();
 });
 
@@ -303,7 +295,7 @@ test('outage logout revokes locally and discloses pending service cleanup once',
     await expect(page.locator('auth-dialog auth-status')).toContainText('Authentication service cleanup is pending');
     expect((await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).account).toBeNull();
     await page.reload();
-    await expect(page.getByRole('button', { name: 'Sign in with Entra ID', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
     await expect(page.locator('auth-dialog auth-status')).not.toContainText('Authentication service cleanup is pending');
   } finally {
     compose('up', '-d', '--force-recreate', '--no-deps', '--wait', 'auth-sandbox');
@@ -399,7 +391,7 @@ test('broker outage preserves admin and encrypted state survives container recre
     try {
       const unavailable = await context.request.get(`${ORIGIN}/alpha/api/auth/config`);
       expect(unavailable.status()).toBe(200);
-      expect((await unavailable.json()).mode).toBe('entra');
+      expect((await unavailable.json()).mode).toBe('broker');
       expect((await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).status).toBe('unavailable');
       expect((await context.request.get(`${ORIGIN}/alpha/admin/check`)).status()).toBe(200);
       const tasksDuring = await context.request.get(`${ORIGIN}/alpha/api/tasks`);

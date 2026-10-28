@@ -15,6 +15,7 @@ from planner_lib.session.broker import BrokerClient, BrokerSettings, AuthFailure
 pytestmark = pytest.mark.real_auth
 CONTRACT = json.loads((Path(__file__).resolve().parents[3] / 'entra-id' / 'protocol-v1.json').read_text())
 SANDBOX_TENANT = '11111111-1111-1111-1111-111111111111'
+BROKER_ISSUER = 'https://auth.example.test'
 
 
 @pytest.fixture
@@ -46,8 +47,8 @@ def sandbox(monkeypatch, tmp_path, request):
     }
     for index, (subject, (email, name)) in enumerate(identities.items()):
         accounts.create_account(AccountCredentialsPayload(email=email), permissions=['admin'] if index == 0 else [])
-        storage.save('external_identities', identity_key(SANDBOX_TENANT, subject), {
-            'version': 1, 'tenant': SANDBOX_TENANT, 'subject': subject,
+        storage.save('external_identities', identity_key(BROKER_ISSUER, subject), {
+            'version': 2, 'issuer': BROKER_ISSUER, 'subject': subject,
             'account_id': accounts.get_account_id(email), 'environment': settings.metadata(),
             'name': name, 'email': email,
         })
@@ -73,7 +74,7 @@ def sandbox(monkeypatch, tmp_path, request):
         if request.url.path.endswith('/redeem'):
             import time
             return httpx.Response(200, json={**metadata, 'transaction': payload['transaction'],
-                'identity': {'tid': SANDBOX_TENANT, 'oid': '33333333-3333-3333-3333-333333333333',
+                'identity': {'issuer': BROKER_ISSUER, 'subject': '33333333-3333-3333-3333-333333333333',
                              'email': 'alex@example.test', 'name': 'Alex Sandbox'},
                 'grant': 'opaque-server-only-grant', 'expires_at': time.time() + 3600})
         if request.url.path.endswith('/revoke'):
@@ -101,6 +102,39 @@ def sandbox(monkeypatch, tmp_path, request):
 
     with TestClient(app, base_url=origin) as client:
         yield client, requests
+
+
+def test_external_identity_keys_are_opaque_and_issuer_scoped():
+    from planner_lib.session.identity import identity_key
+
+    assert identity_key('https://auth.example.test', 'opaque-user') == identity_key(
+        'https://auth.example.test', 'opaque-user')
+    assert identity_key('https://auth.example.test', 'opaque-user') != identity_key(
+        'https://other.example.test', 'opaque-user')
+    assert identity_key('issuer:subject', 'user') != identity_key('issuer', 'subject:user')
+    for issuer, subject in [('', 'user'), ('issuer', ''), ('issuer', None),
+                            ('issuer', 'user\n'), ('issuer', 'x' * 513)]:
+        with pytest.raises(ValueError):
+            identity_key(issuer, subject)
+
+
+def test_other_broker_provider_uses_the_same_identity_contract(sandbox):
+    from dataclasses import replace
+
+    client, requests = sandbox
+    login = client.app.state.container.get('login_adapter')
+    login.identities.settings = replace(login.settings, upstream_mode='another_provider')
+    identity = {'issuer': 'https://another.example.test', 'subject': 'opaque-user',
+                'name': 'Another User', 'email': 'another@example.test'}
+    account = login.identities.resolve(identity)
+    assert account['permissions'] == []
+    assert login.identities.resolve(identity)['id'] == account['id']
+    other_issuer = login.identities.resolve({**identity, 'issuer': 'https://third.example.test'})
+    assert other_issuer['id'] != account['id']
+    with pytest.raises(AuthFailure, match='auth_configuration_error'):
+        login.identities.resolve({**identity, 'link_existing_by_email': True})
+    with pytest.raises(AuthFailure, match='auth_configuration_error'):
+        login.identities.resolve({**identity, 'provider_specific_claim': 'not-part-of-the-contract'})
 
 
 def set_broker_token_kind(client, token_kind):
@@ -147,7 +181,7 @@ def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, 
                     'backend_credentials': 'delegated', 'epoch': old_epoch + 1}}
             assert after == records
         assert not storage.exists('system', 'sandbox_auth')
-        assert client.get('/api/auth/config').json()['mode'] == 'entra'
+        assert client.get('/api/auth/config').json()['mode'] == 'broker'
 
     with TestClient(create_app(config)) as client:
         storage = client.app.state.container.get('storage')
@@ -164,7 +198,7 @@ def test_new_entra_identity_can_sign_in_with_live_ado_without_pat(sandbox, monke
     accounts = container.get('account_manager')
     admin = accounts.get_account_by_id(accounts.get_account_id('alex@example.test'))
     storage.delete('external_identities', identity_key(
-        SANDBOX_TENANT, '33333333-3333-3333-3333-333333333333'))
+        BROKER_ISSUER, '33333333-3333-3333-3333-333333333333'))
     storage.save('config', 'ado_config', {
         'organization_url': 'https://dev.azure.com/example', 'feature_flags': {}})
     monkeypatch.setattr(accounts, 'validate_pat', lambda value: pytest.fail('Login required a PAT'))
@@ -195,7 +229,7 @@ def test_mock_auth_preserves_admin_backend_choice_and_authentication(sandbox):
     manager.save_config('ado_config', local_config)
     assert storage.load('config', 'ado_config') == local_config
     assert storage.load('config', 'authentication') == authentication
-    assert client.get('/api/auth/config').json()['mode'] == 'entra'
+    assert client.get('/api/auth/config').json()['mode'] == 'broker'
     copied_config = {'organization_url': 'copied-projects', 'feature_flags': {}}
     manager.save_config('ado_config', copied_config)
     assert storage.load('config', 'ado_config') == copied_config
@@ -205,7 +239,7 @@ def test_mock_auth_preserves_admin_backend_choice_and_authentication(sandbox):
 @pytest.mark.parametrize('sandbox', ['http://localhost:8765', 'https://planner.example.test'], indirect=True)
 def test_sandbox_login_profile_logout_and_disabled_enrollment(sandbox):
     client, requests = sandbox
-    assert client.get('/api/auth/config').json()['mode'] == 'entra'
+    assert client.get('/api/auth/config').json()['mode'] == 'broker'
     assert client.get('/api/auth/me').json()['account'] is None
     assert client.post('/api/auth/enroll', json={'email': 'new@example.test'}).status_code == 403
     begin = client.post('/api/auth/login/begin', headers={'Origin': str(client.base_url).rstrip('/')})
@@ -288,7 +322,7 @@ def test_authenticated_non_admin_is_denied_without_session_expiry(sandbox):
         response = transport.handle_request(request)
         if request.url.path.endswith('/redeem'):
             value = json.loads(response.content)
-            value['identity']['oid'] = '44444444-4444-4444-4444-444444444444'
+            value['identity']['subject'] = '44444444-4444-4444-4444-444444444444'
             return httpx.Response(200, json=value)
         return response
 
@@ -325,7 +359,7 @@ def test_logout_commits_local_revocation_when_broker_is_unavailable(sandbox):
     assert profile['status'] == 'unavailable'
     assert profile['account']['email'] == 'alex@example.test'
     assert client.get('/admin/check').status_code == 200
-    assert client.get('/api/auth/config').json()['mode'] == 'entra'
+    assert client.get('/api/auth/config').json()['mode'] == 'broker'
     logged_out = client.post('/api/auth/logout')
     assert logged_out.status_code == 200
     assert logged_out.json()['revocation_pending'] is True
@@ -599,7 +633,6 @@ def test_login_body_limit(sandbox):
 
 @pytest.mark.parametrize('linked', [False, True])
 def test_mock_email_login_reuses_existing_admin_without_changing_permissions(sandbox, linked):
-    from uuid import UUID, uuid5
     from planner_lib.session.identity import identity_key
 
     client, requests = sandbox
@@ -612,15 +645,15 @@ def test_mock_email_login_reuses_existing_admin_without_changing_permissions(san
     before = storage.load('accounts', 'alex@example.test')
     if not linked:
         storage.delete('external_identities', identity_key(
-            SANDBOX_TENANT, '33333333-3333-3333-3333-333333333333'))
+            BROKER_ISSUER, '33333333-3333-3333-3333-333333333333'))
 
     def email_identity(request):
         response = original.handle_request(request)
         if request.url.path.endswith('/redeem'):
             payload = json.loads(response.content)
-            payload['identity'] = {'tid': SANDBOX_TENANT,
-                'oid': str(uuid5(UUID(SANDBOX_TENANT), 'alex@example.test')),
-                'name': 'alex@example.test', 'email': 'alex@example.test'}
+            payload['identity'] = {'issuer': BROKER_ISSUER, 'subject': 'mock-email-alex',
+                'name': 'alex@example.test', 'email': 'alex@example.test',
+                'link_existing_by_email': True}
             return httpx.Response(200, json=payload)
         return response
 
@@ -641,15 +674,15 @@ def test_mock_email_login_reuses_existing_admin_without_changing_permissions(san
 @pytest.mark.parametrize('mode', ['mock', 'entra'])
 def test_email_identity_only_matches_existing_accounts_in_mock_mode(sandbox, mode):
     from dataclasses import replace
-    from uuid import UUID, uuid5
 
     client, requests = sandbox
     container = client.app.state.container
     accounts = container.get('account_manager')
     login = container.get('login_adapter')
-    identity = {'tid': SANDBOX_TENANT,
-        'oid': str(uuid5(UUID(SANDBOX_TENANT), 'alex@example.test')),
+    identity = {'issuer': BROKER_ISSUER, 'subject': 'mock-email-alex',
         'email': 'alex@example.test', 'name': 'Email Identity'}
+    if mode == 'mock':
+        identity['link_existing_by_email'] = True
     login.identities.settings = replace(login.settings, upstream_mode=mode)
     resolved = login.identities.resolve(identity)
     assert (resolved['id'] == accounts.get_account_id('alex@example.test')) == (mode == 'mock')
@@ -665,8 +698,8 @@ def test_verified_new_identity_is_provisioned_without_permissions_or_email_linki
         response = transport.handle_request(request)
         if request.url.path.endswith('/redeem'):
             value = json.loads(response.content)
-            value['identity'] = {'tid': SANDBOX_TENANT,
-                'oid': '55555555-5555-5555-5555-555555555555',
+            value['identity'] = {'issuer': BROKER_ISSUER,
+                'subject': '55555555-5555-5555-5555-555555555555',
                 'email': 'alex@example.test', 'name': 'Different Alex'}
             return httpx.Response(200, json=value)
         return response
@@ -701,8 +734,8 @@ def test_admin_link_requires_proof_and_preserves_uuid_permissions(sandbox):
         response = transport.handle_request(request)
         if request.url.path.endswith('/redeem'):
             value = json.loads(response.content)
-            value['identity'] = {'tid': SANDBOX_TENANT,
-                'oid': '55555555-5555-5555-5555-555555555555',
+            value['identity'] = {'issuer': BROKER_ISSUER,
+                'subject': '55555555-5555-5555-5555-555555555555',
                 'email': 'proven@example.test', 'name': 'Proven Identity'}
             return httpx.Response(200, json=value)
         return response

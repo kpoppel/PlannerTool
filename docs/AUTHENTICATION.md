@@ -1,7 +1,8 @@
 # Authentication
 
 PlannerTool uses the deployment-selected login adapter and credential policy.
-The authentication service owns its upstream choice: mock Entra ID or real Entra ID.
+The authentication service owns its upstream provider, identity verification and token renewal.
+PlannerTool consumes a provider-neutral broker contract, not provider-specific identity claims.
 PlannerTool does not seed demo accounts, require empty storage, install network
 isolation, replace ADO settings, or purge PATs and enrollment records on startup.
 The retired `authentication-transition` command is no longer available.
@@ -21,10 +22,21 @@ existing task snapshot can be returned with the same warning. This decision does
 not prompt for login or replay the operation. Backend and organization configuration
 remain unchanged. Broker mode does not determine credential validity.
 
-Verified identities retain stable tenant/object links. A new identity gets an
-unprivileged account; mock sign-in does not automatically grant administration or
-match an existing account by email. Link an existing administrator through the
-normal administrator-approved identity proof before changing login source.
+Verified identities use a trusted broker issuer and opaque subject. A new identity
+gets an unprivileged account. Production linking requires administrator-approved
+identity proof; matching contact email alone never grants access.
+
+Mock sign-in deliberately allows entering an existing account email, including an
+administrator's, and reuses that account's UUID, permissions and saved data. The
+broker explicitly marks this sandbox-only assertion; PlannerTool rejects it outside
+mock mode. Unknown mock emails create unprivileged accounts. Never expose this
+impersonation mechanism as production authentication.
+
+Revision 47 clears obsolete development external links, broker grants, pending
+handoffs and external sessions. Local accounts, permissions, saved data, PATs and
+enrollment credentials remain. Sign in again after upgrading; existing sandbox
+administrators can enter their account email. Deploy the application, browser
+assets and broker together; there is no legacy identity-payload compatibility path.
 
 PlannerTool uses generated browser credentials, not user-chosen passwords or
 email verification. Each installation has independent accounts and credentials.
@@ -189,8 +201,8 @@ Mock upstreams can use the server's real DNS hostname over HTTPS. Set top-level
 `https_hostname` and the matching auth-service `public_url` in the deployment
 manifest. Caddy terminates TLS; application/broker traffic uses private Compose
 service addresses. PlannerTool has no mock-specific network sandbox. HTTP is
-allowed only for explicit localhost callbacks. Mock identities are selectable
-synthetic accounts, not production authentication. Restrict access to copied data
+allowed only for explicit localhost callbacks. Mock sign-in accepts an account
+email and impersonates that local account, not production authentication. Restrict access to copied data
 and retain the deployment's encryption key; never expose a mock-login deployment
 as production authentication.
 
@@ -213,7 +225,7 @@ failure or configuration save selects a mock identity. The sole scenario model
 lives in `tests/helpers/mockAuth.js`; it is not shipped with application assets.
 
 The shared frontend client exposes `state`, `subscribe(listener)` and
-authentication actions. State contains `mode` (`pat`, `local` or `entra`), `status`, an
+authentication actions. State contains `mode` (`pat`, `local` or `broker`), `status`, an
 `account` (`uuid`, `email`, `name`) or `null`, and boolean capabilities for `pat`,
 `enrollment`, `reauthenticate`, `logout` and `deleteAccount`. Actions are `select`,
 `signIn`, `saveSettings`, `logout` and `deleteAccount`. A subscription returns its
@@ -246,21 +258,39 @@ without exposing a fixture route in the application. This is UI coverage only:
 the broker tests separately exercise source-bound sessions on the server and the
 running authentication service.
 
-### External Identity and Delegated Credentials (Phase E)
+### External Identity and Delegated Credentials
 
-External links use canonical tenant/object UUIDs, never email matching. A new
+External links use a broker-authenticated `issuer` and opaque `subject`; PlannerTool
+does not interpret the subject or decode tokens. The key hashes the structured
+issuer/subject pair, so equal subjects from different issuers cannot collide.
+Links are additionally pinned to the broker environment and generation. A new
 verified identity receives a new account UUID and no permissions; its internal
 account lookup key ends in `@identity.invalid`. Display/contact email and name
 come from the verified identity link. Existing accounts retain their UUIDs and
-permissions through explicit administrator-approved identity links.
+permissions through explicit administrator-approved identity links. The sandbox
+email-impersonation exception above is accepted only from a configured mock broker.
+
+The login handoff returns `{identity: {issuer, subject, name, email}, grant,
+expires_at}` inside the authenticated protocol envelope. The optional
+`link_existing_by_email: true` identity field is reserved for mock deployments.
+Browser discovery/profile responses use `mode: broker`; the generic Sign in control
+does not choose or interpret the upstream provider. Existing deployment policy
+names still select the connected broker without exposing its identity claims.
+
+Backend credential requests name the resource (`ado` for the current ADO backend).
+The broker returns `{resource, token_kind, access_token, expires_at}` in the same
+environment-bound envelope. Only the matching resource and a fresh Bearer token
+are accepted for live calls. Provider registration, MSAL, consent, refresh tokens
+and provider claim mapping remain inside the auth service; new provider adapters
+implement this contract without changing PlannerTool account linking.
 
 `POST /api/auth/links/begin` accepts only `{account_id}` from an authenticated
 administrator and starts the existing browser-bound proof flow. Completion
 requires the same still-valid approving session, current admin permission and
 the verified returning identity. Existing links cannot be reassigned, and an
 account cannot acquire a conflicting second link. Linking never changes local
-permissions or bypasses final-admin deletion protection. There is no email-based
-linking or unlink/reassignment API.
+permissions or bypasses final-admin deletion protection. There is no production
+email-based linking or unlink/reassignment API.
 
 Each login owns a separate local binding and broker grant. Ordinary logout
 revokes only that session/grant, including local revocation during broker outage.
