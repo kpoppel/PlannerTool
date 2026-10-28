@@ -1,105 +1,60 @@
 # Authentication
 
-PlannerTool uses the deployment-selected login adapter and credential policy.
-The authentication service owns its upstream provider, identity verification and token renewal.
-PlannerTool consumes a provider-neutral broker contract, not provider-specific identity claims.
-PlannerTool does not seed demo accounts, require empty storage, install network
-isolation, replace ADO settings, or purge PATs and enrollment records on startup.
+Deployment selects enrollment/PAT or external broker login/delegated ADO credentials.
+PlannerTool owns accounts, permissions and sessions; the broker owns upstream identity
+verification and token renewal. Backend selection remains in **Admin > Data Sources**.
+See [deployment](DEPLOYMENT.md) for manifest configuration.
 
-A deployment may start from a physical copy of server data. Preserve its encryption
-key when copied credentials must remain readable. Changing the deployment login
-source advances the authentication epoch once, invalidating old-source sessions
-without deleting accounts, permissions, saved user data, or stored credentials.
-Subsequent restarts with the same login source do not advance the epoch.
+Revision 44 is the single upgrade from dev: it initializes policy and identity metadata
+and expires pre-policy sessions. Accounts, permissions, PATs, enrollment and user data
+are preserved. Login-source or broker-authority changes advance the policy epoch once;
+unchanged restarts do not. Broker authority is its public URL, mode and protocol.
+Each instance has a distinct protected service secret and exact registered callback.
+Mock links are discarded on authority changes. Intermediate branch schemas are unsupported.
+Startup never seeds accounts, replaces backend settings, purges credentials or installs
+network isolation. Physical copies need the original encryption key to read credentials.
 
-Credential consumers use typed PAT or Bearer credentials from the policy/provider.
-The auth service's `fixture` token type marks fake Bearer authority. The credential
-provider rejects it immediately with HTTP 403 and `ado_credential_unusable`, before
-invoking any ADO fetch or SDK connection. The notification explains that the token
-is fake and no ADO request was sent. Local login and work remain available; an
-existing task snapshot can be returned with the same warning. This decision does
-not prompt for login or replay the operation. Backend and organization configuration
-remain unchanged. Broker mode does not determine credential validity.
+## External Accounts
 
-Verified identities use a trusted broker issuer and opaque subject. A new identity
-gets an unprivileged account, except that the first verified account on a genuinely
-empty live installation becomes administrator. Restrict access during initial setup.
-At first live activation, PlannerTool snapshots existing accounts as eligible for
-one-time email claims. A validated Entra ID token's `email` claim may claim a matching
-eligible account, preserving its UUID, permissions and owned data. Later-created
-accounts are never added to this snapshot. Matching is case-insensitive; a claim
-is consumed permanently and subsequent sign-ins use issuer/subject, not email.
+Identities are keyed by trusted issuer and opaque subject, not email. New identities
+are unprivileged; only the first verified account on genuinely empty live data becomes
+administrator. At first live activation, existing accounts become eligible for one-time,
+case-insensitive claims using the validated ID token's `email` claim. A claim preserves
+the account UUID, permissions and data and is permanently consumed. Later-created
+accounts are ineligible; established identity links never follow email changes.
 
-If Entra omits `email`, PlannerTool creates a separate account with an empty contact
-email. Configuration offers **Existing account email > Link account** while legacy
-accounts remain eligible. The user-confirmed action moves the fresh external identity
-and its saved views/scenarios into the existing account, keeps the destination UUID
-and permissions, ends old source-account sessions and reloads the tool. A data-key
-collision rejects the entire merge rather than overwriting either account's data.
+Without an email claim, the user gets a separate account with empty contact email.
+**Configuration > Existing account email > Link account** can merge it into an eligible
+account, moving views/scenarios, retaining the destination UUID/permissions, ending old
+source sessions and reloading the browser. Data-key collisions roll back the merge.
+This accepted migration policy requires only the entered email, not proof of ownership:
+any signed-in user can claim an eligible administrator account. Restrict the enterprise
+application audience until migration is complete. There is no unlink/reassignment API.
 
-This manual migration claim deliberately requires only the entered email, not proof
-of the old account. Any signed-in Entra user who knows an eligible account's email
-can claim it, including an administrator account. This is an explicitly accepted
-migration policy, not email verification. Restrict the enterprise application's
-audience until migration is complete. Already-linked accounts cannot be claimed or
-reassigned, and changes to an identity's email cannot move an established link.
-
-Mock sign-in deliberately allows entering an existing account email, including an
-administrator's, and reuses that account's UUID, permissions and saved data. The
-broker explicitly marks this sandbox-only assertion; PlannerTool rejects it outside
-mock mode. Unknown mock emails create unprivileged accounts. Never expose this
-impersonation mechanism as production authentication.
-
-Revision 44 is the single upgrade from dev. It initializes authentication policy
-and external identity metadata and expires pre-policy sessions, preserving accounts,
-permissions, PATs, enrollment credentials and user data. Broker metadata is pinned
-to its public URL, upstream mode and protocol; each instance has its own protected
-service secret and exact registered callback. Changing broker authority advances
-the policy epoch and discards mock links before live account claims. Restarts with
-unchanged authority do not advance the epoch. Intermediate branch formats and
-transition journals are not supported.
-
-PlannerTool uses generated browser credentials, not user-chosen passwords or
-email verification. Each installation has independent accounts and credentials.
+Mock sign-in deliberately impersonates an entered email, including administrators,
+preserving existing permissions and data. Its `link_existing_by_email` assertion is
+rejected outside mock mode. Unknown emails create unprivileged accounts. Never expose
+mock authentication as production authentication.
 
 ## Local Access and Remote Authority
 
-PlannerTool accounts and permissions govern application access until account
-removal by an administrator. Browser sessions still expire under the existing
-PlannerTool rules. Reuse that expiry mechanism without adding an Entra-specific
-application timeout or periodic directory-disablement checks.
+Local accounts, permissions and normal session expiry govern application access;
+Entra disablement is not polled. Local offboarding remains an administrator's task.
+ADO denial, grant expiry/revocation and broker outages do not end a valid local session.
+New login still requires the broker; expired local sessions cannot read cached data.
 
-Entra governs delegated ADO authority separately. ADO denial, expired credentials,
-interaction requirements or broker unavailability must not invalidate an otherwise
-valid PlannerTool session. Authorized cached/local work remains available; remote
-operations report their failure without borrowing credentials or changing mode.
-New Entra sign-in still needs the broker, and an expired application session cannot
-use cached data merely because the account still exists.
+Credentials are acquired/renewed only for active-user remote work, including running
+jobs, never on an idle timer or profile read. Issuer expiry and tenant/MSAL outcomes
+govern remote enforcement; an expected one-hour token lifetime is not a disablement bound.
+`fixture` tokens are rejected before any ADO/wiki request with `ado_credential_unusable`.
+They do not change login, backend settings or permissions and do not trigger recovery.
 
-Acquire/refresh ADO credentials on demand for active-user remote work, including
-renewal during an already-running user job. Do not keep idle credentials alive
-with scheduled refresh. Local/profile reads do not request an ADO token. Honor
-issuer-provided token expiry; the expected one-hour IT setting is not a hardcoded
-PlannerTool timer or a guaranteed disabled-account revocation bound. Renewal and
-remote enforcement depend on tenant policy and MSAL outcomes. Local offboarding
-remains an administrator's task.
-
-Expired or revoked local broker grants now report `interaction_required` without
-deleting the PlannerTool session. Local account removal, logout, source/epoch
-changes, invalid bindings and the existing idle/absolute session limits still
-invalidate application access. `/api/auth/me` retains the local account and never
-acquires an ADO token; known local grant expiry/revocation needs no broker request.
-
-If credential acquisition for `GET /api/tasks` reports `interaction_required`,
-`access_denied`, `auth_unavailable` or `ado_credential_unusable`, the API can return the existing complete
-snapshot with HTTP 200 and the corresponding warning in `X-Backend-Diagnostics`.
-This cache-only read neither starts remote work nor acquires another credential.
-An empty snapshot is valid. If project configuration has changed, the last complete
-snapshot remains readable with an additional configuration-change warning; it is
-not treated as current configuration data for live reads or refreshes. A missing
-snapshot preserves the original remote failure. Invalid sessions and configuration
-errors do not enter this path. Writes and explicit remote refreshes remain
-credential-gated, with no automatic write replay after recovery.
+For `interaction_required`, `access_denied`, `auth_unavailable` or `ado_credential_unusable`,
+`GET /api/tasks` can return the existing complete snapshot with HTTP 200 and a warning
+in `X-Backend-Diagnostics`, without starting remote work. Empty snapshots are valid;
+configuration changes add a warning. Missing snapshots preserve the original error.
+Invalid sessions/configuration errors never use this path. Writes and explicit remote
+refreshes remain credential-gated.
 
 ## Enrollment and rollout
 
@@ -179,90 +134,40 @@ Enrollment and save-key screens retain a contextual enrollment-help link.
 
 ### Deployment Authentication Policy
 
-**Admin > Data Sources** shows an authentication mode selector only for the live
-Azure DevOps backend. PAT remains active in enrollment installations; a connected
-Entra deployment reports Entra as active. The production selector is disabled and
-shows effective mode and broker readiness. Authentication settings are read-only;
-instance administrators cannot override deployment policy through the API.
-Ordinary Save cannot change mode, epoch, sessions or credentials. The panel loads
-effective mode and readiness from `/api/auth/settings`, without acquiring an ADO
-access token.
-
-Manifests require top-level `ado_authentication: disabled|pat|entra` and explicit
-`auth_service` connections for instances that use the shared service. Neither
-`backend` nor `authentication_provider` belongs in the instance manifest. Backend
-selection comes from the instance's persisted Admin > Data Sources configuration.
-The generator derives login wiring from the connection and deployment credential
-policy: connected instances use Entra login under `entra`; otherwise enrollment
-remains active. An Entra login can use a local backend without changing source,
-epoch or sessions. Under PAT/enrollment, the application does not initialize a
-broker login adapter or expose staged login and linking workflows.
-
-Generated `PLANNER_ADO_AUTHENTICATION` constrains remote authority, not backend
-selection. `disabled` rejects live ADO and remote wiki configuration; `entra`
-requires a connected Entra login for either remote transport. These checks cover
-startup, settings and import. Mock auth does not restrict backend selection;
-fake credentials cannot enter live ADO transport. Regenerate deployments that previously set
-`PLANNER_INSTANCE_BACKEND`; that duplicated backend setting is no longer accepted.
-
-Mock upstreams can use the server's real DNS hostname over HTTPS. Set top-level
-`https_hostname` and the matching auth-service `public_url` in the deployment
-manifest. Caddy terminates TLS; application/broker traffic uses private Compose
-service addresses. PlannerTool has no mock-specific network sandbox. HTTP is
-allowed only for explicit localhost callbacks. Mock sign-in accepts an account
-email and impersonates that local account, not production authentication. Restrict access to copied data
-and retain the deployment's encryption key; never expose a mock-login deployment
-as production authentication.
-
-Logical backup excludes active authentication policy, PATs, enrollment keys,
-devices, sessions, external links and grants. Imported
-credential-bearing backups are rejected before writes. Restored enrollment
-accounts receive fresh unknown key hashes and no devices, preventing public
-claiming of privileged accounts; use an explicit operator reset to issue fresh
-keys. Entra account replacement is rejected to preserve the destination's proven
-admin links. Physical backups can still contain old credentials and require
-separate offline recovery and revocation review.
+The manifest requires `ado_authentication: disabled|pat|entra`. Connected instances
+use broker login under `entra`; other instances retain enrollment. Generated
+`PLANNER_ADO_AUTHENTICATION` rejects live ADO/wiki configuration when disabled or
+when Entra is required but disconnected, at startup, save and import. Backend saves
+cannot change mode, epoch, sessions or credentials. Per-instance `backend`,
+`authentication_provider` and generated `PLANNER_INSTANCE_BACKEND` are unsupported.
 
 ### External Identity and Delegated Credentials
 
-The authenticated broker protocol binds each message to public URL, mode and
-protocol version. Login redemption returns `{identity: {issuer, subject, name,
-email?}, grant, expires_at}`; resource `ado` token requests return `{resource,
-token_kind, access_token, expires_at}`. PlannerTool hashes the structured
-issuer/subject pair and never decodes provider tokens. Internal account lookup
-keys end in `@identity.invalid`; contact details come from the identity link.
-The optional `link_existing_by_email` assertion is mock-only.
+Broker messages bind public URL, mode and protocol. Redemption returns
+`{identity: {issuer, subject, name, email?}, grant, expires_at}`; `ado` token requests
+return `{resource, token_kind, access_token, expires_at}`. PlannerTool hashes the
+issuer/subject pair and never decodes provider tokens. Internal lookup addresses
+end in `@identity.invalid`; contact details come from the identity link.
 
-Each login owns a separate binding and encrypted broker grant. Credential
-acquisition checks the acting UUID, session, epoch, broker metadata, resource,
-token kind and expiry. SDK/wiki requests use explicit Basic or Bearer authentication;
-delegated requests renew on demand without retrying ADO denial. Task refresh
-rechecks account/grant/epoch transactionally before publishing its shared snapshot.
-No failure borrows another grant or selects PAT. Deleted accounts cannot renew.
+Each login owns a binding and encrypted grant. Acquisition checks acting UUID,
+session, epoch, authority, resource, token kind and expiry. SDK/wiki authentication
+is explicitly Basic or Bearer; task refresh revalidates authority transactionally
+before publication. Credentials are never borrowed across users or switched to PAT
+on failure; deleted accounts cannot renew.
 
-The live broker owns MSAL authorization-code flow with PKCE, a browser-bound
-`form_post` callback and encrypted persistent token caches. Verified identities
-must match tenant, audience and issuer. Automatic legacy claims use only the
-validated `email` claim, never `preferred_username`. Grants last at most 30 days;
-status requests do not refresh tokens. MSAL caches and refresh tokens never enter
-PlannerTool or browser responses. Registration, consent, Conditional Access and
-real ADO renewal still require tenant-backed acceptance; mock expiry does not
-prove upstream account disablement.
-
-`POST /api/auth/links/claim` accepts `{email}` from a same-origin live broker
-session for the one-way merge described above. There is no unlink or reassignment
-API. Final-admin protection and local permissions remain unchanged.
+The live broker uses MSAL authorization-code flow with PKCE, a browser-bound
+`form_post` callback and encrypted persistent caches. Verified tenant, audience and
+issuer must match; automatic claims use `email`, never `preferred_username`. Grants
+last at most 30 days. Status does not refresh tokens; caches/refresh tokens never
+enter PlannerTool or the browser. Real registration, consent, Conditional Access
+and ADO renewal require tenant-backed acceptance, not mock tests.
 
 ### Frontend Adapter Contract
 
-Discovery initializes one shared broker client for planner and administration;
-PAT/local installations retain their enrollment controls and separate PAT editor.
-The client exposes `status`, `signIn`, `recover`, `handleDecision`, `linkAccount`,
-`logout`, state and subscriptions. Broker capabilities hide PAT editing, device/key
-management, manual account creation and self-deletion. Test fixtures are not
-shipped with application assets.
-
-PlannerTool HTTP routes are relative to the instance API URL, including its subpath:
+Planner and administration share one discovered broker client. PAT/local mode keeps
+enrollment and PAT controls; broker capabilities hide those, device/key management,
+manual account creation and self-deletion. Routes below are relative to the instance
+API URL, including its subpath:
 
 | Operation | Request | Successful response |
 | --- | --- | --- |
@@ -270,32 +175,22 @@ PlannerTool HTTP routes are relative to the instance API URL, including its subp
 | Common profile/status | `GET /auth/me` | Client state, including UUID profile or `account: null`; no ADO token acquisition |
 | Begin sign-in/reauthentication | `POST /auth/login/begin` | Browser transaction passed to the injected login presenter |
 | Browser callback | `GET /auth/login/callback` | Redeems the bound handoff and notifies the opener |
-| Explicit completion | `POST /auth/login/complete` | Redeems `{state, code}` with the login cookie; not used by the popup client |
-| Deployment policy | `GET /auth/settings` | Read-only policy and broker readiness; administrator only |
 | Existing account claim | `POST /auth/links/claim` | Updated profile after the one-way merge |
 | Instance logout | `POST /auth/logout` | Signed-out client state |
 
-Profiles include locally owned `permissions`. Logout revokes only the current
-session/grant, not other sessions, instances or corporate SSO. If broker cleanup
-fails, local revocation still completes and `revocation_pending` triggers a
-one-time browser notice. The remote grant expires within its TTL.
+Sign-in uses a popup and a bound `app`/`admin` return target, never an arbitrary URL.
+Only the callback redeems the handoff. Its CSP-protected message contains instance,
+state and error/success; the opener checks origin, window, instance and state, then
+reads the profile. Closing/cancelling does not authenticate. Without an opener, the
+callback returns to the fixed instance-local destination.
 
-Sign-in opens a user-initiated popup. `X-Planner-Login-Target` accepts only `app`
-or `admin` for this composition; the server records that target with the bound
-transaction. The callback alone redeems the handoff and sends a CSP-protected
-completion message containing only instance, state and error/success. The opener
-checks its exact origin, window, instance and state, then reads status; it never
-redeems the same code again. Without an opener, the callback returns to a fixed
-instance-local app/admin destination. Closing/cancelling the popup does not
-authenticate a user.
+Profiles expose local permissions, not credentials. Discovery is local; profiles
+never acquire ADO tokens and may report `unavailable` without losing identity.
+Logout revokes the current session/grant, not other sessions/instances or corporate
+SSO. Local revocation survives broker failure; `revocation_pending` produces a
+one-time notice. Browser requests use same-origin cookies, never tokens or grants.
 
-Discovery does not contact the broker. Profiles require broker mode and a string
-account UUID, and can report `unavailable` without losing local identity or admin
-access. Enrollment profiles read PAT presence/rejection metadata without acquiring
-or decrypting a credential. Browser requests use same-origin cookies; no token or
-grant is acquired, stored, logged or attached by the client.
-
-Failures use `{error: code}` with these frozen frontend decisions:
+Failures use `{error: code}`:
 
 | HTTP | Code | Permitted recovery |
 | --- | --- | --- |
@@ -306,13 +201,12 @@ Failures use `{error: code}` with these frozen frontend decisions:
 | 503 | `auth_unavailable`, `auth_configuration_error` | None; retry later or repair configuration |
 | 403 | `pat_required`, `pat_invalid` | Explicit PAT repair in a PAT-capable composition only |
 
-Unknown or mismatched decisions fail closed. Recovery is single-flight and scoped
-to the instance, source and current UUID. Same-account repair preserves drafts;
-changed or previously unknown identity clears browser data and reloads before
-publishing it. Old in-flight responses and late login completions are rejected.
-Enrollment uses the same clear/reload boundary for changed email and re-reads the
-profile after interactive enrollment. Authenticated non-admins receive 403 rather
-than a login loop. Sessions remain bound to account UUID, source and policy epoch.
+Unknown/mismatched decisions fail closed. Recovery is single-flight per client.
+Same-account repair preserves drafts; changed/previously unknown identity clears
+browser data and reloads. Stale responses and late login completions are rejected.
+Enrollment applies the same boundary for changed email. Only GET/HEAD can replay
+automatically, once after session recovery for the same account; `{safeRead: false}`
+disables that too. Writes, backend denials and observer errors never replay.
 
 PATs are required only when the live Azure DevOps backend is selected. Enrollment
 and User Management require a PAT for each new live-ADO account. Selecting live
@@ -347,36 +241,16 @@ report credential failures only to the initiating account. Another user's valid
 credential is never borrowed. PATs are encrypted at rest, entered in masked
 fields, and never persisted in browser preferences or exposed in error messages.
 
-## Authentication boundaries
+## Code Ownership
 
-Deployment selects enrollment/PAT or external broker login/delegated credentials.
-
-| Boundary | Current owner and contract |
-| --- | --- |
-| Login and profile | `EnrollmentLoginAdapter` delegates enrollment, remembered-browser renewal, device/key management and profile projection to `AuthManager`. `EnrollmentSessionBinding` owns the persisted device binding used by session validation. |
-| Identity and permissions | `SessionManager` persists hashed session IDs under `auth_sessions`; `get_session_context_from_request` resolves account UUID, email and device ID once per request. Permission checks remain request-scoped. No backend token belongs in this identity. |
-| Remote credentials | `get_session_credential_from_request` and repositories use the selected `PatCredentialPolicy` or `DelegatedCredentialProvider` with the session UUID. Local/static/mock consumers do not request user credentials. |
-| PAT policy and storage | `PatCredentialPolicy` selects the current requirement and handles credential rejection. `AccountManager` owns PAT validation, encryption, save and token-comparison rejection, so a failed operation cannot reject a replacement PAT. |
-| Wire authentication | `planner_lib/azure/authentication.py` selects Basic or Bearer authentication for SDK and wiki clients from explicit `BackendCredential.kind`, without inferring kind from token syntax. |
-| Backend failures | `BackendAuthError` retains operation credential/status context until the HTTP boundary in `main.py` maps it through the selected policy to existing public errors. Existing PAT 401/403 classification is unchanged. |
-| Browser recovery | Both REST providers compose `createAuthRecovery` from `authRecovery.js`. `RestProviderBase` invokes injected callbacks, without importing enrollment or PAT dialogs. Injected clients share source/account-scoped recovery; PAT repair is notification-driven. |
-
-PAT-specific public endpoints and UI may still use `pat_required`, `pat_invalid`
-and PAT fields. Logical backup/restore and migrations also handle PATs explicitly;
-they are persistence owners, not alternative live credential acquisition paths.
-Wiki access can target an organization independently of the work-item backend.
-
-Automatic session and network replay is restricted to GET/HEAD reads. An operation
-can prohibit even read replay with `{safeRead: false}`; this option is stripped
-before fetch. POST, PUT, PATCH and DELETE are never automatically replayed, even
-after successful repair or an ambiguous network failure. Response/notification
-observer errors cannot replay a completed operation. Original failure bodies and
-partial-success results remain available for explicit reconciliation/resubmission.
-PAT 403 repair and backend interaction/denial/outage never replay requests.
-
-The login adapter establishes identity and issues a local session; the credential
-provider supplies typed delegated ADO authority independently. Login-source changes
-do not remove PATs. An arbitrary OIDC identity token is not an Azure DevOps access token.
+`EnrollmentLoginAdapter`/`BrokerLoginAdapter` establish identity; `SessionManager`
+validates UUID, source, epoch and device/binding once per request. Remote consumers
+use `PatCredentialPolicy`/`DelegatedCredentialProvider`; local/static/mock work does
+not acquire user credentials. `AccountManager` owns PAT storage and comparison-based
+rejection so failures cannot reject a replacement PAT. Azure authentication selects
+Basic/Bearer by explicit kind, never token syntax. `BackendAuthError` carries the
+operation credential to the central HTTP handler. Both REST providers share
+`createAuthRecovery`; original errors and partial results remain available.
 
 ## Delegated administration
 
@@ -598,47 +472,21 @@ retention management; deletion does not remove shared configuration or Azure dat
 
 ## Backup and restore
 
-The server JSON backup includes an `authentication` section with account IDs,
-enrollment state, display names, account-key hashes, remembered-device hashes
-and expiry dates, and the installation's first-admin bootstrap marker. It does
-not contain plaintext browser credentials or account keys. Backups still
-contain plaintext Azure PATs; protect them as sensitive files.
+Logical backups include the schema revision, not schema state or generation pointers.
+They exclude PATs, account keys, remembered devices, sessions, authentication policy,
+external links and grants. Credential-bearing or incompatible imports are rejected
+before writes; live restore does not migrate historical formats.
 
-Logical backups include a schema revision and never restore the server's schema
-state or generation pointer. Incompatible revisions and unsupported unversioned
-payload contracts are rejected before writes; live restore does not run migrations.
-Filesystem recovery and legacy-layout export are separate offline operations.
+Config, User accounts, Views and Scenarios can be selected independently. Leaving
+**User accounts** unchecked preserves current accounts and credentials. Restored
+enrollment accounts have fresh unknown key hashes and no devices: an operator must
+issue new account keys, including for administrators. Entra account replacement is
+rejected to protect established administrator identity links. Successful restore
+clears active sessions, including config-only restore; rate limits remain in force.
 
-Restore lets administrators independently select Config, User accounts, Views,
-and Scenarios. Leave **User accounts** unchecked to preserve current accounts,
-keys, PATs, permissions, and remembered-browser credentials. Accounts and their
-authentication are included or excluded together, never separately.
-
-Selecting User accounts replaces account authentication records and bootstrap state with the
-snapshot, removing stale destination credentials. Diskcache backup and restore
-run transactionally. All active sessions are cleared
-after a successful restore, including config-only restores. Rate-limit counters
-are not backed up and existing destination counters remain in force.
-
-Browsers whose credentials are present and unexpired in the snapshot can renew
-their sessions. Other browsers require Enrollment with the account key saved at the
-time of the backup. Account restores without a complete authentication section
-or with old recovery-key fields are rejected before writes; create a new backup
-after upgrading rather than restoring a pre-feature account backup. Config-only restores remain
-supported. Backups containing email-owned views or scenarios are also rejected
-before writes; create a new backup after the server-owned upgrade.
-
-Restoring historical authentication state can revive devices revoked since the
-backup, account keys consumed since then, and deleted accounts. Newer saved keys
-may no longer work. The UI warns before confirmation and reports reset guidance
-afterward. Users who cannot enroll, sign in again, or delete their account need
-an administrator to use **Users > Reset access** and provide a replacement key.
-Review device access after a
-restore and use administrator Reset access to revoke all devices and rotate
-the account key for any affected account. Credentials issued after the backup
-are not retained by restore; ensure an administrator has a snapshot-valid
-device or account key before proceeding. If none can authenticate after restore,
-use the operator reset procedure. Historical restore can undo account deletion.
+Physical recovery is separate and may contain old credentials. Preserve the original
+encryption key, isolate recovery and review revocation before exposing it. Logical
+restore cannot revive old devices or keys. See [MIGRATIONS.md](MIGRATIONS.md).
 
 ## Transport and browser protection
 

@@ -77,8 +77,8 @@ class BrokerConfig:
         for name, registration in self.instances.items():
             if not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', name):
                 raise ValueError('Invalid registered instance ID')
-            if set(registration) != {'completion_url', 'secret_file', 'scenario'}:
-                raise ValueError('Registry requires completion_url, secret_file and scenario')
+            if set(registration) != {'completion_url', 'secret_file'}:
+                raise ValueError('Registry requires completion_url and secret_file')
             target = urlsplit(registration['completion_url'])
             if (target.scheme != parsed.scheme or target.netloc != parsed.netloc
                     or target.path != f'/{name}/api/auth/login/callback'
@@ -91,11 +91,6 @@ class BrokerConfig:
             if secret_hash in secret_hashes:
                 raise ValueError('Each instance must have its own service secret')
             secret_hashes.add(secret_hash)
-            if registration['scenario'] not in (
-                    'success', 'cancel', 'expired', 'revoked', 'interaction_required', 'unavailable', 'access_denied'):
-                raise ValueError('Unknown sandbox scenario')
-            if self.mode == 'entra' and registration['scenario'] != 'success':
-                raise ValueError('Live broker prohibits sandbox scenarios')
 
     @classmethod
     def from_env(cls, settings):
@@ -195,8 +190,6 @@ class BrokerStore:
             raise ProtocolError('invalid_challenge')
         if not re.fullmatch(r'[A-Za-z0-9_-]{43,128}', state):
             raise ProtocolError('invalid_state')
-        if registration['scenario'] == 'unavailable':
-            raise ProtocolError('auth_unavailable', 503)
         reference = secrets.token_urlsafe(32)
         expires = self.clock() + TRANSACTION_TTL
         with self.connection() as connection:
@@ -206,7 +199,6 @@ class BrokerStore:
             self.put(connection, reference, 'transaction', owner, expires, {
                 'owner': owner, 'completion': completion, 'challenge': verifier_challenge,
                 'state': state, 'expires': expires, 'browser': None, 'code': None,
-                'scenario': registration['scenario'],
             })
         return reference, expires
 
@@ -220,16 +212,25 @@ class BrokerStore:
                      transaction['expires'], transaction)
         return transaction
 
-    def authorize(self, reference, browser, identity):
+    def authorize(self, reference, browser, identity=None, *, upstream_response=None):
         code = secrets.token_urlsafe(32)
         with self.connection() as connection:
             transaction = self.get(connection, reference, 'transaction')
             if (transaction['browser'] is None
-                    or not hmac.compare_digest(transaction['browser'], digest(browser))):
+                    or not hmac.compare_digest(transaction['browser'], digest(browser))
+                    or (upstream_response is not None and 'upstream_flow' not in transaction)):
                 raise ProtocolError('invalid_browser')
             if transaction['code'] is not None:
                 raise ProtocolError('replay')
-            if identity is None or transaction['scenario'] == 'cancel':
+            if upstream_response is not None:
+                try:
+                    identity, transaction['token_cache'] = self.upstream.complete(
+                        transaction.pop('upstream_flow'), transaction['token_cache'], upstream_response)
+                except ProtocolError as error:
+                    if error.code not in ('cancelled', 'interaction_required'):
+                        raise
+                    identity = None
+            if identity is None:
                 connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
                 return transaction, None
             transaction['code'] = digest(code)
@@ -247,12 +248,11 @@ class BrokerStore:
                     or not hmac.compare_digest(transaction['code'], digest(code))
                     or not hmac.compare_digest(transaction['challenge'], challenge(verifier))):
                 raise ProtocolError('invalid_binding')
-            if transaction['code_expires'] <= self.clock() or transaction['scenario'] == 'expired':
+            if transaction['code_expires'] <= self.clock():
                 raise ProtocolError('expired')
             expires = self.clock() + (LIVE_GRANT_TTL if self.config.mode == 'entra' else GRANT_TTL)
             payload = {'identity': transaction['identity'], 'transaction': reference,
-                       'expires_at': expires, 'revoked': transaction['scenario'] == 'revoked',
-                       'scenario': transaction['scenario']}
+                       'expires_at': expires, 'revoked': False}
             if self.config.mode == 'entra':
                 payload['token_cache'] = transaction['token_cache']
             self.put(connection, grant, 'grant', owner, expires, payload)
@@ -272,16 +272,13 @@ class BrokerStore:
                 self.put(connection, reference, 'grant', owner, payload['expires_at'], payload)
                 return {**self.metadata(), 'status': 'revoked'}
             status = 'expired' if payload['expires_at'] <= self.clock() else (
-                'revoked' if payload['revoked'] else (
-                    'interaction_required' if payload['scenario'] == 'interaction_required' else 'active'))
+                'revoked' if payload['revoked'] else 'active')
             if operation == 'status':
                 return {**self.metadata(), 'status': status, 'expires_at': payload['expires_at']}
             if resource != RESOURCE:
                 raise ProtocolError('invalid_resource', 403)
             if status != 'active':
                 raise ProtocolError('interaction_required', 409)
-            if payload['scenario'] == 'access_denied':
-                raise ProtocolError('access_denied', 403)
             if self.config.mode == 'entra':
                 token, expires, cache = self.upstream.token(payload['token_cache'])
                 payload['token_cache'] = cache

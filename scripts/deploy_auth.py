@@ -195,7 +195,7 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
                 'redirect_uri': expected['ENTRA_REDIRECT_URI'], 'organization': env['ADO_ORGANIZATION'],
             }, 'instances': {instance['name']: {
                 'completion_url': f'{public.scheme}://{public.netloc}/{instance["name"]}/api/auth/login/callback',
-                'secret_file': '/run/secrets/client-' + instance['name'], 'scenario': 'success',
+                'secret_file': '/run/secrets/client-' + instance['name'],
             } for instance in members}}
             for instance in members:
                 if 'auth_client_secret_file' in instance:
@@ -214,7 +214,8 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
         for instance in members:
             registration = registry['instances'][instance['name']]
             callback = f'{public.scheme}://{public.netloc}/{instance["name"]}/api/auth/login/callback'
-            if (registration['completion_url'] != callback
+            if (set(registration) != {'completion_url', 'secret_file'}
+                    or registration['completion_url'] != callback
                     or registration['secret_file'] != '/run/secrets/client-' + instance['name']):
                 raise ValueError('Registry completion or per-instance secret mount mismatch')
             source = str(directory / ('client-' + instance['name'])) if managed else protected_file(base, instance['auth_client_secret_file'])

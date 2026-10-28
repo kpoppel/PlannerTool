@@ -123,13 +123,6 @@ class BrokerClient:
             raise AuthFailure('auth_configuration_error')
         return value
 
-    def ready(self):
-        value = self.request('v1/readiness')
-        if value.get('ready') is not True:
-            raise AuthFailure('auth_unavailable')
-        return value
-
-
 class BrokerLoginAdapter:
     def __init__(self, storage, accounts, sessions, client):
         self.storage = storage
@@ -143,7 +136,6 @@ class BrokerLoginAdapter:
     def begin(self, return_target='app'):
         if return_target not in ('app', 'admin'):
             raise AuthFailure('access_denied', 403)
-        self.client.ready()
         binding = secrets.token_urlsafe(32)
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(32)

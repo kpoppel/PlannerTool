@@ -483,7 +483,7 @@ def sandbox_manifest(tmp_path):
              'instances.json': json.dumps({'version': 1, 'mock_registration': registration,
                  'instances': {name: {
                      'completion_url': f'http://localhost:18880/{name}/api/auth/login/callback',
-                     'secret_file': '/run/secrets/client-' + name, 'scenario': 'success',
+                     'secret_file': '/run/secrets/client-' + name,
                  } for name in ('alpha', 'beta')}})}
     for name, value in files.items():
         path = tmp_path / name
@@ -569,14 +569,22 @@ def test_auth_instances_use_image_command_and_uvicorn_environment(sandbox_manife
     assert not any(value.startswith('UVICORN_') for value in local['environment'])
 
 
-def test_env_mode_conflict_and_registry_mismatch_rejected(sandbox_manifest):
+@pytest.mark.parametrize('defect', ['mode', 'registry'])
+def test_env_mode_conflict_and_registry_mismatch_rejected(sandbox_manifest, defect):
+    import json
     import yaml
     from deploy_auth import load_auth_services
 
     config, services, manifest = sandbox_manifest
-    env_file = manifest.parent / 'registration.env'
-    env_file.write_text(env_file.read_text() + 'ENTRA_AUTH_MODE=entra\n')
-    with pytest.raises(ValueError, match='contradicts'):
+    if defect == 'mode':
+        env_file = manifest.parent / 'registration.env'
+        env_file.write_text(env_file.read_text() + 'ENTRA_AUTH_MODE=entra\n')
+    else:
+        registry_file = manifest.parent / 'instances.json'
+        registry = json.loads(registry_file.read_text())
+        registry['instances']['alpha']['scenario'] = 'success'
+        registry_file.write_text(json.dumps(registry))
+    with pytest.raises(ValueError, match='contradicts|Registry'):
         load_auth_services(yaml.safe_load(manifest.read_text()), manifest, None)
 
 

@@ -83,17 +83,15 @@ on the server immediately before restore. Selective restore retains the backup's
 schema revision; removing categories does not bypass this requirement.
 
 All categories, including **User accounts**, are checked by default. Uncheck **User accounts** to preserve current accounts,
-PATs, keys, permissions, and remembered-browser credentials. Accounts and their
-authentication are restored together. All successful restores clear active
-sessions; a valid remembered browser can renew access automatically.
+PATs, keys, permissions, and remembered-browser credentials. Logical backups exclude
+credentials, devices, sessions and broker authority; credential-bearing imports are
+rejected. All successful restores clear active sessions.
 
-When restoring User accounts, read the warning before confirming: account keys
-may revert to older keys, newer keys may stop working, revoked browsers may
-regain access, and deleted accounts may return. Users who cannot enroll, sign in
-again, or delete their accounts may need **Users > Reset access** and a replacement
-account key. Ensure an administrator can authenticate using snapshot-valid
-credentials before continuing. If no administrator can sign in afterward, ask
-the installation operator to reset access. Retained backups can undo deletion.
+Restored enrollment accounts require fresh operator-issued keys, including for
+administrators; old keys and browsers cannot regain access from a logical backup.
+Arrange operator access before restoring accounts. Entra account replacement is
+rejected to preserve established identity links. Physical recovery is separate and
+requires the original encryption key and a revocation review.
 
 ## Cache Cleanup
 

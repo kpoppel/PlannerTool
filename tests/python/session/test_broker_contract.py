@@ -14,8 +14,12 @@ from planner_lib.session.broker import BrokerClient, BrokerSettings, AuthFailure
 
 pytestmark = pytest.mark.real_auth
 CONTRACT = json.loads((Path(__file__).resolve().parents[3] / 'entra-id' / 'protocol-v1.json').read_text())
-SANDBOX_TENANT = '11111111-1111-1111-1111-111111111111'
 BROKER_ISSUER = 'https://auth.example.test'
+
+
+def complete_login(client, state):
+    response = client.get('/api/auth/login/callback', params={'state': state, 'code': 'code'})
+    return client.get('/api/auth/me') if response.status_code == 200 else response
 
 
 def test_broker_settings_require_no_environment_or_generation(monkeypatch, tmp_path):
@@ -78,10 +82,6 @@ def sandbox(monkeypatch, tmp_path, request):
         assert request.headers['authorization'] == 'Bearer ' + secret_file.read_text()
         requests.append(request)
         metadata = settings.metadata()
-        if request.url.path.endswith('/readiness'):
-            return httpx.Response(200, json={**metadata, 'ready': True, 'live_capable': False,
-                'instances': ['alpha'], 'completion_urls': {'alpha': settings.completion_url},
-                'tenant': SANDBOX_TENANT, 'organization': 'example'})
         payload = json.loads(request.content)
         assert all(payload[key] == value for key, value in metadata.items())
         if request.url.path.endswith('/begin'):
@@ -155,8 +155,6 @@ def prepare_live_accounts(client, identity):
 
     def transport(request):
         metadata = settings.metadata()
-        if request.url.path.endswith('/readiness'):
-            return httpx.Response(200, json={**metadata, 'ready': True, 'live_capable': True})
         payload = json.loads(request.content)
         if request.url.path.endswith('/begin'):
             value = {'transaction': 'live-transaction', 'expires_at': time.time() + 300,
@@ -200,7 +198,7 @@ def test_missing_email_manual_claim_moves_owned_data_and_rotates_session(sandbox
         'subject': 'missing-email-subject', 'name': 'Live User'})
     destination = login.accounts.get_account_id('alex@example.test')
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    signed_in = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    signed_in = complete_login(client, state)
     assert signed_in.status_code == 200
     source = signed_in.json()['account']['uuid']
     assert source != destination
@@ -377,7 +375,7 @@ def test_new_entra_identity_can_sign_in_with_live_ado_without_pat(sandbox, monke
 
     state = client.post('/api/auth/login/begin', headers={
         'Origin': 'http://localhost:8765'}).json()['state']
-    response = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    response = complete_login(client, state)
 
     assert response.status_code == 200
     profile = response.json()
@@ -419,7 +417,7 @@ def test_sandbox_login_profile_logout_and_disabled_enrollment(sandbox):
     assert 'HttpOnly' in begin.headers['set-cookie']
     assert ('Secure' in begin.headers['set-cookie']) == (client.base_url.scheme == 'https')
     state = begin.json()['state']
-    completed = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    completed = complete_login(client, state)
     assert completed.status_code == 200
     assert completed.json()['account']['email'] == 'alex@example.test'
     for key, value in CONTRACT['profile'].items():
@@ -429,7 +427,7 @@ def test_sandbox_login_profile_logout_and_disabled_enrollment(sandbox):
     assert client.get('/api/auth/me').json()['account']['uuid']
     assert len(requests) == before_profile + 1
     assert requests[-1].url.path.endswith('/status')
-    assert client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).status_code == 401
+    assert complete_login(client, state).status_code == 401
     assert client.post('/api/auth/logout').json()['account'] is None
     assert client.get('/api/auth/me').json()['account'] is None
 
@@ -448,9 +446,7 @@ def test_popup_callback_consumes_once_and_exposes_only_bound_completion(sandbox)
     assert 'opaque-server-only-grant' not in response.text
     assert "script-src 'nonce-" in response.headers['content-security-policy']
     assert client.get('/api/auth/me').json()['account']['email'] == 'alex@example.test'
-    assert client.post('/api/auth/login/complete', json={
-        'state': begun['state'], 'code': 'code',
-    }).status_code == 401
+    assert complete_login(client, begun['state']).status_code == 401
     assert sum(request.url.path.endswith('/redeem') for request in requests) == 1
 
 
@@ -500,7 +496,7 @@ def test_authenticated_non_admin_is_denied_without_session_expiry(sandbox):
 
     broker.transport = httpx.MockTransport(sam)
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    assert client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).status_code == 200
+    assert complete_login(client, state).status_code == 200
     assert client.get('/admin/check').status_code == 403
     assert client.get('/api/auth/me').json()['account']['email'] == 'sam@example.test'
 
@@ -510,15 +506,15 @@ def test_completion_wrong_browser_fails_without_consuming_transaction(sandbox):
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
     binding = client.cookies.get('plannerLogin')
     client.cookies.clear()
-    assert client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).status_code == 401
+    assert complete_login(client, state).status_code == 401
     client.cookies.set('plannerLogin', binding, path='/api/auth/')
-    assert client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).status_code == 200
+    assert complete_login(client, state).status_code == 200
 
 
 def test_logout_commits_local_revocation_when_broker_is_unavailable(sandbox):
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    assert client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).status_code == 200
+    assert complete_login(client, state).status_code == 200
     from planner_lib.middleware.session import SESSION_COOKIE
     sid = client.cookies.get(SESSION_COOKIE)
     sessions = client.app.state.container.get('session_manager')
@@ -547,7 +543,7 @@ def test_remote_grant_expiry_preserves_local_routes_and_requires_ado_reauthentic
 
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
+    profile = complete_login(client, state).json()
     container = client.app.state.container
     sessions = container.get('session_manager')
     sid = client.cookies.get(SESSION_COOKIE)
@@ -608,9 +604,9 @@ def test_completion_translates_typed_broker_failures(
         return httpx.Response(status, json={'error': code})
 
     broker.transport = httpx.MockTransport(failure)
-    response = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    response = complete_login(client, state)
     assert response.status_code == expected_status
-    assert response.json() == {'error': expected_code}
+    assert '"error": "' + expected_code + '"' in response.text
     assert len(calls) == 1
 
 
@@ -620,7 +616,7 @@ def test_fake_token_is_reported_at_acquisition_before_ado_fetch(sandbox, monkeyp
     client, requests = sandbox
     set_broker_token_kind(client, 'fixture')
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    complete_login(client, state)
     monkeypatch.setattr(AzureClient, '_connect_with_authentication',
                         lambda *arguments: pytest.fail('Fake token reached the ADO SDK'))
     response = client.get('/api/azure/projects', params={'org_url': 'copied-projects'})
@@ -671,7 +667,7 @@ def test_delegated_provider_requires_exact_session_and_revokes_locally(sandbox):
     from planner_lib.middleware.session import current_session_context, SESSION_COOKIE
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
+    profile = complete_login(client, state).json()
     provider = client.app.state.container.get('credential_provider')
     context = client.app.state.container.get('session_manager').get(client.cookies.get(SESSION_COOKIE))
     token = current_session_context.set(context)
@@ -697,7 +693,7 @@ def test_credential_transport_follows_token_type_not_auth_service_mode(sandbox, 
 
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    complete_login(client, state)
     container = client.app.state.container
     set_broker_token_kind(client, token_kind)
     context = container.get('session_manager').get(client.cookies.get(SESSION_COOKIE))
@@ -715,7 +711,7 @@ def test_credential_transport_follows_token_type_not_auth_service_mode(sandbox, 
 def test_delegated_operation_uses_bound_credential_without_disclosure(sandbox):
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
+    profile = complete_login(client, state).json()
     result = client.post('/api/auth/sandbox/operation')
     assert result.status_code == 200
     assert result.json() == {'account_id': profile['account']['uuid'], 'transport': 'live', 'status': 'completed'}
@@ -728,7 +724,7 @@ def test_delegated_acquisition_keeps_denial_interaction_and_outage_distinct(sand
     from planner_lib.middleware.session import current_session_context, SESSION_COOKIE
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    profile = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'}).json()
+    profile = complete_login(client, state).json()
     context = client.app.state.container.get('session_manager').get(client.cookies.get(SESSION_COOKIE))
     provider = client.app.state.container.get('credential_provider')
     broker = client.app.state.container.get('broker_client')
@@ -751,7 +747,7 @@ def test_delegated_token_response_fails_closed(sandbox, change):
     import time
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    complete_login(client, state)
     broker = client.app.state.container.get('broker_client')
     payload = {**broker.settings.metadata(), 'resource': 'ado', 'token_kind': 'fixture',
         'access_token': 'synthetic-token', 'expires_at': time.time() + 300, **change}
@@ -766,7 +762,7 @@ def test_delegated_token_response_fails_closed(sandbox, change):
 def test_delegated_publication_rejects_changed_epoch(sandbox):
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    complete_login(client, state)
     container = client.app.state.container
     storage = container.get('storage')
     binding = next(iter(storage.list_keys('auth_grants')))
@@ -783,7 +779,7 @@ def test_delegated_renewal_rejects_a_deleted_owning_session(sandbox):
     from planner_lib.middleware.session import SESSION_COOKIE
     client, requests = sandbox
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    complete_login(client, state)
     container = client.app.state.container
     sessions = container.get('session_manager')
     sid = client.cookies.get(SESSION_COOKIE)
@@ -796,9 +792,13 @@ def test_delegated_renewal_rejects_a_deleted_owning_session(sandbox):
         provider.renew(credential)
 
 
-def test_login_body_limit(sandbox):
+@pytest.mark.parametrize('params', [
+    {'state': 'tampered', 'code': 'code'},
+    {'state': 'tampered', 'code': 'code', 'error': 'cancelled'},
+])
+def test_invalid_callback_does_not_contact_broker(sandbox, params):
     client, requests = sandbox
-    response = client.post('/api/auth/login/complete', content=b'x' * 16385)
+    response = client.get('/api/auth/login/callback', params=params)
     assert response.status_code == 401
     assert not requests
 
@@ -833,7 +833,7 @@ def test_mock_email_login_reuses_existing_admin_without_changing_permissions(san
     for attempt in range(2):
         state = client.post('/api/auth/login/begin', headers={
             'Origin': 'http://localhost:8765'}).json()['state']
-        response = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+        response = complete_login(client, state)
         assert response.status_code == 200
         assert response.json()['account']['uuid'] == account_id
         assert response.json()['permissions'] == ['admin']
@@ -880,7 +880,7 @@ def test_verified_new_identity_is_provisioned_without_permissions_or_email_linki
     existing_uuid = accounts.get_account_id('alex@example.test')
     broker.transport = httpx.MockTransport(new_identity)
     state = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()['state']
-    response = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+    response = complete_login(client, state)
     assert response.status_code == 200
     assert response.json()['account']['uuid'] != existing_uuid
     assert response.json()['account']['name'] == 'Different Alex'
@@ -897,7 +897,7 @@ def test_cancellation_validates_browser_and_consumes_pending_state(sandbox):
         'state': begin['state'], 'error': 'cancelled'}, follow_redirects=False)
     assert cancelled.status_code == 200
     assert '"error": "cancelled"' in cancelled.text
-    assert client.post('/api/auth/login/complete', json={'state': begin['state'], 'code': 'code'}).status_code == 401
+    assert complete_login(client, begin['state']).status_code == 401
 
 
 def test_entra_rejects_pat_at_account_storage_boundary(sandbox):
@@ -912,22 +912,10 @@ def test_fake_token_is_rejected_before_wiki_operations(sandbox):
     client, requests = sandbox
     set_broker_token_kind(client, 'fixture')
     begun = client.post('/api/auth/login/begin', headers={'Origin': 'http://localhost:8765'}).json()
-    client.post('/api/auth/login/complete', json={'state': begun['state'], 'code': 'code'})
+    complete_login(client, begun['state'])
     response = client.post('/api/auth/sandbox/wiki')
     assert response.status_code == 403
     assert response.json() == {'error': 'ado_credential_unusable'}
     storage = client.app.state.container.get('storage')
     assert not list(storage.list_keys('sandbox_wiki'))
     assert sum(request.url.path.endswith('/token') for request in requests) == 1
-def test_authentication_settings_are_read_only(client):
-    assert client.post('/api/auth/enroll', json={
-        'email': 'staging@example.test', 'name': 'Staging Administrator',
-    }).status_code == 200
-    before = client.get('/api/auth/settings').json()
-    from starlette.exceptions import HTTPException
-
-    with pytest.raises(HTTPException) as error:
-        client.post('/api/auth/settings', json={'selected': 'entra'})
-    assert error.value.status_code == 405
-    assert client.get('/api/auth/settings').json() == before
-    assert client.get('/api/auth/me').status_code == 200

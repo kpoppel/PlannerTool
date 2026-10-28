@@ -103,34 +103,31 @@ class AzureClient:
             raise ValueError("PAT must be a non-empty string")
         return self._connection_context(pat)
 
+    @contextmanager
     def _connection_context(
         self, token: str, *, credential: BackendCredential | None = None,
     ) -> ContextManager["AzureClient"]:
         """Connect with the transport selected by the credential contract and
         yield a connected client for the duration of the context.
         """
-        @contextmanager
-        def _cm():
-            authentication = None
-            try:
-                if credential is not None and credential['kind'] == 'bearer':
-                    authentication = azure_devops_authentication(credential, self._credential_provider)
-                    self._connect_with_authentication(authentication)
-                else:
-                    self._connect_with_pat(token)
-                yield self
-            except Exception as error:
-                from planner_lib.backend.errors import BackendAuthError, classify_ado_exception
-                classified = classify_ado_exception(error)
-                if isinstance(classified, BackendAuthError):
-                    classified.credential = (authentication.credential
-                        if authentication is not None and self._credential_provider is not None else credential)
-                    raise classified from error
-                raise
-            finally:
-                self.close()
-
-        return _cm()
+        authentication = None
+        try:
+            if credential is not None and credential['kind'] == 'bearer':
+                authentication = azure_devops_authentication(credential, self._credential_provider)
+                self._connect_with_authentication(authentication)
+            else:
+                self._connect_with_pat(token)
+            yield self
+        except Exception as error:
+            from planner_lib.backend.errors import BackendAuthError, classify_ado_exception
+            classified = classify_ado_exception(error)
+            if isinstance(classified, BackendAuthError):
+                classified.credential = (authentication.credential
+                    if authentication is not None and self._credential_provider is not None else credential)
+                raise classified from error
+            raise
+        finally:
+            self.close()
 
     def close(self) -> None:
         # clear references; SDK connection has no explicit close

@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from broker import BrokerStore, CODE_TTL, ProtocolError, digest, read_secret
+from broker import BrokerStore, ProtocolError, digest, read_secret
 
 
 BROWSER_COOKIE = 'planner_broker_browser'
@@ -203,37 +203,14 @@ def install_broker(app, settings, config, client_factory):
         if (request.query_params or 'state' not in fields
                 or any(len(values) != 1 for values in fields.values())):
             raise ProtocolError('invalid_request')
-        return await run_in_threadpool(live_callback, request, {
-            key: values[0] for key, values in fields.items()})
+        response = {
+            key: values[0] for key, values in fields.items()}
+        transaction, code = await run_in_threadpool(
+            store.authorize, response['state'], request.cookies.get(BROWSER_COOKIE, ''),
+            upstream_response=response)
+        return completion_redirect(transaction, code)
 
     def completion_redirect(transaction, code=None):
         return RedirectResponse(transaction['completion'] + '?' + urlencode({
             'state': transaction['state'], **({'error': 'cancelled'} if code is None else {'code': code}),
         }), status_code=303)
-
-    def live_callback(request, response):
-        reference = response['state']
-        browser = request.cookies.get(BROWSER_COOKIE, '')
-        with store.connection() as connection:
-            transaction = store.get(connection, reference, 'transaction')
-            if (transaction['browser'] is None
-                    or not hmac.compare_digest(transaction['browser'], digest(browser))
-                    or 'upstream_flow' not in transaction or transaction['code'] is not None):
-                raise ProtocolError('invalid_browser')
-            try:
-                identity, cache = upstream.complete(
-                    transaction['upstream_flow'], transaction['token_cache'], response)
-            except ProtocolError as error:
-                if error.code not in ('cancelled', 'interaction_required'):
-                    raise
-                connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
-                return completion_redirect(transaction)
-            code = secrets.token_urlsafe(32)
-            transaction['identity'] = identity
-            transaction['token_cache'] = cache
-            del transaction['upstream_flow']
-            transaction['code'] = digest(code)
-            transaction['code_expires'] = store.clock() + CODE_TTL
-            store.put(connection, reference, 'transaction', transaction['owner'],
-                      transaction['expires'], transaction)
-        return completion_redirect(transaction, code)

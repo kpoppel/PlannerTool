@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { adminProvider } from '../../www/admin/js/services/providerREST.js';
+import { createMockAuth } from '../helpers/mockAuth.js';
 import '../../www/admin/js/components/admin/DataSources.lit.js';
-async function mount(active = 'enrollment', readiness = 'pat') {
-  vi.spyOn(adminProvider, 'getAuthenticationSettings').mockResolvedValue({ ok: true,
-    data: { active, readiness } });
+async function mount(authentication = null) {
   vi.spyOn(adminProvider, 'getEventsConfig').mockResolvedValue({ ok: true, data: { event_backend: 'local' } });
   vi.spyOn(adminProvider, 'getAdo').mockResolvedValue({ ok: true,
     data: { organization_url: 'example', feature_flags: {} } });
@@ -13,6 +12,7 @@ async function mount(active = 'enrollment', readiness = 'pat') {
     vi.spyOn(adminProvider, method).mockResolvedValue({ ok: true });
   }
   const element = document.createElement('admin-data-sources');
+  element.authentication = authentication;
   document.body.append(element);
   await vi.waitFor(() => expect(element._loading).toBe(false));
   await element.updateComplete;
@@ -51,13 +51,15 @@ describe('Data Sources authentication policy', () => {
       expect(element.shadowRoot.querySelector('#ado-authentication-mode').value).toBe('pat');
     });
 
-  it.each(['ready', 'unavailable'])('shows Entra policy with %s broker', async (readiness) => {
-    const element = await mount('entra', readiness);
+  it.each(['entra_signed_in', 'unavailable'])('shows shared Entra state for %s', async (scenario) => {
+    const element = await mount(createMockAuth(scenario));
     const control = element.shadowRoot.querySelector('#ado-authentication-mode');
     expect(control.value).toBe('entra');
     expect(control.disabled).toBe(true);
-    expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent)
-      .toContain(readiness === 'ready' ? 'service ready' : 'service unavailable');
+    const status = element.shadowRoot.querySelector('auth-status');
+    await status.updateComplete;
+    expect(status.shadowRoot.textContent)
+      .toContain(scenario === 'entra_signed_in' ? 'Connected' : 'Authentication service unavailable');
   });
 
   it('does not save authentication policy with data sources', async () => {
@@ -70,7 +72,7 @@ describe('Data Sources authentication policy', () => {
     for (const [index, method] of ['saveEventsConfig', 'saveGroupsConfig', 'saveAdo', 'saveSystem'].entries()) {
       expect(adminProvider[method].mock.calls[1][0]).toEqual(patPayloads[index]);
     }
-    expect(element.authenticationSettings.activeMode).toBe('pat');
+    expect(element.shadowRoot.querySelector('#ado-authentication-mode').value).toBe('pat');
     expect(element._statusMsg).toBe('Saved.');
   });
 });

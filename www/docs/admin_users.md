@@ -56,10 +56,9 @@ or the installation operator must issue a fresh reset.
 
 See [Account Access](account_access.md) for the account owner's instructions.
 
-Restoring User accounts from a backup can reinstate older keys and browsers,
-invalidate newer keys, or revive deleted accounts. Use Reset access for users
-who cannot enroll, sign in again, or delete their accounts afterward. Ensure
-an administrator has snapshot-valid credentials before restoring accounts.
+Logical account restore excludes credentials and devices; restored enrollment
+accounts need fresh operator-issued keys. Arrange operator access before restore,
+including for administrators. Entra account replacement is rejected.
 Administrator Remove and self-service Delete account both remove the account,
 PAT, owned saved views/scenarios, and authentication. Retained backups and
 offline drafts on other browsers are outside that deletion.

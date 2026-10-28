@@ -14,44 +14,27 @@ Template - do not change :
 ### Fixed
 ---
 ## [v5.2.0] - unreleased
-This version adds EntraID authentication.
-
 ### Added
-- Option to configure EntraID authentication
-- Support mock and live Entra broker authentication with encrypted persistent MSAL caches, browser-bound PKCE handoffs, on-demand delegated ADO renewal and manifest-managed registration secrets. Real-tenant acceptance remains required.
-- Support first-admin bootstrap on empty live installations and one-time email claims for pre-existing accounts, including a Configuration action that merges fresh Entra accounts into existing ownership. Manual migration claims deliberately accept email entry alone and require a restricted migration audience.
-- Add session-owned delegated credentials and explicit SDK/wiki Bearer transport with renewal and revocation-checked task snapshot publication; fixture credentials cannot enter live Azure DevOps transport.
-- Show deployment-controlled PAT / Entra ID selection and readiness in Data Sources without changing authentication through backend configuration saves.
-- Add mode-dependent account controls, broker sign-in, recovery and instance-scoped logout.
-- Option to enable automatic HTTPS in generated multi-instance Docker deployments
-- Guide HTTPS certificate prerequisites during deployment and verify a trusted hostname-matching certificate before reporting HTTPS startup success, with actionable Caddy diagnostics when issuance is not ready.
-- Support private HTTPS deployments with company-supplied certificates or Caddy's internal CA, including public root export and explicit CA trust for startup checks, without public DNS or ACME challenges.
-- Support DNS/HTTPS ingress for shared mock authentication while retaining private broker transport and blocking live ADO.
+- Support external Entra broker login with encrypted persistent MSAL caches, browser-bound PKCE handoffs, on-demand delegated ADO credentials and instance-scoped logout. Real-tenant acceptance remains required.
+- Bootstrap the first administrator on empty live installations and offer one-time claims for existing accounts. Manual claims accept email entry alone, including administrators, and require a restricted migration audience.
+- Support mock broker sign-in that can reuse existing account permissions. Fake credentials are rejected before ADO/wiki calls without ending local sessions or cached access.
+- Add manifest-managed auth registration and per-instance secrets in the existing Compose deployment workflow.
+- Support public ACME, company-supplied TLS or Caddy's internal CA, with public root export, trusted hostname verification and actionable startup diagnostics.
 
 ### Changed
-- Use broker issuer/subject identities and generic sign-in discovery. Mock sign-in can reuse existing account permissions; fake ADO credentials are rejected before remote requests while local sessions and cached tasks remain available.
-- Build and start source-declared PlannerTool instances and the auth service in one generated Compose project, with explicit protected environment-file and project-name options for operators.
-- Use the standard image startup command for auth-connected instances, with proxy and access-log settings supplied through environment variables instead of per-instance command overrides.
-- Make ADO authentication deployment-controlled with read-only instance readiness. Instances without an auth-service connection remain independent of the broker.
-- Exclude PATs, enrollment keys, active login policy and broker authority from logical backups. Account restore requires fresh operator-reset enrollment credentials and cannot replace Entra accounts.
-- Share frontend authentication client contracts and typed recovery across planner and administration.
-- Discover the active login source in planner/admin pages and support broker-backed Entra sign-in, reauthentication and instance logout without PAT or enrollment prompts.
-- Keep backend selection in each instance's admin configuration; deployment manifests specify hosting, auth-service connections and shared credential policy without duplicating backend or login-provider settings.
-- Upgrade from the previous release in one revision-44 authentication migration, preserving accounts, permissions and PATs while expiring pre-policy sessions.
+- Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
+- Share authentication discovery, status and typed recovery across planner and administration; broker mode hides PAT, enrollment and device/key controls.
+- Build/start source-declared app and broker services together, honoring pinned images, protected environment files and project names. Both images receive version and latest tags from the build script.
+- Upgrade from dev in revision 44, preserving accounts, permissions and credentials while expiring pre-policy sessions.
+- Exclude credentials and broker authority from logical backups. Enrollment account restore needs fresh operator-reset keys; Entra accounts cannot be replaced.
+
 ### Fixed
-- Allow first-time Entra sign-in without a PAT when live ADO is configured, and stop claiming an active local session when signed-out authentication fails.
-- Build both PlannerTool and auth-service images with version and latest tags from the build script and explicit deployment build flags, including deployments without source-build services.
-- Keep local updates, including account-key resets and permission changes, independent of PAT validity; centralize credential acquisition and ADO credential errors in the credential policy.
-- Apply changed HTTPS configuration to running Caddy instances before certificate checks, and report internal CA export errors instead of silently waiting on failed copies.
-- Report expired or replayed login handoffs as invalid sessions instead of outages, preserve valid local admin access during broker outages, and disclose pending remote logout cleanup.
-- Preserve valid PlannerTool sessions and cached task access when delegated ADO authority expires or the broker is unavailable, without adding application timeouts or replaying writes; verified in the isolated mock service.
-- Keep the last complete task snapshot readable when remote credentials are unusable and project configuration has changed, with explicit stale-data warnings and no remote requests.
-- Read account-profile PAT status without acquiring or decrypting credentials.
-- Prevent automatic replay of writes after session repair or ambiguous network failures; preserve partial results and discard old-account drafts when recovery changes identity.
-- Keep authenticated administrators' local configuration access available without an Azure DevOps PAT, and make PAT recovery nonblocking and explicitly actionable.
-- Serve local configuration and cached user data when a PAT is invalid; keep live Azure DevOps reads and refreshes gated.
-- Allow saving and deleting local views, scenarios, groups, events and event categories with a missing or invalid PAT; retain credential checks for wiki-backed events.
-- Allow local and mock data operations without loading an Azure DevOps credential, while retaining credential checks for live task and wiki access.
+- Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
+- Preserve the last complete task snapshot across remote failures and configuration changes, with explicit warnings; recheck delegated authority before publishing refreshed data.
+- Prevent automatic write replay, preserve partial results and reject stale responses/drafts after account changes.
+- Report expired/replayed handoffs as invalid sessions and preserve local logout when remote cleanup fails.
+- Read PAT status without acquiring/decrypting credentials; live operations use only the acting account's credential.
+- Reload changed Caddy configuration before TLS checks and fail clearly on nontransient CA export errors.
 
 ## [v5.1.0] - 2026-10-26
 ### Added

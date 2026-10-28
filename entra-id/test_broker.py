@@ -25,7 +25,7 @@ def config(tmp_path):
         'mock', 'http://localhost:8080/auth/',
         str(tmp_path / 'state' / 'broker.sqlite'), Fernet.generate_key().decode(),
         {'alpha': {'completion_url': 'http://localhost:8080/alpha/api/auth/login/callback',
-                   'secret_file': str(secret), 'scenario': 'success'}},
+                   'secret_file': str(secret)}},
     )
 
 
@@ -84,16 +84,6 @@ def test_wrong_browser_and_replay_rejected(config):
     store.authorize(reference, 'browser-one', {})
     with pytest.raises(broker.ProtocolError, match='replay'):
         store.authorize(reference, 'browser-one', {})
-
-
-def test_permission_denial_does_not_revoke_a_session_grant(config):
-    config.instances['alpha']['scenario'] = 'access_denied'
-    store = broker.BrokerStore(config)
-    reference, code, verifier = prepared(store)
-    grant = store.redeem('alpha', reference, code, verifier)['grant']
-    with pytest.raises(broker.ProtocolError, match='access_denied'):
-        store.grant('alpha', grant, 'token', 'ado')
-    assert store.grant('alpha', grant, 'status')['status'] == 'active'
 
 
 def test_store_is_encrypted_and_rejects_key_changes(config):
@@ -357,25 +347,19 @@ def test_grant_owner_and_revocation_token_race(config):
     assert token() == 'interaction_required'
 
 
-@pytest.mark.parametrize('scenario,expected', [
-    ('success', 'active'), ('revoked', 'revoked'), ('interaction_required', 'interaction_required'),
-])
-def test_scenario_status_and_token_decisions(config, scenario, expected):
-    registration = {**config.instances['alpha'], 'scenario': scenario}
-    configured = replace(config, instances={'alpha': registration})
-    store = broker.BrokerStore(configured)
+@pytest.mark.parametrize('expected', ['active', 'revoked', 'expired'])
+def test_grant_lifecycle_status_and_token_decisions(config, expected):
+    store = broker.BrokerStore(config)
     grant = store.redeem('alpha', *prepared(store))['grant']
+    if expected == 'revoked':
+        store.grant('alpha', grant, 'revoke')
+    elif expected == 'expired':
+        expires = store.clock() + broker.GRANT_TTL
+        store.clock = lambda: expires
     assert store.grant('alpha', grant, 'status')['status'] == expected
     if expected != 'active':
         with pytest.raises(broker.ProtocolError, match='interaction_required'):
             store.grant('alpha', grant, 'token', 'ado')
-
-
-def test_unavailable_fixture_cannot_begin(config):
-    registration = {**config.instances['alpha'], 'scenario': 'unavailable'}
-    store = broker.BrokerStore(replace(config, instances={'alpha': registration}))
-    with pytest.raises(broker.ProtocolError, match='auth_unavailable'):
-        prepared(store)
 
 
 @pytest.mark.parametrize('field,value', [

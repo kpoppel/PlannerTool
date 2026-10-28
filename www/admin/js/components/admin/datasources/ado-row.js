@@ -102,7 +102,7 @@ export function renderAdoSubForm(comp, type, errs) {
         <div class="field full" data-authentication-settings>
           <label for="ado-authentication-mode">ADO authentication</label>
           <select id="ado-authentication-mode" class="backend-select"
-            .value=${comp.authenticationSettings.activeMode}
+            .value=${comp.authentication === null ? 'pat' : 'entra'}
             disabled
             aria-describedby="ado-authentication-status"
           >
@@ -110,8 +110,7 @@ export function renderAdoSubForm(comp, type, errs) {
             <option value="entra">Entra ID</option>
           </select>
           <div id="ado-authentication-status" role="status">
-            Active: ${comp.authenticationSettings.activeMode === 'pat' ? 'PAT' : 'Entra ID'}.
-            Deployment controlled. ${comp.authenticationSettings.readiness}
+            Active: ${comp.authentication === null ? 'PAT' : 'Entra ID'}. Deployment controlled.
           </div>
           ${comp.authentication === null ? '' : html`
             <auth-status .authentication=${comp.authentication}></auth-status>`}

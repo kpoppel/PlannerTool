@@ -194,7 +194,6 @@ export class DataSources extends LitElement {
 
   static properties = {
     authentication: { attribute: false },
-    authenticationSettings: { attribute: false },
     _loading:             { type: Boolean, state: true },
 
     // ---- Plan Events (ado_wiki) ----------------------------------------
@@ -257,7 +256,6 @@ export class DataSources extends LitElement {
   constructor() {
     super();
     this.authentication = getAuthentication();
-    this.authenticationSettings = { activeMode: 'pat', readiness: '' };
     this._loading             = false;
 
     // Plan Events
@@ -325,20 +323,6 @@ export class DataSources extends LitElement {
   async _load() {
     this._loading = true;
     try {
-        const result = await adminProvider.getAuthenticationSettings();
-        if (!result.ok) throw new Error('Failed to load deployment authentication policy');
-        const settings = result.data;
-        const readiness = {
-          ready: 'Authentication service ready.',
-          unavailable: 'Authentication service unavailable.',
-          local: 'Local enrollment. No broker required.',
-          pat: 'User-owned PAT credentials.',
-        };
-        if (!Object.hasOwn(readiness, settings.readiness)) throw new Error('Unknown authentication readiness');
-        this.authenticationSettings = {
-          activeMode: settings.active === 'entra' ? 'entra' : 'pat',
-          readiness: readiness[settings.readiness],
-        };
       const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult] = await Promise.all([
         adminProvider.getEventsConfig(),
         adminProvider.getAdo(),

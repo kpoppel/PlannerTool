@@ -60,12 +60,6 @@ async def login_begin(request: Request, response: Response):
     return result
 
 
-class LoginCompletion(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    state: str
-    code: str
-
-
 class LegacyAccountClaim(BaseModel):
     model_config = ConfigDict(extra='forbid')
     email: str
@@ -93,48 +87,6 @@ async def claim_legacy_account(payload: LegacyAccountClaim, request: Request, re
     return login.profile(resolve_service(request, 'session_manager').get(sid))
 
 
-@router.get('/auth/settings')
-@require_admin_session
-async def authentication_settings(request: Request, response: Response):
-    from planner_lib.session.broker import AuthFailure
-
-    response.headers['Cache-Control'] = 'no-store'
-    storage = resolve_service(request, 'storage')
-    policy = storage.load('config', 'authentication')
-    readiness = 'pat' if resolve_service(request, 'account_manager').requires_pat() else 'local'
-    if _is_entra(request):
-        try:
-            resolve_service(request, 'broker_client').ready()
-            readiness = 'ready'
-        except AuthFailure:
-            readiness = 'unavailable'
-    return {**policy, 'deployment_controlled': True, 'readiness': readiness,
-            'live_activation': _is_entra(request)}
-
-
-def _complete_login(request, state, code):
-    from planner_lib.session.broker import LOGIN_COOKIE
-    return _broker_login(request).complete(state, code, request.cookies.get(LOGIN_COOKIE, ''))
-
-
-@router.post('/auth/login/complete')
-async def login_complete(payload: LoginCompletion, request: Request, response: Response):
-    from planner_lib.session.broker import AuthFailure
-    if not _is_entra(request):
-        return JSONResponse({'error': 'access_denied'}, status_code=403)
-    try:
-        sid = _complete_login(request, payload.state, payload.code)
-    except AuthFailure as error:
-        return _auth_failure(error)
-    response.headers['x-set-session-id'] = sid
-    response.headers['Cache-Control'] = 'no-store'
-    context = resolve_service(request, 'session_manager').get(sid)
-    try:
-        return resolve_service(request, 'login_adapter').profile(context)
-    except AuthFailure as error:
-        return _auth_failure(error)
-
-
 @router.get('/auth/login/callback')
 async def login_callback(request: Request):
     from planner_lib.session.broker import AuthFailure, LOGIN_COOKIE
@@ -157,7 +109,8 @@ async def login_callback(request: Request):
         if set(request.query_params) != {'state', 'code'} or len(request.query_params.multi_items()) != 2:
             return JSONResponse({'error': 'invalid_session'}, status_code=401)
         try:
-            sid = _complete_login(request, request.query_params['state'], request.query_params['code'])
+            sid = login.complete(request.query_params['state'], request.query_params['code'],
+                                 request.cookies.get(LOGIN_COOKIE, ''))
         except AuthFailure as error:
             response = _popup_completion(request, pending['state'], target, error.code)
             response.status_code = error.status

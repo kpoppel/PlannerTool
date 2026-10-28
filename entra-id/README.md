@@ -35,6 +35,8 @@ Install this directory's requirements in an activated virtual environment. Expor
 `ENTRA_AUTH_MODE`, `ENTRA_ADO_TRANSPORT`, `ENTRA_BROKER_PUBLIC_URL`,
 `ENTRA_BROKER_KEY_FILE`, `ENTRA_BROKER_STORE` and `ENTRA_BROKER_REGISTRY_FILE`.
 Use the deployment generator for the registry format and per-instance secrets.
+Registry entries contain only `completion_url` and `secret_file`. Regenerate managed
+registries; remove obsolete `scenario` fields from hand-maintained registries.
 
 Run `python app.py`. The listener defaults to loopback; configure its port with
 `ENTRA_LISTEN_PORT`. Direct Python execution does not load an env file. Live mode

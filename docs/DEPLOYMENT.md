@@ -1,44 +1,29 @@
 # Shared Auth Service
 
-Keep the normal operator workflow: define `instances.yml`, retain the installation's
-encryption key, then run `python scripts/deploy.py --apply --start`. The optional
-auth service, your own named PlannerTool instances and Caddy are built and started
-in the **same generated Docker Compose project**.
-
-The manifest owns hosting, routing, storage, auth-service connections and the
-deployment-wide ADO credential policy. Each instance's **Admin > Data Sources**
-owns backend selection. Do not specify per-instance `backend` or
-`authentication_provider` fields; the generator rejects these duplicated choices.
+Define `instances.yml`, retain the installation's encryption key, then run
+`python scripts/deploy.py --apply --start`. PlannerTool, optional shared auth and
+Caddy run in one Compose project. The manifest owns hosting and auth policy;
+**Admin > Data Sources** owns backend selection. Per-instance `backend` and
+`authentication_provider` fields are rejected.
 
 ## Prerequisites
 
-- Mock authentication can impersonate existing accounts. Restrict its audience
-   and never expose it as production authentication. Preserve the installation's
-   encryption key when using copied data.
-- Install Docker Engine, Docker Compose plugin 2.20 or newer, Git and Python 3.13
-   with venv support. Node is not needed on the host; Docker builds the frontend.
-   The deployment account needs permission to use Docker without an interactive
-   privilege prompt.
-- The broker container runs as UID 1000. File-backed Compose secrets preserve
-   host ownership: the deployment account/protected files must be readable by that
-   UID. If your deployment account differs, have the system administrator provision
-   suitable ownership first. Do not make secret files group/world-readable.
-- Make the chosen hostname resolve to this server on client machines and allow
-   TCP 443 to Caddy. Private servers can use company certificates or Caddy's internal
-   CA without public DNS or ACME challenges; public ACME additionally requires
-   public DNS and inbound ports 80/443. See certificate modes below.
-- Activate `.venv` and install `requirements.txt` before running the script. Keep
-   the protected `deployment/.env` containing `PLANNER_SECRET_KEY`. For a new
-   installation, provision that key as described below; never replace a retained
-   installation's encryption key.
+- Docker Engine, Compose plugin 2.20+, Git, Python 3.13 with `.venv` and
+   `requirements.txt`. Docker access must not need interactive privilege escalation.
+   Docker builds the frontend; host Node is unnecessary.
+- Protected files readable by broker UID 1000: directories mode 0700, secrets 0600.
+   Have an administrator provision ownership; do not broaden permissions.
+- Client DNS resolving the chosen hostname and TCP 443 access to Caddy. Public
+   ACME also needs public DNS and ports 80/443; private TLS options are below.
+- A protected `deployment/.env` containing the retained `PLANNER_SECRET_KEY`.
+   Generate a key only for a new installation; copied data needs its original key.
+- Mock sign-in can impersonate administrators. Restrict its audience; never expose
+   it as production authentication. See [authentication](AUTHENTICATION.md).
 
 ## Configure and Start
 
-Start from [docker/instances.example.yml](../docker/instances.example.yml). Keep
-your own instance names and storage/image settings. To connect an instance to the
-shared mock auth service, set `ado_authentication: entra`, add `auth_services` and
-give that instance an `auth_service` reference. Replace the example hostname and
-instance name with yours:
+Start from [docker/instances.example.yml](../docker/instances.example.yml), retaining
+your instance names and storage/image settings. A shared mock example:
 
 ```yaml
 https_hostname: planner.example.test
@@ -59,29 +44,21 @@ instances:
      auth_service: central
 ```
 
-Add as many instances as needed. A connected instance uses Entra login under the
-`entra` credential policy regardless of its admin-selected backend. Unconnected
-instances retain enrollment and local backend access. `pat` retains enrollment;
-`disabled` forbids live ADO and wiki access.
-Under `entra`, an unconnected instance cannot enable live ADO or remote wiki
-transport. Ordinary backend saves never change login mode, epoch or sessions.
-
-Run the same command from the repository root:
+Under `entra`, connected instances use broker login regardless of backend;
+unconnected instances retain enrollment but cannot enable live ADO/wiki.
+`pat` retains enrollment; `disabled` forbids remote ADO/wiki. Backend saves never
+change login mode or sessions. From the repository root:
 
 ```bash
 source .venv/bin/activate
 python scripts/deploy.py --apply --start
 ```
 
-On first `--apply`, the script creates `deployment/.auth/central/` (mode 0700)
-with a generated instance registry, synthetic registration and distinct secrets
-(mode 0600). Dry-run creates no files. Subsequent runs reuse keys and secrets;
-missing retained secrets fail instead of being silently regenerated. The operator
-manifest is never rewritten. Back up this directory with the instance/auth volumes.
-Deploy application, browser assets and broker together. The server applies the
-single revision-44 database upgrade from dev. Intermediate branch deployment
-formats are not supported. Never delete retained volumes or replace secrets as a
-routine deployment step.
+First `--apply` creates `deployment/.auth/central/` with registration, registry and
+distinct secrets. Dry-run writes nothing; later runs reuse authority and fail on
+missing retained secrets. The manifest is never rewritten. Back up protected files
+with all volumes. Deploy app, browser and broker together; startup applies the single
+revision-44 upgrade from dev. Intermediate branch formats are unsupported.
 
 ### Live Entra Registration
 
@@ -90,53 +67,28 @@ Register a single-tenant **Web** application with the exact callback
 `user_impersonation` permission and obtain tenant-required consent. Users need
 their own ADO organization access. Keep implicit grants and public-client flows off.
 
-Set `mode: entra` and use the real tenant/client IDs in `registration`. Add
-`client_secret_file` beneath `registration`, pointing to the secret **value** in a
-mode-0600 file, for example `/etc/plannertool/entra-client-secret`. Do not put that
-value in YAML, shell history, chat or source control. The generator mounts the real
-file rather than generating a live client secret. The existing `organization`
-field is the ADO organization name; select each instance's backend in Admin as usual.
-The live broker needs outbound HTTPS to Microsoft Entra; PlannerTool needs outbound
-HTTPS to ADO. HTTPS/DNS and client trust remain deployment prerequisites.
+Set `mode: entra`, real tenant/client IDs and the ADO organization name in
+`registration`. Add `registration.client_secret_file` pointing to the secret **value**
+in a mode-0600 file, such as `/etc/plannertool/entra-client-secret`. Never put it in
+YAML, history, chat or source control. The generator mounts it, never generates it.
+Allow broker outbound HTTPS to Entra and PlannerTool HTTPS to ADO.
 
-For retained mock configuration, run the migration above after editing the mode and
-registration, then use `python scripts/deploy.py --apply --start`. For a new
-installation, the ordinary deployment command is sufficient. No source changes or
-guard removal are required. The first verified account on empty data becomes admin;
-existing accounts use the one-time email claim policy documented in
-[Authentication](AUTHENTICATION.md). Restrict the initial sign-in audience accordingly.
-Live registration, consent, tenant policy and real ADO renewal are not proven by
-offline tests: verify them with a limited test audience before wider cutover.
-
-Caddy owns the only published ports. The apps and broker communicate on the
-private Compose network. Mock broker egress remains blocked by its fixture-only
-process guard; live mode permits the required upstream HTTPS. Services
-without an explicit image build from the checkout; pinned images remain image-only
-unless `build_from_source: true` is specified.
+Rerun the ordinary deployment command after editing registration. No manual migration
+or source change is required. Restrict initial access: the first verified account on
+empty data becomes admin; existing accounts follow the one-time email claim policy
+in [Authentication](AUTHENTICATION.md). Offline tests do not prove consent, tenant
+policy or real ADO renewal; validate those with a limited audience before cutover.
 
 ## Access From Your Computer
 
-Browse to `https://planner.example.test/planning/`, substituting your hostname and
-instance name. Caddy terminates TLS and redirects HTTP to HTTPS. The manifest's
-`public_url` must match `https_hostname` exactly; callbacks and browser origins are
-bound to that URL. For `internal` mode, first install the exported root certificate
-in the client/browser trust store as described below. No SSH tunnel or localhost callback is required. Plain HTTP is
-supported only for explicit `http://localhost:PORT/auth/` configurations without
-`https_hostname`; these publish a loopback-only port for local testing.
+Browse to `https://planner.example.test/planning/` using your hostname/instance.
+`public_url` must match `https_hostname`; Caddy alone publishes ports and terminates
+TLS. Internal-CA clients must trust the exported root. Apps/broker use private Compose
+DNS. Plain HTTP is limited to explicit `http://localhost:PORT/auth/` loopback ingress.
 
-PlannerTool sign-in opens the shared service. In mock mode, enter an account email;
-existing account permissions can be reused. No demo accounts or planning dataset
-are seeded. In live mode, the service redirects to Entra and requires a configured
-registration and delegated consent. The callback returns to the originating
-instance. Settings, reauthentication, cancellation, different-account recovery and
-logout use the ordinary application. Logout affects only that instance.
-
-**Mock identity selection is not production authentication.** Anyone with access
-can impersonate an existing account, including an administrator. Restrict its
-audience and never expose it as production authentication. Mock credentials are
-rejected before remote ADO/wiki requests; local and cached data remain available.
-Backend selection remains in Admin > Data Sources. Real-tenant acceptance is still
-required before treating the live path as production-verified.
+Mock login accepts an account email without seeding accounts/data; fake credentials
+are rejected before ADO/wiki calls, preserving local/cached work. Live login redirects
+to Entra. Both return to the originating instance; logout affects only that session.
 
 ## Verify and Operate
 
@@ -147,44 +99,16 @@ docker compose --project-directory deployment ps
 curl --fail --silent --show-error https://planner.example.test/auth/v1/readiness
 ```
 
-Expect Caddy, the auth service and your instances in the same project, and readiness
-with the configured `upstream_mode`, `ready: true`, `live_capable: true`. Readiness
-validates local configuration, not consent or connectivity to Microsoft. `--start` waits for
-Compose startup; check HTTP readiness separately as above. If startup fails,
-inspect the same project with `logs --tail 100 auth-central planner-planning caddy`
-(substitute your service names). Never paste secret
-files or unredacted `docker compose config` output into tickets; use
-`config --quiet` for validation.
+Readiness reports local configuration (`ready: true`, expected `upstream_mode`),
+not Microsoft connectivity or consent. `--start` waits for Compose; check HTTP
+separately. Diagnose with `logs --tail 100 auth-central planner-planning caddy`,
+substituting service names. Use `config --quiet`; never publish secrets or unredacted
+Compose configuration.
 
-For updates, retain the manifest, protected files, project name, port and volumes.
-Pull the reviewed branch with `git pull --ff-only`, activate `.venv`, and rerun
-`python scripts/deploy.py --apply --start`. It rebuilds source services and updates
-the shared stack without regenerating identities or keys.
-
-To stop everything while preserving state:
-
-```bash
-docker compose --project-directory deployment stop
-```
-
-To resume, rerun the deployment command. Never use `down -v`, delete the protected
-directory or rotate its keys as a routine restart. Back up the entire protected
-configuration and all project volumes together. Live activation remains a separate
-approved rollout.
-
-# Authentication Manifest Upgrade
-
-Keep top-level `ado_authentication: disabled|pat|entra`. Remove any per-instance
-`backend` and `authentication_provider` fields, keep the desired `auth_service`
-connections, and regenerate using the normal deployment command. Generated
-`PLANNER_INSTANCE_BACKEND` is no longer accepted at startup. Existing admin-selected
-backends are retained; removing duplicated manifest fields does not activate a
-different login source, invalidate sessions or purge credentials.
-
-Adding Entra login uses the deployment manifest, not an ordinary backend save.
-Existing accounts are eligible for the one-time claims described in
-[Authentication](AUTHENTICATION.md). Login-source changes invalidate old sessions
-without deleting accounts or credentials. Real-tenant acceptance remains required.
+For updates, retain manifest, protected files, project name, ports and volumes;
+pull reviewed code and rerun deployment. Stop safely with
+`docker compose --project-directory deployment stop`; resume through deployment.
+Never delete protected files, rotate retained keys or use `down -v` routinely.
 
 # How to deploy the application for production or development
 
