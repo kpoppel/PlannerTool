@@ -98,10 +98,12 @@ If credential acquisition for `GET /api/tasks` reports `interaction_required`,
 `access_denied`, `auth_unavailable` or `ado_credential_unusable`, the API can return the existing complete
 snapshot with HTTP 200 and the corresponding warning in `X-Backend-Diagnostics`.
 This cache-only read neither starts remote work nor acquires another credential.
-An empty snapshot is valid; no snapshot or a changed configuration preserves the
-original remote failure. Invalid sessions and configuration errors do not enter
-this path. Writes and explicit remote refreshes remain credential-gated, with no
-automatic write replay after recovery.
+An empty snapshot is valid. If project configuration has changed, the last complete
+snapshot remains readable with an additional configuration-change warning; it is
+not treated as current configuration data for live reads or refreshes. A missing
+snapshot preserves the original remote failure. Invalid sessions and configuration
+errors do not enter this path. Writes and explicit remote refreshes remain
+credential-gated, with no automatic write replay after recovery.
 
 ## Enrollment and rollout
 

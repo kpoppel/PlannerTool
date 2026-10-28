@@ -41,16 +41,20 @@ class TaskSnapshot:
     def changed(self):
         self._storage.save(NAMESPACE, EPOCH_KEY, uuid4().hex)
 
-    def _cached(self, identity, guard):
+    def _cached(self, identity, guard, *, allow_configuration_change=False):
         with guard(), self._storage.transaction():
             metadata = self._load(META_KEY)
-            if metadata is None or metadata['identity'] != identity():
+            if metadata is None:
                 return None, None
+            if metadata['identity'] != identity():
+                if not allow_configuration_change:
+                    return None, None
+                metadata = dict(metadata, stale_reason='configuration_changed')
             return self._load(SNAPSHOT_KEY), metadata
 
     def read_cached(self, identity, guard):
         self._served.access_error = None
-        tasks, metadata = self._cached(identity, guard)
+        tasks, metadata = self._cached(identity, guard, allow_configuration_change=True)
         self._served.metadata = metadata
         return tasks
 
@@ -189,7 +193,10 @@ class TaskSnapshot:
         stale = metadata['fresh_until'] is not None and time.time() >= metadata['fresh_until']
         status = 'fresh'
         severity = 'info'
-        if updating:
+        if metadata.get('stale_reason') == 'configuration_changed':
+            status = 'configuration changed; showing last complete snapshot'
+            severity = 'warning'
+        elif updating:
             status = 'updating in background; reload later to load updated data'
         elif metadata['error'] is not None:
             status = 'refresh failed; keeping cached data'

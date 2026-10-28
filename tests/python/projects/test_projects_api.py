@@ -274,6 +274,66 @@ def test_tasks_remote_auth_failure_reads_only_existing_cache(authenticated_clien
     provider.get_credential.assert_called_once_with('test-account-id')
 
 
+@pytest.mark.parametrize('configuration_changed', [False, True])
+@pytest.mark.parametrize('code,status', [
+    ('ado_credential_unusable', 403), ('auth_unavailable', 503),
+])
+def test_tasks_remote_auth_failure_serves_real_snapshot(
+    authenticated_client, configuration_changed, code, status,
+):
+    import json
+    from unittest.mock import Mock
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.repository.task_repository import TaskRepository
+    from planner_lib.session.broker import AuthFailure
+    from planner_lib.storage.memory_backend import MemoryStorage
+    from tests.fakes.fake_backend import FakeBackend
+
+    inner = FakeBackend()
+    inner.is_remote = True
+    area = 'Example\\Team'
+    inner.set_tasks(area, [{
+        'id': '1', 'title': 'Cached task', 'type': 'Feature', 'state': 'Active',
+        'project': 'p', 'relations': [], 'capacity': [],
+    }])
+    projects = Mock()
+    projects.get_project_map.return_value = [{'id': '42', 'area_path': area}]
+    provider = Mock()
+    provider.get_credential.side_effect = AuthFailure(code, status)
+    backend = CachingBackend(inner, MemoryStorage())
+    repository = TaskRepository(backend, projects, provider)
+    try:
+        original = repository.read(credential={
+            'kind': 'pat', 'token': 'synthetic', 'user_id': 'test-account-id',
+        })
+        if configuration_changed:
+            projects.get_project_map.return_value = [
+                {'id': '42', 'area_path': 'Example\\Changed'},
+            ]
+        calls = len(inner.fetch_tasks_calls)
+        inner.fetch_task_context = Mock(side_effect=AssertionError('Remote reads must not run'))
+        register_service_on_client(authenticated_client, 'session_manager',
+                                   _make_session_mgr(authenticated_client))
+        register_service_on_client(authenticated_client, 'credential_provider', provider)
+        register_service_on_client(authenticated_client, 'backend', backend)
+        register_service_on_client(authenticated_client, 'task_repository', repository)
+
+        response = authenticated_client.get('/api/tasks?project=42')
+
+        assert response.status_code == 200
+        assert response.json() == original
+        diagnostics = json.loads(response.headers['X-Backend-Diagnostics'])
+        assert any(entry['code'] == code for entry in diagnostics)
+        if configuration_changed:
+            assert any('configuration changed' in entry['message'] for entry in diagnostics)
+        assert len(inner.fetch_tasks_calls) == calls
+        inner.fetch_task_context.assert_not_called()
+        assert backend._task_snapshot._thread is None
+        provider.get_credential.assert_called_once_with('test-account-id')
+    finally:
+        backend.close()
+
+
 def test_tasks_reports_shared_snapshot_freshness(authenticated_client):
     import json
     repository = _make_task_repository()

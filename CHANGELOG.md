@@ -45,6 +45,7 @@ This version adds EntraID authentication.
 - Apply changed HTTPS configuration to running Caddy instances before certificate checks, and report internal CA export errors instead of silently waiting on failed copies.
 - Report expired or replayed login handoffs as invalid sessions instead of outages, preserve valid local admin access during broker outages, and disclose pending remote logout cleanup.
 - Preserve valid PlannerTool sessions and cached task access when delegated ADO authority expires or the broker is unavailable, without adding application timeouts or replaying writes; verified in the isolated mock service.
+- Keep the last complete task snapshot readable when remote credentials are unusable and project configuration has changed, with explicit stale-data warnings and no remote requests.
 - Read account-profile PAT status without acquiring or decrypting credentials.
 - Prevent automatic replay of writes after session repair or ambiguous network failures; preserve partial results and discard old-account drafts when recovery changes identity.
 - Keep authenticated administrators' local configuration access available without an Azure DevOps PAT, and make PAT recovery nonblocking and explicitly actionable.
