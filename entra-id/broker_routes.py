@@ -101,13 +101,6 @@ def install_broker(app, settings, config, client_factory):
         return {**store.metadata(), 'transaction': reference, 'expires_at': expires,
                 'authorization_url': config.public_url + 'v1/browser/authorize?' + urlencode({'transaction': reference})}
 
-    @app.post('/v1/deployment/readiness')
-    async def deployment_readiness(request: Request):
-        owner, payload = await authenticate(request, set())
-        return {**store.metadata(), 'ready': True, 'instances': sorted(config.instances),
-                'completion_urls': {name: value['completion_url'] for name, value in config.instances.items()},
-                'tenant': settings.tenant_id, 'organization': settings.organization}
-
     @app.post('/v1/transactions/redeem')
     async def redeem(request: Request):
         owner, payload = await authenticate(request, {'transaction', 'code', 'verifier'})
@@ -189,60 +182,34 @@ def install_broker(app, settings, config, client_factory):
                         'subject': digest(email),
                         'name': email, 'email': email, 'link_existing_by_email': True}
         browser = request.cookies.get(BROWSER_COOKIE, '')
-        upstream_code = secrets.token_urlsafe(32)
-        with store.connection() as connection:
-            transaction = store.get(connection, reference, 'transaction')
-            if transaction['browser'] is None or not hmac.compare_digest(transaction['browser'], digest(browser)):
-                raise ProtocolError('invalid_browser')
-            store.put(connection, upstream_code, 'upstream', transaction['owner'],
-                      store.clock() + CODE_TTL, {'transaction': reference, 'browser': digest(browser),
-                                                'identity': identity})
-        return RedirectResponse(settings.root_path + '/callback?' + urlencode({
-            'state': reference, 'code': upstream_code}), status_code=303)
+        transaction, code = store.authorize(reference, browser, identity)
+        return completion_redirect(transaction, code)
 
-    @app.api_route('/callback', methods=['GET', 'POST'])
+    @app.post('/callback')
     async def callback(request: Request):
         from urllib.parse import parse_qs
         from starlette.concurrency import run_in_threadpool
 
         throttle(request)
         require_ready()
-        if upstream is not None:
-            if request.method != 'POST':
-                raise ProtocolError('invalid_request', 405)
-            if request.headers.get('content-type', '').split(';')[0] != 'application/x-www-form-urlencoded':
-                raise ProtocolError('invalid_request', 415)
-            try:
-                fields = parse_qs((await request.body()).decode(), keep_blank_values=True, strict_parsing=True)
-            except (ValueError, UnicodeDecodeError) as error:
-                raise ProtocolError('invalid_request') from error
-            if (request.query_params or 'state' not in fields
-                    or any(len(values) != 1 for values in fields.values())):
-                raise ProtocolError('invalid_request')
-            return await run_in_threadpool(live_callback, request, {
-                key: values[0] for key, values in fields.items()})
-        if request.method != 'GET':
-            raise ProtocolError('invalid_request', 405)
-        if (set(request.query_params) != {'state', 'code'}
-                or len(request.query_params.multi_items()) != 2):
+        if upstream is None:
+            raise ProtocolError('unknown_operation', 404)
+        if request.headers.get('content-type', '').split(';')[0] != 'application/x-www-form-urlencoded':
+            raise ProtocolError('invalid_request', 415)
+        try:
+            fields = parse_qs((await request.body()).decode(), keep_blank_values=True, strict_parsing=True)
+        except (ValueError, UnicodeDecodeError) as error:
+            raise ProtocolError('invalid_request') from error
+        if (request.query_params or 'state' not in fields
+                or any(len(values) != 1 for values in fields.values())):
             raise ProtocolError('invalid_request')
-        reference = request.query_params['state']
-        upstream_code = request.query_params['code']
-        browser = request.cookies.get(BROWSER_COOKIE, '')
-        with store.connection() as connection:
-            upstream_record = store.get(connection, upstream_code, 'upstream')
-            if (upstream_record['transaction'] != reference
-                    or not hmac.compare_digest(upstream_record['browser'], digest(browser))):
-                raise ProtocolError('invalid_browser')
-            transaction = store.get(connection, reference, 'transaction')
-            connection.execute('DELETE FROM records WHERE id=?', (digest(upstream_code),))
-            if upstream_record['identity'] is None or transaction['scenario'] == 'cancel':
-                connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
-                return RedirectResponse(transaction['completion'] + '?' + urlencode({
-                    'state': transaction['state'], 'error': 'cancelled'}), status_code=303)
-        transaction, code = store.authorize(reference, browser, upstream_record['identity'])
+        return await run_in_threadpool(live_callback, request, {
+            key: values[0] for key, values in fields.items()})
+
+    def completion_redirect(transaction, code=None):
         return RedirectResponse(transaction['completion'] + '?' + urlencode({
-            'state': transaction['state'], 'code': code}), status_code=303)
+            'state': transaction['state'], **({'error': 'cancelled'} if code is None else {'code': code}),
+        }), status_code=303)
 
     def live_callback(request, response):
         reference = response['state']
@@ -260,8 +227,7 @@ def install_broker(app, settings, config, client_factory):
                 if error.code not in ('cancelled', 'interaction_required'):
                     raise
                 connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
-                return RedirectResponse(transaction['completion'] + '?' + urlencode({
-                    'state': transaction['state'], 'error': 'cancelled'}), status_code=303)
+                return completion_redirect(transaction)
             code = secrets.token_urlsafe(32)
             transaction['identity'] = identity
             transaction['token_cache'] = cache
@@ -270,5 +236,4 @@ def install_broker(app, settings, config, client_factory):
             transaction['code_expires'] = store.clock() + CODE_TTL
             store.put(connection, reference, 'transaction', transaction['owner'],
                       transaction['expires'], transaction)
-        return RedirectResponse(transaction['completion'] + '?' + urlencode({
-            'state': transaction['state'], 'code': code}), status_code=303)
+        return completion_redirect(transaction, code)

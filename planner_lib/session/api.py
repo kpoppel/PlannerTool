@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response, Request
-from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel, ConfigDict
-from typing import Literal
 
 from planner_lib.middleware.session import (
     DEVICE_COOKIE, SESSION_COOKIE, get_session_id_from_request, get_session_context_from_request,
@@ -67,11 +66,6 @@ class LoginCompletion(BaseModel):
     code: str
 
 
-class AuthenticationSelection(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    selected: Literal['enrollment', 'entra']
-
-
 class LegacyAccountClaim(BaseModel):
     model_config = ConfigDict(extra='forbid')
     email: str
@@ -118,29 +112,9 @@ async def authentication_settings(request: Request, response: Response):
             'live_activation': _is_entra(request)}
 
 
-@router.post('/auth/settings')
-@require_admin_session
-async def stage_authentication(payload: AuthenticationSelection, request: Request, response: Response):
-    return JSONResponse({'error': 'deployment_policy_required'}, status_code=409,
-                        headers={'Cache-Control': 'no-store'})
-
-
 def _complete_login(request, state, code):
     from planner_lib.session.broker import LOGIN_COOKIE
     return _broker_login(request).complete(state, code, request.cookies.get(LOGIN_COOKIE, ''))
-
-
-@router.post('/auth/login/redirect')
-async def login_redirect(request: Request):
-    response = Response()
-    result = await login_begin(request, response)
-    if isinstance(result, Response):
-        return result
-    redirect = RedirectResponse(result['authorization_url'], status_code=303)
-    for key, value in response.raw_headers:
-        if key in (b'set-cookie', b'cache-control'):
-            redirect.raw_headers.append((key, value))
-    return redirect
 
 
 @router.post('/auth/login/complete')

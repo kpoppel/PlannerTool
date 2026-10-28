@@ -50,14 +50,12 @@ def write_managed_auth(service, registry, *, apply):
     from cryptography.fernet import Fernet
 
     directory = Path(service['key_file']).parent
-    marker = directory / 'managed.json'
     identity = {key: service[key] for key in ('mode', 'public_url')}
     members = sorted(registry['instances'])
     shared_secrets = {'broker-key'}
     if service['mode'] == 'mock':
         shared_secrets.add('client-secret')
     expected_secrets = shared_secrets | {'client-' + name for name in members}
-    existing_members = set()
     if directory.exists():
         if directory.stat().st_mode & 0o077:
             raise ValueError('Managed authentication directory requires mode 0700')
@@ -110,8 +108,6 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
     for name in referenced:
         if not re.fullmatch(r'[a-z][a-z0-9-]{0,40}', name):
             raise ValueError('Invalid auth service name')
-        if name not in config.get('auth_services', {}):
-            raise ValueError('Unknown auth service reference')
         service = dict(config['auth_services'][name])
         managed = name in managed_services
         required = {'mode', 'public_url', 'volume_source'}
@@ -124,9 +120,8 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
             raise ValueError('Image-only auth services require an explicit image')
         if service['mode'] not in ('mock', 'entra'):
             raise ValueError('Unknown auth service mode')
-        for field in ('volume_source',):
-            if not re.fullmatch(r'[a-z][a-z0-9-]{0,63}', service[field]):
-                raise ValueError('Invalid auth volume name')
+        if not re.fullmatch(r'[a-z][a-z0-9-]{0,63}', service['volume_source']):
+            raise ValueError('Invalid auth volume name')
         public = urlsplit(service['public_url'])
         if (public.path != '/auth/' or public.query or public.fragment or public.username
                 or not public.hostname or public.password):
@@ -234,8 +229,6 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
         if managed:
             write_managed_auth(service, registry, apply=apply)
         services[name] = service
-    if len(services) > 1:
-        raise ValueError('One central /auth/ service per ingress; use a separate sandbox stack')
     return services
 
 
@@ -271,7 +264,6 @@ def add_auth_compose(compose, instances, services, version):
             'image': service.get('image', 'plannertool-auth:' + version),
             'environment': environment,
             'volumes': [service['registry_file'] + ':/app/config/instances.json:ro',
-                        service['env_file'] + ':/app/config/registration.env:ro',
                         service['volume_source'] + ':/app/state'],
             'secrets': [{'source': key_name, 'target': 'broker-key'},
                         {'source': secret_name, 'target': 'entra-secret'}],

@@ -229,6 +229,9 @@ class BrokerStore:
                 raise ProtocolError('invalid_browser')
             if transaction['code'] is not None:
                 raise ProtocolError('replay')
+            if identity is None or transaction['scenario'] == 'cancel':
+                connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
+                return transaction, None
             transaction['code'] = digest(code)
             transaction['identity'] = identity
             transaction['code_expires'] = self.clock() + CODE_TTL

@@ -44,7 +44,7 @@ export function createMockAuth(scenario, options = {}) {
         capabilities: Object.freeze({
           pat: mode === 'pat', enrollment: mode !== 'broker',
           reauthenticate: mode === 'broker' && status === 'interaction_required',
-          logout: signedIn, deleteAccount: signedIn,
+          logout: signedIn, deleteAccount: mode !== 'broker' && signedIn,
         }),
       });
       for (const listener of listeners) listener();
@@ -54,16 +54,9 @@ export function createMockAuth(scenario, options = {}) {
       if (cancelled) return false;
       state = Object.freeze({ ...state, status: 'connected', account,
         capabilities: Object.freeze({ ...state.capabilities,
-          reauthenticate: false, logout: true, deleteAccount: true }) });
+          reauthenticate: false, logout: true }) });
       for (const listener of listeners) listener();
       return true;
-    },
-    async saveSettings({ pat }) {
-      if (state.capabilities.pat && pat !== '') {
-        state = Object.freeze({ ...state, status: 'connected' });
-        for (const listener of listeners) listener();
-      }
-      return { ok: true };
     },
     async logout() {
       state = Object.freeze({ ...state, status: 'signed_out', account: null,
@@ -71,39 +64,27 @@ export function createMockAuth(scenario, options = {}) {
           reauthenticate: false, logout: false, deleteAccount: false }) });
       for (const listener of listeners) listener();
     },
-    async deleteAccount() { await model.logout(); },
   };
   model.select(scenario);
   const select = model.select;
   const signIn = model.signIn;
   const logout = model.logout;
-  const deleteAccount = model.deleteAccount;
   let client;
   const resetClient = () => createAuthClient({
     initialState: model.state,
     instance: 'mock-instance',
     onAccountChanged: options.onAccountChanged === undefined ? async () => {} : options.onAccountChanged,
     adapter: {
-      discover: async () => ({ mode: model.state.mode, capabilities: model.state.capabilities }),
       status: async () => model.state,
       signIn: async outcome => await signIn(outcome) ? model.state : false,
-      completeLogin: async outcome => await signIn(outcome) ? model.state : false,
-      saveSettings: async settings => {
-        const result = await model.saveSettings(settings);
-        await client.status();
-        return result;
-      },
       logout: async () => { await logout(); return model.state; },
-      deleteAccount: async () => { await deleteAccount(); return model.state; },
     },
   });
   client = resetClient();
   model.select = name => { select(name); client = resetClient(); };
   model.signIn = outcome => client.signIn(outcome);
   model.recover = () => client.recover();
-  model.discover = () => client.discover();
   model.status = () => client.status();
-  model.completeLogin = completion => client.completeLogin(completion);
   model.handleDecision = async code => {
     await client.handleDecision(code);
     state = client.state;

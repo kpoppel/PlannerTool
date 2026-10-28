@@ -426,7 +426,8 @@ def test_configuration_rejects_public_sandbox_and_live_transport(config):
 
 
 @pytest.mark.parametrize('origin', ['http://localhost:8080', 'https://planner.example.test'])
-def test_authenticated_browser_handoff_and_replay(config, origin):
+@pytest.mark.parametrize('action', ['sign_in', 'cancel'])
+def test_authenticated_browser_handoff_and_replay(config, origin, action):
     from unittest.mock import Mock
     sys.path.insert(0, str(Path(__file__).parent))
     from app import Settings, create_app
@@ -451,13 +452,6 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
     with TestClient(app, base_url=origin + '/auth/', follow_redirects=False) as client:
         metadata = client.get('/v1/readiness').json()
         envelope = {key: metadata[key] for key in app.state.broker_store.metadata()}
-        assert client.post('/v1/deployment/readiness', json=envelope).status_code == 403
-        deployment = client.post('/v1/deployment/readiness', json=envelope, headers=headers)
-        assert deployment.status_code == 200
-        assert deployment.json()['instances'] == ['alpha']
-        assert deployment.json()['completion_urls']['alpha'] == config.instances['alpha']['completion_url']
-        assert deployment.json()['organization'] == 'example'
-        assert secret not in deployment.text
         verifier = secrets.token_urlsafe(32)
         body = {**envelope, 'completion_url': config.instances['alpha']['completion_url'],
                 'challenge': broker.challenge(verifier), 'state': secrets.token_urlsafe(32)}
@@ -476,13 +470,21 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
                 'transaction': begun['transaction'], 'action': 'sign_in', 'email': invalid_email},
                 headers={'Origin': origin})
             assert invalid.status_code == 400
-        selected = client.post('/v1/browser/choose', data={
-            'transaction': begun['transaction'], 'action': 'sign_in', 'email': ' Admin@Example.Test '},
-                               headers={'Origin': origin})
-        callback_url = origin + selected.headers['location']
-        callback = client.get(callback_url)
-        assert callback.status_code == 303
-        query = parse_qs(urlsplit(callback.headers['location']).query)
+        choice = {'transaction': begun['transaction'], 'action': action, 'email': ' Admin@Example.Test '}
+        browser = client.cookies.get('planner_broker_browser')
+        client.cookies.clear()
+        assert client.post('/v1/browser/choose', data=choice,
+                           headers={'Origin': origin}).status_code == 400
+        client.cookies.set('planner_broker_browser', browser)
+        selected = client.post('/v1/browser/choose', data=choice, headers={'Origin': origin})
+        assert selected.status_code == 303
+        assert selected.headers['location'].startswith(config.instances['alpha']['completion_url'] + '?')
+        query = parse_qs(urlsplit(selected.headers['location']).query)
+        assert client.post('/v1/browser/choose', data=choice,
+                           headers={'Origin': origin}).status_code == 400
+        if action == 'cancel':
+            assert query == {'state': [body['state']], 'error': ['cancelled']}
+            return
         assert set(query) == {'state', 'code'}
         body = {**envelope, 'transaction': begun['transaction'], 'code': query['code'][0], 'verifier': verifier}
         response = client.post('/v1/transactions/redeem', json=body, headers=headers)
@@ -492,5 +494,4 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
             'name': 'admin@example.test', 'email': 'admin@example.test',
             'link_existing_by_email': True}
         assert client.post('/v1/transactions/redeem', json=body, headers=headers).status_code == 400
-        assert client.get(callback_url).status_code == 400
         client_factory.assert_not_called()

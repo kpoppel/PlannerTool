@@ -70,19 +70,19 @@ class TestMissingConfig:
             b.fetch_events(credential=None)
 
 
-def test_wiki_connection_uses_shared_pat_authentication_builder():
+def test_wiki_connection_uses_shared_authentication_builder():
     backend = _make_backend()
     authentication = object()
 
     with patch(
-        'planner_lib.azure.wiki_events.azure_devops_pat_authentication',
+        'planner_lib.azure.wiki_events.azure_devops_authentication',
         return_value=authentication,
     ) as build_authentication, patch(
         'azure.devops.connection.Connection'
     ) as connection:
         backend._get_wiki_client(_CRED)
 
-    build_authentication.assert_called_once_with('test-pat')
+    build_authentication.assert_called_once_with(_CRED, None)
     connection.assert_called_once_with(
         base_url='https://dev.azure.com/my-org',
         creds=authentication,

@@ -38,8 +38,6 @@ const STATUS_MESSAGES = {
   interaction_required: 'Azure DevOps requires reauthentication. Local work is still available.',
   access_denied: 'Azure DevOps access denied. Your local session is still active.',
   unavailable: 'Authentication service unavailable. Your local session is still active.',
-  pat_required: 'An Azure DevOps PAT is required.',
-  pat_invalid: 'Your Azure DevOps PAT is invalid or expired.',
 };
 
 export class AuthStatus extends LitElement {
@@ -53,12 +51,10 @@ export class AuthStatus extends LitElement {
     :host { display: block; color: inherit; }
     p { margin: 8px 0; overflow-wrap: anywhere; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    button, input { font: inherit; padding: 8px 12px; border: 1px solid #97adae;
+    button { font: inherit; padding: 8px 12px; border: 1px solid #97adae;
       border-radius: 4px; box-sizing: border-box; }
     button { cursor: pointer; color: #095d59; background: #e2eeec; }
     button:disabled { cursor: wait; opacity: 0.6; }
-    label { display: block; margin-top: 12px; }
-    input { display: block; width: 100%; margin-top: 6px; }
   `;
 
   constructor() {
@@ -95,40 +91,20 @@ export class AuthStatus extends LitElement {
     return STATUS_MESSAGES[status];
   }
 
-  async _onRepairPat(event) {
-    event.preventDefault();
-    if (this._busy) return;
-    const input = this.renderRoot.querySelector('#previewPat');
-    if (!input.reportValidity()) return;
-    this._busy = true;
-    try {
-      await this.authentication.saveSettings({ pat: input.value });
-      input.value = '';
-    } finally {
-      this._busy = false;
-    }
-  }
-
   render() {
     if (this.authentication === null) return '';
-    const { mode, status, account, capabilities } = this.authentication.state;
+    const { status, account, capabilities } = this.authentication.state;
     const needsLogin = account === null || status === 'session_expired';
     return html`
-      <p><strong>${mode === 'broker' ? 'External sign-in' : mode === 'pat' ? 'PAT' : 'Local'}</strong></p>
+      <p><strong>External sign-in</strong></p>
       ${this._logoutPending ? html`<p role="status">Signed out of this instance.
         Authentication service cleanup is pending; the delegated grant will expire.</p>` : ''}
       ${account === null ? '' : html`<p data-auth-account>${account.email}</p>`}
       <p role="status">${this._statusMessage()}</p>
-      ${capabilities.pat && (status === 'pat_required' || status === 'pat_invalid') ? html`
-        <form @submit=${this._onRepairPat}>
-          <label for="previewPat">Azure DevOps PAT</label>
-          <input id="previewPat" type="password" autocomplete="off" required ?disabled=${this._busy}>
-          <div class="actions"><button ?disabled=${this._busy}>Save PAT</button></div>
-        </form>` : ''}
       <div class="actions">
         ${needsLogin || capabilities.reauthenticate ? html`
           <button ?disabled=${this._busy} @click=${this._onSignIn}>${capabilities.reauthenticate
-            ? 'Reauthenticate' : capabilities.enrollment ? 'Enroll this browser' : 'Sign in'}</button>
+            ? 'Reauthenticate' : 'Sign in'}</button>
         ` : ''}
       </div>
       <p role="status">${this._message}</p>`;

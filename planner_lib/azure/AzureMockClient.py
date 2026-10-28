@@ -684,41 +684,6 @@ class _PersistingMockClientsAccessor(_MockClientsAccessor):
 # AzureMockClient
 # ===========================================================================
 
-class SandboxWikiClient:
-    def __init__(self, storage, provider, credential, organization):
-        if credential['kind'] != 'bearer' or credential['transport'] != 'fixture':
-            raise ValueError('Wiki fixture requires delegated fixture authority')
-        self.storage = storage
-        self.provider = provider
-        self.credential = credential
-
-    def _key(self, project, wiki_identifier, path):
-        import hashlib
-        return hashlib.sha256(json.dumps([project, wiki_identifier, path]).encode()).hexdigest()
-
-    def get_page(self, project, wiki_identifier, path, include_content):
-        from types import SimpleNamespace
-
-        self.credential = self.provider.renew(self.credential)
-        key = self._key(project, wiki_identifier, path)
-        with self.provider.publication_guard(self.credential):
-            record = (self.storage.load('sandbox_wiki', key) if self.storage.exists('sandbox_wiki', key)
-                      else {'content': '', 'revision': 0})
-            return SimpleNamespace(page=SimpleNamespace(content=record['content']), eTag=str(record['revision']))
-
-    def create_or_update_page(self, parameters, project, wiki_identifier, path, version, comment):
-        self.credential = self.provider.renew(self.credential)
-        key = self._key(project, wiki_identifier, path)
-        with self.provider.publication_guard(self.credential):
-            revision = self.storage.load('sandbox_wiki', key)['revision'] if self.storage.exists('sandbox_wiki', key) else 0
-            if version != str(revision):
-                raise ValueError('Sandbox wiki concurrent modification')
-            self.storage.save('sandbox_wiki', key, {
-                'content': parameters.content, 'revision': revision + 1,
-                'account_id': self.credential['user_id'],
-            })
-
-
 class AzureMockClient(AzureClient):
     """Extends ``AzureClient`` with a mocked Azure DevOps SDK connection.
 
@@ -746,9 +711,6 @@ class AzureMockClient(AzureClient):
         super().__init__(organization_url, storage=storage)
         self._fixture_dir = fixture_dir
         self._persist_enabled = persist_enabled
-
-    def _connect_with_fixture(self, credential):
-        self._connect_with_pat(credential['token'])
 
     def _connect_with_pat(self, pat: str) -> None:
         """Override: inject a MockConnection instead of the real Azure SDK."""

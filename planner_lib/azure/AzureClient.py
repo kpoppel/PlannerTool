@@ -97,9 +97,6 @@ class AzureClient:
         token = token_from_credential(credential)
         return self._connection_context(token, credential=credential)
 
-    def _connect_with_fixture(self, credential):
-        raise ValueError('Sandbox credentials require an explicit fixture transport')
-
     def connect_pat(self, pat: str) -> ContextManager["AzureClient"]:
         """Context-manager for an explicit PAT-only connection outside a user credential."""
         if not isinstance(pat, str) or not pat:
@@ -117,11 +114,8 @@ class AzureClient:
             authentication = None
             try:
                 if credential is not None and credential['kind'] == 'bearer':
-                    if credential.get('transport') == 'fixture':
-                        self._connect_with_fixture(credential)
-                    else:
-                        authentication = azure_devops_authentication(credential, self._credential_provider)
-                        self._connect_with_authentication(authentication)
+                    authentication = azure_devops_authentication(credential, self._credential_provider)
+                    self._connect_with_authentication(authentication)
                 else:
                     self._connect_with_pat(token)
                 yield self

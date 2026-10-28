@@ -919,14 +919,15 @@ def test_fake_token_is_rejected_before_wiki_operations(sandbox):
     storage = client.app.state.container.get('storage')
     assert not list(storage.list_keys('sandbox_wiki'))
     assert sum(request.url.path.endswith('/token') for request in requests) == 1
-def test_admin_selection_rejected_without_activation_or_session_invalidation(client):
+def test_authentication_settings_are_read_only(client):
     assert client.post('/api/auth/enroll', json={
         'email': 'staging@example.test', 'name': 'Staging Administrator',
     }).status_code == 200
     before = client.get('/api/auth/settings').json()
-    response = client.post('/api/auth/settings', json={'selected': 'entra'})
-    assert response.status_code == 409
-    assert response.json() == {'error': 'deployment_policy_required'}
+    from starlette.exceptions import HTTPException
+
+    with pytest.raises(HTTPException) as error:
+        client.post('/api/auth/settings', json={'selected': 'entra'})
+    assert error.value.status_code == 405
     assert client.get('/api/auth/settings').json() == before
     assert client.get('/api/auth/me').status_code == 200
-    assert client.post('/api/auth/settings', json={'selected': 'entra', 'active': 'entra'}).status_code == 422

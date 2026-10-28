@@ -37,7 +37,6 @@ from typing import Any, Dict, List, Optional
 from planner_lib.backend.port import BackendCredential
 from planner_lib.azure.authentication import (
     azure_devops_authentication,
-    azure_devops_pat_authentication,
     token_from_credential,
 )
 
@@ -94,7 +93,7 @@ class AzureWikiEventBackend:
 
     def _get_wiki_client(self, credential: BackendCredential):
         """Return a live ADO wiki client connected with the supplied credential."""
-        token = token_from_credential(credential)
+        token_from_credential(credential)
         org_url = self._organization_url
         if not org_url:
             raise RuntimeError("Azure DevOps organization URL is not configured")
@@ -109,17 +108,9 @@ class AzureWikiEventBackend:
                 "Set it under Admin → Events Configuration → Azure DevOps Wiki Settings."
             )
 
-        if credential.get('transport') == 'fixture':
-            if self._credential_provider is None:
-                raise ValueError('Wiki fixture requires a session-bound credential provider')
-            from planner_lib.azure.AzureMockClient import SandboxWikiClient
-            return SandboxWikiClient(self._credential_provider.storage, self._credential_provider,
-                                     credential, org_url)
-
+        creds = azure_devops_authentication(credential, self._credential_provider)
         from azure.devops.connection import Connection
 
-        creds = (azure_devops_pat_authentication(token) if credential['kind'] == 'pat'
-                 else azure_devops_authentication(credential, self._credential_provider))
         conn = Connection(
             base_url=f"https://dev.azure.com/{org_url}",
             creds=creds,

@@ -101,12 +101,8 @@ class ConfigModal extends LitElement {
   }
 
   async _deleteAccount() {
+    if (this.authentication !== null) return;
     if (this._signingOut || (this._deletionDialog && this._deletionDialog.isConnected)) return;
-    if (this.authentication !== null) {
-      if (!window.confirm('Delete your local PlannerTool account?')) return;
-      await this.authentication.deleteAccount();
-      return;
-    }
     this._signingOut = true;
     try {
       const response = await fetch(`${window.APP_BASE_URL}/api/auth/me`, {
@@ -341,11 +337,8 @@ class ConfigModal extends LitElement {
         let patText = '';
         if (pat) patText = 'Access token updated.';
         try {
-          let res;
-          if (this.authentication === null) res = await dataService.saveConfig({ email, pat });
-          else if (this.authentication.state.capabilities.pat) {
-            res = await this.authentication.saveSettings({ email, pat });
-          } else res = { ok: true };
+          const res = this.authentication === null
+            ? await dataService.saveConfig({ email, pat }) : { ok: true };
           if (patInput !== null) patInput.value = '';
           if (res && res.ok) {
             status.textContent = 'Configuration saved. ' + patText;

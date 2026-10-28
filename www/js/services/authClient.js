@@ -10,7 +10,7 @@ export const AUTH_DECISIONS = Object.freeze({
   pat_invalid: { status: 403, action: 'set_pat' },
 });
 
-export async function resetAccountContext() {
+export async function resetAccountContext(_context) {
   const { ProviderLocalStorage } = await import('./providerLocalStorage.js');
   await new ProviderLocalStorage().clearBrowserData();
   window.location.reload();
@@ -31,7 +31,6 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    async discover() { return adapter.discover(); },
     async handleDecision(code) {
       const decision = AUTH_DECISIONS[code];
       if (decision === undefined) throw new Error(`Unknown authentication decision: ${code}`);
@@ -56,13 +55,6 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
       await apply(next);
       return true;
     },
-    async completeLogin(completion) {
-      const started = generation;
-      const next = await adapter.completeLogin(completion);
-      if (started !== generation) throw new Error('Stale authentication response');
-      await apply(next);
-      return state;
-    },
     async recover() {
       if (blocked) return false;
       if (recovery !== null) return recovery;
@@ -78,7 +70,6 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
       try { return await recovery; }
       finally { recovery = null; }
     },
-    async saveSettings(settings) { return adapter.saveSettings(settings); },
     async linkAccount(email) {
       const started = generation;
       const next = await adapter.linkAccount(email);
@@ -89,10 +80,6 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
     async logout() {
       generation += 1;
       await apply(await adapter.logout());
-    },
-    async deleteAccount() {
-      generation += 1;
-      await apply(await adapter.deleteAccount());
     },
   };
   async function apply(next) {
@@ -114,7 +101,8 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
   return client;
 }
 
-export function createBrokerHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLogout = () => {} }) {
+export function createBrokerHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLogout = (_state) => {} }) {
+  /** @param {string} path @param {string} [method] @param {object} [body] */
   async function request(path, method = 'GET', body = undefined) {
     const options = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
     if (body !== undefined) {
@@ -138,23 +126,18 @@ export function createBrokerHttpAdapter({ apiUrl, fetchImpl, presentLogin, onLog
     return payload;
   }
   return {
-    discover: () => request('config'),
     status: () => request('me'),
     async signIn() {
       const transaction = await request('login/begin', 'POST');
       const completion = await presentLogin(transaction);
       if (completion === false) return false;
-      if (completion.completed === true) return request('me');
-      return request('login/complete', 'POST', completion);
+      return request('me');
     },
-    completeLogin: completion => request('login/complete', 'POST', completion),
     linkAccount: email => request('links/claim', 'POST', { email }),
     async logout() {
       const state = await request('logout', 'POST');
       onLogout(state);
       return state;
     },
-    saveSettings: async () => { throw new Error('Broker sign-in does not support PAT settings'); },
-    deleteAccount: async () => { throw new Error('Broker account deletion policy is not configured'); },
   };
 }

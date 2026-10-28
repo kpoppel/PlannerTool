@@ -72,43 +72,37 @@ describe('config-modal', () => {
     expect(signOut.mock.calls.length).to.equal(0);
   });
 
-  it('switches mock capabilities without losing local settings or account deletion', async () => {
+  it('shows broker account controls without losing local settings', async () => {
     vi.spyOn(dataService, 'getLocalPref').mockImplementation(async (key) =>
       key === 'user.email' ? 'stored@example.com' : undefined);
-    const model = createMockAuth('pat_current');
+    const model = createMockAuth('entra_signed_in');
     modal.authentication = model;
     await modal.updateComplete;
     await modal._populate();
     expect(modal._qs('#configEmail').value).to.equal('alex@example.com');
     modal._qs('#autosaveInterval').value = '17';
-    expect(modal._qs('#configPat')).not.to.equal(null);
-    expect(modal._qs('#deviceListBtn')).not.to.equal(null);
-    model.select('entra_signed_in');
-    await modal.updateComplete;
     expect(modal._qs('#configPat')).to.equal(null);
     expect(modal._qs('#deviceListBtn')).to.equal(null);
-    expect(modal._qs('#deleteAccountBtn')).not.to.equal(null);
+    expect(modal._qs('#deleteAccountBtn')).to.equal(null);
     expect(modal._qs('#autosaveInterval').value).to.equal('17');
-    model.select('local');
-    await modal.updateComplete;
-    expect(modal._qs('#configPat')).to.equal(null);
-    expect(modal._qs('#deviceListBtn')).not.to.equal(null);
   });
 
-  it('uses only the injected boundary for Entra deletion and logout', async () => {
+  it('uses broker logout and forbids broker account deletion', async () => {
     const model = createMockAuth('entra_signed_in');
     modal.authentication = model;
     await modal.updateComplete;
     const signOut = vi.spyOn(dataService, 'signOut');
-    const deleteAccount = vi.spyOn(model, 'deleteAccount');
+    const logout = vi.spyOn(model, 'logout');
     const fetch = vi.spyOn(globalThis, 'fetch');
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     await modal._signOut();
     expect(model.state.status).to.equal('connected');
     window.confirm.mockReturnValue(true);
     await modal._deleteAccount();
+    expect(model.state.status).to.equal('connected');
+    await modal._signOut();
     await modal.updateComplete;
-    expect(deleteAccount.mock.calls.length).to.equal(1);
+    expect(logout.mock.calls.length).to.equal(1);
     expect(modal._qs('#signOutBtn')).to.equal(null);
     expect(model.state.status).to.equal('signed_out');
     expect(signOut.mock.calls.length).to.equal(0);

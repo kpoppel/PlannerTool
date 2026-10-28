@@ -88,13 +88,6 @@ function resultErrorMessage(result, fallback = 'Request failed') {
   return fallback;
 }
 
-export const PAT_AUTHENTICATION_SETTINGS = Object.freeze({
-  activeMode: 'pat',
-  deploymentControlled: true,
-  readiness: 'Deployment policy',
-  activationUnavailableReason: 'Entra ID activation is unavailable until authentication integration and transition checks are complete.',
-});
-
 export class DataSources extends LitElement {
   static styles = [
     backendSelectStyles,
@@ -202,7 +195,6 @@ export class DataSources extends LitElement {
   static properties = {
     authentication: { attribute: false },
     authenticationSettings: { attribute: false },
-    _draftAuthMode:        { type: String, state: true },
     _loading:             { type: Boolean, state: true },
 
     // ---- Plan Events (ado_wiki) ----------------------------------------
@@ -265,13 +257,7 @@ export class DataSources extends LitElement {
   constructor() {
     super();
     this.authentication = getAuthentication();
-    this.authenticationSettings = this.authentication === null ? PAT_AUTHENTICATION_SETTINGS : {
-      activeMode: this.authentication.state.mode,
-      deploymentControlled: true,
-      readiness: 'Deployment policy',
-      activationUnavailableReason: 'Authentication transitions require separate approval.',
-    };
-    this._draftAuthMode = this.authenticationSettings.activeMode;
+    this.authenticationSettings = { activeMode: 'pat', readiness: '' };
     this._loading             = false;
 
     // Plan Events
@@ -332,44 +318,27 @@ export class DataSources extends LitElement {
     this._load();
   }
 
-  willUpdate(changedProperties) {
-    if (changedProperties.has('authenticationSettings')) {
-      this._draftAuthMode = this.authenticationSettings.activeMode;
-    }
-  }
-
   // ------------------------------------------------------------------
   // Data loading
   // ------------------------------------------------------------------
 
-  _onAuthenticationPreview(mode) {
-    this.dispatchEvent(new CustomEvent('authentication-mode-preview', { detail: { mode } }));
-  }
-
   async _load() {
-    this._draftAuthMode = this.authenticationSettings.activeMode;
-    this._onAuthenticationPreview(this._draftAuthMode);
     this._loading = true;
     try {
-      if (this.authenticationSettings.deploymentControlled === true) {
         const result = await adminProvider.getAuthenticationSettings();
         if (!result.ok) throw new Error('Failed to load deployment authentication policy');
         const settings = result.data;
         const readiness = {
           ready: 'Authentication service ready.',
-          unavailable: 'Authentication service unavailable. Live activation blocked.',
+          unavailable: 'Authentication service unavailable.',
           local: 'Local enrollment. No broker required.',
           pat: 'User-owned PAT credentials.',
         };
         if (!Object.hasOwn(readiness, settings.readiness)) throw new Error('Unknown authentication readiness');
         this.authenticationSettings = {
           activeMode: settings.active === 'entra' ? 'entra' : 'pat',
-          deploymentControlled: true,
           readiness: readiness[settings.readiness],
-          activationUnavailableReason: 'Authentication is controlled by the deployment operator.',
         };
-        this._draftAuthMode = this.authenticationSettings.activeMode;
-      }
       const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult] = await Promise.all([
         adminProvider.getEventsConfig(),
         adminProvider.getAdo(),
@@ -586,9 +555,7 @@ export class DataSources extends LitElement {
       this._adoContent          = adoPayload;
       this._systemContent       = sysPayload;
 
-      this._statusMsg  = this._adoBackendType === 'ado_live' &&
-        this._draftAuthMode !== this.authenticationSettings.activeMode
-        ? 'Data sources saved. Authentication selection was not applied.' : 'Saved.';
+      this._statusMsg  = 'Saved.';
       this._statusType = 'success';
 
     } catch (e) {

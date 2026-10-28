@@ -102,29 +102,17 @@ export function renderAdoSubForm(comp, type, errs) {
         <div class="field full" data-authentication-settings>
           <label for="ado-authentication-mode">ADO authentication</label>
           <select id="ado-authentication-mode" class="backend-select"
-            .value=${comp._draftAuthMode}
-            ?disabled=${comp.authenticationSettings.deploymentControlled === true}
+            .value=${comp.authenticationSettings.activeMode}
+            disabled
             aria-describedby="ado-authentication-status"
-            @change=${(event) => {
-              comp._draftAuthMode = event.target.value;
-              comp._onAuthenticationPreview(comp._draftAuthMode);
-            }}
           >
             <option value="pat">PAT</option>
             <option value="entra">Entra ID</option>
           </select>
           <div id="ado-authentication-status" role="status">
             Active: ${comp.authenticationSettings.activeMode === 'pat' ? 'PAT' : 'Entra ID'}.
-            ${comp.authenticationSettings.deploymentControlled === true
-              ? html`Deployment controlled. ${comp.authenticationSettings.readiness}`
-              : html`Selected: ${comp._draftAuthMode === 'pat' ? 'PAT' : 'Entra ID'}.`}
+            Deployment controlled. ${comp.authenticationSettings.readiness}
           </div>
-          ${comp._draftAuthMode !== comp.authenticationSettings.activeMode ? html`
-            <div class="desc" id="ado-authentication-unavailable">
-              ${comp.authenticationSettings.activationUnavailableReason}
-            </div>
-            <button disabled aria-describedby="ado-authentication-unavailable">Activate Entra ID</button>
-          ` : ''}
           ${comp.authentication === null ? '' : html`
             <auth-status .authentication=${comp.authentication}></auth-status>`}
         </div>

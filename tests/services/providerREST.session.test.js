@@ -127,14 +127,13 @@ describe('ProviderREST /api/session tests', () => {
     const mock = createMockAuth(scenario);
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify(mock.state)));
     const adapter = createBrokerHttpAdapter({ apiUrl: '/team_1/api', fetchImpl,
-      presentLogin: async () => ({ code: 'one-use-fixture', state: 'browser-bound-fixture' }) });
+      presentLogin: async () => ({ completed: true }) });
     const client = createAuthClient({ adapter, initialState: mock.state,
       instance: '/team_1', onAccountChanged: vi.fn() });
     expectVitest(await client.status()).toEqual(mock.state);
     expectVitest(fetchImpl).toHaveBeenCalledWith('/team_1/api/auth/me', expectVitest.objectContaining({
       credentials: 'same-origin', method: 'GET',
     }));
-    expectVitest(await client.discover()).toEqual(mock.state);
   });
 
   it('shares same-account repair without changing drafts, and fences a different returning UUID', async () => {
@@ -159,17 +158,17 @@ describe('ProviderREST /api/session tests', () => {
     expectVitest(client.blocked).toBe(true);
   });
 
-  it('supports HTTP begin/complete, cancellation and logout without retrying writes', async () => {
+  it('supports popup sign-in, cancellation and logout without retrying writes', async () => {
     const state = createMockAuth('entra_signed_in').state;
     const fetchImpl = vi.fn(async url => new Response(JSON.stringify(
       url.endsWith('/begin') ? { transaction: 'synthetic' } : state)));
     const presentLogin = vi.fn().mockResolvedValueOnce(false)
-      .mockResolvedValueOnce({ code: 'synthetic', state: 'browser-bound' });
+      .mockResolvedValueOnce({ completed: true });
     const adapter = createBrokerHttpAdapter({ apiUrl: '/team_1/api', fetchImpl, presentLogin });
     expectVitest(await adapter.signIn()).toBe(false);
     expectVitest(fetchImpl).toHaveBeenCalledTimes(1);
     expectVitest(await adapter.signIn()).toEqual(state);
-    expectVitest(fetchImpl.mock.calls[2][0]).toBe('/team_1/api/auth/login/complete');
+    expectVitest(fetchImpl.mock.calls[2][0]).toBe('/team_1/api/auth/me');
     await adapter.logout();
     expectVitest(fetchImpl.mock.calls[3][0]).toBe('/team_1/api/auth/logout');
   });

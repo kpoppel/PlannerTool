@@ -41,10 +41,6 @@ describe('isolated authentication scenarios', () => {
     status.remove();
   });
   it.each([
-    ['pat_current', 'Connected', false],
-    ['pat_missing', 'PAT is required', true],
-    ['pat_invalid', 'PAT is invalid or expired', true],
-    ['local', 'Connected', false],
     ['entra_signed_out', 'Signed out', false],
     ['entra_signed_in', 'Connected', false],
     ['session_expired', 'session has expired', false],
@@ -68,21 +64,6 @@ describe('isolated authentication scenarios', () => {
       expect(status.shadowRoot.querySelector('input')).toBeNull();
       expect(status.shadowRoot.textContent).not.toContain('Enroll this browser');
     }
-    status.remove();
-  });
-
-  it('repairs PAT through the mock boundary and clears the masked value', async () => {
-    const model = createMockAuth('pat_invalid');
-    const status = document.createElement('auth-status');
-    status.authentication = model;
-    document.body.append(status);
-    await status.updateComplete;
-    const input = status.shadowRoot.querySelector('#previewPat');
-    expect(input.type).toBe('password');
-    input.value = 'synthetic-pat';
-    await status._onRepairPat(new Event('submit'));
-    expect(model.state.status).toBe('connected');
-    expect(input.value).toBe('');
     status.remove();
   });
 

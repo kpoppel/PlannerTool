@@ -1,9 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { fulfillAccountApi } from './helpers.js';
-import { readFileSync } from 'node:fs';
 import { createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/mockAuth.js';
-
-const mockAuthSource = readFileSync(new URL('../helpers/mockAuth.js', import.meta.url), 'utf8');
 
 test('HTTP authentication clients preserve same-account drafts and fence changed accounts on desktop', async ({ page }, testInfo) => {
   const connected = createMockAuth('entra_signed_in').state;
@@ -46,7 +43,7 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
     const { ProviderLocalStorage } = await import('/static/js/services/providerLocalStorage.js');
     window.phaseCCancel = false;
     const adapter = createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl: fetch,
-      presentLogin: async () => window.phaseCCancel ? false : { code: 'synthetic', state: 'synthetic' } });
+      presentLogin: async () => window.phaseCCancel ? false : { completed: true } });
     const authentication = createAuthClient({ adapter, initialState, instance: '/',
       onAccountChanged: async () => { await new ProviderLocalStorage().clearBrowserData(); } });
     window.phaseCAuth = authentication;
@@ -57,7 +54,6 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
     status.authentication = authentication;
     editor.shadowRoot.prepend(status);
     localStorage.setItem('az_planner:phase-c-draft', 'Unsubmitted work');
-    await authentication.discover();
     await authentication.status();
   }, connected);
   const status = page.locator('#phaseCStatus');
@@ -111,118 +107,7 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
   expect(errors).toEqual([]);
 });
 
-test('authentication capability mocks cover desktop sign-in, recovery and logout', async ({ page }, testInfo) => {
-  const errors = [];
-  const authWrites = [];
-  page.on('pageerror', error => errors.push(error.message));
-  page.on('request', request => {
-    if (new URL(request.url()).pathname.includes('/auth/') && request.method() !== 'GET') {
-      authWrites.push(request.url());
-    }
-  });
-  await page.route('**/api/**', route => fulfillAccountApi(route, {
-    email: 'administrator@example.test', permissions: ['admin'],
-  }));
-  await page.route('**/admin/check', route => route.fulfill({ json: {
-    ok: true, permissions: ['admin'],
-  } }));
-  await page.route('**/admin/v1/**', route => {
-    const path = new URL(route.request().url()).pathname;
-    let content = {};
-    if (path.endsWith('/ado')) content = { organization_url: 'example', feature_flags: {} };
-    if (path.endsWith('/events-config')) content = { event_backend: 'local' };
-    if (path.endsWith('/groups-config')) content = { groups_backend: 'local' };
-    if (path.endsWith('/system')) content = { server_name: 'Fixture', feature_flags: {} };
-    return route.fulfill({ json: { ok: true, content } });
-  });
-  await page.goto('/admin/#data-sources');
-  const editor = page.locator('admin-data-sources');
-  await expect(editor.getByLabel('Authentication mode (preview)')).toBeVisible();
-  const cookies = await page.context().cookies();
-  await editor.evaluate(async (element, source) => {
-    const { createMockAuth, OTHER_MOCK_ACCOUNT } = await import(
-      'data:text/javascript,' + encodeURIComponent(source.replace(
-        '../../www/js/services/authClient.js', `${location.origin}/static/js/services/authClient.js`)));
-    window.phaseBAuth = createMockAuth('pat_current');
-    window.phaseBOtherAccount = OTHER_MOCK_ACCOUNT;
-    element.authentication = window.phaseBAuth;
-    element.addEventListener('authentication-mode-preview', event => {
-      window.phaseBAuth.select(event.detail.mode === 'pat' ? 'pat_current' : 'entra_signed_out');
-    });
-  }, mockAuthSource);
-  await editor.getByLabel('Authentication mode (preview)').selectOption('entra');
-  const preview = editor.locator('auth-status');
-  await expect(preview.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
-  await preview.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(preview.locator('[data-auth-account]')).toHaveText('alex@example.com');
-  await expect(editor.locator('#ado-authentication-status')).toContainText('Active: PAT');
-  await page.evaluate(async () => {
-    await import('/static/js/components/ConfigModal.lit.js');
-    const modal = document.createElement('config-modal');
-    modal.authentication = window.phaseBAuth;
-    document.body.append(modal);
-  });
-  const settings = page.locator('config-modal');
-  const status = settings.locator('auth-status');
-  await expect(settings.locator('#configEmail')).toHaveText('alex@example.com');
-  await expect(settings.locator('#configPat')).toHaveCount(0);
-  await expect(settings.locator('#deviceListBtn')).toHaveCount(0);
-  await expect(settings.getByRole('button', { name: 'Delete account', exact: true })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('entra-settings-desktop.png'), fullPage: true });
-  for (const [scenario, message] of [
-    ['access_denied', 'access denied'], ['unavailable', 'service unavailable'],
-    ['interaction_required', 'requires reauthentication'],
-  ]) {
-    await page.evaluate(name => window.phaseBAuth.select(name), scenario);
-    await expect(status).toContainText(message);
-    if (scenario !== 'interaction_required') await expect(status.locator('button')).toHaveCount(0);
-  }
-  await status.getByRole('button', { name: 'Reauthenticate', exact: true }).click();
-  await expect(status.getByRole('status').first()).toHaveText('Connected');
-  await page.evaluate(() => {
-    window.phaseBAuth.select('session_expired');
-    window.phaseBAuth.setSignInOutcome({ cancelled: true });
-  });
-  await status.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(status).toContainText('Sign-in cancelled.');
-  await page.evaluate(() => window.phaseBAuth.setSignInOutcome({ account: window.phaseBOtherAccount }));
-  await status.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(settings.locator('#configEmail')).toHaveText('sam@example.com');
-  page.once('dialog', dialog => dialog.accept());
-  await settings.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(status.getByRole('status').first()).toHaveText('Signed out');
-  await expect(settings.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
-  for (const scenario of ['pat_missing', 'pat_invalid']) {
-    await page.evaluate(name => window.phaseBAuth.select(name), scenario);
-    await expect(settings.locator('#configPat')).toBeVisible();
-    await expect(settings.locator('#deviceListBtn')).toBeVisible();
-    await status.getByLabel('Azure DevOps PAT').fill('synthetic-pat');
-    await status.getByRole('button', { name: 'Save PAT', exact: true }).click();
-    await expect(status.getByRole('status').first()).toHaveText('Connected');
-  }
-  await page.evaluate(() => window.phaseBAuth.select('local'));
-  await expect(settings.locator('#configPat')).toHaveCount(0);
-  await expect(settings.locator('#deviceListBtn')).toBeVisible();
-  await settings.getByRole('button', { name: 'Close', exact: true }).click();
-  await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(editor.getByLabel('Authentication mode (preview)')).toHaveValue('pat');
-  await page.evaluate(() => {
-    window.phaseBAuth.select('entra_signed_out');
-    const dialog = document.createElement('auth-dialog');
-    dialog.authentication = window.phaseBAuth;
-    dialog.done = () => {};
-    document.body.append(dialog);
-  });
-  const login = page.locator('auth-dialog');
-  await expect(login.locator('input')).toHaveCount(0);
-  await login.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(login).toHaveCount(0);
-  expect(authWrites).toEqual([]);
-  expect(await page.context().cookies()).toEqual(cookies);
-  expect(errors).toEqual([]);
-});
-
-test('ADO authentication preview keeps PAT active and never saves the Entra draft', async ({ page }, testInfo) => {
+test('ADO authentication policy is read-only and excluded from data source saves', async ({ page }, testInfo) => {
   const saves = [];
   const authRequests = [];
   const errors = [];
@@ -249,10 +134,11 @@ test('ADO authentication preview keeps PAT active and never saves the Entra draf
   });
   await page.goto('/admin/#data-sources');
   const editor = page.locator('admin-data-sources');
-  const mode = editor.getByLabel('Authentication mode (preview)');
+  const mode = editor.getByLabel('ADO authentication');
   const status = editor.locator('#ado-authentication-status');
   const backend = editor.locator('select.backend-select').first();
   await expect(mode).toHaveValue('pat');
+  await expect(mode).toBeDisabled();
   await expect(status).toContainText('Active: PAT');
   const initialAuthRequests = [...authRequests];
   for (const value of ['ado_mock_fixture', 'ado_mock_generator', 'ado_static']) {
@@ -260,25 +146,18 @@ test('ADO authentication preview keeps PAT active and never saves the Entra draf
     await expect(mode).toHaveCount(0);
   }
   await backend.selectOption('ado_live');
-  await mode.selectOption('entra');
-  await expect(status).toContainText('Active: PAT');
-  await expect(status).toContainText('Selected: Entra ID');
-  await expect(editor.getByRole('button', { name: 'Activate Entra ID' })).toBeDisabled();
-  await expect(editor.locator('#ado-authentication-unavailable')).toContainText('activation is unavailable');
+  await expect(mode).toBeDisabled();
+  await expect(status).toContainText('Deployment controlled');
   expect(saves).toEqual([]);
   expect(authRequests).toEqual(initialAuthRequests);
-  await page.screenshot({ path: testInfo.outputPath('ado-authentication-preview-desktop.png'), fullPage: true });
-  await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(mode).toHaveValue('pat');
-  await mode.selectOption('entra');
+  await page.screenshot({ path: testInfo.outputPath('ado-authentication-policy-desktop.png'), fullPage: true });
   await page.reload();
   await expect(mode).toHaveValue('pat');
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(editor.locator('.status')).toHaveText('Saved.');
   const patPayloads = [...saves];
-  await mode.selectOption('entra');
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(editor.locator('.status')).toContainText('Authentication selection was not applied.');
+  await expect(editor.locator('.status')).toHaveText('Saved.');
   expect(saves.slice(4)).toEqual(patPayloads);
   await expect(status).toContainText('Active: PAT');
   expect(errors).toEqual([]);
