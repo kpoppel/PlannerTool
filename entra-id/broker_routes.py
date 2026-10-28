@@ -2,10 +2,12 @@
 import hmac
 import html
 import json
+import re
 import secrets
 import threading
 import time
 from urllib.parse import urlencode
+from uuid import UUID, uuid5
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -14,14 +16,6 @@ from broker import BrokerStore, CODE_TTL, ProtocolError, digest, read_secret
 
 
 BROWSER_COOKIE = 'planner_broker_browser'
-IDENTITIES = (
-    {'tid': '11111111-1111-1111-1111-111111111111',
-     'oid': '33333333-3333-3333-3333-333333333333',
-     'name': 'Alex Sandbox', 'email': 'alex@example.test'},
-    {'tid': '11111111-1111-1111-1111-111111111111',
-     'oid': '44444444-4444-4444-4444-444444444444',
-     'name': 'Sam Sandbox', 'email': 'sam@example.test'},
-)
 
 
 def install_broker(app, settings, config):
@@ -133,14 +127,15 @@ def install_broker(app, settings, config):
             raise ProtocolError('invalid_request')
         reference = request.query_params['transaction']
         browser = secrets.token_urlsafe(32)
-        transaction = store.bind_browser(reference, browser)
-        choices = ''.join(f'<button name="identity" value="{index}">{html.escape(identity["name"])}</button>'
-                          for index, identity in enumerate(IDENTITIES))
+        store.bind_browser(reference, browser)
         response = HTMLResponse(
             '<!doctype html><html lang="en"><title>Sandbox sign-in</title><h1>Sandbox sign-in</h1>'
             f'<form method="post" action="{settings.root_path}/v1/browser/choose">'
             f'<input type="hidden" name="transaction" value="{html.escape(reference)}">'
-            f'{choices}<button name="identity" value="cancel">Cancel</button></form></html>')
+            '<label for="email">Account email</label>'
+            '<input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>'
+            '<button name="action" value="sign_in">Sign in</button>'
+            '<button name="action" value="cancel" formnovalidate>Cancel</button></form></html>')
         response.set_cookie(BROWSER_COOKIE, browser, httponly=True, samesite='lax',
                             secure=settings.secure, path=settings.root_path + '/', max_age=300)
         return response
@@ -157,12 +152,24 @@ def install_broker(app, settings, config):
             values = parse_qs((await request.body()).decode(), strict_parsing=True)
         except (ValueError, UnicodeDecodeError) as error:
             raise ProtocolError('invalid_request') from error
-        if set(values) != {'transaction', 'identity'} or any(len(value) != 1 for value in values.values()):
+        if set(values) - {'transaction', 'email', 'action'} or any(len(value) != 1 for value in values.values()):
+            raise ProtocolError('invalid_request')
+        if 'transaction' not in values or 'action' not in values:
             raise ProtocolError('invalid_request')
         reference = values['transaction'][0]
-        selection = values['identity'][0]
-        if selection not in ('0', '1', 'cancel'):
+        action = values['action'][0]
+        if action not in ('sign_in', 'cancel'):
             raise ProtocolError('invalid_identity')
+        identity = None
+        if action == 'sign_in':
+            if 'email' not in values:
+                raise ProtocolError('invalid_identity')
+            email = values['email'][0].strip().casefold()
+            if len(email) > 254 or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+                raise ProtocolError('invalid_identity')
+            identity = {'tid': settings.tenant_id,
+                        'oid': str(uuid5(UUID(settings.tenant_id), email)),
+                        'name': email, 'email': email}
         browser = request.cookies.get(BROWSER_COOKIE, '')
         upstream_code = secrets.token_urlsafe(32)
         with store.connection() as connection:
@@ -171,7 +178,7 @@ def install_broker(app, settings, config):
                 raise ProtocolError('invalid_browser')
             store.put(connection, upstream_code, 'upstream', transaction['owner'],
                       store.clock() + CODE_TTL, {'transaction': reference, 'browser': digest(browser),
-                                                'selection': selection})
+                                                'identity': identity})
         return RedirectResponse(settings.root_path + '/callback?' + urlencode({
             'state': reference, 'code': upstream_code}), status_code=303)
 
@@ -192,11 +199,10 @@ def install_broker(app, settings, config):
                 raise ProtocolError('invalid_browser')
             transaction = store.get(connection, reference, 'transaction')
             connection.execute('DELETE FROM records WHERE id=?', (digest(upstream_code),))
-            if upstream['selection'] == 'cancel' or transaction['scenario'] == 'cancel':
+            if upstream['identity'] is None or transaction['scenario'] == 'cancel':
                 connection.execute('DELETE FROM records WHERE id=?', (digest(reference),))
                 return RedirectResponse(transaction['completion'] + '?' + urlencode({
                     'state': transaction['state'], 'error': 'cancelled'}), status_code=303)
-        identity = IDENTITIES[int(upstream['selection'])]
-        transaction, code = store.authorize(reference, browser, identity)
+        transaction, code = store.authorize(reference, browser, upstream['identity'])
         return RedirectResponse(transaction['completion'] + '?' + urlencode({
             'state': transaction['state'], 'code': code}), status_code=303)

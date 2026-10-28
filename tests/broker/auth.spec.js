@@ -37,17 +37,22 @@ async function openSettings(page, instance) {
   await expect(page.locator('config-modal auth-status')).toBeVisible();
 }
 
-async function signIn(page, instance, identity, origin = ORIGIN) {
+async function selectIdentity(page, email) {
+  await page.getByLabel('Account email', { exact: true }).fill(email);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+}
+
+async function signIn(page, instance, email, origin = ORIGIN) {
   const begun = await page.request.post(`${origin}/${instance}/api/auth/login/begin`, {
     headers: { Origin: origin },
   });
   expect(begun.status()).toBe(200);
   await page.goto((await begun.json()).authorization_url);
   await expect(page.getByRole('heading', { name: 'Sandbox sign-in' })).toBeVisible();
-  await page.getByRole('button', { name: identity, exact: true }).click();
+  await selectIdentity(page, email);
   await expect(page).toHaveURL(`${origin}/${instance}/`);
   const profile = await (await page.request.get(`${origin}/${instance}/api/auth/me`)).json();
-  expect(profile.account.name).toBe(identity);
+  expect(profile.account.email).toBe(email);
 }
 
 test.beforeAll(() => {
@@ -91,7 +96,7 @@ test('normal planner and admin use discovered Entra popup login without enrollme
   const popupOpened = page.waitForEvent('popup');
   await button.click();
   const popup = await popupOpened;
-  await popup.getByRole('button', { name: 'Alex Sandbox', exact: true }).click();
+  await selectIdentity(popup, 'alex@example.test');
   await expect.poll(async () => {
     const response = await page.request.get(`${ORIGIN}/alpha/api/auth/me`);
     return (await response.json()).status;
@@ -139,7 +144,7 @@ test('normal admin login supports cancellation and denies an unprivileged identi
   opened = page.waitForEvent('popup');
   await signIn.click();
   popup = await opened;
-  await popup.getByRole('button', { name: 'Sam Sandbox', exact: true }).click();
+  await selectIdentity(popup, 'sam@example.test');
   await expect(page.getByText('This account has no administration permissions.', { exact: true })).toBeVisible();
   expect((await (await page.request.get(`${ORIGIN}/beta/api/auth/me`)).json()).account.email)
     .toBe('sam@example.test');
@@ -147,7 +152,7 @@ test('normal admin login supports cancellation and denies an unprivileged identi
 });
 
 test('deployment mode is read-only and normal ADO configuration remains available', async ({ page }) => {
-  await signIn(page, 'alpha', 'Alex Sandbox');
+  await signIn(page, 'alpha', 'alex@example.test');
   const settings = await (await page.request.get(`${ORIGIN}/alpha/api/auth/settings`)).json();
   expect(settings.active).toBe('entra');
   expect(settings.deployment_controlled).toBe(true);
@@ -171,7 +176,7 @@ test('deployment mode is read-only and normal ADO configuration remains availabl
 });
 
 test('real same-account repair preserves drafts and a changed identity resets old work', async ({ page }) => {
-  await signIn(page, 'alpha', 'Alex Sandbox');
+  await signIn(page, 'alpha', 'alex@example.test');
   await openSettings(page, 'alpha');
   const draft = page.locator('config-modal #autosaveInterval');
   await draft.fill('17');
@@ -180,14 +185,14 @@ test('real same-account repair preserves drafts and a changed identity resets ol
   let opened = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Reauthenticate', exact: true }).click();
   let popup = await opened;
-  await popup.getByRole('button', { name: 'Alex Sandbox', exact: true }).click();
+  await selectIdentity(popup, 'alex@example.test');
   await expect(page.getByRole('button', { name: 'Reauthenticate', exact: true })).toBeEnabled();
   await expect(draft).toHaveValue('17');
   expect(await page.evaluate(() => window.unsavedAuthDraft)).toBe('same-document');
   opened = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Reauthenticate', exact: true }).click();
   popup = await opened;
-  await popup.getByRole('button', { name: 'Sam Sandbox', exact: true }).click();
+  await selectIdentity(popup, 'sam@example.test');
   await expect.poll(async () => {
     const profile = await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
     return profile.account.uuid;
@@ -200,7 +205,7 @@ test('real fixture interaction and revocation preserve local UI; expired handoff
   test.setTimeout(120000);
   for (const scenario of ['interaction_required', 'revoked']) {
     await withBrokerScenario('beta', scenario, async () => {
-      await signIn(page, 'beta', 'Alex Sandbox');
+      await signIn(page, 'beta', 'alex@example.test');
       await openSettings(page, 'beta');
       await expect(page.locator('config-modal auth-status')).toContainText('Azure DevOps requires reauthentication');
       expect((await page.request.get(`${ORIGIN}/beta/admin/check`)).status()).toBe(200);
@@ -214,7 +219,7 @@ test('real fixture interaction and revocation preserve local UI; expired handoff
     await page.context().clearCookies();
   }
   await withBrokerScenario('beta', 'access_denied', async () => {
-    await signIn(page, 'beta', 'Alex Sandbox');
+    await signIn(page, 'beta', 'alex@example.test');
     const operation = await page.request.get(`${ORIGIN}/beta/api/azure/projects?org_url=example`);
     expect(operation.status()).toBe(403);
     expect(await operation.json()).toEqual({ error: 'access_denied' });
@@ -226,14 +231,14 @@ test('real fixture interaction and revocation preserve local UI; expired handoff
     const opened = page.waitForEvent('popup');
     await page.getByRole('button', { name: 'Sign in with Entra ID', exact: true }).click();
     const popup = await opened;
-    await popup.getByRole('button', { name: 'Alex Sandbox', exact: true }).click();
+    await selectIdentity(popup, 'alex@example.test');
     await expect(page.locator('auth-dialog auth-status')).toContainText('Your PlannerTool session has expired.');
     expect((await (await page.request.get(`${ORIGIN}/beta/api/auth/me`)).json()).account).toBeNull();
   });
 });
 
 test('an invalid local session cannot read cached data or bypass normal sign-in', async ({ page }) => {
-  await signIn(page, 'alpha', 'Alex Sandbox');
+  await signIn(page, 'alpha', 'alex@example.test');
   await openSettings(page, 'alpha');
   await page.context().addCookies([{
     name: 'sessionId', value: 'expired-synthetic-session', domain: 'localhost',
@@ -246,7 +251,7 @@ test('an invalid local session cannot read cached data or bypass normal sign-in'
 });
 
 test('expired delegated authority keeps local drafts and repairs only remote access', async ({ page }) => {
-  await signIn(page, 'alpha', 'Alex Sandbox');
+  await signIn(page, 'alpha', 'alex@example.test');
   const before = await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
   const cookies = await page.context().cookies();
   const session = cookies.find(cookie => cookie.name === 'sessionId' && cookie.path === '/alpha/');
@@ -279,7 +284,7 @@ test('expired delegated authority keeps local drafts and repairs only remote acc
   const opened = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Reauthenticate', exact: true }).click();
   const popup = await opened;
-  await popup.getByRole('button', { name: 'Alex Sandbox', exact: true }).click();
+  await selectIdentity(popup, 'alex@example.test');
   await expect(page.locator('config-modal auth-status')).toContainText('Connected');
   await expect(draft).toHaveValue('19');
   const after = await (await page.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
@@ -289,7 +294,7 @@ test('expired delegated authority keeps local drafts and repairs only remote acc
 
 test('outage logout revokes locally and discloses pending service cleanup once', async ({ page }) => {
   test.setTimeout(90000);
-  await signIn(page, 'alpha', 'Alex Sandbox');
+  await signIn(page, 'alpha', 'alex@example.test');
   await openSettings(page, 'alpha');
   compose('stop', 'auth-sandbox');
   try {
@@ -312,9 +317,9 @@ test('real subpath redirects isolate two identities and two registered instances
   try {
     const alex = await first.newPage();
     const sam = await second.newPage();
-    await signIn(alex, 'alpha', 'Alex Sandbox');
-    await signIn(sam, 'beta', 'Sam Sandbox');
-    await signIn(await sameAccount.newPage(), 'alpha', 'Alex Sandbox');
+    await signIn(alex, 'alpha', 'alex@example.test');
+    await signIn(sam, 'beta', 'sam@example.test');
+    await signIn(await sameAccount.newPage(), 'alpha', 'alex@example.test');
     const alpha = await first.request.get(`${ORIGIN}/alpha/api/auth/me`);
     const beta = await second.request.get(`${ORIGIN}/beta/api/auth/me`);
     expect((await alpha.json()).account.email).toBe('alex@example.test');
@@ -381,7 +386,7 @@ test('broker outage preserves admin and encrypted state survives container recre
   const context = await browser.newContext();
   try {
     const page = await context.newPage();
-    await signIn(page, 'alpha', 'Alex Sandbox');
+    await signIn(page, 'alpha', 'alex@example.test');
     const before = await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
     const tasksBefore = await context.request.get(`${ORIGIN}/alpha/api/tasks`);
     expect(tasksBefore.status()).toBe(200);
@@ -427,7 +432,7 @@ test('broker outage preserves admin and encrypted state survives container recre
     const after = await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json();
     expect(after.account.uuid).toBe(before.account.uuid);
     await page.goto(transaction.authorization_url);
-    await page.getByRole('button', { name: 'Alex Sandbox', exact: true }).click();
+    await selectIdentity(page, 'alex@example.test');
     await expect(page).toHaveURL(`${ORIGIN}/alpha/`);
     expect((await (await context.request.get(`${ORIGIN}/alpha/api/auth/me`)).json()).account.email)
       .toBe('alex@example.test');
@@ -487,7 +492,7 @@ test('copied accounts retain identity and permissions across deployment login ch
       });
       expect(begun.status()).toBe(200);
       await page.goto((await begun.json()).authorization_url);
-      await page.getByRole('button', { name: 'Alex Sandbox', exact: true }).click();
+      await selectIdentity(page, 'alex@example.test');
       await expect(page).toHaveURL(`${origin}/${name}/admin/`);
       const staged = await (await context.request.get(`${origin}/${name}/api/auth/settings`)).json();
       expect(staged.active).toBe('enrollment');
@@ -507,7 +512,7 @@ test('copied accounts retain identity and permissions across deployment login ch
       }).toBe(200);
       expect((await (await context.request.get(`${origin}/${name}/api/auth/me`)).json()).account).toBeNull();
       const page = context.pages()[0];
-      await signIn(page, name, 'Alex Sandbox', origin);
+      await signIn(page, name, 'alex@example.test', origin);
       const profile = await (await context.request.get(`${origin}/${name}/api/auth/me`)).json();
       expect(profile.account.uuid).toBe(accounts[name]);
       expect((await context.request.get(`${origin}/${name}/admin/check`)).status()).toBe(200);

@@ -286,7 +286,15 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
         assert page.status_code == 200
         assert ('Secure' in page.headers['set-cookie']) == https
         assert secret not in page.text
-        selected = client.post('/v1/browser/choose', data={'transaction': begun['transaction'], 'identity': '1'},
+        assert 'name="email"' in page.text
+        assert 'Alex Sandbox' not in page.text
+        for invalid_email in ('not-an-email', 'one@example.test two@example.test', 'a' * 255 + '@example.test'):
+            invalid = client.post('/v1/browser/choose', data={
+                'transaction': begun['transaction'], 'action': 'sign_in', 'email': invalid_email},
+                headers={'Origin': origin})
+            assert invalid.status_code == 400
+        selected = client.post('/v1/browser/choose', data={
+            'transaction': begun['transaction'], 'action': 'sign_in', 'email': ' Admin@Example.Test '},
                                headers={'Origin': origin})
         callback_url = origin + selected.headers['location']
         callback = client.get(callback_url)
@@ -296,6 +304,9 @@ def test_authenticated_browser_handoff_and_replay(config, origin):
         body = {**envelope, 'transaction': begun['transaction'], 'code': query['code'][0], 'verifier': verifier}
         response = client.post('/v1/transactions/redeem', json=body, headers=headers)
         assert response.status_code == 200
-        assert response.json()['identity']['name'] == 'Sam Sandbox'
+        from uuid import UUID, uuid5
+        assert response.json()['identity'] == {
+            'tid': settings.tenant_id, 'oid': str(uuid5(UUID(settings.tenant_id), 'admin@example.test')),
+            'name': 'admin@example.test', 'email': 'admin@example.test'}
         assert client.post('/v1/transactions/redeem', json=body, headers=headers).status_code == 400
         assert client.get(callback_url).status_code == 400

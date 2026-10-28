@@ -597,6 +597,65 @@ def test_login_body_limit(sandbox):
     assert not requests
 
 
+@pytest.mark.parametrize('linked', [False, True])
+def test_mock_email_login_reuses_existing_admin_without_changing_permissions(sandbox, linked):
+    from uuid import UUID, uuid5
+    from planner_lib.session.identity import identity_key
+
+    client, requests = sandbox
+    container = client.app.state.container
+    storage = container.get('storage')
+    accounts = container.get('account_manager')
+    broker = container.get('broker_client')
+    original = broker.transport
+    account_id = accounts.get_account_id('alex@example.test')
+    before = storage.load('accounts', 'alex@example.test')
+    if not linked:
+        storage.delete('external_identities', identity_key(
+            SANDBOX_TENANT, '33333333-3333-3333-3333-333333333333'))
+
+    def email_identity(request):
+        response = original.handle_request(request)
+        if request.url.path.endswith('/redeem'):
+            payload = json.loads(response.content)
+            payload['identity'] = {'tid': SANDBOX_TENANT,
+                'oid': str(uuid5(UUID(SANDBOX_TENANT), 'alex@example.test')),
+                'name': 'alex@example.test', 'email': 'alex@example.test'}
+            return httpx.Response(200, json=payload)
+        return response
+
+    broker.transport = httpx.MockTransport(email_identity)
+    for attempt in range(2):
+        state = client.post('/api/auth/login/begin', headers={
+            'Origin': 'http://localhost:8765'}).json()['state']
+        response = client.post('/api/auth/login/complete', json={'state': state, 'code': 'code'})
+        assert response.status_code == 200
+        assert response.json()['account']['uuid'] == account_id
+        assert response.json()['permissions'] == ['admin']
+        assert client.get('/admin/v1/users').status_code == 200
+        assert storage.load('accounts', 'alex@example.test') == before
+    assert len(list(storage.list_keys('external_identities'))) == 2
+    assert not any(request.url.path.endswith('/token') for request in requests)
+
+
+@pytest.mark.parametrize('mode', ['mock', 'entra'])
+def test_email_identity_only_matches_existing_accounts_in_mock_mode(sandbox, mode):
+    from dataclasses import replace
+    from uuid import UUID, uuid5
+
+    client, requests = sandbox
+    container = client.app.state.container
+    accounts = container.get('account_manager')
+    login = container.get('login_adapter')
+    identity = {'tid': SANDBOX_TENANT,
+        'oid': str(uuid5(UUID(SANDBOX_TENANT), 'alex@example.test')),
+        'email': 'alex@example.test', 'name': 'Email Identity'}
+    login.identities.settings = replace(login.settings, upstream_mode=mode)
+    resolved = login.identities.resolve(identity)
+    assert (resolved['id'] == accounts.get_account_id('alex@example.test')) == (mode == 'mock')
+    assert resolved['permissions'] == (['admin'] if mode == 'mock' else [])
+
+
 def test_verified_new_identity_is_provisioned_without_permissions_or_email_linking(sandbox):
     client, requests = sandbox
     broker = client.app.state.container.get('broker_client')

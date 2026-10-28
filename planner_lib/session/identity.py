@@ -1,5 +1,5 @@
 """Stable external identity links, independent of email and enrollment secrets."""
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from planner_lib.accounts.config import AccountCredentialsPayload, _is_valid_email
 from planner_lib.migrations.contracts import SchemaError
@@ -54,8 +54,29 @@ class ExternalIdentityLinks:
                     or len(identity['name']) > 256 or not isinstance(identity.get('email'), str)
                     or not _is_valid_email(identity['email']) or len(identity['email']) > 320):
                 raise AuthFailure('auth_configuration_error')
+            email = identity['email'].strip().casefold()
+            mock_email_identity = (self.settings.upstream_mode == 'mock'
+                and identity['oid'] == str(uuid5(UUID(identity['tid']), email)))
+            if target is None and mock_email_identity:
+                matching_ids = {account['id'] for account in self.accounts.list_accounts()
+                                if account['email'].casefold() == email}
+                for item in self.storage.list_keys('external_identities'):
+                    link = self.storage.load('external_identities', item)
+                    if (link['environment'] == self.settings.metadata()
+                            and link['email'].casefold() == email):
+                        matching_ids.add(link['account_id'])
+                if len(matching_ids) > 1:
+                    raise AuthFailure('access_denied', 403)
+                if matching_ids:
+                    target = matching_ids.pop()
+                    for item in self.storage.list_keys('external_identities'):
+                        link = self.storage.load('external_identities', item)
+                        if (link['account_id'] == target
+                                and link['environment'] == self.settings.metadata()):
+                            return self.accounts.get_account_by_id(target)
             if target is None:
-                internal_email = identity['oid'] + '.' + identity['tid'] + '@identity.invalid'
+                internal_email = (email if mock_email_identity
+                                  else identity['oid'] + '.' + identity['tid'] + '@identity.invalid')
                 if self.storage.exists('accounts', internal_email):
                     raise AuthFailure('access_denied', 403)
                 created = self.accounts.create_account(AccountCredentialsPayload(email=internal_email), permissions=[])
