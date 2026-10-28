@@ -286,11 +286,11 @@ def add_auth_compose(compose, instances, services, version):
             compose['secrets'][secret_id] = {'file': instance['_auth_secret_path']}
             auth['secrets'].append({'source': secret_id, 'target': secret_id})
             planner = compose['services']['planner-' + instance_name]
-            planner['command'] = ['uvicorn', 'planner:make_app', '--factory', '--host', '0.0.0.0',
-                                  '--port', '8000', '--root-path', '/' + instance_name, '--no-access-log',
-                                  '--proxy-headers', '--forwarded-allow-ips', '*']
             planner['secrets'] = [{'source': secret_id, 'target': 'auth-client'}]
             planner['environment'].extend([
+                'UVICORN_ACCESS_LOG=false',
+                'UVICORN_PROXY_HEADERS=true',
+                'UVICORN_FORWARDED_ALLOW_IPS=*',
                 'PLANNER_AUTH_INSTANCE=' + instance_name,
                 'PLANNER_AUTH_URL=http://' + dns + ':8000/auth/',
                 'PLANNER_AUTH_PUBLIC_URL=' + service['public_url'],

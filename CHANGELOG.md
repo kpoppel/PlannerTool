@@ -28,6 +28,7 @@ This version adds EntraID authentication.
 
 ### Changed
 - Build and start source-declared PlannerTool instances and the auth service in one generated Compose project, with explicit protected environment-file and project-name options for operators.
+- Use the standard image startup command for auth-connected instances, with proxy and access-log settings supplied through environment variables instead of per-instance command overrides.
 - Make ADO authentication deployment-controlled, with read-only instance readiness and an explicit, recoverable offline sandbox fleet transition. Instances without an auth-service connection remain independent of the broker; live activation remains blocked.
 - Exclude PATs, enrollment keys, active login policy and broker authority from logical backups. Account restore requires fresh operator-reset enrollment credentials and cannot replace Entra accounts.
 - Share frontend authentication client contracts and typed recovery across planner and administration, with mocked Entra HTTP flows while real activation remains disabled.

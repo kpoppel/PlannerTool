@@ -137,6 +137,33 @@ def test_mixed_sandbox_generation_is_isolated_and_secret_scoped(sandbox_manifest
         assert (manifest.parent / name).read_text() not in rendered
 
 
+def test_auth_instances_use_image_command_and_uvicorn_environment(sandbox_manifest, monkeypatch):
+    import importlib
+    from click.testing import CliRunner
+
+    uvicorn_main = importlib.import_module('uvicorn.main')
+    config, services, manifest = sandbox_manifest
+    compose = generate_docker_compose(config['instances'], 'test', auth_services=services)
+    calls = []
+    monkeypatch.setattr(uvicorn_main, 'run', lambda *args, **kwargs: calls.append(kwargs))
+    for name in ('alpha', 'beta'):
+        planner = compose['services']['planner-' + name]
+        assert 'command' not in planner
+        environment = dict(value.split('=', 1) for value in planner['environment'])
+        result = CliRunner().invoke(uvicorn_main.main, [
+            'planner:make_app', '--factory', '--host', '0.0.0.0', '--port', '8000',
+            '--root-path', environment['ROOT_PATH'],
+        ], env=environment)
+        assert result.exit_code == 0, result.output
+        assert calls[-1]['root_path'] == '/' + name
+        assert calls[-1]['access_log'] is False
+        assert calls[-1]['proxy_headers'] is True
+        assert calls[-1]['forwarded_allow_ips'] == '*'
+    local = compose['services']['planner-local']
+    assert 'command' not in local
+    assert not any(value.startswith('UVICORN_') for value in local['environment'])
+
+
 def test_env_mode_conflict_and_registry_mismatch_rejected(sandbox_manifest):
     import yaml
     from deploy_auth import load_auth_services
