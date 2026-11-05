@@ -301,7 +301,8 @@ def access_denied_response(request: Request, error_code: dict) -> Response:
     function is used by a global exception handler to return friendly HTML.
     """
     accept = (request.headers.get('accept') or '').lower()
-    if 'application/json' in accept:
+    path = request.scope['path'].removeprefix(request.scope.get('root_path', ''))
+    if path == '/admin/check' or 'application/json' in accept:
         return JSONResponse(status_code=401, content=error_code)
 
     if _ERROR_PAGE_TEMPLATE:

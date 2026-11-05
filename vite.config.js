@@ -3,6 +3,73 @@ import { resolve, dirname } from 'path';
 import fs from 'fs';
 import sirv from 'sirv';
 
+export function createDevServerConfig(env = process.env) {
+  const instance = env.PLANNER_AUTH_INSTANCE;
+  if (instance === undefined) return {};
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(instance)) {
+    throw new Error('Invalid development broker instance');
+  }
+  const publicUrl = new URL(env.PLANNER_AUTH_PUBLIC_URL);
+  const brokerUrl = new URL(env.PLANNER_AUTH_URL);
+  if (publicUrl.pathname !== '/auth/' || brokerUrl.pathname !== '/auth/') {
+    throw new Error('Development broker URLs must end in /auth/');
+  }
+  if (env.PLANNER_AUTH_UPSTREAM_MODE === 'entra' && publicUrl.protocol !== 'https:') {
+    throw new Error('Live Entra development requires HTTPS');
+  }
+  if (publicUrl.hostname !== 'localhost' || !publicUrl.port) {
+    throw new Error('Development browser ingress requires localhost with an explicit port');
+  }
+  const prefix = '/' + instance;
+  const backendPort = env.PLANNER_DEV_BACKEND_PORT === undefined ? 8001 : Number(env.PLANNER_DEV_BACKEND_PORT);
+  if (!Number.isInteger(backendPort) || backendPort < 1 || backendPort > 65535) {
+    throw new Error('Invalid development backend port');
+  }
+  const backend = {
+    target: 'http://localhost:' + backendPort,
+    changeOrigin: false,
+    xfwd: true,
+    rewrite: path => path.slice(prefix.length),
+  };
+  const server = {
+    host: 'localhost',
+    port: Number(publicUrl.port),
+    strictPort: true,
+    proxy: {
+      [prefix + '/api']: backend,
+      [prefix + '/admin/v1']: backend,
+      [prefix + '/admin/check']: backend,
+      '/auth': { target: brokerUrl.origin, changeOrigin: false, xfwd: true },
+    },
+  };
+  if (publicUrl.protocol === 'https:') {
+    if (!env.PLANNER_DEV_TLS_CERT_FILE || !env.PLANNER_DEV_TLS_KEY_FILE) {
+      throw new Error('HTTPS development requires PLANNER_DEV_TLS_CERT_FILE and PLANNER_DEV_TLS_KEY_FILE');
+    }
+    server.https = {
+      cert: fs.readFileSync(env.PLANNER_DEV_TLS_CERT_FILE),
+      key: fs.readFileSync(env.PLANNER_DEV_TLS_KEY_FILE),
+    };
+  }
+  return { base: prefix + '/', server };
+}
+
+function adminLoginEntryPlugin() {
+  const prefix = process.env.PLANNER_AUTH_INSTANCE === undefined ? '' : '/' + process.env.PLANNER_AUTH_INSTANCE;
+  return {
+    name: 'admin-login-entry',
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const url = new URL(request.url, 'http://localhost');
+        if (url.pathname === prefix + '/admin/login') {
+          request.url = url.pathname + '.html' + url.search;
+        }
+        next();
+      });
+    },
+  };
+}
+
 // Helper plugin: copy selected assets from `www/` into `dist/` after build
 const copySelectedAssetsPlugin = (files = []) => {
   // Copy files or directories from www/ into dist/ after build completes.
@@ -123,6 +190,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    adminLoginEntryPlugin(),
     resolveWwwJsPlugin(resolve(__dirname)),
     // Copy timeline image and the docs directory into dist for production
     copySelectedAssetsPlugin(['/timeline-line.svg', 'docs', '/js', '/css']),
@@ -171,4 +239,5 @@ export default defineConfig({
       },
     },
   },
+  ...createDevServerConfig(),
 });

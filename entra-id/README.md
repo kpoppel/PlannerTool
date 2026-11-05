@@ -9,8 +9,10 @@ The service has one browser callback, `/auth/callback`, and an authenticated
 instance API defined in [protocol-v1.json](protocol-v1.json). MSAL handles Entra
 authorization code flow with PKCE and token renewal. Encrypted MSAL caches and
 session-owned grants survive restarts. Tokens never enter browser responses.
-The standalone diagnostic app and development stacks are removed. Registration
-is required in both mock and live modes. Real-tenant acceptance remains outstanding.
+The standalone diagnostic app is removed. Use the root `scripts/run_dev.sh --auth-env`
+launcher for source-reloading local development; see the localhost HTTPS setup in
+[Deployment](../docs/DEPLOYMENT.md#local-development-with-entra-id). Registration is
+required in both mock and live modes. Real-tenant acceptance remains outstanding.
 
 ## Entra Registration
 

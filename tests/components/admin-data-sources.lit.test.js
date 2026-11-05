@@ -34,32 +34,28 @@ afterEach(() => {
 describe('Data Sources authentication policy', () => {
   it('shows read-only deployment policy', async () => {
     const element = await mount();
-    const control = element.shadowRoot.querySelector('#ado-authentication-mode');
-    expect(control.value).toBe('pat');
-    expect(control.disabled).toBe(true);
-    expect([...control.options].map(option => option.textContent)).toEqual(['PAT', 'Entra ID']);
-    expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent).toContain('Active: PAT');
-    expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent).toContain('Deployment controlled');
+    expect(element.shadowRoot.querySelector('[data-authentication-settings] select')).toBeNull();
+    expect(element.shadowRoot.querySelector('[data-authentication-settings] label').textContent)
+      .toBe('ADO authentication method');
+    expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim())
+      .toBe('Personal Access Token');
   });
 
   it.each(['ado_mock_fixture', 'ado_mock_generator', 'ado_static'])(
-    'hides the ADO authentication selector for %s', async (backend) => {
+    'hides the ADO authentication policy for %s', async (backend) => {
       const element = await mount();
       await select(element, '.backend-select', backend);
-      expect(element.shadowRoot.querySelector('#ado-authentication-mode')).toBeNull();
+      expect(element.shadowRoot.querySelector('[data-authentication-settings]')).toBeNull();
       await select(element, '.backend-select', 'ado_live');
-      expect(element.shadowRoot.querySelector('#ado-authentication-mode').value).toBe('pat');
+      expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim())
+        .toBe('Personal Access Token');
     });
 
-  it.each(['entra_signed_in', 'unavailable'])('shows shared Entra state for %s', async (scenario) => {
+  it.each(['entra_signed_in', 'unavailable'])('shows only the Entra method for %s', async (scenario) => {
     const element = await mount(createMockAuth(scenario));
-    const control = element.shadowRoot.querySelector('#ado-authentication-mode');
-    expect(control.value).toBe('entra');
-    expect(control.disabled).toBe(true);
-    const status = element.shadowRoot.querySelector('auth-status');
-    await status.updateComplete;
-    expect(status.shadowRoot.textContent)
-      .toContain(scenario === 'entra_signed_in' ? 'Connected' : 'Authentication service unavailable');
+    expect(element.shadowRoot.querySelector('[data-authentication-settings] select')).toBeNull();
+    expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim()).toBe('Entra ID');
+    expect(element.shadowRoot.querySelector('auth-status')).toBeNull();
   });
 
   it('does not save authentication policy with data sources', async () => {
@@ -72,7 +68,8 @@ describe('Data Sources authentication policy', () => {
     for (const [index, method] of ['saveEventsConfig', 'saveGroupsConfig', 'saveAdo', 'saveSystem'].entries()) {
       expect(adminProvider[method].mock.calls[1][0]).toEqual(patPayloads[index]);
     }
-    expect(element.shadowRoot.querySelector('#ado-authentication-mode').value).toBe('pat');
+    expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim())
+      .toBe('Personal Access Token');
     expect(element._statusMsg).toBe('Saved.');
   });
 });

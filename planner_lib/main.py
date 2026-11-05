@@ -147,19 +147,20 @@ def _build_services(
                 for key in list(storage_diskcache.list_keys(namespace)):
                     if storage_diskcache.exists(namespace, key):
                         storage_diskcache.delete(namespace, key)
-            for key in list(storage_diskcache.list_keys('auth_sessions')):
-                if storage_diskcache.load('auth_sessions', key)['source'] == 'entra':
-                    storage_diskcache.delete('auth_sessions', key)
             for key in list(storage_diskcache.list_keys('external_identities')):
                 record = storage_diskcache.load('external_identities', key)
                 if record['environment']['upstream_mode'] == 'mock':
                     storage_diskcache.delete('external_identities', key)
             storage_diskcache.save('system', 'broker_authority', broker_settings.metadata())
     if provider != auth_settings['active'] or authority_changed:
-        storage_diskcache.save('config', 'authentication', {
-            'version': 1, 'selected': provider, 'active': provider,
-            'backend_credentials': 'delegated' if provider == 'entra' else 'pat',
-            'epoch': auth_settings['epoch'] + 1})
+        with storage_diskcache.transaction():
+            for key in list(storage_diskcache.list_keys('auth_sessions')):
+                if storage_diskcache.exists('auth_sessions', key):
+                    storage_diskcache.delete('auth_sessions', key)
+            storage_diskcache.save('config', 'authentication', {
+                'version': 1, 'selected': provider, 'active': provider,
+                'backend_credentials': 'delegated' if provider == 'entra' else 'pat',
+                'epoch': auth_settings['epoch'] + 1})
     container.register_singleton('authentication_provider', provider)
     container.register_factory("account_manager",
         lambda: AccountManager(storage=storage_diskcache))

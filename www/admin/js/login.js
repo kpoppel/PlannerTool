@@ -1,16 +1,20 @@
-import { initializeAuthentication, showAuthenticationStartupFailure } from '/static/js/services/authStartup.js';
-import '/static/js/components/AuthStatus.lit.js';
+import { initializeAuthentication, showAuthenticationStartupFailure } from '../../js/services/authStartup.js';
+import '../../js/components/AuthStatus.lit.js';
 
 const base = window.APP_BASE_URL;
 document.getElementById('planner-link').href = base + '/';
 
 async function checkAccess() {
-  const response = await fetch(`${base}/admin/check`, { credentials: 'same-origin' });
+  const response = await fetch(`${base}/admin/check`, {
+    credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store',
+  });
   if (response.ok) window.location.replace(`${base}/admin/`);
   else {
     const message = document.getElementById('error-message');
-    message.textContent = 'This account has no administration permissions.';
-    message.style.display = 'block';
+    message.textContent = response.status === 401 ? '' : response.status === 403
+      ? 'This account has no administration permissions.'
+      : 'Unable to check administration access. Please try again.';
+    message.style.display = response.status === 401 ? 'none' : 'block';
   }
 }
 

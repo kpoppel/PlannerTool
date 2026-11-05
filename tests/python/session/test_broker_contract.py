@@ -332,6 +332,9 @@ def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, 
     accounts = container.get('account_manager')
     accounts.create_account(AccountCredentialsPayload(
         email='existing@example.test', pat='synthetic-existing-pat'), permissions=['admin'])
+    sessions = container.get('session_manager')
+    session_id = sessions.create('existing@example.test')
+    assert sessions.is_valid(session_id)
     ado_config = {'organization_url': 'copied-projects', 'feature_flags': {}}
     storage.save('config', 'ado_config', ado_config)
     namespaces = ('accounts', 'account_auth', 'config', 'views', 'scenarios', 'external_identities')
@@ -343,6 +346,7 @@ def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, 
     monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'entra')
     with TestClient(create_app(config)) as client:
         storage = client.app.state.container.get('storage')
+        assert list(storage.list_keys('auth_sessions')) == []
         for namespace, records in before.items():
             after = {key: storage.load(namespace, key) for key in storage.list_keys(namespace)}
             if namespace == 'config':

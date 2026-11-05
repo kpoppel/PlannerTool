@@ -100,20 +100,10 @@ export function renderAdoSubForm(comp, type, errs) {
     return html`
       <div class="sub-form">
         <div class="field full" data-authentication-settings>
-          <label for="ado-authentication-mode">ADO authentication</label>
-          <select id="ado-authentication-mode" class="backend-select"
-            .value=${comp.authentication === null ? 'pat' : 'entra'}
-            disabled
-            aria-describedby="ado-authentication-status"
-          >
-            <option value="pat">PAT</option>
-            <option value="entra">Entra ID</option>
-          </select>
+          <label>ADO authentication method</label>
           <div id="ado-authentication-status" role="status">
-            Active: ${comp.authentication === null ? 'PAT' : 'Entra ID'}. Deployment controlled.
+            ${comp.authentication === null ? 'Personal Access Token' : 'Entra ID'}
           </div>
-          ${comp.authentication === null ? '' : html`
-            <auth-status .authentication=${comp.authentication}></auth-status>`}
         </div>
         <div class="field full">
           <label>Organization Name *</label>

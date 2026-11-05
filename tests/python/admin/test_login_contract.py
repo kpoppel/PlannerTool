@@ -5,6 +5,17 @@ import pytest
 pytestmark = pytest.mark.real_auth
 
 
+@pytest.mark.parametrize('root_path', ['', '/dev'])
+@pytest.mark.parametrize('accept', ['*/*', 'text/html', 'application/json'])
+def test_admin_check_returns_json_when_signed_out(client, monkeypatch, root_path, accept):
+    monkeypatch.setattr(client.app, 'root_path', root_path)
+    response = client.get(root_path + '/admin/check', headers={'Accept': accept})
+
+    assert response.status_code == 401
+    assert response.headers['content-type'].startswith('application/json')
+    assert response.json()['error'] == 'access_denied'
+
+
 def test_admin_access_requires_enrollment_and_admin_permission(client, tmp_path, monkeypatch):
     static_dir = tmp_path / 'static'
     admin_dir = static_dir / 'admin'

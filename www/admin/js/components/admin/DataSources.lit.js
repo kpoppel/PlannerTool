@@ -15,7 +15,6 @@ import {
   renderPlanEventsRow,
 } from './datasources/plan-events-row.js';
 import { renderGroupsRow } from './datasources/groups-row.js';
-import '../../../../js/components/AuthStatus.lit.js';
 
 /**
  * DataSources — Admin panel for all data domains, backend choices, and cache TTLs.

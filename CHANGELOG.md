@@ -20,9 +20,11 @@ Template - do not change :
 - Support mock broker sign-in that can reuse existing account permissions. Fake credentials are rejected before ADO/wiki calls without ending local sessions or cached access.
 - Add manifest-managed auth registration and per-instance secrets in the existing Compose deployment workflow.
 - Support public ACME, company-supplied TLS or Caddy's internal CA, with public root export, trusted hostname verification and actionable startup diagnostics.
+- Support broker-connected local development with localhost HTTPS, instance-prefixed callbacks and a protected authentication env file.
 
 ### Changed
 - Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
+- Display ADO authentication as read-only deployment information instead of a disabled dropdown in Data Sources.
 - Share authentication discovery, status and typed recovery across planner and administration; broker mode hides PAT, enrollment and device/key controls.
 - Build/start source-declared app and broker services together, honoring pinned images, protected environment files and project names. Both images receive version and latest tags from the build script.
 - Upgrade from dev in revision 44, preserving accounts, permissions and credentials while expiring pre-policy sessions.
@@ -30,6 +32,9 @@ Template - do not change :
 
 ### Fixed
 - Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
+- Clear old sessions atomically when authentication policy changes so later restarts do not reject stale source-bound sessions.
+- Stop Vite itself during development-launcher cleanup so failed starts do not leave the browser port occupied.
+- Return JSON for signed-out administration checks and distinguish missing sessions from denied permissions on the admin login page.
 - Preserve the last complete task snapshot across remote failures and configuration changes, with explicit warnings; recheck delegated authority before publishing refreshed data.
 - Prevent automatic write replay, preserve partial results and reject stale responses/drafts after account changes.
 - Report expired/replayed handoffs as invalid sessions and preserve local logout when remote cleanup fails.

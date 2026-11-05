@@ -112,6 +112,99 @@ Never delete protected files, rotate retained keys or use `down -v` routinely.
 
 # How to deploy the application for production or development
 
+## Local Development With Entra ID
+
+The ordinary `./scripts/run_dev.sh` retains the PAT/enrollment workflow. To connect
+the source-reloading backend and Vite to a local broker, use
+`./scripts/run_dev.sh --auth-env /absolute/path/to/dev-auth.env`. This trusted shell
+env file is sourced and must have no group/other permissions (`chmod 600`). Install
+both the root and `entra-id/requirements.txt` dependencies in the active `.venv`.
+Never put client secrets in chat, tracked files or command history.
+
+For live Entra, provision a browser-trusted localhost TLS certificate/key (for example
+with an already installed local CA tool). Register the exact **Web** redirect URI
+`https://localhost:5174/auth/callback`, delegated Azure DevOps `user_impersonation`
+permission and tenant-required consent. Use a separate app registration or add this
+URI to the existing registration. Keep implicit and public-client flows disabled.
+
+Create a private directory outside the repository. Provision distinct random
+per-instance and broker encryption keys in mode-0600 files. The instance key must
+contain at least 256 bits of random material (43 URL-safe base64 characters); the
+broker key must be a Fernet key. Keep them across restarts. Store the Entra client
+secret **value** in a separate mode-0600 file. Example trusted env file, with paths
+and registration values replaced locally:
+
+```bash
+DATA_DIR=/absolute/private/dev-auth/planner-data
+PLANNER_DEV_BACKEND_PORT=8002
+PLANNER_AUTH_PROVIDER=entra
+PLANNER_ADO_AUTHENTICATION=entra
+PLANNER_AUTH_INSTANCE=dev
+PLANNER_AUTH_URL=http://localhost:8765/auth/
+PLANNER_AUTH_PUBLIC_URL=https://localhost:5174/auth/
+PLANNER_AUTH_UPSTREAM_MODE=entra
+PLANNER_AUTH_SECRET_FILE=/absolute/private/dev-auth/instance-secret
+PLANNER_DEV_TLS_CERT_FILE=/absolute/private/dev-auth/localhost.pem
+PLANNER_DEV_TLS_KEY_FILE=/absolute/private/dev-auth/localhost-key.pem
+ENTRA_TENANT_ID=your-tenant-guid
+ENTRA_CLIENT_ID=your-client-guid
+ADO_ORGANIZATION=your-organization
+ENTRA_CLIENT_SECRET_FILE=/absolute/private/dev-auth/client-secret
+ENTRA_REDIRECT_URI=https://localhost:5174/auth/callback
+ENTRA_AUTH_MODE=entra
+ENTRA_ADO_TRANSPORT=live
+ENTRA_LISTEN_PORT=8765
+ENTRA_BROKER_PUBLIC_URL=https://localhost:5174/auth/
+ENTRA_BROKER_KEY_FILE=/absolute/private/dev-auth/broker-key
+ENTRA_BROKER_STORE=/absolute/private/dev-auth/broker.sqlite
+ENTRA_BROKER_REGISTRY_FILE=/absolute/private/dev-auth/instances.json
+```
+
+Create the registry at `ENTRA_BROKER_REGISTRY_FILE`, with the same instance key path
+as `PLANNER_AUTH_SECRET_FILE`:
+
+```json
+{
+   "version": 1,
+   "instances": {
+      "dev": {
+         "completion_url": "https://localhost:5174/dev/api/auth/login/callback",
+         "secret_file": "/absolute/private/dev-auth/instance-secret"
+      }
+   },
+   "mock_registration": null
+}
+```
+
+Start the launcher and open `https://localhost:5174/dev/` or
+`https://localhost:5174/dev/admin/`. Vite terminates TLS and proxies `/auth/` to the
+loopback broker and `/dev/api/` to the backend. The backend port defaults to 8001;
+the example uses 8002 to avoid an existing dev server. The browser port is fixed by
+the registered public URL: stop another listener or choose a different port and
+update every callback/public URL and the Entra registration. Broker databases are
+bound to their public URL, mode and encryption key: changing the public URL also
+requires an explicit new `ENTRA_BROKER_STORE` path or a deliberate store migration.
+Retain the previous store; changing only URLs cannot reuse its grants. Ctrl+C stops
+all three services. Broker and backend access logging is disabled to keep callback codes out
+of logs. Keep using the auth env file on subsequent starts. Authentication is a
+deployment choice: use `PLANNER_AUTH_PROVIDER=entra` with
+`PLANNER_ADO_AUTHENTICATION=entra`, or `PLANNER_AUTH_PROVIDER=enrollment` with
+`PLANNER_ADO_AUTHENTICATION=pat`, then restart the launcher. Data Sources displays
+the deployed authentication mode but cannot change it.
+
+For offline mock sign-in, use `http://localhost:5174` everywhere above, remove the
+two TLS variables, set both mode variables to `mock`, and set
+`ENTRA_ADO_TRANSPORT=fixture`. Supply canonical tenant/client GUIDs and a nonempty
+dummy client-secret file. Set registry `mock_registration` to an object containing
+the exact `tenant_id`, `client_id`, `redirect_uri` and `organization` from the env.
+Mock credentials cannot access live ADO/wiki. Restrict mock sign-in to your machine.
+
+An empty live store bootstraps the first verified account as administrator. Empty
+mock stores do not bootstrap admins; use a deliberate private copy of existing dev
+data and its original encryption key when testing mock administrator access. Never
+run automated enrollment against the active `data/` directory. Real tenant consent,
+login and ADO renewal still require manual acceptance with your registration.
+
 The application has two deployment methods:
 
 1. **Vite dev server** (`run_dev.sh`) — the standard development workflow
