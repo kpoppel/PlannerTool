@@ -68,6 +68,16 @@ class DiskCacheStorage(StorageBackend):
         _, expire_time = self._cache.get(comp, expire_time=True)
         return expire_time
 
+    def expire(self) -> int:
+        """Remove all expired entries, draining DiskCache's bounded batches."""
+        self._require_open()
+        removed = 0
+        while True:
+            batch = self._cache.expire()
+            removed += batch
+            if batch == 0:
+                return removed
+
     def delete(self, namespace: str, key: str) -> None:
         comp = self._composite_key(namespace, key)
         if comp not in self._cache:

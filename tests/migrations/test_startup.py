@@ -18,6 +18,41 @@ def test_factory_prepares_generation_and_shutdown_releases_lease(tmp_path):
     Database(tmp_path / 'installation', lock_timeout=0).prune()
 
 
+def test_lifespan_periodically_removes_expired_diskcache_rows(tmp_path, monkeypatch):
+    import time
+    import threading
+    from planner_lib import main
+
+    monkeypatch.setattr(main, 'DISKCACHE_EXPIRY_INTERVAL_SECONDS', 0.02, raising=False)
+    static = tmp_path / 'static'
+    static.mkdir()
+    (static / 'index.html').write_text('<html><head></head></html>')
+    app = create_app(Config(data_dir=str(tmp_path / 'installation'), static_dir=str(static)))
+    storage = app.state.container.get('storage')
+
+    def save_expired_session(key):
+        storage.save('auth_sessions', key, {'expired': True}, ttl_seconds=60)
+        storage._cache._sql(
+            'UPDATE Cache SET expire_time = ? WHERE key = ?',
+            (time.time() - 86400, 'auth_sessions::' + key),
+        )
+
+    def session_row_count(key):
+        return storage._cache._sql(
+            'SELECT COUNT(*) FROM Cache WHERE raw = 1 AND key = ?',
+            ('auth_sessions::' + key,),
+        ).fetchone()[0]
+
+    save_expired_session('expired-at-startup')
+    with TestClient(app):
+        assert session_row_count('expired-at-startup') == 0
+        save_expired_session('expired-while-running')
+        deadline = time.monotonic() + 2
+        while session_row_count('expired-while-running') and time.monotonic() < deadline:
+            threading.Event().wait(0.01)
+        assert session_row_count('expired-while-running') == 0
+
+
 def test_factory_rejects_unverifiable_database_before_logging(tmp_path, monkeypatch):
     from planner_lib import main
     (tmp_path / 'cache').mkdir()

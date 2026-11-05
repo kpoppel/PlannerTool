@@ -581,9 +581,15 @@ def upgrade_44(storage):
     from planner_lib.session.policy import initial_authentication
 
     with storage.transaction():
+        storage.expire()
         storage.save('config', 'authentication', initial_authentication())
         for key in list(storage.list_keys('auth_sessions')):
-            storage.delete('auth_sessions', key)
+            try:
+                storage.delete('auth_sessions', key)
+            except KeyError:
+                # The session may expire after the key scan; the final drain removes it.
+                pass
+        storage.expire()
         storage.save('system', 'external_identity_schema', {'version': 3})
         storage.save('system', 'legacy_email_claims', {'initialized': False, 'accounts': []})
         storage.save('system', 'broker_authority', None)

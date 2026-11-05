@@ -26,6 +26,8 @@ from contextlib import asynccontextmanager
 from planner_lib.logging_config import configure_logging
 from planner_lib.storage import create_storage, StorageBackend
 
+DISKCACHE_EXPIRY_INTERVAL_SECONDS = 14400
+
 
 def _read_version() -> str:
     """Read VERSION file relative to repo root, returning 'unknown' if absent."""
@@ -407,7 +409,9 @@ def _build_app(
     logger,
 ) -> FastAPI:
     """Construct the FastAPI application: lifespan, middleware, routes."""
+    import asyncio
     from planner_lib.middleware import SessionMiddleware, access_denied_response
+    from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
     memory_cache = None  # removed: MemoryCacheManager was eliminated; diskcache handles memory via OS page cache
     storage_diskcache = container.get("storage")  # single instance for all namespaces
@@ -417,12 +421,37 @@ def _build_app(
     async def lifespan(app: FastAPI):
         # diskcache handles memory (OS page cache via SQLite mmap) automatically;
         # no warmup or memory cache manager is needed.
+        cleanup_stop = asyncio.Event()
+        cleanup_task = None
+
+        async def expire_diskcache():
+            try:
+                removed = await asyncio.to_thread(storage_diskcache.expire)
+                if removed:
+                    logger.debug('Removed %s expired DiskCache entries', removed)
+            except Exception:
+                logger.exception('Expired DiskCache cleanup failed')
+
+        async def expire_diskcache_periodically():
+            while not cleanup_stop.is_set():
+                try:
+                    await asyncio.wait_for(
+                        cleanup_stop.wait(), timeout=DISKCACHE_EXPIRY_INTERVAL_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    await expire_diskcache()
+
         try:
+            if isinstance(storage_diskcache, DiskCacheStorage):
+                await expire_diskcache()
+                cleanup_task = asyncio.create_task(expire_diskcache_periodically())
             yield
         finally:
             try:
+                if cleanup_task is not None:
+                    cleanup_stop.set()
+                    await cleanup_task
                 from planner_lib.backend.port import TaskSnapshotBackend
-                import asyncio
                 backend = container._singletons.get('backend')
                 if isinstance(backend, TaskSnapshotBackend):
                     await asyncio.to_thread(backend.close)
