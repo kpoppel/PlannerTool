@@ -70,10 +70,10 @@ export const featureBoardStyles = css`
   }
 
   /*
-   * Sticky label column — stays at the left edge of the viewport while the user
-   * scrolls the timeline horizontally, but scrolls vertically with the board.
+  * Sticky label column stays beside the frozen task column while the user
+  * scrolls the timeline horizontally, but scrolls vertically with the board.
    *
-   * Only "left: 0" is specified (no "top") so stickiness applies in the horizontal
+  * Only "left" is specified (no "top") so stickiness applies in the horizontal
    * direction only. Adding "top: 0" would pin the container to the viewport top,
    * making absolute children appear at fixed viewport positions instead of their
    * correct board positions.
@@ -83,7 +83,7 @@ export const featureBoardStyles = css`
    */
   .swimlane-labels {
     position: sticky;
-    left: 0;
+    left: var(--task-column-width, 0px);
     width: ${SWIMLANE_LABEL_WIDTH_PX}px;
     height: 0;
     overflow: visible;
@@ -102,7 +102,7 @@ export const featureBoardStyles = css`
   .swimlane-label {
     position: sticky;
     left: 0;
-    top: calc(var(--swimlane-label-sticky-top, 24px) + 6px);
+    top: calc(var(--swimlane-label-sticky-top, 0px) + 6px);
     width: ${SWIMLANE_LABEL_WIDTH_PX}px;
     display: flex;
     align-items: center;
@@ -118,7 +118,6 @@ export const featureBoardStyles = css`
     /* Semi-transparent dark background for legibility over the board stripes */
     background: rgba(0, 0, 0, 0.22);
     backdrop-filter: blur(2px);
-    transform: translateY(calc(-50% + 15px));
     pointer-events: auto;
   }
 

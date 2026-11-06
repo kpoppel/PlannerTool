@@ -12,6 +12,7 @@ test.beforeEach(async ({ page }) => {
     const { AppEvents } = await import('/js/core/EventRegistry.js');
     window.startTaskBoard = () => bus.emit(AppEvents.READY);
     const { store } = await import('/js/application/store.js');
+    window.taskBoardStore = store;
     const { createInitialAppState } = await import('/js/application/createInitialAppState.js');
     await import('/js/components/FeatureCard.lit.js');
     await import('/js/components/TimelineBoard.lit.js');
@@ -190,6 +191,73 @@ test('card fields disappear right to left, restore on widening, and retain proje
     expect(clipped).toBe(false);
   }
   await page.screenshot({ path: testInfo.outputPath('compact-feature-card-desktop.png') });
+});
+
+test('swimlane tags stay on the board and pin below the header while their lane scrolls', async ({ page }, testInfo) => {
+  await page.evaluate(async () => {
+    const store = window.taskBoardStore;
+    store.setState((state) => ({ ...state,
+      baseline: { ...state.baseline,
+        projects: [...state.baseline.projects, { ...state.baseline.projects[0],
+          id: 'second-plan', name: 'Second plan', color: '#298864' }],
+        features: state.baseline.features.map((feature, index) => index >= 35
+          ? { ...feature, project: 'second-plan' } : feature),
+      },
+      selection: { ...state.selection, projectIds: ['plan', 'second-plan'] },
+    }));
+    await document.querySelector('timeline-board').shadowRoot.querySelector('feature-board').renderFeatures();
+  });
+  const labels = page.locator('feature-board .swimlane-label');
+  await expect(labels).toHaveCount(2);
+  const geometry = () => page.evaluate(() => {
+    const shell = document.querySelector('timeline-board').shadowRoot;
+    const board = shell.querySelector('feature-board');
+    const labels = [...board.shadowRoot.querySelectorAll('.swimlane-label')]
+      .map((label) => ({ top: label.getBoundingClientRect().top,
+        bottom: label.getBoundingClientRect().bottom, left: label.getBoundingClientRect().left }));
+    return { labels, panelRight: shell.querySelector('task-list').getBoundingClientRect().right,
+      boardTop: board.getBoundingClientRect().top,
+      headerBottom: shell.querySelector('timeline-lit').getBoundingClientRect().bottom };
+  });
+  const initial = await geometry();
+  expect(initial.labels[0].left).toBeGreaterThanOrEqual(initial.panelRight);
+  expect(initial.labels[0].top - initial.boardTop).toBeGreaterThanOrEqual(0);
+  expect(initial.labels[0].top - initial.boardTop).toBeLessThan(12);
+  await page.locator('timeline-board #scroll-container').evaluate((scroll) => {
+    scroll.scrollTop = 180;
+    scroll.scrollLeft = 160;
+  });
+  await expect.poll(async () => {
+    const current = await geometry();
+    return Math.abs(current.labels[0].top - current.headerBottom - 6);
+  }).toBeLessThan(2);
+  const scrolled = await geometry();
+  expect(scrolled.labels[0].left).toBeGreaterThanOrEqual(scrolled.panelRight);
+  await page.getByRole('separator', { name: 'Task column width' }).press('ArrowRight');
+  await expect.poll(async () => {
+    const current = await geometry();
+    return Math.abs(current.labels[0].left - current.panelRight);
+  }).toBeLessThan(2);
+  await page.getByRole('button', { name: 'Collapse task list', exact: true }).click();
+  await expect(page.locator('task-list')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => {
+    const shell = document.querySelector('timeline-board').shadowRoot;
+    const label = shell.querySelector('feature-board').shadowRoot.querySelector('.swimlane-label');
+    return Math.abs(label.getBoundingClientRect().left -
+      shell.querySelector('.task-toolbar').getBoundingClientRect().right);
+  })).toBeLessThan(2);
+  await page.getByRole('button', { name: 'Restore task list', exact: true }).click();
+  await page.locator('timeline-board #scroll-container').evaluate((scroll) => {
+    const board = scroll.querySelector('feature-board');
+    scroll.scrollTop = board._swimlanes[1].topPx + 100;
+  });
+  await expect.poll(async () => {
+    const current = await geometry();
+    return Math.abs(current.labels[1].top - current.headerBottom - 6);
+  }).toBeLessThan(2);
+  const nextLane = await geometry();
+  expect(nextLane.labels[0].bottom).toBeLessThanOrEqual(nextLane.headerBottom + 6);
+  await page.screenshot({ path: testInfo.outputPath('swimlane-tags-desktop.png') });
 });
 
 test('search navigates without filtering and task selection opens read-only details', async ({ page }) => {

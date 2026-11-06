@@ -141,11 +141,9 @@ class FeatureBoard extends LitElement {
   }
 
   _updateSwimlaneLabelStickyTop() {
-    const scrollContainer = findInBoard('#scroll-container');
-    const stickyTop =
-      scrollContainer && scrollContainer.clientHeight ?
-        Math.round(scrollContainer.clientHeight / 2)
-      : 24;
+    const header = findInBoard('timeline-lit');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+    const stickyTop = header === null ? 0 : Math.ceil(header.getBoundingClientRect().height);
     this.style.setProperty('--swimlane-label-sticky-top', `${stickyTop}px`);
     this._scheduleViewportRender();
   }

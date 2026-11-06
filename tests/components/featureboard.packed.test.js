@@ -341,8 +341,11 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     );
   });
 
-  it('swimlane mode renders sticky label slots centered to the scroll viewport', async () => {
+  it('swimlane mode pins label slots below the timeline header', async () => {
     const timelineBoard = document.querySelector('timeline-board') || document.body;
+    const header = document.createElement('timeline-lit');
+    sinon.stub(header, 'getBoundingClientRect').returns({ height: 34 });
+    timelineBoard.prepend(header);
     const scrollContainer = document.createElement('div');
     scrollContainer.id = 'scroll-container';
     Object.defineProperty(scrollContainer, 'clientHeight', {
@@ -361,7 +364,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
       await board.renderFeatures();
       await board.updateComplete;
 
-      expect(board.style.getPropertyValue('--swimlane-label-sticky-top')).to.equal('300px');
+      expect(board.style.getPropertyValue('--swimlane-label-sticky-top')).to.equal('34px');
 
       const labelSlot = board.shadowRoot.querySelector('.swimlane-label-slot');
       const label = board.shadowRoot.querySelector('.swimlane-label');
@@ -370,6 +373,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
       expect(label).to.exist;
       expect(label.className).to.contain('type-plan');
     } finally {
+      header.remove();
       scrollContainer.remove();
     }
   });
