@@ -243,10 +243,12 @@ export const SIDEBAR_STYLES = css`
       display: grid;
       align-items: stretch;
       padding: 0;
+      min-height: 26px;
+      border-radius: 6px;
     }
     .sidebar-chip.team-drilldown-row .team-name-col {
       font-weight: 600;
-      padding: 6px 4px;
+      padding: 2px 4px;
       align-self: center;
       text-align: left;
     }
@@ -259,17 +261,18 @@ export const SIDEBAR_STYLES = css`
     }
     .team-drilldown-row .team-name-col {
       min-width: 0;
-      padding: 6px 4px;
+      padding: 2px 4px;
       display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      line-height: 1.1;
+      gap: 6px;
+      align-items: center;
+      line-height: 16px;
       overflow-wrap: anywhere;
       font-weight: 400;
       overflow: hidden;
     }
     .team-drilldown-row .team-name-col > span:first-child {
-      width: 100%;
+      min-width: 0;
+      flex: 1;
     }
     .team-drilldown-grid:has(.team-drilldown-header .type-icon) .team-name-col > span:first-child {
       white-space: nowrap;
@@ -277,6 +280,7 @@ export const SIDEBAR_STYLES = css`
       text-overflow: ellipsis;
     }
     .team-drilldown-row .team-name-col small {
+      flex-shrink: 0;
       opacity: 0.8;
       font-size: 0.68rem;
       font-weight: 400;

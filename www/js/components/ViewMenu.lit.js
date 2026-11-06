@@ -29,8 +29,8 @@ export class ViewMenuLit extends LitElement {
       max-height: 500px;
       overflow-y: auto;
       padding: 12px;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       font-size: 13px;
       gap: 8px;
     }
@@ -49,8 +49,8 @@ export class ViewMenuLit extends LitElement {
     }
 
     .view-item {
-      min-height: 32px;
-      padding: 6px 8px;
+      min-height: 26px;
+      padding: 3px 4px;
       border-radius: 6px;
       width: 100%;
       display: flex;
@@ -77,7 +77,8 @@ export class ViewMenuLit extends LitElement {
     .view-name {
       flex: 1 1 auto;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 0.8rem;
+      line-height: 16px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -96,7 +97,13 @@ export class ViewMenuLit extends LitElement {
       background: transparent;
       border: none;
       border-radius: 3px;
-      padding: 4px 6px;
+      padding: 0;
+      width: 24px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
       cursor: pointer;
       font-size: 0.8rem;
       line-height: 1;
@@ -135,9 +142,15 @@ export class ViewMenuLit extends LitElement {
       border-color: rgba(102, 126, 234, 0.6);
     }
     .display-section {
+      grid-column: 1 / -1;
+      min-width: 0;
       border-top: 1px solid rgba(255, 255, 255, 0.18);
       margin-top: 4px;
       padding-top: 8px;
+    }
+
+    .display-section-half {
+      grid-column: auto;
     }
 
     .display-title {
@@ -329,13 +342,13 @@ export class ViewMenuLit extends LitElement {
             ${[['threeMonths', '3mo'], ['weeks', 'Weeks'], ['months', 'Months'], ['quarters', 'Quarters'], ['years', 'Years']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getTimelineScale() === value ? 'active' : ''}" @click=${() => this._setTimelineScale(value)}>${label}</button>`)}
           </div>
         </div>
-        <div class="display-section">
+        <div class="display-section display-section-half">
           <div class="display-title" role="heading" aria-level="2">Cards <kbd class="shortcut-pill">C</kbd></div>
           <div class="segment-group">
             ${[['normal', 'Normal'], ['packed', 'Packed']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getDisplayMode() === value ? 'active' : ''}" @click=${() => this._setDisplayMode(value)}>${label}</button>`)}
           </div>
         </div>
-        <div class="display-section">
+        <div class="display-section display-section-half">
           <div class="display-title" role="heading" aria-level="2">Task Sort <kbd class="shortcut-pill">S</kbd></div>
           <div class="segment-group">
             ${[['rank', 'Rank'], ['date', 'Date']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getFeatureSortMode() === value && !sel.view.getPackedMode() ? 'active' : ''}" ?disabled=${sel.view.getPackedMode()} @click=${() => this._setFeatureSortMode(value)}>${label}</button>`)}

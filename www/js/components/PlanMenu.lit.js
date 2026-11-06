@@ -87,7 +87,7 @@ export class PlanMenuLit extends LitElement {
       border-radius: 6px;
       background: transparent;
       box-sizing: border-box;
-      min-height: 32px;
+      min-height: 26px;
       overflow: hidden;
       display: grid;
       grid-column: 1 / -1;
@@ -121,7 +121,8 @@ export class PlanMenuLit extends LitElement {
 
     .sidebar-chip .project-name-col {
       min-width: 0;
-      padding: 6px 4px;
+      padding: 3px 4px;
+      line-height: 16px;
       align-self: center;
       overflow-wrap: anywhere;
       font-weight: 600;

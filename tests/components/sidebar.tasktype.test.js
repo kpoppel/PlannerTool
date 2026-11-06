@@ -74,6 +74,17 @@ describe('Sidebar task-type filter', () => {
       .map((hint) => hint.textContent)).to.deep.equal(['P', 'A', 'I', 'R']);
   });
 
+  it('shows task types first, state second, and the remaining selectors last', async () => {
+    await sidebar.updateComplete;
+
+    expect([...sidebar.shadowRoot.querySelectorAll('.filter-dimension-title')]
+      .map((heading) => [...heading.childNodes]
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent).join('').trim())).to.deep.equal([
+      'Task Types', 'State', 'Schedule', 'Allocation', 'Hierarchy', 'Relations',
+    ]);
+  });
+
   it('offers only scoped presentable states and types, keeping unchecked options available', () => {
     store.setState((state) => ({ ...state,
       baseline: { ...state.baseline,
@@ -175,7 +186,7 @@ describe('Sidebar task-type filter', () => {
     expect(actions.toggleFilter.calledOnceWithExactly('schedule', 'planned')).to.be.true;
     expect(actions.toggleState.calledOnceWithExactly('New')).to.be.true;
     expect(actions.toggleType.called).to.be.false;
-    expect(options[3].getAttribute('aria-disabled')).to.equal('true');
+    expect(root.querySelector('[aria-label="Task"]').getAttribute('aria-disabled')).to.equal('true');
   });
 
   it('logs the health error status when the result fails', async () => {

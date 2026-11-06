@@ -81,6 +81,24 @@ describe('Task list presentation', () => {
     expect(row.style.getPropertyValue('--group-color')).toBe('#347ab3');
   });
 
+  it('renders context-only tasks without an owning plan alongside saved-view rows', async () => {
+    list.layout = { ...list.layout, rows: [...list.layout.rows, {
+      id: '99', top: 88, height: 60, feature: { id: '99', title: 'Context descendant',
+        parentId: '42', project: 'context-external', type: 'Feature' },
+      groupColor: null, foldCount: 0, folded: false,
+    }] };
+
+    await expect(list.updateComplete).resolves.toBe(true);
+
+    expect(list.shadowRoot.querySelectorAll('[data-task-id]')).toHaveLength(3);
+    expect(list.shadowRoot.querySelector('[data-task-id="42"] .task-meta').textContent)
+      .toBe('#42 · Release plan');
+    expect(list.shadowRoot.querySelector('[data-task-id="99"] .task-title').textContent)
+      .toBe('Context descendant');
+    expect(list.shadowRoot.querySelector('[data-task-id="99"] .task-meta').textContent)
+      .toBe('#99 · Parent #42');
+  });
+
   it('selects the whole row once and emits start-aligned navigation on a repeat click', async () => {
     const selected = vi.spyOn(cmd.feature, 'setSelectedFeature');
     const navigate = vi.fn();

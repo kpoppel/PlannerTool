@@ -60,6 +60,72 @@ async function alignment(page, id = 'task-0') {
   }, id);
 }
 
+test('plan scenario team and saved view menu rows share a compact height', async ({ page }, testInfo) => {
+  await page.evaluate(async () => {
+    const { render } = await import('/js/vendor/lit.js');
+    const { SIDEBAR_STYLES } = await import('/js/components/sidebar/Sidebar.styles.lit.js');
+    const { renderSidebarTeams } = await import('/js/components/sidebar/SidebarTeams.lit.js');
+    const plan = document.createElement('plan-menu');
+    document.body.appendChild(plan);
+    plan.projects = [{ id: 'plan', name: 'Release plan', type: 'project', container_order: 0 }];
+    const scenario = document.createElement('scenario-menu');
+    document.body.appendChild(scenario);
+    scenario.scenarios = [{ id: 'baseline', name: 'Baseline' }];
+    const views = document.createElement('view-menu');
+    document.body.appendChild(views);
+    views.views = [{ id: 'saved', name: 'Saved view', readonly: false },
+      { id: 'readonly', name: 'Shared view', readonly: true }];
+    const teams = document.createElement('section');
+    teams.id = 'compact-teams-fixture';
+    document.body.appendChild(teams);
+    const root = teams.attachShadow({ mode: 'open' });
+    root.adoptedStyleSheets = [SIDEBAR_STYLES.styleSheet];
+    render(renderSidebarTeams({ model: {
+      teams: [{ id: 'team', name: 'Delivery team', short: 'DT', color: '#347ab3',
+        selected: true, counts: [12] }],
+      taskTypes: ['Feature'], allSelected: true, hasMoreCounts: false,
+      countsOpen: false, taskViewMode: 'plan',
+    }, actions: { toggleTeam() {}, changeColor() {}, toggleAll() {}, setTaskViewMode() {} } }), root);
+    await Promise.all([plan.updateComplete, scenario.updateComplete, views.updateComplete]);
+  });
+  const rows = [page.locator('plan-menu .sidebar-chip'), page.locator('scenario-menu .scenario-item'),
+    page.locator('#compact-teams-fixture .team-drilldown-row'),
+    page.locator('view-menu .view-item').nth(0), page.locator('view-menu .view-item').nth(1)];
+  for (const row of rows) {
+    await expect(row).toBeVisible();
+    const bounds = await row.boundingBox();
+    expect(bounds.height).toBe(26);
+    const clipped = await row.evaluate((element) => [...element.querySelectorAll('span, button')]
+      .some((child) => child.getBoundingClientRect().bottom > element.getBoundingClientRect().bottom));
+    expect(clipped).toBe(false);
+  }
+  await page.screenshot({ path: testInfo.outputPath('compact-menu-rows-desktop.png'), fullPage: true });
+});
+
+test('view menu places card size and task sort side by side', async ({ page }, testInfo) => {
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  const menu = page.locator('view-menu');
+  const cards = menu.locator('.display-section').filter({ hasText: 'Cards' });
+  const sort = menu.locator('.display-section').filter({ hasText: 'Task Sort' });
+  const cardsBounds = await cards.boundingBox();
+  const sortBounds = await sort.boundingBox();
+  expect(cardsBounds.y).toBe(sortBounds.y);
+  expect(cardsBounds.width).toBeCloseTo(sortBounds.width, 0);
+  expect(cardsBounds.x + cardsBounds.width).toBeLessThan(sortBounds.x);
+  for (const section of [cards, sort]) {
+    expect(await section.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    for (const button of await section.getByRole('button').all()) {
+      expect(await button.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    }
+  }
+  await cards.getByRole('button', { name: 'Packed', exact: true }).click();
+  await expect(sort.getByRole('button', { name: 'Rank', exact: true })).toBeDisabled();
+  await cards.getByRole('button', { name: 'Normal', exact: true }).click();
+  await sort.getByRole('button', { name: 'Date', exact: true }).click();
+  await expect(sort.getByRole('button', { name: 'Date', exact: true })).toHaveClass(/active/);
+  await menu.screenshot({ path: testInfo.outputPath('view-menu-side-by-side-desktop.png') });
+});
+
 test('help keeps application status visible while documents scroll without a board footer', async ({ page }, testInfo) => {
   await page.route('**/api/health', (route) => route.fulfill({ json: {
     server_name: 'Help fixture', version: 'test-version', status: 'ok', uptime_seconds: 3660,

@@ -25,32 +25,27 @@ export const SIDEBAR_FILTER_DIMENSIONS = [
 /** Render only projected values and dispatch named, value-based actions. */
 export function renderSidebarTaskFilters({ model, actions }) {
   return html`
-    <div class="filter-dimensions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      ${model.dimensions.map((dimension) => html`
-        <div class="filter-dimension">
-          <div class="filter-dimension-title shortcut-heading">${dimension.title}
-            <kbd class="shortcut-pill" title=${`Cycle ${dimension.title} (${dimension.shortcut})`}>${dimension.shortcut}</kbd>
-          </div>
-          <div class="filter-options" style="display:flex;flex-direction:column;gap:6px;">
-            ${dimension.options.map((option) => html`
-              <div class="filter-option ${option.active ? 'active' : ''} ${option.disabled ? 'disabled' : ''}"
-                role="checkbox" aria-checked=${option.active} aria-label=${option.label}
-                tabindex=${option.disabled ? -1 : 0} @keydown=${onFilterKeyDown}
-                aria-disabled=${option.disabled ? 'true' : 'false'}
-                @click=${() => {
-                  if (!option.disabled) actions.toggleFilter(dimension.key, option.key);
-                }}
-                title=${option.disabled ? 'Not relevant in current tool context' : ''}>
-                <div class="filter-checkbox"></div>
-                <span>${option.label}</span>
+    ${model.types.length > 0 ? html`
+      <div class="filter-dimension">
+        <div class="filter-dimension-title">Task Types</div>
+        <div class="filter-options">
+          ${model.types.map((type) => html`
+            <div class="filter-option ${type.active ? 'active' : ''} ${type.disabled ? 'disabled' : ''}"
+              role="checkbox" aria-checked=${type.active} aria-label=${type.name}
+              tabindex=${type.disabled ? -1 : 0} @keydown=${onFilterKeyDown}
+              data-type-key=${type.key}
+              aria-disabled=${type.disabled ? 'true' : 'false'}
+              @click=${() => { if (!type.disabled) actions.toggleType(type.key); }}
+              title=${type.disabled ? 'Not relevant in current tool context' : ''}>
+              <div class="filter-checkbox"></div>
+              <div style="flex:1;display:flex;align-items:center;gap:4px;">
+                <span style="width:16px;height:16px;flex-shrink:0;display:inline-flex;align-items:center;"
+                  >${getIconTemplate(type.name)}</span>${type.name}
               </div>
-            `)}
-          </div>
+            </div>
+          `)}
         </div>
-      `)}
-    </div>
-    ${model.states.length === 0 && model.types.length === 0 ? html`
-      <div class="section-description"><span class="small">No filters available</span></div>
+      </div>
     ` : ''}
     ${model.states.length > 0 ? html`
       <div class="filter-dimension">
@@ -76,27 +71,32 @@ export function renderSidebarTaskFilters({ model, actions }) {
         </div>
       </div>
     ` : ''}
-    ${model.types.length > 0 ? html`
-      <div class="filter-dimension">
-        <div class="filter-dimension-title">Task Types</div>
-        <div class="filter-options">
-          ${model.types.map((type) => html`
-            <div class="filter-option ${type.active ? 'active' : ''} ${type.disabled ? 'disabled' : ''}"
-              role="checkbox" aria-checked=${type.active} aria-label=${type.name}
-              tabindex=${type.disabled ? -1 : 0} @keydown=${onFilterKeyDown}
-              data-type-key=${type.key}
-              aria-disabled=${type.disabled ? 'true' : 'false'}
-              @click=${() => { if (!type.disabled) actions.toggleType(type.key); }}
-              title=${type.disabled ? 'Not relevant in current tool context' : ''}>
-              <div class="filter-checkbox"></div>
-              <div style="flex:1;display:flex;align-items:center;gap:4px;">
-                <span style="width:16px;height:16px;flex-shrink:0;display:inline-flex;align-items:center;"
-                  >${getIconTemplate(type.name)}</span>${type.name}
-              </div>
-            </div>
-          `)}
-        </div>
-      </div>
+    ${model.states.length === 0 && model.types.length === 0 ? html`
+      <div class="section-description"><span class="small">No filters available</span></div>
     ` : ''}
+    <div class="filter-dimensions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      ${model.dimensions.map((dimension) => html`
+        <div class="filter-dimension">
+          <div class="filter-dimension-title shortcut-heading">${dimension.title}
+            <kbd class="shortcut-pill" title=${`Cycle ${dimension.title} (${dimension.shortcut})`}>${dimension.shortcut}</kbd>
+          </div>
+          <div class="filter-options" style="display:flex;flex-direction:column;gap:6px;">
+            ${dimension.options.map((option) => html`
+              <div class="filter-option ${option.active ? 'active' : ''} ${option.disabled ? 'disabled' : ''}"
+                role="checkbox" aria-checked=${option.active} aria-label=${option.label}
+                tabindex=${option.disabled ? -1 : 0} @keydown=${onFilterKeyDown}
+                aria-disabled=${option.disabled ? 'true' : 'false'}
+                @click=${() => {
+                  if (!option.disabled) actions.toggleFilter(dimension.key, option.key);
+                }}
+                title=${option.disabled ? 'Not relevant in current tool context' : ''}>
+                <div class="filter-checkbox"></div>
+                <span>${option.label}</span>
+              </div>
+            `)}
+          </div>
+        </div>
+      `)}
+    </div>
   `;
 }

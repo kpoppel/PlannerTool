@@ -135,7 +135,10 @@ export class TaskList extends LitElement {
           if (row.feature.parentId !== null && row.feature.parentId !== undefined) {
             metadata.push(`Parent #${row.feature.parentId}`);
           }
-          metadata.push(this._projects.value.find((project) => String(project.id) === String(row.feature.project)).name);
+          const owningPlan = this._projects.value.find((project) =>
+            String(project.id) === String(row.feature.project));
+          // Context-only tasks have no configured owning plan.
+          if (owningPlan !== undefined) metadata.push(owningPlan.name);
         }
         return html`<div class="row ${group ? 'group' : ''} ${this._selection.value === row.id ? 'selected' : ''}
           ${this.highlightedId === row.id ? 'highlighted' : ''}" data-task-id=${row.id}

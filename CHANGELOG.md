@@ -23,6 +23,9 @@ Template - do not change :
 - Support broker-connected local development with localhost HTTPS, instance-prefixed callbacks and a protected authentication env file.
 
 ### Changed
+- Show Task Types first and State second in Task Filters, followed by the remaining selectors.
+- Align Plan, Scenario, Teams and Saved Views menus with compact rows and inline team abbreviations.
+- Place Cards and Task Sort side by side in the View menu to reduce its height.
 - Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
 - Replace the sidebar with a resizable, collapsible task column aligned to board rows, with ID/title search and saved column preferences. Move Teams, Hierarchy and Task Filters into top-menu popovers; card titles live in the task column and tooltips, and ghost titles are removed.
 - Show task-column rows with a single-line title, type icon, task/parent IDs and owning plan, using board group colors. Keep consistent breathing room around rows and cards without extra gaps at swimlane transitions. Drag the full-height edge to resize, collapse or restore the column; click a selected row again to align its card's start beside the list.
@@ -36,6 +39,7 @@ Template - do not change :
 - Exclude credentials and broker authority from logical backups. Enrollment account restore needs fresh operator-reset keys; Entra accounts cannot be replaced.
 
 ### Fixed
+- Render the task list when restored views include context-only tasks without a configured owning plan.
 - Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
 - Load Help documents and images correctly when the development server runs under an instance sub-path.
 - Clear old sessions atomically when authentication policy changes so later restarts do not reject stale source-bound sessions.

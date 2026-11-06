@@ -50,7 +50,8 @@ export class ScenarioMenuLit extends LitElement {
     }
 
     .scenario-item {
-      padding: 8px 10px;
+      min-height: 26px;
+      padding: 3px 4px;
       border-radius: 6px;
       width: 100%;
       display: flex;
@@ -77,7 +78,8 @@ export class ScenarioMenuLit extends LitElement {
     .scenario-name {
       flex: 1 1 auto;
       font-weight: 600;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
+      line-height: 16px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -102,7 +104,13 @@ export class ScenarioMenuLit extends LitElement {
       background: transparent;
       border: none;
       border-radius: 3px;
-      padding: 4px 6px;
+      padding: 0;
+      width: 24px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
       cursor: pointer;
       font-size: 0.8rem;
       line-height: 1;
