@@ -126,7 +126,7 @@ test('task list, graph and card display modes', async ({ page }) => {
   await shot(page.locator('maingraph-lit'), 'graph_project');
 
   await shot(page, 'board_normal', { clip: BOARD_CLIP });
-  for (const mode of ['Compact', 'Packed']) {
+  for (const mode of ['Packed']) {
     const menu = await openMenu(page, '#viewMenuBtn', 'view-menu');
     await menu.locator('.segment-btn', { hasText: new RegExp(`^${mode}$`) }).click();
     await closeMenus(page);

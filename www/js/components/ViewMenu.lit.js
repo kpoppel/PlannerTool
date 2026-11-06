@@ -332,7 +332,7 @@ export class ViewMenuLit extends LitElement {
         <div class="display-section">
           <div class="display-title" role="heading" aria-level="2">Cards <kbd class="shortcut-pill">C</kbd></div>
           <div class="segment-group">
-            ${[['normal', 'Normal'], ['compact', 'Compact'], ['packed', 'Packed']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getDisplayMode() === value ? 'active' : ''}" @click=${() => this._setDisplayMode(value)}>${label}</button>`)}
+            ${[['normal', 'Normal'], ['packed', 'Packed']].map(([value, label]) => html`<button class="segment-btn ${sel.view.getDisplayMode() === value ? 'active' : ''}" @click=${() => this._setDisplayMode(value)}>${label}</button>`)}
           </div>
         </div>
         <div class="display-section">

@@ -81,9 +81,10 @@ describe('application/commands/viewCommands', () => {
     const bus = { emit: vi.fn() };
     const commands = createViewCommands(store, bus);
 
-    commands.setDisplayMode('compact');
+    expect(() => commands.setDisplayMode('compact')).toThrow('Unknown display mode');
+    commands.setDisplayMode('normal');
     expect(store.getState().view.options).toMatchObject({
-      displayMode: 'compact',
+      displayMode: 'normal',
       condensedCards: true,
       packedMode: false,
     });
@@ -98,7 +99,7 @@ describe('application/commands/viewCommands', () => {
     commands.setDisplayMode('normal');
     expect(store.getState().view.options).toMatchObject({
       displayMode: 'normal',
-      condensedCards: false,
+      condensedCards: true,
       packedMode: false,
     });
   });

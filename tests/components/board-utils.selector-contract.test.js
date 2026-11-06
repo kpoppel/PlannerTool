@@ -26,8 +26,8 @@ describe('board-utils selector seam', () => {
     setBoardZoom(1);
   });
 
-  it('returns normal lane height when condensed cards are disabled', () => {
-    expect(laneHeight()).to.equal(64);
+  it('uses the new normal row height regardless of the retired size flag', () => {
+    expect(laneHeight()).to.equal(28);
   });
 
   it('returns compact lane height when condensed cards are enabled', () => {
@@ -38,7 +38,7 @@ describe('board-utils selector seam', () => {
   it('scales lane height with board zoom instead of a CSS transform', () => {
     setBoardZoom(0.5);
     expect(getBoardZoom()).to.equal(0.5);
-    expect(laneHeight()).to.equal(32);
+    expect(laneHeight()).to.equal(14);
 
     mockView.condensedCards = true;
     setBoardZoom(0.75);

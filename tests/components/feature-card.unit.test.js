@@ -5,6 +5,51 @@ import { cmd, sel } from '../../www/js/application/imports.js';
 import { buildDescendantAllocationTeams } from '../../www/js/application/shared/teamAllocation.js';
 
 describe('FeatureCardLit basic behaviors', () => {
+  it('renders type, ID and allocation bars without titles or dates in both sizes', async () => {
+    const el = await fixture('<feature-card-lit style="width:400px"></feature-card-lit>');
+    el.teams = [{ id: 'team', name: 'Team', color: '#123456', selected: true }];
+    el.feature = { id: '12345', title: 'Title belongs in the task list', type: 'Feature',
+      start: '2026-10-01', end: '2026-10-10', capacity: [{ team: 'team', capacity: 50 }] };
+    for (const condensed of [false, true]) {
+      el.condensed = condensed;
+      await el.updateComplete;
+      const row = el.shadowRoot.querySelector('.card-content');
+      expect(row).to.exist;
+      expect(row.children[0].classList.contains('feature-card-icon')).to.be.true;
+      expect(row.children[1].classList.contains('feature-id')).to.be.true;
+      expect(row.children[1].textContent.trim()).to.equal('12345');
+      expect(row.children[2].classList.contains('team-load-row')).to.be.true;
+      expect(row.querySelector('.allocation-fill')).to.exist;
+      expect(row.textContent).to.include('50');
+      expect(el.shadowRoot.querySelector('.feature-title')).to.be.null;
+      expect(el.shadowRoot.querySelector('.feature-dates')).to.be.null;
+    }
+  });
+
+  it('renders descendant completion last and uses it for progress, including completed leaves', async () => {
+    const completion = sinon.stub(sel.feature, 'getDescendantCompletion').returns({ closed: 2, total: 4 });
+    const category = sinon.stub(sel.filter, 'getFeatureStateCategory').returns('InProgress');
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = { id: 'parent', title: 'Parent' };
+    el.project = { color: '#123456' };
+    await el.updateComplete;
+    const card = el.shadowRoot.querySelector('.feature-card');
+    expect(el.shadowRoot.querySelector('.card-content').lastElementChild.textContent.trim()).to.equal('2/4');
+    expect(card.style.getPropertyValue('--completion')).to.equal('50%');
+    expect(card.style.getPropertyValue('--project-color')).to.equal('#123456');
+    expect(el.shadowRoot.querySelector('.completion-fill')).to.exist;
+    completion.returns({ closed: 0, total: 0 });
+    category.returns('Completed');
+    el.feature = { id: 'leaf', title: 'Closed leaf' };
+    await el.updateComplete;
+    expect(card.style.getPropertyValue('--completion')).to.equal('100%');
+    expect(el.shadowRoot.querySelector('.completion-count').textContent.trim()).to.equal('0/0');
+    category.returns('InProgress');
+    el.feature = { ...el.feature, title: 'Open leaf' };
+    await el.updateComplete;
+    expect(card.style.getPropertyValue('--completion')).to.equal('0%');
+  });
+
   it('keeps parent allocations active when children have no allocations', async () => {
     const features = [
       { id: '925622', capacity: [{ team: 'rangers', capacity: 50 }] },
@@ -132,8 +177,9 @@ describe('FeatureCardLit basic behaviors', () => {
     await el.updateComplete;
     const root = el.shadowRoot.querySelector('.feature-card');
     expect(root).to.exist;
-    expect(root.textContent).to.include('My Feature');
-    expect(root.textContent).to.include('2025-01-01');
+    expect(root.textContent).to.include('f1');
+    expect(root.title).to.include('My Feature');
+    expect(root.title).to.include('2025-01-01');
   });
 
   it('does not render a date label for an unplanned card', async () => {
@@ -141,11 +187,8 @@ describe('FeatureCardLit basic behaviors', () => {
     el.feature = { id: 'unplanned', title: 'Unplanned work', start: null, end: null };
     await el.updateComplete;
 
-    expect(el.shadowRoot.querySelector('.dates-default').textContent.trim()).to.equal('');
-    expect(el.shadowRoot.querySelector('.feature-dates').textContent).not.to.include('null');
-    expect(el.constructor.styles.cssText).to.match(
-      /\.feature-dates\s*\{[^}]*min-height:\s*1em;/
-    );
+    expect(el.shadowRoot.querySelector('.feature-dates')).to.be.null;
+    expect(el.shadowRoot.querySelector('.feature-card').title).not.to.include('null');
   });
 
   it('resolves completion using the task process and type, not its state label alone', async () => {
@@ -163,13 +206,10 @@ describe('FeatureCardLit basic behaviors', () => {
     el.feature = { id: 'ancestor', title: 'Ancestor item', ancestorOnly: true,
       childrenComplete: false, start: '2026-01-01', end: '2026-02-01' };
     await el.updateComplete;
-    const badge = el.shadowRoot.querySelector('.ancestor-context');
-    expect(badge).to.exist;
-    expect(badge.textContent.trim()).to.equal('Ancestor');
-    expect(badge.getAttribute('title')).to.include('Other child branches are not loaded');
+    expect(el.shadowRoot.querySelector('.feature-card').title).to.include('Other child branches are not loaded');
     el.feature = { ...el.feature, ancestorOnly: false, childrenComplete: true };
     await el.updateComplete;
-    expect(el.shadowRoot.querySelector('.ancestor-context')).to.be.null;
+    expect(el.shadowRoot.querySelector('.feature-card').title).not.to.include('Other child branches');
   });
 
   it('renders anchor presentations as completed historical cards, not ghosted unplanned cards', async () => {
@@ -190,7 +230,7 @@ describe('FeatureCardLit basic behaviors', () => {
     const card = el.shadowRoot.querySelector('.feature-card');
     expect(card.classList.contains('historical-anchor')).to.be.true;
     expect(card.classList.contains('ghosted')).to.be.false;
-    expect(el.shadowRoot.querySelector('.feature-dates').textContent).to.include('2026-05-19');
+    expect(card.title).to.include('2026-05-19');
 
     el.feature = { ...el.feature, start: '2026-05-19', end: '2026-05-20' };
     await el.updateComplete;
@@ -242,7 +282,7 @@ describe('FeatureCardLit basic behaviors', () => {
     const card = el.shadowRoot.querySelector('.feature-card');
     expect(card.classList.contains('has-children')).to.be.true;
     expect(el.constructor.styles.cssText).to.match(
-      /\.feature-card\.narrow\.has-children,\s*\.feature-card\.small-feature\.has-children\s*\{[^}]*overflow:\s*visible;/
+      /\.feature-card\.small-feature\.has-children\s*\{[^}]*overflow:\s*visible;/
     );
   });
 
@@ -265,17 +305,18 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(el.classList.contains('dirty')).to.be.true;
   });
 
-  it('setLiveDates toggles live/default date DOM nodes', async () => {
+  it('setLiveDates updates the tooltip without adding inline dates', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = { id: 'f3', title: 'Dates', start: '2025-02-01', end: '2025-02-05' };
     await el.updateComplete;
     el.setLiveDates('2025-02-02 → 2025-02-03');
     await el.updateComplete;
-    const dates = el.shadowRoot.querySelector('.feature-dates');
-    expect(dates.querySelector('.dates-live').textContent).to.include('2025-02-02');
+    const card = el.shadowRoot.querySelector('.feature-card');
+    expect(card.title).to.include('2025-02-02');
+    expect(el.shadowRoot.querySelector('.feature-dates')).to.be.null;
     el.clearLiveDates();
     await el.updateComplete;
-    expect(dates.querySelector('.dates-live').textContent).to.equal('');
+    expect(card.title).to.include('2025-02-01');
   });
 
   it('reverts the scenario override when the card is double-clicked', async () => {
@@ -318,12 +359,12 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(el.feature.capacity[1].capacity).to.equal(0.01);
   });
 
-  it('hides normal titles only when requested, keeps accessible names and never renders ghosts', async () => {
+  it('omits inline titles in all modes while retaining accessible names and tooltips', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = { id: 'f4', title: 'A complete accessible task title' };
     el.style.width = '120px';
     await el.updateComplete;
-    expect(el.shadowRoot.querySelector('.feature-title').textContent.trim()).to.equal(el.feature.title);
+    expect(el.shadowRoot.querySelector('.feature-title')).to.equal(null);
     el.hideTitle = true;
     await el.updateComplete;
     expect(el.shadowRoot.querySelector('.feature-title')).to.equal(null);
@@ -332,10 +373,11 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(el.refreshGhostPlacement).to.equal(undefined);
     el.condensed = true;
     await el.updateComplete;
-    expect(el.shadowRoot.querySelector('.feature-title').textContent.trim()).to.equal(el.feature.title);
+    expect(el.shadowRoot.querySelector('.feature-title')).to.equal(null);
     el.condensed = false;
     el.hideTitle = false;
     await el.updateComplete;
-    expect(el.shadowRoot.querySelector('.feature-title')).not.to.equal(null);
+    expect(el.shadowRoot.querySelector('.feature-title')).to.equal(null);
+    expect(el.shadowRoot.querySelector('.feature-card').title).to.include(el.feature.title);
   });
 });

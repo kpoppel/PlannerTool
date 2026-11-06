@@ -10,7 +10,7 @@ import {
   buildDescendantAllocationTeams, hasFeatureTeamAllocation, hasFeatureTeamId,
 } from '../shared/teamAllocation.js';
 import { projectAllocationAvailability } from '../shared/allocationAvailability.js';
-import { displayTypes, featureTypeKey, projectDisplay, taskTypeKey } from '../shared/workItemDisplay.js';
+import { displayTypes, featureTypeKey, projectDisplay, taskTypeKey, typeStateCategory } from '../shared/workItemDisplay.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
@@ -87,6 +87,7 @@ export function createFeatureSelectors(store) {
   // Every FeatureCard reads this per render; deriving it per call made board re-renders O(N²).
   const childrenByParentCache = new WeakMap();
   const descendantAllocationCache = new WeakMap();
+  const descendantCompletionCache = new WeakMap();
   const selectors = {
     getBaselineFeatures() {
       return store.getState().baseline.features;
@@ -133,6 +134,42 @@ export function createFeatureSelectors(store) {
       }
       const teams = map.get(String(featureId));
       return teams === undefined ? new Set() : teams;
+    },
+
+    getDescendantCompletion(featureId) {
+      const state = store.getState();
+      let counts = descendantCompletionCache.get(state);
+      if (counts === undefined) {
+        counts = new Map();
+        const features = buildFeatureMap(deriveEffectiveFeatures(state));
+        const children = selectors.getChildrenByParentMap();
+        const display = projectDisplay(state.baseline.projects);
+        const visiting = new Set();
+        const count = (id) => {
+          if (counts.has(id)) return counts.get(id);
+          if (visiting.has(id)) throw new Error(`Cyclic task hierarchy at ${id}`);
+          visiting.add(id);
+          let closed = 0;
+          let total = 0;
+          const childIds = children.get(id);
+          if (childIds !== undefined) {
+            for (const childId of childIds) {
+              const descendants = count(childId);
+              total += 1 + descendants.total;
+              closed += descendants.closed +
+                (typeStateCategory(display, features.get(childId)) === 'Completed' ? 1 : 0);
+            }
+          }
+          visiting.delete(id);
+          const result = { closed, total };
+          counts.set(id, result);
+          return result;
+        };
+        for (const id of features.keys()) count(id);
+        descendantCompletionCache.set(state, counts);
+      }
+      const result = counts.get(String(featureId));
+      return result === undefined ? { closed: 0, total: 0 } : result;
     },
 
     getSchedulePresetsForProject(projectId) {

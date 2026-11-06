@@ -25,6 +25,11 @@ def save_user_view(storage: StorageBackend, user_id: str, view_id: str | None, d
     if not isinstance(data, dict):
         raise ValueError('View data must be an object')
     options = dict(data.get('viewOptions', {}))
+    mode = options.setdefault('displayMode', 'normal')
+    if mode not in ('normal', 'packed'):
+        raise ValueError('displayMode must be normal or packed')
+    options['condensedCards'] = True
+    options['packedMode'] = mode == 'packed'
     filters = dict(options.get('taskFilters', {}))
     schedule = dict(filters.get('schedule', {}))
     if 'packedModeUnplannedPreference' not in options:

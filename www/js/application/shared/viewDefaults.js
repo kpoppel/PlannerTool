@@ -11,7 +11,7 @@
 export function createDefaultViewOptions() {
   return {
     timelineScale: 'months',
-    condensedCards: false,
+    condensedCards: true,
     featureSortMode: 'rank',
     capacityViewMode: null,
     focusedPlanId: '',

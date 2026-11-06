@@ -595,6 +595,18 @@ def upgrade_44(storage):
         storage.save('system', 'broker_authority', None)
 
 
+def upgrade_45(storage):
+    for key, view in _payloads(storage, 'views'):
+        options = dict(view.get('viewOptions', {}))
+        mode = options.get('displayMode', 'normal')
+        if mode not in ('normal', 'compact', 'packed'):
+            raise SchemaError('Unknown saved displayMode')
+        storage.save('views', key, {**view, 'viewOptions': {
+            **options, 'displayMode': 'packed' if mode == 'packed' else 'normal',
+            'condensedCards': True, 'packedMode': mode == 'packed',
+        }})
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -605,6 +617,7 @@ REGISTRY = tuple(
         (38, 37, upgrade_38), (39, 38, upgrade_39), (40, 39, upgrade_40),
         (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
         (44, 43, upgrade_44),
+        (45, 44, upgrade_45),
     )
 )
 
@@ -829,6 +842,12 @@ def validate_records(storage, revision, *, server_config=None):
                     if (options.get('displayMode') == 'packed'
                             and options['taskFilters']['schedule']['unplanned'] is not False):
                         raise SchemaError('Packed views must exclude Unplanned tasks')
+                if namespace == 'views' and revision >= 45:
+                    options = payload['viewOptions']
+                    if (options['displayMode'] not in ('normal', 'packed')
+                            or options['condensedCards'] is not True
+                            or options['packedMode'] is not (options['displayMode'] == 'packed')):
+                        raise SchemaError('Saved view requires canonical compact feature cards')
             register_key = 'view_register' if namespace == 'views' else 'scenario_register'
             if storage.exists(namespace, register_key):
                 for key, entry in storage.load(namespace, register_key).items():

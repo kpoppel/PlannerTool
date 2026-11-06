@@ -4,7 +4,7 @@ import { BoardEvents, ConfigEvents } from '../core/EventRegistry.js';
 import { dataService } from './dataService.js';
 
 const TIMELINE_SCALES = ['threeMonths', 'weeks', 'months', 'quarters', 'years'];
-const DISPLAY_MODES = ['normal', 'compact', 'packed'];
+const DISPLAY_MODES = ['normal', 'packed'];
 const SORT_MODES = ['rank', 'date'];
 const SHORTCUT_OWNING_CONTROLS = [
   'input', 'textarea', 'select',

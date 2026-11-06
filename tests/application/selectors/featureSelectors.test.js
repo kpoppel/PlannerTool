@@ -9,6 +9,29 @@ function makeState(features) {
 }
 
 describe('featureSelectors.getChildrenByParentMap', () => {
+  it('counts all descendant completion categories and refreshes after scenario edits', () => {
+    let state = makeState([
+      { id: 'parent', type: 'Feature', process_id: 'p', state: 'Active' },
+      { id: 'child', parentId: 'parent', type: 'Feature', process_id: 'p', state: 'Done' },
+      { id: 'grandchild', parentId: 'child', type: 'Feature', process_id: 'p', state: 'Active' },
+      { id: 'other-process', parentId: 'parent', type: 'Feature', process_id: 'other', state: 'Done' },
+    ]);
+    state.baseline.projects = [{ work_item_display: [{ process_id: 'p', tiers: [[{
+      name: 'Feature', states: [{ name: 'Active', category: 'InProgress' },
+        { name: 'Done', category: 'Completed' }],
+    }]] }] }];
+    state.selection = { featureStateNames: ['Active'] };
+    const selectors = createFeatureSelectors({ getState: () => state });
+    const first = selectors.getDescendantCompletion('parent');
+    expect(first).toEqual({ closed: 1, total: 3 });
+    expect(selectors.getDescendantCompletion('parent')).toBe(first);
+    expect(selectors.getDescendantCompletion('child')).toEqual({ closed: 0, total: 1 });
+    expect(selectors.getDescendantCompletion('grandchild')).toEqual({ closed: 0, total: 0 });
+    state = { ...state, scenarios: { activeId: 'baseline', items: [{ id: 'baseline',
+      overrides: { grandchild: { state: 'Done' } } }] } };
+    expect(selectors.getDescendantCompletion('parent')).toEqual({ closed: 2, total: 3 });
+  });
+
   it('caches descendant allocation teams and refreshes them after scenario edits', () => {
     let state = makeState([
       { id: 'parent', capacity: [{ team: 'A', capacity: 50 }] },

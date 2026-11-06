@@ -45,7 +45,7 @@ test.describe('Board letter shortcuts', () => {
 
   test('uses mnemonic actions but preserves letters typed into Search', async ({ page }) => {
     for (const key of ['t', 'c', 's', 'v', 'h']) await page.keyboard.press(key);
-    const expected = { timeline: 'quarters', cards: 'compact', sort: 'date',
+    const expected = { timeline: 'quarters', cards: 'packed', sort: 'rank',
       view: 'team', highlight: false };
     expect(await displayState(page)).toEqual(expected);
 

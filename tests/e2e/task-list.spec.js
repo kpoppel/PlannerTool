@@ -101,10 +101,10 @@ test('frozen task rows align through scrolling, zooming, resizing, collapse and 
   })).toBe(true);
   await page.getByRole('button', { name: 'Collapse task list', exact: true }).click();
   await expect(page.locator('task-list')).toBeHidden();
-  await expect(page.locator('feature-card-lit .feature-title').first()).toBeAttached();
+  await expect(page.locator('feature-card-lit .feature-title')).toHaveCount(0);
   await page.getByRole('button', { name: 'Restore task list', exact: true }).click();
   await expect(page.locator('task-list')).toBeVisible();
-  for (const mode of ['compact', 'packed', 'normal']) {
+  for (const mode of ['packed', 'normal']) {
     await page.evaluate(async (mode) => {
       const { cmd } = await import('/js/application/imports.js');
       cmd.view.setDisplayMode(mode);
@@ -112,10 +112,84 @@ test('frozen task rows align through scrolling, zooming, resizing, collapse and 
     if (mode === 'packed') await expect(page.locator('task-list')).toBeHidden();
     else {
       await expect(page.locator('task-list')).toBeVisible();
-      await expect.poll(async () => (await alignment(page)).title).toBe(mode === 'compact');
+      await expect.poll(async () => (await alignment(page)).title).toBe(false);
     }
   }
   await page.screenshot({ path: testInfo.outputPath('task-list-desktop.png') });
+});
+
+test('card fields disappear right to left, restore on widening, and retain project progress', async ({ page }, testInfo) => {
+  await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    store.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      projects: state.baseline.projects.map((project) => ({ ...project,
+        work_item_display: project.work_item_display.map((process) => ({ ...process,
+          tiers: process.tiers.map((tier) => tier.map((type) => ({ ...type,
+            states: [...type.states, { name: 'Closed', category: 'Completed' }],
+          }))),
+        })),
+      })),
+      features: state.baseline.features.map((feature, index) =>
+        index > 0 && index < 4 ? { ...feature, state: 'Closed' } : feature),
+    } }));
+    const card = document.createElement('feature-card-lit');
+    card.id = 'sizing-card';
+    card.feature = { ...store.getState().baseline.features[0],
+      capacity: [{ team: 'team', capacity: 50 }] };
+    card.teams = [{ id: 'team', name: 'Team', color: '#298864', selected: true }];
+    card.project = store.getState().baseline.projects[0];
+    card.style.cssText = 'position:fixed;left:400px;top:50px;width:460px;z-index:500';
+    document.body.append(card);
+    await card.updateComplete;
+  });
+  const card = page.locator('#sizing-card');
+  await expect(card.locator('.completion-count')).toHaveText('3/6');
+  await expect(card.locator('.feature-title')).toHaveCount(0);
+  const sizes = await card.evaluate((element) => {
+    const root = element.shadowRoot.querySelector('.feature-card');
+    const content = element.shadowRoot.querySelector('.card-content');
+    const fill = element.shadowRoot.querySelector('.completion-fill');
+    const counter = element.shadowRoot.querySelector('.completion-count');
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext('2d');
+    context.fillStyle = getComputedStyle(fill).backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    const widths = [...content.children].map((field) => field.getBoundingClientRect().width);
+    return { widths, overhead: element.clientWidth - content.clientWidth,
+      gap: parseFloat(getComputedStyle(content).columnGap),
+      progress: fill.getBoundingClientRect().width / root.clientWidth,
+      fillColor: [...context.getImageData(0, 0, 1, 1).data],
+      counterInset: content.getBoundingClientRect().right - counter.getBoundingClientRect().right,
+      firstField: content.firstElementChild.className,
+      height: root.getBoundingClientRect().height };
+  });
+  expect(sizes.progress).toBeCloseTo(0.5, 2);
+  expect(sizes.fillColor[0]).toBeGreaterThan(200);
+  expect(sizes.fillColor[1]).toBeGreaterThan(220);
+  expect(sizes.fillColor[2]).toBeGreaterThan(235);
+  expect(sizes.counterInset).toBeCloseTo(0, 0);
+  expect(sizes.firstField).toContain('feature-card-icon');
+  expect(sizes.height).toBe(28);
+  expect(sizes.widths.every((width) => width > 0)).toBe(true);
+  for (const count of [4, 3, 2, 1, 0, 4]) {
+    const width = Math.ceil(sizes.overhead + sizes.widths.slice(0, count)
+      .reduce((sum, fieldWidth) => sum + fieldWidth, 0) + Math.max(0, count - 1) * sizes.gap + 1);
+    await card.evaluate((element, width) => element.applyVisuals({ width }), width);
+    await expect.poll(() => card.evaluate((element) => {
+      const content = element.shadowRoot.querySelector('.card-content');
+      return [...content.children].map((field) => getComputedStyle(field).visibility !== 'hidden');
+    })).toEqual([0, 1, 2, 3].map((index) => index < count));
+    const clipped = await card.evaluate((element) => {
+      const content = element.shadowRoot.querySelector('.card-content');
+      const right = content.getBoundingClientRect().right;
+      return [...content.children].some((field) => getComputedStyle(field).visibility !== 'hidden'
+        && field.getBoundingClientRect().right > right + 1);
+    });
+    expect(clipped).toBe(false);
+  }
+  await page.screenshot({ path: testInfo.outputPath('compact-feature-card-desktop.png') });
 });
 
 test('search navigates without filtering and task selection opens read-only details', async ({ page }) => {

@@ -53,12 +53,13 @@ export class FeatureCardLit extends LitElement {
       border-left: 4px solid var(--project-color, #ccc);
       border-radius: 6px;
       /* unified vertical padding so narrow and regular cards compute the same height */
-      padding: calc(4px * var(--board-zoom, 1)) 8px;
+      padding: calc(2px * var(--board-zoom, 1)) 8px;
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
       box-sizing: border-box;
-      min-height: calc(40px * var(--board-zoom, 1));
+      height: calc(28px * var(--board-zoom, 1));
+      min-height: calc(28px * var(--board-zoom, 1));
       line-height: 1;
       transition: box-shadow 0.2s;
     }
@@ -176,19 +177,10 @@ export class FeatureCardLit extends LitElement {
       }
     }
 
-    /* Completed-category state: grey background + strikethrough title.
-       Placed before .dirty / .selected so those rules override the background
-       for modified or selected completed cards while the strikethrough on the
-       title persists regardless (none of the later rules touch .feature-title
-       text-decoration). */
+    /* Completed tasks retain their state styling beneath the progress fill. */
     .feature-card.completed {
       background: var(--color-completed-bg, #f0f0f0);
       border-left-color: var(--color-completed-border, #aaa);
-    }
-
-    .feature-card.completed .feature-title {
-      text-decoration: line-through;
-      color: var(--color-completed-text, #888);
     }
 
     .feature-card.dirty {
@@ -224,7 +216,7 @@ export class FeatureCardLit extends LitElement {
     }
 
     .feature-card.has-children {
-      border-left-width: calc(24px * var(--board-zoom, 1));
+      border-left-width: 4px;
     }
 
     .feature-card.ghosted:hover {
@@ -240,85 +232,14 @@ export class FeatureCardLit extends LitElement {
       border-left-color: var(--project-color, #999);
     }
 
-    .feature-card.condensed {
-      height: calc(28px * var(--board-zoom, 1));
-      min-height: calc(28px * var(--board-zoom, 1));
-      padding: calc(2px * var(--board-zoom, 1)) 8px;
-    }
-
-    /* Remove title-row bottom margin in condensed mode — nothing follows it */
-    .feature-card.condensed .title-row {
-      margin-bottom: 0;
-    }
-
-    /* Keep title font-size consistent across narrow/regular variants */
-    .feature-title {
-      font-size: 0.9em;
-    }
-
-    /* Compact layout for narrow cards: tighten spacing but keep content visible */
-    /* Narrow layout: visually tighten spacing but preserve card height
-       to avoid layout shifts between narrow and regular cards. */
-    .feature-card.narrow {
-      /* Do not change height here — keep the same height as regular cards. */
-      padding: calc(4px * var(--board-zoom, 1)) 8px;
-      overflow: hidden;
-      line-height: 1;
-    }
-
-    /* Keep team-load and dates visible; reduce vertical gaps */
-    .feature-card .title-row {
-      margin-bottom: calc(2px * var(--board-zoom, 1));
-      align-items: center;
-    }
-
-    /* dirty badge shown for modified features in scenario mode */
-    /*
-    .dirty-badge {
-      background: #ffb84d;
-      color: #2b2b2b;
-      padding: 2px 6px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 700;
-      margin-left: 6px;
-    }
-    */
-
-    /* lightweight dates styling (keeps vertical gaps small) */
-    .feature-dates {
-      margin-top: calc(4px * var(--board-zoom, 1));
-      margin-bottom: 0;
-      font-size: 0.75em;
-      line-height: 1;
-      min-height: 1em;
-      display: block;
-    }
-
-    /* Culled: hide title visually but preserve card height so boards
-       remain aligned. Use visibility/opacity rather than display. */
-    .feature-card.culled .feature-title {
-      visibility: hidden;
-      opacity: 0;
-      pointer-events: none;
-    }
-
     .team-load-row {
       display: flex;
       gap: 4px;
-      margin-bottom: calc(2px * var(--board-zoom, 1));
-      font-size: 0.75em;
-      /* Always constrain to card width to prevent overflow */
-    .team-load-box--dimmed {
-      opacity: 0.45;
-      filter: grayscale(60%);
-    }
-      max-width: 100%;
+      margin: 0;
       overflow: hidden;
     }
 
-    /* Dim capacity badges when the feature has children (parent contributions ignored) */
-    .team-load-row.dimmed .team-load-box,
+    .team-load-box--dimmed,
     .team-load-row.dimmed .team-load-box {
       opacity: 0.45;
       filter: grayscale(60%);
@@ -351,83 +272,52 @@ export class FeatureCardLit extends LitElement {
       flex-shrink: 0;
     }
 
-    /* When narrow, prevent wrapping and show ellipsis */
-    .feature-card.narrow .team-load-row {
+    .card-content {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 100%;
+      overflow: hidden;
       white-space: nowrap;
-      text-overflow: ellipsis;
+      font-size: 0.75em;
     }
-    .feature-card.selected .team-load-row {
-      white-space: nowrap;
-      text-overflow: ellipsis;
-    }
-    /* When fully culled, visually hide the capacity row but preserve layout height */
-    .feature-card.culled .team-load-row {
-      visibility: hidden;
-      opacity: 0;
+
+    .card-content > * { flex: 0 0 auto; }
+    .completion-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--completion);
+      max-width: 100%;
+      background: color-mix(in srgb, var(--project-color) 18%, white);
+      border-radius: inherit;
       pointer-events: none;
     }
-
-    /* Small feature styling - for features <40px wide */
-    .feature-card.small-feature {
-      min-width: 8px !important;
-      /* Make small features visually compact while preserving alignment
-         Use a smaller min-height and reduced vertical padding (~28px total) */
-      min-height: calc(28px * var(--board-zoom, 1));
-      padding: calc(2px * var(--board-zoom, 1)) 6px;
-      overflow: hidden;
-      cursor: pointer;
+    .feature-id { font-weight: 600; }
+    .completion-count { margin-left: auto; }
+    .card-content .feature-card-icon { height: calc(18px * var(--board-zoom, 1)); }
+    .team-load-box { position: relative; isolation: isolate; overflow: hidden; }
+    .allocation-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--allocation-width);
+      background: var(--team-color);
+      opacity: 0.4;
+      z-index: -1;
     }
 
-    .feature-card.narrow.has-children,
+    .feature-card.small-feature {
+      overflow: hidden;
+    }
+
     .feature-card.small-feature.has-children {
       overflow: visible;
     }
 
-    /* Hide most internal content visually but keep the title-row visible
-       so the small-feature indicator can occupy its space without adding
-       an extra line. */
-    .feature-card.small-feature .team-load-row,
-    .feature-card.small-feature .feature-dates,
     .feature-card.small-feature .drag-handle {
       visibility: hidden;
       opacity: 0;
       pointer-events: none;
-    }
-
-    /* Keep the title-row itself visible for layout, but hide its children
-       (icon and title) so the indicator appears in-place. */
-    .feature-card.small-feature .title-row > *:not(.small-feature-indicator) {
-      visibility: hidden;
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .small-feature-indicator {
-      display: none; /* Hidden by default */
-      width: 100%;
-      height: 100%;
-      align-items: center;
-      justify-content: center;
-      min-height: calc(24px * var(--board-zoom, 1));
-    }
-
-    .feature-card.small-feature .small-feature-indicator {
-      display: flex; /* Only show for small features */
-    }
-
-    .small-feature-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-      opacity: 0.8;
-    }
-
-    .title-row {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      margin-bottom: calc(2px * var(--board-zoom, 1));
     }
 
     .feature-card-icon {
@@ -445,35 +335,6 @@ export class FeatureCardLit extends LitElement {
       height: calc(16px * var(--board-zoom, 1));
     }
 
-    .feature-title {
-      font-weight: bold;
-      font-size: 0.9em;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .ancestor-context {
-      flex-shrink: 0;
-      font-size: 0.7em;
-      color: #42584a;
-      border-bottom: 1px dashed currentColor;
-      white-space: nowrap;
-    }
-
-    .feature-dates {
-      font-size: 0.75em;
-      color: #666;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
-      /* subtle fade to indicate truncation */
-      position: relative;
-      line-height: 1;
-    }
 
     .feature-dates::after {
       content: '';
@@ -594,29 +455,35 @@ export class FeatureCardLit extends LitElement {
         const rootCard = card._rootCard;
         if (!rootCard) continue;
         const w = card._width;
-        const isSmall = w < 40;
-        let titleOverflows = isSmall;
-        if (!isSmall) {
-          const titleEl = rootCard.querySelector('.feature-title');
-          if (titleEl) {
-            titleOverflows = titleEl.scrollWidth > titleEl.clientWidth + 2;
-          }
+        const content = rootCard.querySelector('.card-content');
+        const fields = Array.from(content.children);
+        const available = content.clientWidth;
+        const gap = parseFloat(getComputedStyle(content).columnGap);
+        let used = 0;
+        let visibleCount = 0;
+        for (const field of fields) {
+          const next = used + (visibleCount > 0 ? gap : 0) + field.getBoundingClientRect().width;
+          if (next > available) break;
+          used = next;
+          visibleCount += 1;
         }
         results.push({
           card,
           rootCard,
-          w,
-          isSmall,
-          isCulled: w < 70,
-          titleOverflows,
+          fields,
+          visibleCount,
+          isSmall: w < 40,
         });
       }
 
       // --- Write phase (no reads after this point) ---
       for (const r of results) {
         r.rootCard.classList.toggle('small-feature', r.isSmall);
-        r.rootCard.classList.toggle('culled', r.isCulled);
-        r.rootCard.classList.toggle('narrow', r.titleOverflows && !r.isSmall);
+        r.fields.forEach((field, index) => {
+          const hidden = index >= r.visibleCount;
+          field.style.visibility = hidden ? 'hidden' : '';
+          field.setAttribute('aria-hidden', String(hidden));
+        });
         r.card._lastLayoutKey = r.card._computeLayoutKey();
       }
     });
@@ -736,7 +603,8 @@ export class FeatureCardLit extends LitElement {
       this._requestLayout();
     }
 
-    if (changedProperties.has('hideTitle') || changedProperties.has('condensed')) this._requestLayout();
+    if (changedProperties.has('feature') || changedProperties.has('teams') ||
+      changedProperties.has('condensed')) this._requestLayout(true);
   }
 
   disconnectedCallback() {
@@ -791,18 +659,7 @@ export class FeatureCardLit extends LitElement {
 
   // Transient live-dates used during drag/resize
   setLiveDates(text) {
-    // Lifecycle guard: condensed cards intentionally omit the date row.
-    const container = this.shadowRoot.querySelector('.feature-dates');
-    if (!container) return;
-    const live = container.querySelector('.dates-live');
-    const def = container.querySelector('.dates-default');
-    if (live) {
-      live.textContent = text;
-      live.style.display = text ? '' : 'none';
-    }
-    if (def) {
-      def.style.display = text ? 'none' : '';
-    }
+    this._rootCard.title = text ? `${this.feature.id}: ${this.feature.title} · ${text}` : this._cardTooltip;
   }
 
   clearLiveDates() {
@@ -972,7 +829,6 @@ export class FeatureCardLit extends LitElement {
   }
 
   _renderTeamLoadRow() {
-    if (this.condensed) return '';
     const descendantTeams = sel.feature.getDescendantAllocationTeams(this.feature.id);
     const allocations = this.feature.capacity === undefined ? [] : this.feature.capacity;
     const supersededCount = allocations.filter((item) => descendantTeams.has(item.team)).length;
@@ -991,9 +847,10 @@ export class FeatureCardLit extends LitElement {
           return html`
             <span
               class="team-load-box ${team.selected && !descendantTeams.has(tl.team) ? '' : 'team-load-box--dimmed'}"
-              style="background: ${team.color};"
+              style="background: #e4e8e7; color: #172321; --team-color: ${team.color}; --allocation-width: ${Math.min(100, Math.max(0, tl.capacity))}%"
               title="${team.name}: ${ceilAllocation(tl.capacity)}"
             >
+              <span class="allocation-fill" aria-hidden="true"></span>
               ${ceilAllocation(tl.capacity)}
             </span>
           `;
@@ -1039,6 +896,9 @@ export class FeatureCardLit extends LitElement {
         : `${this.feature.start} → ${this.feature.end}`;
     const projectColor = this.project && this.project.color ? this.project.color : '#ccc';
     const isCompleted = sel.filter.getFeatureStateCategory(this.feature) === 'Completed';
+    const completion = sel.feature.getDescendantCompletion(this.feature.id);
+    const progress = completion.total > 0 ? completion.closed / completion.total : isCompleted ? 1 : 0;
+    this._cardTooltip = `${this.feature.id}: ${this.feature.title}${dateLabel ? ` · ${dateLabel}` : ''}${isAnchor ? ' · historical anchor' : ''}${this.feature.ancestorOnly === true ? ' · Ancestor context only. Other child branches are not loaded.' : ''}`;
 
     const cardClasses = {
       'feature-card': true,
@@ -1061,13 +921,14 @@ export class FeatureCardLit extends LitElement {
         role="listitem"
         aria-label=${this.feature.title}
         draggable="false"
-        title=${isAnchor ? `${this.feature.state} · historical anchor · ${presentation.date}` : ''}
-        style="--project-color: ${projectColor}; --group-color: ${this.groupColor}"
+        title=${this._cardTooltip}
+        style="--project-color: ${projectColor}; --completion: ${progress * 100}%; --group-color: ${this.groupColor === null ? 'transparent' : this.groupColor}"
         @click=${this._handleClick}
         @dblclick=${this._handleDoubleClick}
         @contextmenu=${this._handleContextMenu}
         part="feature-card"
       >
+        <div class="completion-fill" aria-hidden="true"></div>
         ${this.foldCount > 0 ? html`<button
           class="fold-toggle"
           type="button"
@@ -1077,30 +938,12 @@ export class FeatureCardLit extends LitElement {
           @mousedown=${(event) => event.stopPropagation()}
           @click=${this._toggleFold}
         ><span class="fold-chevron">${this.folded ? '▸' : '▾'}</span>${this.folded ? html`<span class="fold-count" title=${`${this.foldCount} ${this.foldCount === 1 ? 'task' : 'tasks'} hidden`}>${this.foldCount}</span>` : ''}</button>` : ''}
-        ${this._renderTeamLoadRow()}
-        <div class="title-row">
-          <div class="small-feature-indicator">
-            <span class="small-feature-dot"></span>
-          </div>
+        <div class="card-content">
           ${this._renderTypeIcon()}
-          ${!this.hideTitle || this.condensed ? html`<div class="feature-title" title=${this.feature.title}>
-            ${this.feature.title}
-          </div>` : ''}
-          ${this.feature.ancestorOnly === true ? html`<span
-            class="ancestor-context"
-            title="Ancestor context only. Other child branches are not loaded."
-          >Ancestor</span>` : ''}
+          <span class="feature-id">${this.feature.id}</span>
+          ${this._renderTeamLoadRow()}
+          <span class="completion-count" title=${`${completion.closed} closed / ${completion.total} sub-items`}>${completion.closed}/${completion.total}</span>
         </div>
-        ${!this.condensed ?
-          html`
-            <div class="feature-dates">
-              <span class="dates-default"
-                >${dateLabel}</span
-              >
-              <span class="dates-live" aria-hidden="true" style="display:none"></span>
-            </div>
-          `
-        : ''}
         ${sel.scenario.isActiveScenarioMutable() ? html`<div class="drag-handle"
           data-active-policy=${this._resizePolicy} data-drag-handle part="drag-handle">
           <button class="resize-zone" type="button" data-resize-policy="keep-allocation"

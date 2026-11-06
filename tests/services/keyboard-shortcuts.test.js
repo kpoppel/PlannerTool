@@ -61,7 +61,7 @@ describe('KeyboardShortcutManager', () => {
 
     expect(calls).to.deep.equal([
       ['timeline', 'quarters'],
-      ['display', 'compact'],
+      ['display', 'packed'],
       ['sort', 'date'],
       ['graph', 'project'],
       ['search'],

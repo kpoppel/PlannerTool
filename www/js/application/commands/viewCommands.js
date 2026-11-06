@@ -34,7 +34,7 @@ export async function syncDependencyContext(context) {
  */
 export function createViewCommands(store, bus) {
   function applyDisplayMode(mode, actionName) {
-    if (!['normal', 'compact', 'packed'].includes(mode)) throw new Error(`Unknown display mode: ${mode}`);
+    if (!['normal', 'packed'].includes(mode)) throw new Error(`Unknown display mode: ${mode}`);
     store.setState((state) => {
       const wasPacked = state.view.options.displayMode === 'packed';
       const packed = mode === 'packed';
@@ -44,7 +44,7 @@ export function createViewCommands(store, bus) {
       return {
         ...state,
         view: { ...state.view, options: {
-          ...state.view.options, displayMode: mode, packedMode: packed, condensedCards: mode !== 'normal',
+          ...state.view.options, displayMode: mode, packedMode: packed, condensedCards: true,
           packedModeUnplannedPreference: preference,
         } },
         selection: { ...state.selection, taskFilters: {
@@ -126,8 +126,7 @@ export function createViewCommands(store, bus) {
     },
 
     setCondensedCards(condensed, runtimeOptions = {}) {
-      const nextMode = condensed ? 'compact' : 'normal';
-      applyDisplayMode(nextMode, 'view.setCondensedCards');
+      applyDisplayMode('normal', 'view.setCondensedCards');
       if (!runtimeOptions.suppressEvents) {
         bus.emit(ViewEvents.CONDENSED);
         bus.emit(ViewEvents.DISPLAY_MODE);
