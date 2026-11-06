@@ -72,7 +72,7 @@ const findMonthIndexFor = (msVal) => {
   return -1;
 };
 
-export const laneHeight = () => 28 * getBoardZoom();
+export const laneHeight = () => 36 * getBoardZoom();
 
 // Board zoom (ctrl +/-) is TimelineBoard-local UI state; exposed here so layout
 // helpers (laneHeight) can scale row height without importing the component.

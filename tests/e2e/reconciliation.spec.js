@@ -24,7 +24,7 @@ test.beforeEach(async ({ page }) => {
     await import('/js/components/TopMenu.lit.js');
     await import('/js/components/FeatureCard.lit.js');
     await import('/js/components/BoardControlsMenu.lit.js');
-    await import('/js/components/sidebar/SidebarFooter.lit.js');
+    await import('/js/components/HelpModal.lit.js');
     await import('/js/components/DetailsPanel.lit.js');
     const state = createInitialAppState();
     const parent = { id: 'programme', process_id: 'process', title: 'Programme delivery', type: 'Epic',
@@ -54,8 +54,7 @@ test.beforeEach(async ({ page }) => {
     document.body.prepend(document.createElement('top-menu-bar'));
     const filters = document.createElement('board-controls-menu');
     filters.section = 'filters';
-    document.body.append(filters, document.createElement('app-footer'),
-      document.createElement('details-panel'));
+    document.body.append(filters, document.createElement('details-panel'));
     const card = document.createElement('feature-card-lit');
     card.feature = sel.feature.getEffectiveFeatureById('delivery');
     card.project = state.baseline.projects[1];
@@ -67,7 +66,6 @@ test.beforeEach(async ({ page }) => {
     await card.updateComplete;
     await document.querySelector('top-menu-bar').updateComplete;
     await filters.updateComplete;
-    await document.querySelector('app-footer').updateComplete;
     await document.querySelector('details-panel').updateComplete;
   });
   expect(errors).toEqual([]);
@@ -415,17 +413,18 @@ test('toggles the toolbox directly from its active top-bar button without a drop
   await expect(page.locator('reconciliation-review')).toHaveCount(0);
 });
 
-test('keeps the independent footer visible and clear of the toolbox', async ({ page }) => {
-  const footer = page.locator('app-footer');
-  await expect(footer.locator('[role="contentinfo"]')).toBeVisible();
+test('keeps application status in Help rather than over the reconciliation toolbox', async ({ page }) => {
+  await expect(page.locator('app-footer')).toHaveCount(0);
   await expect(page.locator('board-controls-menu .sidebar-config')).toHaveCount(0);
   await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
-  await expect(footer).toContainText('Loaded dataset: 2 tasks');
-  const footerBounds = await footer.boundingBox();
-  const toolboxBounds = await page.locator('reconciliation-review [role="region"]').boundingBox();
-  expect(toolboxBounds.y + toolboxBounds.height).toBeLessThanOrEqual(footerBounds.y);
-  await page.getByRole('button', { name: 'Hide reconciliation toolbox' }).click();
+  await expect(page.locator('reconciliation-review [role="region"]')).toBeVisible();
+  await page.locator('top-menu-bar #openHelpBtn').click();
+  const footer = page.locator('help-modal app-footer');
   await expect(footer.locator('[role="contentinfo"]')).toBeVisible();
+  await expect(footer).toContainText('Loaded dataset: 2 tasks');
+  await page.locator('help-modal').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Hide reconciliation toolbox' }).click();
+  await expect(page.locator('app-footer')).toHaveCount(0);
 });
 
 for (const width of [1366, 1024]) {
@@ -585,7 +584,7 @@ test('marker selection scrolls the toolbox to expanded task actions even when re
   await marker.click();
   await expect(review.getByRole('searchbox')).toHaveValue('');
   await expectTaskRevealed();
-  await expect(page.locator('app-footer [role="contentinfo"]')).toBeVisible();
+  await expect(page.locator('app-footer')).toHaveCount(0);
 });
 
 test('auto-locates rendered context, reveals hidden ancestors and restores the board scope on close', async ({ page }) => {

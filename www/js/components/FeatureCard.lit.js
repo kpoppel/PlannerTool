@@ -60,6 +60,7 @@ export class FeatureCardLit extends LitElement {
       box-sizing: border-box;
       height: calc(28px * var(--board-zoom, 1));
       min-height: calc(28px * var(--board-zoom, 1));
+      margin-block: calc(4px * var(--board-zoom, 1));
       line-height: 1;
       transition: box-shadow 0.2s;
     }

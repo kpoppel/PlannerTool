@@ -3,6 +3,7 @@ import { cmd, sel } from '../application/imports.js';
 import { StoreController } from '../core/StoreController.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents } from '../core/EventRegistry.js';
+import { getIconTemplate } from '../services/IconService.js';
 
 export class TaskList extends LitElement {
   static properties = {
@@ -16,17 +17,24 @@ export class TaskList extends LitElement {
     .rows { position: relative; min-height: 100%; }
     .row { position: absolute; left: 0; right: 0; display: flex; align-items: center;
       gap: 4px; padding: 0 8px; box-sizing: border-box; border-bottom: 1px solid #dde1e5;
-      color: #222; font-size: calc(13px * var(--board-zoom, 1)); }
+      color: #222; font-size: calc(13px * var(--board-zoom, 1)); cursor: pointer;
+      background: color-mix(in srgb, var(--group-color) 8%, transparent); }
     .row:hover, .row.highlighted, .row:focus-within { background: #e4eef7; }
     .row.selected { background: #d3e6f8; box-shadow: inset 3px 0 #347ab3; }
-    .group { background: #e2e7ec; font-weight: 600; }
+    .group { font-weight: 600; }
     .fold { flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0;
       background: transparent; color: inherit; cursor: pointer; }
     .fold:disabled { visibility: hidden; }
     .task-title { border: 0; background: transparent; color: inherit; text-align: left;
-      font: inherit; padding: 2px 0; cursor: pointer; min-width: 0; flex: 1;
-      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-      overflow: hidden; overflow-wrap: anywhere; }
+      font: inherit; padding: 0; cursor: pointer; width: 100%; min-width: 0;
+      display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      line-height: 1.1; }
+    .task-copy { flex: 1; min-width: 0; }
+    .task-meta { display: block; margin-top: calc(1px * var(--board-zoom, 1)); line-height: 1.1;
+      font-size: calc(10px * var(--board-zoom, 1));
+      color: #626d78; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .task-type { flex: 0 0 calc(16px * var(--board-zoom, 1)); display: inline-flex; }
+    .task-type svg { width: 100%; height: calc(16px * var(--board-zoom, 1)); }
     button:focus-visible { outline: 2px solid #347ab3; outline-offset: -2px; }
     .level { flex: 0 0 24px; text-align: center; color: #626d78; font-size: 10px; }
     .count { font-size: 10px; color: #626d78; }
@@ -45,6 +53,7 @@ export class TaskList extends LitElement {
     this._matchIndex = -1;
     this._selection = new StoreController(this, (state) => state.featureDisplay.selectedId);
     this._features = new StoreController(this, sel.feature.getEffectiveFeatures);
+    this._projects = new StoreController(this, sel.selection.getProjects);
   }
 
   updated(changed) {
@@ -82,6 +91,10 @@ export class TaskList extends LitElement {
   }
 
   _select(feature) {
+    if (String(this._selection.value) === String(feature.id)) {
+      this._emit('task-navigate', { id: String(feature.id), align: 'start' });
+      return;
+    }
     if (sel.view.getHighlightFeatureRelationMode()) bus.emit(FeatureEvents.REQUEST_CONNECTED_SET, feature);
     cmd.feature.setSelectedFeature(feature);
   }
@@ -115,9 +128,19 @@ export class TaskList extends LitElement {
         const ancestry = group ? [] : this._ancestry(row.feature, byId);
         const foldable = group || row.foldCount > 0;
         const folded = group ? row.collapsed : row.folded;
+        const groupColor = group ? row.groupObj.color : row.groupColor;
+        const metadata = [];
+        if (!group) {
+          metadata.push(`#${row.feature.id}`);
+          if (row.feature.parentId !== null && row.feature.parentId !== undefined) {
+            metadata.push(`Parent #${row.feature.parentId}`);
+          }
+          metadata.push(this._projects.value.find((project) => String(project.id) === String(row.feature.project)).name);
+        }
         return html`<div class="row ${group ? 'group' : ''} ${this._selection.value === row.id ? 'selected' : ''}
           ${this.highlightedId === row.id ? 'highlighted' : ''}" data-task-id=${row.id}
-          style="top:${row.top}px;height:${row.height}px" role="listitem"
+          style="top:${row.top}px;height:${row.height}px;--group-color:${groupColor === null || groupColor === undefined ? 'transparent' : groupColor}" role="listitem"
+          @click=${() => group ? this._emit('group-toggle', { groupId: row.id, collapsed: !folded }) : this._select(row.feature)}
           @mouseenter=${() => this._emit('task-highlight', { id: row.id })}
           @mouseleave=${() => this._emit('task-highlight', { id: '' })}
           @focusin=${() => this._emit('task-highlight', { id: row.id })}
@@ -132,15 +155,20 @@ export class TaskList extends LitElement {
           }}>
           <button class="fold" ?disabled=${!foldable} aria-expanded=${foldable ? String(!folded) : 'false'}
             aria-label=${`${folded ? 'Expand' : 'Collapse'} ${title}`}
-            @click=${() => this._emit(group ? 'group-toggle' : 'feature-fold-toggle', group
-              ? { groupId: row.id, collapsed: !folded } : { featureId: row.id })}>
+            @click=${(event) => {
+              event.stopPropagation();
+              this._emit(group ? 'group-toggle' : 'feature-fold-toggle', group
+                ? { groupId: row.id, collapsed: !folded } : { featureId: row.id });
+            }}>
             ${folded ? html`&#9656;` : html`&#9662;`}</button>
           <span class="level" title=${ancestry.join(' / ')}>${ancestry.length > 0 ? ancestry.length : ''}</span>
-          <button class="task-title" title=${[...ancestry, title].join(' / ')}
-            @click=${() => group ? this._emit('group-toggle', { groupId: row.id, collapsed: !folded })
-              : this._select(row.feature)}>${title}</button>
+          ${group ? '' : html`<span class="task-type" title=${row.feature.type} role="img"
+            aria-label=${row.feature.type}>${getIconTemplate(row.feature.type)}</span>`}
+          <div class="task-copy"><button class="task-title" title=${[...ancestry, title].join(' / ')}>${title}</button>
+            ${group ? '' : html`<span class="task-meta" title=${metadata.join(' - ')}>${metadata.join(' \u00b7 ')}</span>`}
+          </div>
           ${folded && !group ? html`<span class="count">${row.foldCount}</span>` : ''}
-          <span class="actions"><slot name=${`actions-${row.id}`}></slot></span>
+          <span class="actions" @click=${(event) => event.stopPropagation()}><slot name=${`actions-${row.id}`}></slot></span>
         </div>`;
       })}
     </div>`;

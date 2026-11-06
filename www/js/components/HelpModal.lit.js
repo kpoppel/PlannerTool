@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
+import './sidebar/SidebarFooter.lit.js';
 import { getDocsUrl } from '../services/docsUrl.js';
 
 /*
@@ -15,11 +16,24 @@ export class HelpModal extends LitElement {
     :host {
       display: contents;
     }
+    modal-lit::part(dialog) {
+      display: flex;
+      flex-direction: column;
+      width: min(90vw, 1000px);
+      height: min(90vh, 820px);
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    modal-lit::part(content) { flex: 1; min-height: 0; overflow: hidden; }
+    modal-lit::part(footer) { flex-shrink: 0; }
     .help-root {
       display: flex;
       gap: 12px;
-      width: min(90vw, 900px);
-      min-width: 320px;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
       max-width: 100%;
     }
     .help-list {
@@ -29,6 +43,8 @@ export class HelpModal extends LitElement {
       border-right: 1px solid #e6e6e6;
       padding-right: 12px;
       box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
     }
     .help-list .search {
       margin: 8px 0;
@@ -44,7 +60,8 @@ export class HelpModal extends LitElement {
       list-style: none;
       padding: 0;
       margin: 8px 0 0 0;
-      max-height: 60vh;
+      flex: 1;
+      min-height: 0;
       overflow: auto;
     }
     .help-list li {
@@ -63,7 +80,8 @@ export class HelpModal extends LitElement {
       flex: 1;
       padding-left: 12px;
       box-sizing: border-box;
-      max-height: 70vh;
+      min-width: 0;
+      height: 100%;
       overflow: auto;
     }
     .help-panel img {
@@ -75,7 +93,7 @@ export class HelpModal extends LitElement {
     .help-panel iframe {
       display: block;
       width: 100%;
-      height: 65vh;
+      height: 100%;
       border: 0;
     }
     .help-panel pre {
@@ -107,10 +125,24 @@ export class HelpModal extends LitElement {
 
     .modal-footer {
       display: flex;
-      justify-content: flex-end;
-      align-items: center;
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
       gap: 12px;
     }
+    .modal-footer app-footer { width: 100%; min-width: 0; padding-top: 8px; border-top: 1px solid #e6e6e6; }
+    .btn {
+      align-self: flex-end;
+      padding: 6px 10px;
+      font: inherit;
+      background: #e9e9e9;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 6px;
+      color: #333;
+      cursor: pointer;
+    }
+    .btn:hover { background: #e0e0e0; }
+    .btn:focus-visible { outline: 2px solid var(--color-accent, #0078d4); outline-offset: 2px; }
     .empty {
       color: #666;
       padding: 12px;
@@ -429,6 +461,7 @@ export class HelpModal extends LitElement {
           >
             Close
           </button>
+          <app-footer></app-footer>
         </div>
       </modal-lit>
     `;

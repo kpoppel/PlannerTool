@@ -1,8 +1,38 @@
 import { expect } from '@esm-bundle/chai';
-import { vi } from 'vitest';
+import { beforeEach, afterEach, vi } from 'vitest';
 import { HelpModal } from '../../www/js/components/HelpModal.lit.js';
+import { dataService } from '../../www/js/services/dataService.js';
 
 describe('HelpModal unit tests', () => {
+  let originalIsViteDev;
+  beforeEach(() => {
+    originalIsViteDev = window.IS_VITE_DEV;
+    window.IS_VITE_DEV = true;
+    vi.spyOn(dataService, 'checkHealth').mockResolvedValue({ ok: true,
+      data: { server_name: 'Test server', version: '1.2.3', status: 'ok', uptime_seconds: 3660 } });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalIsViteDev === undefined) delete window.IS_VITE_DEV;
+    else window.IS_VITE_DEV = originalIsViteDev;
+  });
+
+  it('keeps application status and attribution in the help footer, outside the document panel', async () => {
+    const help = new HelpModal();
+    help._loadIndex = async () => {};
+    document.body.appendChild(help);
+    await help.updateComplete;
+    const footer = help.renderRoot.querySelector('[slot="footer"] app-footer');
+    expect(footer).not.to.equal(null);
+    await footer.updateComplete;
+    expect(footer.shadowRoot.textContent).to.include('Test server');
+    expect(footer.shadowRoot.textContent).to.include('1.2.3 | Server: ok - Uptime: 1h 1m');
+    expect(footer.shadowRoot.textContent).to.include('Loaded dataset:');
+    expect(footer.shadowRoot.textContent).to.include('PlannerTool (C) 2025-2026 Kim Poulsen');
+    expect(help.renderRoot.querySelector('.help-panel app-footer')).to.equal(null);
+    help.remove();
+  });
+
   it('does not offer onboarding from the help footer', async () => {
     const hm = new HelpModal();
     document.body.appendChild(hm);

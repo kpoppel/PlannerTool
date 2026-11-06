@@ -7,11 +7,14 @@ import { cmd } from '../../www/js/application/imports.js';
 describe('Task list presentation', () => {
   let list;
   beforeEach(async () => {
-    store.setState(createInitialAppState(), true);
+    const state = createInitialAppState();
+    state.baseline.projects = [{ id: 'release-plan', name: 'Release plan' }];
+    store.setState(state, true);
     list = document.createElement('task-list');
     list.layout = { height: 900, swimlanes: [], groups: [], rows: [
       { id: 'group', isGroup: true, top: 0, height: 28, groupObj: { name: 'Release' }, collapsed: false },
-      { id: '42', top: 28, height: 60, feature: { id: '42', title: 'Ship release', parentId: null },
+      { id: '42', top: 28, height: 60, feature: { id: '42', title: 'Ship release', parentId: null,
+        project: 'release-plan', type: 'Feature' }, groupColor: '#347ab3',
         foldCount: 2, folded: false },
     ], searchFeatures: [{ id: '42', title: 'Ship release' }] };
     document.body.append(list);
@@ -64,5 +67,34 @@ describe('Task list presentation', () => {
     row.querySelector('.task-title').click();
     expect(background).not.toHaveBeenCalled();
     expect(selected).toHaveBeenCalledWith(list.layout.rows[1].feature);
+  });
+
+  it('shows a type icon and task ID, optional parent ID, and owning plan below the title', async () => {
+    const row = list.shadowRoot.querySelector('[data-task-id="42"]');
+    expect(row.querySelector('.task-type svg')).not.toBeNull();
+    expect(row.querySelector('.task-type').getAttribute('title')).toBe('Feature');
+    expect(row.querySelector('.task-meta').textContent).toBe('#42 · Release plan');
+    list.layout = { ...list.layout, rows: list.layout.rows.map((item) => item.id === '42'
+      ? { ...item, feature: { ...item.feature, parentId: '10' } } : item) };
+    await list.updateComplete;
+    expect(row.querySelector('.task-meta').textContent).toBe('#42 · Parent #10 · Release plan');
+    expect(row.style.getPropertyValue('--group-color')).toBe('#347ab3');
+  });
+
+  it('selects the whole row once and emits start-aligned navigation on a repeat click', async () => {
+    const selected = vi.spyOn(cmd.feature, 'setSelectedFeature');
+    const navigate = vi.fn();
+    list.addEventListener('task-navigate', navigate);
+    const row = list.shadowRoot.querySelector('[data-task-id="42"]');
+    row.click();
+    expect(selected).toHaveBeenCalledTimes(1);
+    store.setState((state) => ({ ...state,
+      featureDisplay: { ...state.featureDisplay, selectedId: '42' } }));
+    await list.updateComplete;
+    row.click();
+    expect(selected).toHaveBeenCalledTimes(1);
+    expect(navigate.mock.calls[0][0].detail).toEqual({ id: '42', align: 'start' });
+    row.querySelector('.fold').click();
+    expect(navigate).toHaveBeenCalledTimes(1);
   });
 });

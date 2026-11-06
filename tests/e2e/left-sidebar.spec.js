@@ -13,11 +13,13 @@ test.describe('Task list and board menus', () => {
     await selectAllPlans(page);
   });
 
-  test('renders one task list, the existing board, and server status without a sidebar', async ({ page }) => {
+  test('renders one task list and board, with server status only in Help', async ({ page }) => {
     await expect(page.locator('app-sidebar')).toHaveCount(0);
     await expect(page.locator('task-list')).toHaveCount(1);
     await expect(page.locator('feature-board')).toHaveCount(1);
-    await expect(page.locator('app-footer .footer-line.status')).not.toBeEmpty();
+    await expect(page.locator('app-footer')).toHaveCount(0);
+    await page.locator('top-menu-bar #openHelpBtn').click();
+    await expect(page.locator('help-modal app-footer .footer-line.status')).not.toBeEmpty();
   });
 
   test('Scope menu toggles canonical Context', async ({ page }) => {

@@ -15,10 +15,15 @@ describe('TimelineBoard board zoom', () => {
     cmd.view.setTaskColumnWidth(412);
     await board.updateComplete;
     expect(board.style.getPropertyValue('--task-column-width')).to.equal('412px');
-    root.querySelector('#collapse-tasks').click();
+    expect(root.querySelector('#collapse-tasks')).to.be.null;
+    root.querySelector('.column-resizer').dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
     await board.updateComplete;
-    expect(board.style.getPropertyValue('--task-column-width')).to.equal('32px');
+    expect(board.style.getPropertyValue('--task-column-width')).to.equal('8px');
     expect(root.querySelector('task-list').hidden).to.equal(true);
+    expect(root.querySelector('.column-resizer').hidden).to.equal(false);
+    root.querySelector('.column-resizer').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    await board.updateComplete;
+    expect(board.style.getPropertyValue('--task-column-width')).to.equal('412px');
     cmd.view.setDisplayMode('packed');
     await board.updateComplete;
     expect(board.style.getPropertyValue('--task-column-width')).to.equal('0px');

@@ -1,9 +1,31 @@
 import { expect } from '@esm-bundle/chai';
-import { vi } from 'vitest';
+import { beforeEach, afterEach, vi } from 'vitest';
 import documentationIndex from '../../www/docs/index.json';
 import '../../www/js/components/HelpModal.lit.js';
+import { getDocsUrl } from '../../www/js/services/docsUrl.js';
+import { dataService } from '../../www/js/services/dataService.js';
 
 describe('HelpModal document loading and onboarding', () => {
+  beforeEach(() => {
+    vi.spyOn(dataService, 'checkHealth').mockResolvedValue({ ok: true,
+      data: { server_name: 'Test server', version: '1.2.3', status: 'ok', uptime_seconds: 3660 } });
+  });
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+
+  it('resolves development documentation under the configured Vite sub-path', () => {
+    const originalIsViteDev = window.IS_VITE_DEV;
+    window.IS_VITE_DEV = true;
+    vi.stubEnv('BASE_URL', '/dev/');
+    try {
+      expect(getDocsUrl('index.json')).to.equal('/dev/docs/index.json');
+      expect(getDocsUrl('img/help_modal.png')).to.equal('/dev/docs/img/help_modal.png');
+      expect(getDocsUrl('onboarding/index.html')).to.equal('/dev/docs/onboarding/index.html');
+    } finally {
+      if (originalIsViteDev === undefined) delete window.IS_VITE_DEV;
+      else window.IS_VITE_DEV = originalIsViteDev;
+    }
+  });
+
   it('loads a document from index and renders markdown content', async () => {
     const originalFetch = global.fetch;
     const originalIsViteDev = window.IS_VITE_DEV;

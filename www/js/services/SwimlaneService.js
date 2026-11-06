@@ -7,7 +7,7 @@ import {
 } from '../application/shared/featureProjection.js';
 
 export const SWIMLANE_LABEL_WIDTH_PX = 140;
-export const SWIMLANE_BAND_GAP_PX = 8;
+export const SWIMLANE_BAND_GAP_PX = 0;
 
 /**
  * @param {Array<{selected:boolean}>} projects

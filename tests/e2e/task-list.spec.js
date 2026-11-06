@@ -9,10 +9,13 @@ test.beforeEach(async ({ page }) => {
   await page.setContent('<style>html,body{height:100%;margin:0}timeline-board{height:calc(100vh - 40px);margin-top:40px}body{font-family:"Segoe UI",sans-serif;--color-sidebar-bg:#23344d;--color-sidebar-text:white;--details-width:340px;--z-details:200}</style>');
   await page.evaluate(async () => {
     const { bus } = await import('/js/core/EventBus.js');
-    const { AppEvents } = await import('/js/core/EventRegistry.js');
+    const { AppEvents, GroupEvents } = await import('/js/core/EventRegistry.js');
     window.startTaskBoard = () => bus.emit(AppEvents.READY);
+    window.reloadTaskGroups = () => bus.emit(GroupEvents.LOADED);
     const { store } = await import('/js/application/store.js');
     window.taskBoardStore = store;
+    const { cmd } = await import('/js/application/imports.js');
+    window.taskBoardCommands = cmd;
     const { createInitialAppState } = await import('/js/application/createInitialAppState.js');
     await import('/js/components/FeatureCard.lit.js');
     await import('/js/components/TimelineBoard.lit.js');
@@ -57,6 +60,59 @@ async function alignment(page, id = 'task-0') {
   }, id);
 }
 
+test('help keeps application status visible while documents scroll without a board footer', async ({ page }, testInfo) => {
+  await page.route('**/api/health', (route) => route.fulfill({ json: {
+    server_name: 'Help fixture', version: 'test-version', status: 'ok', uptime_seconds: 3660,
+  } }));
+  await page.route('**/docs/index.json', (route) => route.fulfill({ json: [
+    { title: 'Long guide', file: 'long.md', tags: [] },
+    { title: 'Another guide', file: 'another.md', tags: [] },
+  ] }));
+  await page.route('**/docs/long.md', (route) => route.fulfill({ contentType: 'text/plain',
+    body: '# Long guide\n' + Array.from({ length: 150 }, (_, index) => `Paragraph ${index}\n`).join('\n') }));
+  await page.route('**/docs/another.md', (route) => route.fulfill({ contentType: 'text/plain', body: '# Another guide' }));
+  await expect(page.locator('app-footer')).toHaveCount(0);
+  await page.locator('top-menu-bar #openHelpBtn').click();
+  const help = page.locator('help-modal');
+  const status = help.locator('app-footer');
+  await expect(status).toContainText('Help fixture');
+  await expect(status).toContainText('test-version | Server: ok - Uptime: 1h 1m');
+  await expect(status).toContainText('Loaded dataset: 70 tasks');
+  await expect(status).toContainText('PlannerTool (C) 2025-2026 Kim Poulsen');
+  for (const height of [900, 620]) {
+    await page.setViewportSize({ width: 1366, height });
+    await expect(status).toBeInViewport({ ratio: 1 });
+    const before = await status.boundingBox();
+    const close = help.getByRole('button', { name: 'Close', exact: true });
+    const closeBounds = await close.boundingBox();
+    expect(closeBounds.y + closeBounds.height).toBeLessThanOrEqual(before.y);
+    const statusLines = await status.locator('.footer-line').evaluateAll((lines) =>
+      lines.map((line) => line.getBoundingClientRect().top));
+    expect(new Set(statusLines).size).toBe(1);
+    const buttonStyle = await close.evaluate((button) => ({
+      radius: getComputedStyle(button).borderRadius,
+      background: getComputedStyle(button).backgroundColor,
+      padding: getComputedStyle(button).padding,
+    }));
+    expect(buttonStyle).toEqual({ radius: '6px', background: 'rgb(233, 233, 233)', padding: '6px 10px' });
+    await help.locator('.help-panel').evaluate((panel) => { panel.scrollTop = panel.scrollHeight; });
+    await expect.poll(() => help.locator('.help-panel').evaluate((panel) => panel.scrollTop)).toBeGreaterThan(0);
+    const after = await status.boundingBox();
+    expect(after.y).toBe(before.y);
+    expect(after.y + after.height).toBeLessThanOrEqual(height);
+    const dialog = await help.locator('modal-lit .modal').boundingBox();
+    expect(after.y + after.height).toBeLessThanOrEqual(dialog.y + dialog.height);
+    expect(after.width).toBeCloseTo(dialog.width - 40, 0);
+  }
+  await help.locator('.help-list li').filter({ hasText: 'Another guide' }).click();
+  await expect(help.locator('.help-panel h1')).toHaveText('Another guide');
+  await expect(status).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: testInfo.outputPath('help-status-desktop.png') });
+  await help.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(help).toHaveCount(0);
+  await expect(page.locator('app-footer')).toHaveCount(0);
+});
+
 test('frozen task rows align through scrolling, zooming, resizing, collapse and packed transitions', async ({ page }, testInfo) => {
   const before = await alignment(page);
   expect(Math.abs(before.delta)).toBeLessThan(1);
@@ -75,23 +131,21 @@ test('frozen task rows align through scrolling, zooming, resizing, collapse and 
   await separator.press('ArrowRight');
   await expect.poll(async () => (await alignment(page)).width).toBe(320);
   const handle = await separator.boundingBox();
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  const handleY = Math.max(100, handle.y + 250);
+  await page.mouse.move(handle.x + handle.width / 2, handleY);
   await page.mouse.down();
-  await page.mouse.move(handle.x + 82, handle.y + handle.height / 2);
+  await page.mouse.move(handle.x + 82, handleY);
   await page.mouse.up();
   await expect.poll(async () => (await alignment(page)).width).toBeGreaterThan(390);
   const committedWidth = (await alignment(page)).width;
   const cancelHandle = await separator.boundingBox();
-  await page.mouse.move(cancelHandle.x + cancelHandle.width / 2, cancelHandle.y + cancelHandle.height / 2);
+  await page.mouse.move(cancelHandle.x + cancelHandle.width / 2, handleY);
   await page.mouse.down();
-  await page.mouse.move(cancelHandle.x + 60, cancelHandle.y + cancelHandle.height / 2);
+  await page.mouse.move(cancelHandle.x + 60, handleY);
   await page.keyboard.press('Escape');
   await page.mouse.up();
   await expect.poll(async () => (await alignment(page)).width).toBe(committedWidth);
-  await page.evaluate(async () => {
-    const { cmd } = await import('/js/application/imports.js');
-    cmd.view.setTimelineScale('threeMonths');
-  });
+  await page.evaluate(() => window.taskBoardCommands.view.setTimelineScale('threeMonths'));
   await separator.press('ArrowRight');
   await expect.poll(async () => page.evaluate(async () => {
     const { TIMELINE_CONFIG } = await import('/js/components/Timeline.lit.js');
@@ -100,16 +154,14 @@ test('frozen task rows align through scrolling, zooming, resizing, collapse and 
       shell.querySelector('.task-toolbar').getBoundingClientRect().width;
     return TIMELINE_CONFIG.monthWidth === Math.max(30, Math.floor(width / 3));
   })).toBe(true);
-  await page.getByRole('button', { name: 'Collapse task list', exact: true }).click();
+  await separator.press('Home');
   await expect(page.locator('task-list')).toBeHidden();
   await expect(page.locator('feature-card-lit .feature-title')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Restore task list', exact: true }).click();
+  await expect(separator).toBeVisible();
+  await separator.press('ArrowRight');
   await expect(page.locator('task-list')).toBeVisible();
   for (const mode of ['packed', 'normal']) {
-    await page.evaluate(async (mode) => {
-      const { cmd } = await import('/js/application/imports.js');
-      cmd.view.setDisplayMode(mode);
-    }, mode);
+    await page.evaluate((mode) => window.taskBoardCommands.view.setDisplayMode(mode), mode);
     if (mode === 'packed') await expect(page.locator('task-list')).toBeHidden();
     else {
       await expect(page.locator('task-list')).toBeVisible();
@@ -117,6 +169,44 @@ test('frozen task rows align through scrolling, zooming, resizing, collapse and 
     }
   }
   await page.screenshot({ path: testInfo.outputPath('task-list-desktop.png') });
+});
+
+test('rows and cards keep uniform breathing room across swimlanes and board zoom', async ({ page }) => {
+  await page.evaluate(async () => {
+    const store = window.taskBoardStore;
+    store.setState((state) => ({ ...state,
+      baseline: { ...state.baseline,
+        projects: [...state.baseline.projects, { ...state.baseline.projects[0],
+          id: 'second-plan', name: 'Second plan', color: '#298864' }],
+        features: state.baseline.features.map((feature, index) => index >= 35
+          ? { ...feature, project: 'second-plan' } : feature),
+      },
+      selection: { ...state.selection, projectIds: ['plan', 'second-plan'] },
+    }));
+    await document.querySelector('timeline-board').shadowRoot.querySelector('feature-board').renderFeatures();
+  });
+  const geometry = () => page.evaluate(() => {
+    const shell = document.querySelector('timeline-board').shadowRoot;
+    const board = shell.querySelector('feature-board');
+    const rows = board.getTaskLayout({ full: true }).rows;
+    const task = shell.querySelector('task-list').shadowRoot.querySelector('[data-task-id="task-0"]');
+    const card = board.shadowRoot.querySelector('[data-feature-id="task-0"]').shadowRoot.querySelector('.feature-card');
+    const label = task.getBoundingClientRect();
+    const bar = card.getBoundingClientRect();
+    const boundary = board._swimlanes[1].topPx;
+    const lastRowTop = Math.max(...rows.filter((row) => row.top < boundary).map((row) => row.top));
+    return { rowHeight: label.height, cardHeight: bar.height,
+      topInset: bar.top - label.top, bottomInset: label.bottom - bar.bottom,
+      boundaryPitch: boundary - lastRowTop };
+  });
+  await expect.poll(geometry).toEqual({ rowHeight: 36, cardHeight: 28,
+    topInset: 4, bottomInset: 4, boundaryPitch: 36 });
+  await page.evaluate(() => document.querySelector('timeline-board').adjustBoardZoom(-1));
+  await expect.poll(async () => {
+    const sizes = await geometry();
+    return Math.abs(sizes.rowHeight - 32.4) < 0.1 && Math.abs(sizes.topInset - 3.6) < 0.1 &&
+      Math.abs(sizes.bottomInset - 3.6) < 0.1 && Math.abs(sizes.boundaryPitch - 32.4) < 0.1;
+  }).toBe(true);
 });
 
 test('card fields disappear right to left, restore on widening, and retain project progress', async ({ page }, testInfo) => {
@@ -238,15 +328,15 @@ test('swimlane tags stay on the board and pin below the header while their lane 
     const current = await geometry();
     return Math.abs(current.labels[0].left - current.panelRight);
   }).toBeLessThan(2);
-  await page.getByRole('button', { name: 'Collapse task list', exact: true }).click();
+  await page.getByRole('separator', { name: 'Task column width' }).press('Home');
   await expect(page.locator('task-list')).toBeHidden();
   await expect.poll(() => page.evaluate(() => {
     const shell = document.querySelector('timeline-board').shadowRoot;
     const label = shell.querySelector('feature-board').shadowRoot.querySelector('.swimlane-label');
     return Math.abs(label.getBoundingClientRect().left -
-      shell.querySelector('.task-toolbar').getBoundingClientRect().right);
+      shell.querySelector('.column-resizer').getBoundingClientRect().right);
   })).toBeLessThan(2);
-  await page.getByRole('button', { name: 'Restore task list', exact: true }).click();
+  await page.getByRole('separator', { name: 'Task column width' }).press('ArrowRight');
   await page.locator('timeline-board #scroll-container').evaluate((scroll) => {
     const board = scroll.querySelector('feature-board');
     scroll.scrollTop = board._swimlanes[1].topPx + 100;
@@ -276,6 +366,60 @@ test('search navigates without filtering and task selection opens read-only deta
   await expect(page.locator('feature-card-lit[data-feature-id="task-6"] .drag-handle')).toHaveCount(0);
 });
 
+test('compact rows retain titles, metadata and icons, and repeat clicks align card starts', async ({ page }, testInfo) => {
+  const row = page.locator('task-list [data-task-id="task-6"]');
+  await expect(row.locator('.task-meta')).toHaveText('#task-6 · Parent #task-5 · Release plan');
+  await expect(row.locator('.task-type svg')).toHaveCount(1);
+  const title = await row.locator('.task-title').evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+    clipped: element.scrollWidth > element.clientWidth,
+    rowHeight: element.closest('.row').getBoundingClientRect().height,
+    bottom: element.nextElementSibling.getBoundingClientRect().bottom,
+    rowBottom: element.closest('.row').getBoundingClientRect().bottom,
+  }));
+  expect(title.height).toBeCloseTo(title.lineHeight, 0);
+  expect(title.clipped).toBe(true);
+  expect(title.bottom).toBeLessThanOrEqual(title.rowBottom);
+  await page.locator('timeline-board #scroll-container').evaluate((scroll) => { scroll.scrollLeft = 0; });
+  await row.click();
+  await expect(page.locator('details-panel .panel')).toBeVisible();
+  expect(await page.locator('timeline-board #scroll-container').evaluate((scroll) => scroll.scrollLeft)).toBe(0);
+  await row.click();
+  await expect.poll(() => page.evaluate(() => {
+    const root = document.querySelector('timeline-board').shadowRoot;
+    const card = root.querySelector('feature-board').shadowRoot.querySelector('[data-feature-id="task-6"]');
+    return Math.abs(card.getBoundingClientRect().left - root.querySelector('task-list').getBoundingClientRect().right);
+  })).toBeLessThan(2);
+  await page.screenshot({ path: testInfo.outputPath('task-row-details-desktop.png') });
+});
+
+test('dragging the full-height column edge closed and open retains width and search', async ({ page }, testInfo) => {
+  const separator = page.getByRole('separator', { name: 'Task column width' });
+  const search = page.getByRole('searchbox', { name: 'Search tasks' });
+  await search.fill('Delivery');
+  const box = await separator.boundingBox();
+  expect(box.height).toBeGreaterThan(300);
+  const pointerY = Math.min(box.y + 250, 600);
+  await page.mouse.move(box.x + box.width / 2, pointerY);
+  await page.mouse.down();
+  await page.mouse.move(110, pointerY, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('task-list')).toBeHidden();
+  await expect(separator).toBeVisible();
+  await expect(separator).toHaveAttribute('aria-valuenow', '8');
+  await expect(page.getByRole('button', { name: 'Restore task list', exact: true })).toHaveCount(0);
+  const edge = await separator.boundingBox();
+  await page.mouse.move(edge.x + edge.width / 2, pointerY);
+  await page.mouse.down();
+  await page.mouse.move(420, pointerY, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('task-list')).toBeVisible();
+  await expect(search).toHaveValue('Delivery');
+  expect((await alignment(page)).width).toBeGreaterThan(400);
+  await page.screenshot({ path: testInfo.outputPath('task-column-resized-desktop.png') });
+});
+
 test('folding is shared by rows, cards and the header hierarchy menu', async ({ page }) => {
   const row = page.locator('task-list [data-task-id="task-0"]');
   await row.locator('.fold').click();
@@ -290,18 +434,20 @@ test('folding is shared by rows, cards and the header hierarchy menu', async ({ 
 });
 
 test('group rows stay aligned after filtering and export retains the frozen labels', async ({ page }) => {
-  await page.evaluate(async () => {
-    const { store } = await import('/js/application/store.js');
-    const { bus } = await import('/js/core/EventBus.js');
-    const { GroupEvents } = await import('/js/core/EventRegistry.js');
+  await page.evaluate(() => {
+    const store = window.taskBoardStore;
     store.setState((state) => ({ ...state, groups: {
       byPlanId: { plan: [{ id: 'release-group', plan_id: 'plan', name: 'Release group',
         members: ['task-7', 'task-8'], rank: -1024, parent_id: null, color: '#347ab3' }] },
       loadedPlanIds: ['plan'],
     } }));
-    bus.emit(GroupEvents.LOADED);
+    window.reloadTaskGroups();
   });
   await expect(page.locator('task-list .group')).toContainText('Release group');
+  const groupColors = await page.locator('task-list').evaluate((list) =>
+    ['release-group', 'task-7', 'task-8'].map((id) =>
+      list.shadowRoot.querySelector(`[data-task-id="${id}"]`).style.getPropertyValue('--group-color')));
+  expect(groupColors).toEqual(['#347ab3', '#347ab3', '#347ab3']);
   const groupDelta = await page.evaluate(() => {
     const shell = document.querySelector('timeline-board').shadowRoot;
     const label = shell.querySelector('task-list').shadowRoot.querySelector('.group');
@@ -330,7 +476,7 @@ test('group rows stay aligned after filtering and export retains the frozen labe
 
 test('virtualized labels retain board geometry even for horizontally offscreen bars', async ({ page }) => {
   await page.evaluate(async () => {
-    const { store } = await import('/js/application/store.js');
+    const store = window.taskBoardStore;
     store.setState((state) => ({ ...state, baseline: { ...state.baseline,
       features: Array.from({ length: 450 }, (_, index) => ({ ...state.baseline.features[10],
         id: `large-${index}`, title: `Large task ${index}`, parentId: null })),

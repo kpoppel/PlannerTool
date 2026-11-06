@@ -51,6 +51,12 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
       left: 440, top: 290, behavior: 'smooth',
     })).to.be.true;
     expect(card.classList.contains('search-highlight')).to.be.true;
+    scrollContainer.scrollTop = 90;
+    await el.centerFeatureById('f1', { align: 'start' });
+    expect(scrollContainer.scrollTo.lastCall.args[0]).to.deep.equal({
+      left: 520, top: 90, behavior: 'smooth',
+    });
+    expect(scrollContainer.style.getPropertyValue('--task-navigation-tail')).to.equal('200px');
     const render = sinon.stub(el, 'renderFeatures').resolves();
     await el.setReconciliationContext(null);
     expect(card.classList.contains('search-highlight')).to.be.false;

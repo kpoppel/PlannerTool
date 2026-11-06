@@ -1359,7 +1359,7 @@ class FeatureBoard extends LitElement {
     );
   }
 
-  async centerFeatureById(featureId) {
+  async centerFeatureById(featureId, { align = 'center' } = {}) {
     let card = this._getCardNodeById(featureId);
     // Scroll is now owned by the parent #scroll-container (in TimelineBoard)
     const scrollContainer = findInBoard('#scroll-container');
@@ -1384,9 +1384,15 @@ class FeatureBoard extends LitElement {
 
     const cardCenterX = card.offsetLeft + card.clientWidth / 2;
     const cardCenterY = card.offsetTop + card.clientHeight / 2;
+    if (align === 'start') {
+      // Leave space after late cards so their start can reach the frozen column edge.
+      scrollContainer.style.setProperty('--task-navigation-tail', `${getTimelineViewportWidth(scrollContainer)}px`);
+    }
     scrollContainer.scrollTo({
-      left: Math.max(0, Math.round(cardCenterX - getTimelineViewportWidth(scrollContainer) / 2)),
-      top: Math.max(0, Math.round(cardCenterY - scrollContainer.clientHeight / 2)),
+      left: align === 'start' ? card.offsetLeft
+        : Math.max(0, Math.round(cardCenterX - getTimelineViewportWidth(scrollContainer) / 2)),
+      top: align === 'start' ? scrollContainer.scrollTop
+        : Math.max(0, Math.round(cardCenterY - scrollContainer.clientHeight / 2)),
       behavior: 'smooth',
     });
 

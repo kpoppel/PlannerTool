@@ -25,6 +25,8 @@ Template - do not change :
 ### Changed
 - Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
 - Replace the sidebar with a resizable, collapsible task column aligned to board rows, with ID/title search and saved column preferences. Move Teams, Hierarchy and Task Filters into top-menu popovers; card titles live in the task column and tooltips, and ghost titles are removed.
+- Show task-column rows with a single-line title, type icon, task/parent IDs and owning plan, using board group colors. Keep consistent breathing room around rows and cards without extra gaps at swimlane transitions. Drag the full-height edge to resize, collapse or restore the column; click a selected row again to align its card's start beside the list.
+- Move server status, uptime, loaded-task totals and attribution into a persistent, single-line footer along the bottom of Help instead of overlaying the task list.
 - Use compact-height cards in Normal and Packed layouts, showing type icon, ID, allocation bars and right-aligned closed/total descendant counts. Fill each card with a pastel project color in proportion to completed descendants, keep swimlane tints faint to distinguish that progress, and hide whole fields from right to left when space runs out. Migrate saved Compact views to Normal in revision 45.
 - Keep swimlane tags on the timeline rather than over the task column, at each lane's top or pinned below the timeline header while that lane scrolls off-screen.
 - Display ADO authentication as read-only deployment information instead of a disabled dropdown in Data Sources.
@@ -35,6 +37,7 @@ Template - do not change :
 
 ### Fixed
 - Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
+- Load Help documents and images correctly when the development server runs under an instance sub-path.
 - Clear old sessions atomically when authentication policy changes so later restarts do not reject stale source-bound sessions.
 - Stop Vite itself during development-launcher cleanup so failed starts do not leave the browser port occupied.
 - Return JSON for signed-out administration checks and distinguish missing sessions from denied permissions on the admin login page.

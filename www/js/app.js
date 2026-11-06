@@ -144,9 +144,6 @@ async function init() {
     // View restore updates selection/filter slices; recompute capacity so graph data is fresh.
     cmd.data.recomputeCapacity();
 
-    const footer = await import('./components/sidebar/SidebarFooter.lit.js');
-    footer.initAppFooter();
-
     // Load Plugin system
     // Load modules config via fetch to avoid JSON module import and
     // potential strict MIME-type handling by some dev servers/browsers.

@@ -27,22 +27,22 @@ describe('board-utils selector seam', () => {
   });
 
   it('uses the new normal row height regardless of the retired size flag', () => {
-    expect(laneHeight()).to.equal(28);
+    expect(laneHeight()).to.equal(36);
   });
 
   it('returns compact lane height when condensed cards are enabled', () => {
     mockView.condensedCards = true;
-    expect(laneHeight()).to.equal(28);
+    expect(laneHeight()).to.equal(36);
   });
 
   it('scales lane height with board zoom instead of a CSS transform', () => {
     setBoardZoom(0.5);
     expect(getBoardZoom()).to.equal(0.5);
-    expect(laneHeight()).to.equal(14);
+    expect(laneHeight()).to.equal(18);
 
     mockView.condensedCards = true;
     setBoardZoom(0.75);
-    expect(laneHeight()).to.equal(21);
+    expect(laneHeight()).to.equal(27);
   });
 
   it('positions an anchor on its historical date without assigning schedule dates', () => {

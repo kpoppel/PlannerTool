@@ -183,6 +183,7 @@ export class ModalLit extends LitElement {
       <div class="modal-overlay" ?open=${this.open} @click=${this._overlayClick}>
         <div
           class="modal ${this.wide ? 'wide' : ''}"
+          part="dialog"
           @click=${this._stop}
           role="dialog"
           aria-modal="true"
@@ -190,8 +191,8 @@ export class ModalLit extends LitElement {
           <slot name="header">
             <div class="default-header"><slot name="title"></slot></div>
           </slot>
-          <div class="modal-content"><slot></slot></div>
-          <div class="modal-footer">
+          <div class="modal-content" part="content"><slot></slot></div>
+          <div class="modal-footer" part="footer">
             <slot name="footer">
               ${this.noClose ?
                 html``

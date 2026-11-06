@@ -311,16 +311,23 @@ export class TimelineBoard extends LitElement {
 
   updated() {
     const options = this._view.value;
-    const width = options.displayMode === 'packed' ? 0 : options.taskColumnCollapsed ? 32
-      : this._resizeWidth === null ? options.taskColumnWidth : this._resizeWidth;
+    const width = this._getTaskColumnWidth();
     this.style.setProperty('--task-column-width', `${width}px`);
     if (this._appliedColumnWidth !== undefined && this._appliedColumnWidth !== width &&
       options.timelineScale === 'threeMonths') bus.emit(TimelineEvents.SCALE_CHANGED);
     this._appliedColumnWidth = width;
   }
 
+  _getTaskColumnWidth() {
+    const options = this._view.value;
+    if (options.displayMode === 'packed') return 0;
+    if (this._resizeWidth !== null) return this._resizeWidth < 180 ? 8 : Math.max(200, this._resizeWidth);
+    return options.taskColumnCollapsed ? 8 : options.taskColumnWidth;
+  }
+
   _navigateTask(event) {
-    this.shadowRoot.querySelector('feature-board').centerFeatureById(event.detail.id);
+    this.shadowRoot.querySelector('feature-board').centerFeatureById(event.detail.id,
+      { align: event.detail.align === 'start' ? 'start' : 'center' });
   }
 
   _highlightTask(event) {
@@ -343,13 +350,14 @@ export class TimelineBoard extends LitElement {
     event.preventDefault();
     event.stopPropagation();
     const startX = event.clientX;
-    const startWidth = this._view.value.taskColumnWidth;
+    const startWidth = this._getTaskColumnWidth();
     this._resizeWidth = startWidth;
     this._onColumnMove = (move) => {
-      this._resizeWidth = Math.max(200, Math.min(600, startWidth + move.clientX - startX));
+      this._resizeWidth = Math.max(0, Math.min(600, startWidth + move.clientX - startX));
     };
     this._onColumnUp = () => {
-      cmd.view.setTaskColumnWidth(this._resizeWidth);
+      if (this._resizeWidth >= 180) cmd.view.setTaskColumnWidth(Math.max(200, this._resizeWidth));
+      cmd.view.setTaskColumnCollapsed(this._resizeWidth < 180);
       this._cancelColumnResize();
     };
     this._onColumnKey = (key) => {
@@ -365,9 +373,16 @@ export class TimelineBoard extends LitElement {
   _resizeColumnByKey(event) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const width = event.key === 'Home' ? 200 : event.key === 'End' ? 600
-      : this._view.value.taskColumnWidth + (event.key === 'ArrowRight' ? 20 : -20);
+    const options = this._view.value;
+    if (event.key === 'Home' || (event.key === 'ArrowLeft' &&
+      (options.taskColumnCollapsed || options.taskColumnWidth <= 200))) {
+      cmd.view.setTaskColumnCollapsed(true);
+      return;
+    }
+    const width = event.key === 'End' ? 600 : options.taskColumnCollapsed
+      ? options.taskColumnWidth : options.taskColumnWidth + (event.key === 'ArrowRight' ? 20 : -20);
     cmd.view.setTaskColumnWidth(Math.max(200, Math.min(600, width)));
+    cmd.view.setTaskColumnCollapsed(false);
   }
 
   adjustBoardZoom(direction, anchorClientY) {
@@ -455,7 +470,7 @@ export class TimelineBoard extends LitElement {
         cursor: grab;
         background: var(--app-background, #fff);
         display: grid;
-        grid-template-columns: var(--task-column-width, 300px) max-content;
+        grid-template-columns: var(--task-column-width, 300px) max-content var(--task-navigation-tail, 0px);
         grid-template-rows: auto 1fr;
         align-content: start;
       }
@@ -470,7 +485,9 @@ export class TimelineBoard extends LitElement {
         border: 0; background: transparent; cursor: pointer; color: #23344d; }
       .task-toolbar button:disabled { opacity: .4; cursor: default; }
       .task-toolbar output { font-size: 10px; white-space: nowrap; }
-      .column-resizer { position: absolute; right: 0; top: 0; bottom: 0; width: 5px;
+      .column-resizer { grid-column: 1; grid-row: 1 / 3; position: sticky;
+        left: calc(var(--task-column-width, 300px) - 8px); top: 0; width: 8px;
+        justify-self: end; align-self: stretch; z-index: 160; background: #bec8d255;
         cursor: col-resize; touch-action: none; }
       .column-resizer:hover, .column-resizer:focus-visible { background: #347ab3; }
       task-list { grid-column: 1; grid-row: 2; }
@@ -623,17 +640,15 @@ export class TimelineBoard extends LitElement {
   render() {
     const options = this._view.value;
     const packed = options.displayMode === 'packed';
-    const collapsed = options.taskColumnCollapsed;
+    const columnWidth = this._getTaskColumnWidth();
+    const collapsed = columnWidth === 8;
     return html`
       <section id="maingraph-section" aria-label="Organisational Load Graph">
         <maingraph-lit></maingraph-lit>
       </section>
 
       <div id="scroll-container">
-        <div class="task-toolbar" ?hidden=${packed} @mousedown=${(event) => event.stopPropagation()}>
-          <button id="collapse-tasks" title=${collapsed ? 'Restore task list' : 'Collapse task list'}
-            aria-label=${collapsed ? 'Restore task list' : 'Collapse task list'} aria-expanded=${String(!collapsed)}
-            @click=${() => cmd.view.setTaskColumnCollapsed(!collapsed)}>${collapsed ? html`&#9656;` : html`&#9666;`}</button>
+        <div class="task-toolbar" ?hidden=${packed || collapsed} @mousedown=${(event) => event.stopPropagation()}>
           ${collapsed ? '' : html`
             <input type="search" aria-label="Search tasks" placeholder="Search tasks" .value=${this._query}
               @input=${(event) => { this._query = event.target.value; }}
@@ -648,10 +663,12 @@ export class TimelineBoard extends LitElement {
               @click=${() => this.shadowRoot.querySelector('task-list').navigateMatch(-1)}>&#8593;</button>
             <button title="Next matching task" aria-label="Next matching task" ?disabled=${this._searchStatus.count === 0}
               @click=${() => this.shadowRoot.querySelector('task-list').navigateMatch(1)}>&#8595;</button>
-            <div class="column-resizer" role="separator" tabindex="0" aria-label="Task column width"
-              aria-orientation="vertical" aria-valuemin="200" aria-valuemax="600" aria-valuenow=${options.taskColumnWidth}
-              @pointerdown=${this._startColumnResize} @keydown=${this._resizeColumnByKey}></div>`}
+            `}
         </div>
+        <div class="column-resizer" ?hidden=${packed} role="separator" tabindex="0" aria-label="Task column width"
+          aria-orientation="vertical" aria-valuemin="8" aria-valuemax="600" aria-valuenow=${columnWidth}
+          @mousedown=${(event) => event.stopPropagation()}
+          @pointerdown=${this._startColumnResize} @keydown=${this._resizeColumnByKey}></div>
         <timeline-lit></timeline-lit>
         <task-list .layout=${this._taskLayout} .query=${this._query} .highlightedId=${this._highlightedTask}
           style="--board-zoom: ${this.boardZoom}" ?hidden=${packed || collapsed}

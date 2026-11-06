@@ -24,17 +24,13 @@ export class AppFooter extends LitElement {
   static properties = { serverName: { state: true }, serverStatus: { state: true } };
 
   static styles = css`
-    :host { display: block; position: fixed; bottom: 0; left: 0;
-      width: var(--sidebar-width, 320px); height: var(--app-footer-height, 64px);
-      z-index: var(--z-footer, 111); font-family: inherit;
-      background: var(--color-sidebar-bg); color: var(--color-sidebar-text); }
-    .sidebar-config { height: 100%; padding: 0 6px; box-sizing: border-box;
-      display: flex; align-items: center; }
-    .sidebar-footer-box { width: 100%; min-width: 0; border: 1px solid #ffffff10;
-      border-radius: 6px; padding: 6px 8px; box-sizing: border-box; }
-    .footer-line { font-size: 12px; white-space: nowrap; overflow: hidden;
-      text-overflow: ellipsis; line-height: 1.2; }
-    .author { font-size: 11px; opacity: 0.85; }
+    :host { display: block; min-width: 0; overflow-x: auto; font-family: inherit; color: var(--color-text, #56616e); }
+    .sidebar-config { box-sizing: border-box; }
+    .sidebar-footer-box { display: flex; align-items: baseline; width: max-content;
+      min-width: 100%; gap: 8px; font-size: 11px; }
+    .footer-line { white-space: nowrap; line-height: 1.4; }
+    .footer-line + .footer-line::before { content: '|'; margin-right: 8px; opacity: .6; }
+    .author { opacity: 0.85; }
   `;
 
   constructor() {
@@ -88,10 +84,3 @@ export class AppFooter extends LitElement {
 }
 
 customElements.define('app-footer', AppFooter);
-
-export function initAppFooter() {
-  // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
-  if (document.querySelector('app-footer') === null) {
-    document.body.appendChild(document.createElement('app-footer'));
-  }
-}
