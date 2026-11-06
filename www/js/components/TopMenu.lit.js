@@ -22,6 +22,7 @@ import './ScenarioMenu.lit.js';
 import './ViewMenu.lit.js';
 import './ScopeMenu.lit.js';
 import './ToolsMenu.lit.js';
+import './BoardControlsMenu.lit.js';
 
 export class TopMenuBarLit extends LitElement {
   static properties = {
@@ -58,7 +59,7 @@ export class TopMenuBarLit extends LitElement {
       background: var(--color-sidebar-bg);
       color: white;
       display: grid;
-      grid-template-columns: var(--sidebar-width, 240px) minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
       overflow: visible;
       gap: 0;
@@ -405,6 +406,13 @@ export class TopMenuBarLit extends LitElement {
       }
     };
     document.addEventListener('click', this._outsideClickHandler);
+    this._onOpenMenuEscape = (event) => {
+      if (event.key !== 'Escape' || this.openMenu === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this._closeMenu();
+    };
+    document.addEventListener('keydown', this._onOpenMenuEscape, true);
     this._onPluginMenusChanged = () => {
       this.menuPlugins = pluginManager.listMenus();
       if (this.openMenu && this.openMenu.startsWith('plugin:') &&
@@ -501,6 +509,7 @@ export class TopMenuBarLit extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    document.removeEventListener('keydown', this._onOpenMenuEscape, true);
     if (this._outsideClickHandler) {
       document.removeEventListener('click', this._outsideClickHandler);
     }
@@ -565,6 +574,7 @@ export class TopMenuBarLit extends LitElement {
     this._menuElement = null;
 
     if (this.openMenu) {
+      if (['teams', 'hierarchy', 'filters'].includes(menuName)) this._focusBoardControls = true;
       if (menuName === 'settings') this._focusSettingsMenu = true;
       if (menuName === 'notifications') cmd.ui.markNotificationsRead();
       if (menuName.startsWith('plugin:')) {
@@ -605,6 +615,16 @@ export class TopMenuBarLit extends LitElement {
   }
 
   async updated() {
+    if (this._focusBoardControls) {
+      this._focusBoardControls = false;
+      const controls = this.shadowRoot.querySelector('board-controls-menu');
+      await controls.updateComplete;
+      if (controls.isConnected) {
+        const first = controls.shadowRoot.querySelector('button:not([disabled]), [tabindex="0"]');
+        // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+        if (first) first.focus();
+      }
+    }
     if (this._focusSettingsMenu) {
       this._focusSettingsMenu = false;
       this.shadowRoot.querySelector('#configurationMenuItem').focus();
@@ -770,6 +790,11 @@ export class TopMenuBarLit extends LitElement {
                 : this.selectedProjectsCount}</span>`
             : ''}
           </div>
+          ${[['teams', 'Teams'], ['hierarchy', 'Hierarchy'], ['filters', 'Task Filters']].map(([name, label]) => html`
+            <button class="menu-item ${this.openMenu === name ? 'active' : ''}" id=${`${name}MenuBtn`}
+              aria-haspopup="dialog" aria-expanded=${this.openMenu === name ? 'true' : 'false'}
+              @click=${(event) => this._toggleMenu(name, event)}>${label}</button>
+          `)}
           <div
             class="menu-item ${this.openMenu === 'scope' ? 'active' : ''}"
             id="scopeMenuBtn"
@@ -872,6 +897,14 @@ export class TopMenuBarLit extends LitElement {
     `;
 
     switch (this.openMenu) {
+      case 'teams':
+      case 'hierarchy':
+      case 'filters':
+        return html`<board-controls-menu .section=${this.openMenu}
+          style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;left:${Math.max(8,
+            Math.min(this._menuButtonRect.left, window.innerWidth - 376))}px;z-index:2000"
+          role="dialog" aria-label=${this._menuButton.textContent.trim()}
+          @keydown=${this._onMenuKeyDown}></board-controls-menu>`;
       case 'settings':
         return html`<div class="plugin-menu-popover settings-menu" id="settingsMenu" role="menu" aria-label="Settings"
           style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;right:8px;z-index:2000"

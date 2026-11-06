@@ -16,7 +16,7 @@ import { bus } from '../core/EventBus.js';
 import { cmd, sel } from '../application/imports.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
-import { laneHeight, computePosition } from './board-utils.js';
+import { laneHeight, computePosition, getTimelineViewportWidth } from './board-utils.js';
 import { findInBoard } from './board-utils.js';
 import { addDays, formatDate, parseDate } from './util.js';
 import {
@@ -51,12 +51,14 @@ class FeatureBoard extends LitElement {
 
   static properties = {
     features: { type: Array },
+    taskListVisible: { type: Boolean },
     _insertionCaretTop: { state: true },
   };
 
   constructor() {
     super();
     this.features = [];
+    this.taskListVisible = false;
     this._cardMap = new Map();
     this._boundHandlers = new Map();
     // Swimlane geometry — populated by renderFeatures() when swimlane mode is active.
@@ -81,9 +83,36 @@ class FeatureBoard extends LitElement {
     this._insertionCaretTop = null;
     this._viewportRenderScheduled = false;
     this._viewportUnsubscribe = null;
+    this._foldState = { active: false, foldedCount: 0, foldableCount: 0, canCollapse: false };
   }
 
   static styles = featureBoardStyles;
+
+  getTaskLayout({ full = false } = {}) {
+    const window = this._taskWindow;
+    const rows = this._fullRenderList.filter((item) => full || window === undefined ||
+      (item.top + (item.isGroup ? 28 : laneHeight()) >= window.top && item.top <= window.bottom));
+    return {
+      height: this._boardHeight,
+      rows: rows.map((item) => ({ ...item,
+        id: item.isGroup ? String(item.id) : String(item.feature.id),
+        height: item.isGroup ? 28 : laneHeight(),
+        collapsed: item.isGroup && this._collapsedGroups.has(String(item.id)) &&
+          !this._revealedGroups.has(String(item.id)),
+      })),
+      swimlanes: this._swimlanes,
+      groups: this._groupBands,
+      searchFeatures: this._taskSearchFeatures === undefined ? [] : this._taskSearchFeatures,
+    };
+  }
+
+  getFoldState() { return this._foldState; }
+
+  updated() {
+    this.dispatchEvent(new CustomEvent('task-layout-changed', {
+      detail: this.getTaskLayout(), bubbles: true, composed: true,
+    }));
+  }
 
   connectedCallback() {
     super.connectedCallback();
@@ -108,20 +137,6 @@ class FeatureBoard extends LitElement {
     bus.on(FilterEvents.CHANGED, this._onPresentationScopeChanged);
     this._viewportUnsubscribe = boardCoords.subscribe(() => {
       this._scheduleViewportRender();
-    });
-  }
-
-  // Ghost-title left/right placement is viewport-relative (see FeatureCardLit).
-  // Cards compute it themselves on layout, but the page's initial scroll-to-today
-  // jump can settle after a card's first layout ran, so re-check once per render.
-  _refreshGhostPlacement() {
-    const scrollContainer = findInBoard('#scroll-container');
-    const scrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
-    if (!this.shadowRoot) return;
-    this.shadowRoot.querySelectorAll('feature-card-lit').forEach((card) => {
-      if (typeof card.refreshGhostPlacement === 'function') {
-        card.refreshGhostPlacement(scrollLeft);
-      }
     });
   }
 
@@ -297,10 +312,17 @@ class FeatureBoard extends LitElement {
             .condensed=${item.condensed}
             .project=${item.project}
             .groupColor=${item.groupColor}
-            .hideGhostTitle=${!!item.hideGhostTitle}
+            .hideTitle=${this.taskListVisible && !item.condensed}
             .foldCount=${item.foldCount}
             .folded=${item.folded}
+            .selected=${sel.feature.getSelectedFeatureId() === String(item.feature.id)}
             @feature-fold-toggle=${this._onFeatureFoldToggle}
+            @mouseenter=${() => this.dispatchEvent(new CustomEvent('task-highlight', {
+              detail: { id: String(item.feature.id) }, bubbles: true, composed: true,
+            }))}
+            @mouseleave=${() => this.dispatchEvent(new CustomEvent('task-highlight', {
+              detail: { id: '' }, bubbles: true, composed: true,
+            }))}
             style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px"
           ></feature-card-lit>`;
         }
@@ -765,7 +787,7 @@ class FeatureBoard extends LitElement {
       foldedFeatures,
       sel.feature.getWorkItemDisplay()
     );
-    bus.emit(BoardEvents.FOLD_STATE, {
+    this._foldState = {
       active: this._foldModel !== null && this._foldModel.counts.size > 0,
       foldableCount: this._foldModel === null ? 0 : this._foldModel.counts.size,
       foldedCount: this._foldModel === null ? 0 : [...this._foldModel.counts.keys()].filter(
@@ -775,7 +797,8 @@ class FeatureBoard extends LitElement {
         (feature) => this._foldModel.counts.has(String(feature.id))
           && !foldedFeatures.has(String(feature.id))
       ),
-    });
+    };
+    bus.emit(BoardEvents.FOLD_STATE, this._foldState);
     const displayedFeatures = this._foldModel === null ? visibleFeatures : this._foldModel.visible;
     const foldProps = (feature) => ({
       foldCount: this._foldModel === null || !this._foldModel.counts.has(String(feature.id))
@@ -950,7 +973,6 @@ class FeatureBoard extends LitElement {
                 top,
                 teams: selectedTeams,
                 condensed: true,
-                hideGhostTitle: true,
                 project: selectedProjects.find((p) => p.id === bar.feature.project),
               });
             }
@@ -973,7 +995,6 @@ class FeatureBoard extends LitElement {
               top: swimlaneTop + laneIndex * laneHeight(),
               teams: selectedTeams,
               condensed: sel.view.getCondensedCards(),
-              hideGhostTitle: false,
               project: selectedProjects.find((p) => p.id === feature.project),
               slotParentId: null,
               slotRank: (laneIndex + 1) * RANK_GAP,
@@ -1071,12 +1092,6 @@ class FeatureBoard extends LitElement {
     // and only TIMELINE_CONFIG.monthWidth tracks that, for every scale.
     this.style.width = months.length * TIMELINE_CONFIG.monthWidth + 'px';
     this.requestUpdate();
-    // Cards compute their own initial ghost-title placement against whatever
-    // scrollLeft exists at that moment, which can predate the page's initial
-    // scroll-to-today jump. Re-check once cards are actually in the DOM so
-    // that race doesn't leave ghosts stuck on the wrong side.
-    this.updateComplete.then(() => this._refreshGhostPlacement());
-
     if (renderList.length === 0) {
       const mh = await import('./modalHelpers.js');
       if (typeof mh?.openEmptyBoardModal === 'function') {
@@ -1089,6 +1104,8 @@ class FeatureBoard extends LitElement {
     this._renderGeneration += 1;
     const generation = this._renderGeneration;
     this._fullRenderList = renderList;
+    this._taskSearchFeatures = renderList.filter((item) => !item.isGroup).map((item) => item.feature);
+    this._taskWindow = undefined;
 
     if (this._shouldVirtualize(renderList)) {
       this._updateVisibleRenderList();
@@ -1158,6 +1175,11 @@ class FeatureBoard extends LitElement {
       overscanX: FeatureBoard.VIRTUALIZE_OVERSCAN_X,
       overscanY: FeatureBoard.VIRTUALIZE_OVERSCAN_Y,
     };
+    this._taskWindow = {
+      top: viewport.top - viewport.overscanY,
+      bottom: viewport.bottom + viewport.overscanY,
+    };
+    this.requestUpdate();
     let next = this._computeVisibleRenderItems(this._fullRenderList, viewport);
     if (this._navigationFeatureId !== null) {
       const target = this._fullRenderList.find((item) => !item.isGroup
@@ -1212,6 +1234,11 @@ class FeatureBoard extends LitElement {
       if (visuals.width !== undefined) item.width = visuals.width;
       if (visuals.project !== undefined) item.project = visuals.project;
       updated = true;
+    }
+    if (updated) {
+      this._taskSearchFeatures = this._fullRenderList.filter((item) => !item.isGroup)
+        .map((item) => item.feature);
+      this.requestUpdate();
     }
     return updated;
   }
@@ -1276,12 +1303,12 @@ class FeatureBoard extends LitElement {
       }
 
       existing.feature = { ...feature };
-      existing.selected = !!feature.selected;
+      existing.selected = sel.feature.getSelectedFeatureId() === String(feature.id);
       existing.project = project;
       existing.applyVisuals({
         left,
         width,
-        selected: !!feature.selected,
+        selected: existing.selected,
         dirty: !!feature.dirty,
         project,
       });
@@ -1360,7 +1387,7 @@ class FeatureBoard extends LitElement {
     const cardCenterX = card.offsetLeft + card.clientWidth / 2;
     const cardCenterY = card.offsetTop + card.clientHeight / 2;
     scrollContainer.scrollTo({
-      left: Math.max(0, Math.round(cardCenterX - scrollContainer.clientWidth / 2)),
+      left: Math.max(0, Math.round(cardCenterX - getTimelineViewportWidth(scrollContainer) / 2)),
       top: Math.max(0, Math.round(cardCenterY - scrollContainer.clientHeight / 2)),
       behavior: 'smooth',
     });

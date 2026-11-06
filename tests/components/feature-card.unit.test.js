@@ -265,15 +265,6 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(el.classList.contains('dirty')).to.be.true;
   });
 
-  it('splitTitleAtMiddle splits long titles and escapeHtml', async () => {
-    const el = document.createElement('feature-card-lit');
-    const long = 'This is a reasonably long feature title for testing split';
-    const split = el._splitTitleAtMiddle(long);
-    expect(split).to.include('<br/>');
-    const escaped = el._escapeHtml('<bad>&"');
-    expect(escaped).to.equal('&lt;bad&gt;&amp;&quot;');
-  });
-
   it('setLiveDates toggles live/default date DOM nodes', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = { id: 'f3', title: 'Dates', start: '2025-02-01', end: '2025-02-05' };
@@ -327,32 +318,24 @@ describe('FeatureCardLit basic behaviors', () => {
     expect(el.feature.capacity[1].capacity).to.equal(0.01);
   });
 
-  it('renders ghost title text with initial card render', async () => {
+  it('hides normal titles only when requested, keeps accessible names and never renders ghosts', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
-    el.feature = {
-      id: 'f4',
-      title: 'This is a long feature title for ghost rendering',
-      start: '2025-01-01',
-      end: '2025-01-10',
-    };
+    el.feature = { id: 'f4', title: 'A complete accessible task title' };
     el.style.width = '120px';
     await el.updateComplete;
-
-    const ghostText =
-      el.shadowRoot.querySelector('.ghost-title .ghost-title-text')?.textContent || '';
-    const normalized = ghostText.replace(/\s+/g, '').trim();
-    expect(normalized).to.include('Thisisalongfeaturetitleforghostrendering');
-  });
-
-  it('recalculates ghost visibility when packed mode suppresses ghost titles', async () => {
-    const el = await fixture('<feature-card-lit></feature-card-lit>');
-    el.feature = { id: 'f6', title: 'Packed title' };
+    expect(el.shadowRoot.querySelector('.feature-title').textContent.trim()).to.equal(el.feature.title);
+    el.hideTitle = true;
     await el.updateComplete;
-    const requestLayout = sinon.spy(el, '_requestLayout');
-
-    el.hideGhostTitle = true;
+    expect(el.shadowRoot.querySelector('.feature-title')).to.equal(null);
+    expect(el.shadowRoot.querySelector('.feature-card').getAttribute('aria-label')).to.equal(el.feature.title);
+    expect(el.shadowRoot.querySelector('.ghost-title')).to.equal(null);
+    expect(el.refreshGhostPlacement).to.equal(undefined);
+    el.condensed = true;
     await el.updateComplete;
-
-    expect(requestLayout).to.have.been.calledOnce;
+    expect(el.shadowRoot.querySelector('.feature-title').textContent.trim()).to.equal(el.feature.title);
+    el.condensed = false;
+    el.hideTitle = false;
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.feature-title')).not.to.equal(null);
   });
 });

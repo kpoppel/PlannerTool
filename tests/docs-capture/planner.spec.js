@@ -114,9 +114,9 @@ test('overview, top menu and popovers', async ({ page }) => {
   await shot(help, 'help_modal');
 });
 
-test('sidebar, graph and card display modes', async ({ page }) => {
+test('task list, graph and card display modes', async ({ page }) => {
   await openPlanner(page);
-  await shot(page.locator('app-sidebar aside.sidebar'), 'sidebar');
+  await shot(page.locator('task-list .rows'), 'task_list');
   await shot(page.locator('maingraph-lit'), 'graph_team');
 
   const view = await openMenu(page, '#viewMenuBtn', 'view-menu');

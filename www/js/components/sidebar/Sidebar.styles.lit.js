@@ -50,43 +50,6 @@ export const SIDEBAR_STYLES = css`
       border-radius: 2px;
       height: 0;
     }
-    /* Sidebar container styles (migrated from www/css/main.css) */
-    .sidebar {
-      width: var(--sidebar-width);
-      min-width: var(--sidebar-width);
-      max-width: var(--sidebar-width);
-      background: var(--color-sidebar-bg);
-      color: var(--color-sidebar-text);
-      padding: 0px 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-      position: fixed;
-      top: 40px;
-      left: 0;
-      z-index: var(--z-sidebar);
-      font-size: 14px;
-      overflow: hidden;
-      box-sizing: border-box;
-      height: calc(100vh - 40px - var(--app-footer-height, 64px));
-      word-wrap: break-word;
-      word-break: break-word;
-    }
-
-    /* Make content area scrollable and fill available space */
-    .sidebar-content {
-      flex: 1;
-      overflow: hidden auto;
-      padding-bottom: 0;
-      min-height: 0;
-      width: 100%;
-    }
-
-    .sidebar h2 {
-      margin: 0 0 8px;
-      font-size: 1.1rem;
-      word-wrap: break-word;
-    }
     .sidebar-section {
       overflow: hidden;
     }

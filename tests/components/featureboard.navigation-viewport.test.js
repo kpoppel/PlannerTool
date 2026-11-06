@@ -21,6 +21,7 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
     const wrapper = await fixture(html`
       <div>
         <div id="scroll-container"></div>
+        <div class="task-toolbar"></div>
         <feature-board></feature-board>
       </div>
     `);
@@ -41,12 +42,13 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
       clientWidth: { value: 300 },
       clientHeight: { value: 400 },
     });
+    wrapper.querySelector('.task-toolbar').getBoundingClientRect = () => ({ width: 100 });
     scrollContainer.scrollTo = sinon.stub();
 
     el.centerFeatureById('f1');
 
     expect(scrollContainer.scrollTo.calledOnceWithExactly({
-      left: 390, top: 290, behavior: 'smooth',
+      left: 440, top: 290, behavior: 'smooth',
     })).to.be.true;
     expect(card.classList.contains('search-highlight')).to.be.true;
     const render = sinon.stub(el, 'renderFeatures').resolves();
@@ -187,5 +189,22 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
       'visible-1',
       'visible-2',
     ]);
+  });
+
+  it('exposes board-owned task rows independent of horizontal card virtualization', async () => {
+    const el = await fixture(html`<feature-board></feature-board>`);
+    const group = { isGroup: true, id: 'group', top: 0, groupObj: { name: 'Group' } };
+    const task = { feature: { id: 'offscreen', title: 'Task' }, left: 5000, width: 100,
+      top: 28, depth: 2, foldable: true, folded: false, foldCount: 3 };
+    el._fullRenderList = [group, task];
+    el.features = [group];
+    el._boardHeight = 600;
+    const layout = el.getTaskLayout();
+    expect(layout.height).to.equal(600);
+    expect(layout.rows.map((row) => row.id)).to.deep.equal(['group', 'offscreen']);
+    expect(layout.rows[1].top).to.equal(task.top);
+    expect(layout.rows[1].feature).to.equal(task.feature);
+    expect(layout.rows[1].foldCount).to.equal(3);
+    expect(layout.rows[0].height).to.equal(28);
   });
 });

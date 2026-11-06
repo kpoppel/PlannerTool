@@ -61,10 +61,12 @@ test.describe('Board letter shortcuts', () => {
 
   test('cycles filters without changing disabled sidebar options', async ({ page }) => {
     await page.evaluate(async () => {
-      await import('/js/components/Sidebar.lit.js');
-      document.body.appendChild(document.createElement('app-sidebar'));
+      await import('/js/components/BoardControlsMenu.lit.js');
+      const filters = document.createElement('board-controls-menu');
+      filters.section = 'filters';
+      document.body.appendChild(filters);
     });
-    await expect(page.locator('app-sidebar .filter-dimension-title kbd'))
+    await expect(page.locator('board-controls-menu .filter-dimension-title kbd'))
       .toHaveText(['P', 'A', 'I', 'R']);
     const filters = () => page.evaluate(async () => {
       const { sel } = await import('/js/application/imports.js');
@@ -86,7 +88,7 @@ test.describe('Board letter shortcuts', () => {
       const { cmd } = await import('/js/application/imports.js');
       cmd.filter.setSidebarDisabledElements({ taskFilters: { allocation: ['allocated'] } });
     });
-    const allocation = page.locator('app-sidebar .filter-dimension').filter({ hasText: 'Allocation' });
+    const allocation = page.locator('board-controls-menu .filter-dimension').filter({ hasText: 'Allocation' });
     await expect(allocation.locator('.filter-option').first()).toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('a');
     expect((await filters()).allocation).toEqual({ allocated: true, unallocated: false });
@@ -97,7 +99,7 @@ test.describe('Board letter shortcuts', () => {
       const { cmd } = await import('/js/application/imports.js');
       cmd.view.setDisplayMode('packed');
     });
-    const schedule = page.locator('app-sidebar .filter-dimension').filter({ hasText: 'Schedule' });
+    const schedule = page.locator('board-controls-menu .filter-dimension').filter({ hasText: 'Schedule' });
     await expect(schedule.locator('.filter-option').last()).toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('p');
     expect((await filters()).schedule).toEqual({ planned: true, unplanned: false });
@@ -147,7 +149,7 @@ test.describe('Board letter shortcuts', () => {
   test('matches sidebar shortcut pills to View menu styling', async ({ page }, testInfo) => {
     await page.addStyleTag({ url: '/css/main.css' });
     await page.evaluate(async () => {
-      await import('/js/components/Sidebar.lit.js');
+      await import('/js/components/BoardControlsMenu.lit.js');
       const { bus } = await import('/js/core/EventBus.js');
       const { BoardEvents } = await import('/js/core/EventRegistry.js');
       const { sel } = await import('/js/application/imports.js');
@@ -156,7 +158,7 @@ test.describe('Board letter shortcuts', () => {
       sel.feature.getAvailableTaskTypesOrdered = () => keys;
       sel.feature.getTypeDisplayName = (key) => taskTypes[keys.indexOf(key)];
       sel.feature.getCountsForTeam = () => new Map(keys.map((key) => [key, 1]));
-      const sidebar = document.createElement('app-sidebar');
+      const sidebar = document.createElement('board-controls-menu');
       sidebar._getTeamDrilldownTeams = () => [{ id: 'team-a', name: 'Team A', selected: true }];
       document.body.appendChild(sidebar);
       bus.emit(BoardEvents.FOLD_STATE, {
@@ -166,9 +168,9 @@ test.describe('Board letter shortcuts', () => {
       menu.style.cssText = 'position:absolute;left:360px;top:24px;';
       document.body.appendChild(menu);
     });
-    const hints = page.locator('app-sidebar .shortcut-pill');
-    await expect(hints).toHaveText(['V', '-', '+', 'P', 'A', 'I', 'R']);
-    const toggleAlignment = await page.locator('app-sidebar .list-toggle-btn').evaluate((button) => {
+    const hints = page.locator('board-controls-menu .shortcut-pill');
+    await expect(hints).toHaveText(['V']);
+    const toggleAlignment = await page.locator('board-controls-menu .list-toggle-btn').evaluate((button) => {
       const root = button.getRootNode();
       return {
         button: button.getBoundingClientRect().left,
@@ -179,10 +181,10 @@ test.describe('Board letter shortcuts', () => {
     expect(toggleAlignment.button).toBeCloseTo(toggleAlignment.team, 1);
     expect(toggleAlignment.button).toBeCloseTo(toggleAlignment.heading, 1);
     for (const expanded of [false, true]) {
-      if (expanded) await page.locator('app-sidebar .team-counts-toggle').click();
-      await expect(page.locator('app-sidebar .team-drilldown-header .type-icon'))
+      if (expanded) await page.locator('board-controls-menu .team-counts-toggle').click();
+      await expect(page.locator('board-controls-menu .team-drilldown-header .type-icon'))
         .toHaveCount(expanded ? 5 : 2);
-      const headerLayout = await page.locator('app-sidebar').evaluate((sidebar) => {
+      const headerLayout = await page.locator('board-controls-menu').evaluate((sidebar) => {
         const root = sidebar.shadowRoot;
         const button = root.querySelector('.list-toggle-btn').getBoundingClientRect();
         const controls = root.querySelector('.team-counts-toggle').getBoundingClientRect();
@@ -206,7 +208,7 @@ test.describe('Board letter shortcuts', () => {
         expect(Math.abs(column.heading - column.count)).toBeLessThanOrEqual(1);
       }
     }
-    await page.locator('app-sidebar .team-counts-toggle').click();
+    await page.locator('board-controls-menu .team-counts-toggle').click();
     const properties = ['backgroundColor', 'borderColor', 'borderRadius', 'color',
       'fontFamily', 'fontWeight', 'padding', 'textTransform', 'whiteSpace'];
     const expected = await page.locator('view-menu .shortcut-pill').first().evaluate(

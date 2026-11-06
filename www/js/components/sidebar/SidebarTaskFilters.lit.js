@@ -1,6 +1,12 @@
 import { html } from '../../vendor/lit.js';
 import { getIconTemplate } from '../../services/IconService.js';
 
+function onFilterKeyDown(event) {
+  if (event.key !== ' ' && event.key !== 'Enter') return;
+  event.preventDefault();
+  event.currentTarget.click();
+}
+
 export const SIDEBAR_FILTER_DIMENSIONS = [
   { key: 'schedule', title: 'Schedule', shortcut: 'P', options: [
     { key: 'planned', label: 'Planned' }, { key: 'unplanned', label: 'Unplanned' },
@@ -28,6 +34,8 @@ export function renderSidebarTaskFilters({ model, actions }) {
           <div class="filter-options" style="display:flex;flex-direction:column;gap:6px;">
             ${dimension.options.map((option) => html`
               <div class="filter-option ${option.active ? 'active' : ''} ${option.disabled ? 'disabled' : ''}"
+                role="checkbox" aria-checked=${option.active} aria-label=${option.label}
+                tabindex=${option.disabled ? -1 : 0} @keydown=${onFilterKeyDown}
                 aria-disabled=${option.disabled ? 'true' : 'false'}
                 @click=${() => {
                   if (!option.disabled) actions.toggleFilter(dimension.key, option.key);
@@ -50,6 +58,8 @@ export function renderSidebarTaskFilters({ model, actions }) {
         <div class="filter-options">
           ${model.states.map((state) => html`
             <div class="filter-option ${state.active ? 'active' : ''} ${state.disabled ? 'disabled' : ''}"
+              role="checkbox" aria-checked=${state.active} aria-label=${state.name}
+              tabindex=${state.disabled ? -1 : 0} @keydown=${onFilterKeyDown}
               aria-disabled=${state.disabled ? 'true' : 'false'}
               @click=${() => { if (!state.disabled) actions.toggleState(state.name); }}
               title=${state.disabled ? 'Not relevant in current tool context' : ''}>
@@ -72,6 +82,8 @@ export function renderSidebarTaskFilters({ model, actions }) {
         <div class="filter-options">
           ${model.types.map((type) => html`
             <div class="filter-option ${type.active ? 'active' : ''} ${type.disabled ? 'disabled' : ''}"
+              role="checkbox" aria-checked=${type.active} aria-label=${type.name}
+              tabindex=${type.disabled ? -1 : 0} @keydown=${onFilterKeyDown}
               data-type-key=${type.key}
               aria-disabled=${type.disabled ? 'true' : 'false'}
               @click=${() => { if (!type.disabled) actions.toggleType(type.key); }}

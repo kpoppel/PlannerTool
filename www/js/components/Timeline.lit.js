@@ -7,7 +7,7 @@ import { bus } from '../core/EventBus.js';
 import { FeatureEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { parseDate, addMonths, dateRangeInclusiveMonths } from './util.js';
 import { featureFlags } from '../config.js';
-import { findInBoard } from './board-utils.js';
+import { findInBoard, getTimelineViewportWidth } from './board-utils.js';
 import {
   getTimelineEnd,
   getTimelineStart,
@@ -314,7 +314,7 @@ export async function initTimeline() {
       if (scale === 'threeMonths') {
         const section = findInBoard('#scroll-container');
         if (section && section.clientWidth) {
-          newMonthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
+          newMonthWidth = Math.max(30, Math.floor(getTimelineViewportWidth(section) / 3));
         }
       }
 
@@ -343,7 +343,7 @@ export async function initTimeline() {
           if (idx >= 0 && section) {
             const targetScrollPos = idx * newMonthWidth;
             const centeredScrollPos =
-              targetScrollPos - section.clientWidth / 2 + newMonthWidth / 2;
+              targetScrollPos - getTimelineViewportWidth(section) / 2 + newMonthWidth / 2;
             section.scrollLeft = Math.max(0, centeredScrollPos);
           }
         } else {
@@ -362,7 +362,7 @@ export async function initTimeline() {
       if (savedScale === 'threeMonths') {
         const section = findInBoard('#scroll-container');
         if (section && section.clientWidth) {
-          TIMELINE_CONFIG.monthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
+          TIMELINE_CONFIG.monthWidth = Math.max(30, Math.floor(getTimelineViewportWidth(section) / 3));
           document.documentElement.style.setProperty(
             '--timeline-month-width',
             `${TIMELINE_CONFIG.monthWidth}px`
@@ -389,7 +389,7 @@ export async function initTimeline() {
             const leftIndex = Math.floor(scrollLeft / oldW);
             const fraction = scrollLeft / oldW - leftIndex; // fractional part within month
 
-            const newW = Math.max(30, Math.floor(section.clientWidth / 3));
+            const newW = Math.max(30, Math.floor(getTimelineViewportWidth(section) / 3));
             TIMELINE_CONFIG.monthWidth = newW;
             document.documentElement.style.setProperty(
               '--timeline-month-width',
@@ -487,7 +487,7 @@ async function renderTimelineHeader(payload) {
   const monthWidth = TIMELINE_CONFIG.monthWidth;
   const section = findInBoard('#scroll-container');
   if (section) {
-    const targetWidth = section.clientWidth;
+    const targetWidth = getTimelineViewportWidth(section);
     const needed = Math.ceil(targetWidth / monthWidth);
     if (baseMonths.length < needed) {
       let last = baseMonths[baseMonths.length - 1];
@@ -533,7 +533,7 @@ async function renderTimelineHeader(payload) {
         requestAnimationFrame(() => {
           const targetScrollPos = idx * TIMELINE_CONFIG.monthWidth;
           const centeredScrollPos =
-            targetScrollPos - section.clientWidth / 2 + TIMELINE_CONFIG.monthWidth / 2;
+            targetScrollPos - getTimelineViewportWidth(section) / 2 + TIMELINE_CONFIG.monthWidth / 2;
           section.scrollLeft = Math.max(0, centeredScrollPos);
           didInitialScroll = true;
         });
@@ -581,7 +581,7 @@ function getCenterDate() {
   if (!section || !monthsCache.length) return null;
 
   const monthWidth = TIMELINE_CONFIG.monthWidth;
-  const centerScrollPos = section.scrollLeft + section.clientWidth / 2;
+  const centerScrollPos = section.scrollLeft + getTimelineViewportWidth(section) / 2;
   const relative = centerScrollPos / monthWidth;
 
   const monthIndex = Math.max(0, Math.min(Math.floor(relative), monthsCache.length - 1));
@@ -634,7 +634,7 @@ function scrollToCenterDate(targetDate, months) {
 
   // Calculate scroll position and center in viewport
   const targetScrollPos = (totalMonths + fraction) * monthWidth;
-  section.scrollLeft = targetScrollPos - section.clientWidth / 2;
+  section.scrollLeft = targetScrollPos - getTimelineViewportWidth(section) / 2;
 }
 
 // Export helper for tests/tools
@@ -674,7 +674,7 @@ export function ensureScrollToMonth(date) {
       // Center the target month in the viewport instead of left-aligning it
       const targetScrollPos = idx * monthWidth;
       const centeredScrollPos =
-        targetScrollPos - section.clientWidth / 2 + monthWidth / 2;
+        targetScrollPos - getTimelineViewportWidth(section) / 2 + monthWidth / 2;
       const left = Math.max(0, centeredScrollPos);
       requestAnimationFrame(() => {
         section.scrollLeft = left;

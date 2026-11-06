@@ -20,11 +20,13 @@
  */
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { sel } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
+import { StoreController } from '../core/StoreController.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, TimelineEvents, BoardEvents } from '../core/EventRegistry.js';
 import { calcTodayX, setBoardZoom } from './board-utils.js';
+import './TaskList.lit.js';
 
 const BOARD_ZOOM_STEP = 0.1;
 const MIN_BOARD_ZOOM = 0.5;
@@ -35,6 +37,11 @@ const MAX_BOARD_ZOOM = 1;
 export class TimelineBoard extends LitElement {
   static properties = {
     boardZoom: { state: true },
+    _taskLayout: { state: true },
+    _query: { state: true },
+    _searchStatus: { state: true },
+    _resizeWidth: { state: true },
+    _highlightedTask: { state: true },
   };
 
   // LitElement already uses an open shadow root by default — no need to
@@ -44,6 +51,12 @@ export class TimelineBoard extends LitElement {
   constructor() {
     super();
     this.boardZoom = 1;
+    this._view = new StoreController(this, (state) => state.view.options);
+    this._taskLayout = { height: 0, rows: [], groups: [], swimlanes: [], searchFeatures: [] };
+    this._query = '';
+    this._searchStatus = { count: 0, index: 0 };
+    this._resizeWidth = null;
+    this._highlightedTask = '';
     this._isPanning = false;
     this._panStart = null;
     this._onMouseDown = this._onMouseDown.bind(this);
@@ -90,6 +103,7 @@ export class TimelineBoard extends LitElement {
   }
 
   disconnectedCallback() {
+    this._cancelColumnResize();
     const scroll = this.shadowRoot.querySelector('#scroll-container');
     // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
     if (scroll) scroll.removeEventListener('mousedown', this._onMouseDown);
@@ -206,6 +220,7 @@ export class TimelineBoard extends LitElement {
   }
 
   _onMouseDown(e) {
+    if (e.button !== 0) return;
     if (!boardCoords.panningAllowed) return;
     const path = e.composedPath ? e.composedPath() : [];
     const startedInsideCardOrGroup = path.some((node) => {
@@ -294,6 +309,67 @@ export class TimelineBoard extends LitElement {
     if (scroll) scroll.scrollTo(x, y);
   }
 
+  updated() {
+    const options = this._view.value;
+    const width = options.displayMode === 'packed' ? 0 : options.taskColumnCollapsed ? 32
+      : this._resizeWidth === null ? options.taskColumnWidth : this._resizeWidth;
+    this.style.setProperty('--task-column-width', `${width}px`);
+    if (this._appliedColumnWidth !== undefined && this._appliedColumnWidth !== width &&
+      options.timelineScale === 'threeMonths') bus.emit(TimelineEvents.SCALE_CHANGED);
+    this._appliedColumnWidth = width;
+  }
+
+  _navigateTask(event) {
+    this.shadowRoot.querySelector('feature-board').centerFeatureById(event.detail.id);
+  }
+
+  _highlightTask(event) {
+    this._highlightedTask = event.detail.id;
+    for (const card of this.shadowRoot.querySelector('feature-board').shadowRoot.querySelectorAll('feature-card-lit')) {
+      card.classList.toggle('task-highlighted', String(card.feature.id) === event.detail.id);
+    }
+  }
+
+  _cancelColumnResize() {
+    window.removeEventListener('pointermove', this._onColumnMove);
+    window.removeEventListener('pointerup', this._onColumnUp);
+    window.removeEventListener('pointercancel', this._onColumnCancel);
+    window.removeEventListener('keydown', this._onColumnKey);
+    this._resizeWidth = null;
+  }
+
+  _startColumnResize(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = this._view.value.taskColumnWidth;
+    this._resizeWidth = startWidth;
+    this._onColumnMove = (move) => {
+      this._resizeWidth = Math.max(200, Math.min(600, startWidth + move.clientX - startX));
+    };
+    this._onColumnUp = () => {
+      cmd.view.setTaskColumnWidth(this._resizeWidth);
+      this._cancelColumnResize();
+    };
+    this._onColumnKey = (key) => {
+      if (key.key === 'Escape') this._cancelColumnResize();
+    };
+    this._onColumnCancel = () => this._cancelColumnResize();
+    window.addEventListener('pointermove', this._onColumnMove);
+    window.addEventListener('pointerup', this._onColumnUp);
+    window.addEventListener('pointercancel', this._onColumnCancel);
+    window.addEventListener('keydown', this._onColumnKey);
+  }
+
+  _resizeColumnByKey(event) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const width = event.key === 'Home' ? 200 : event.key === 'End' ? 600
+      : this._view.value.taskColumnWidth + (event.key === 'ArrowRight' ? 20 : -20);
+    cmd.view.setTaskColumnWidth(Math.max(200, Math.min(600, width)));
+  }
+
   adjustBoardZoom(direction, anchorClientY) {
     const nextZoom = this.boardZoom + direction * BOARD_ZOOM_STEP;
     const boundedZoom = Math.max(MIN_BOARD_ZOOM, Math.min(MAX_BOARD_ZOOM, nextZoom));
@@ -367,6 +443,7 @@ export class TimelineBoard extends LitElement {
         padding: 0;
         border: 0;
         background: transparent;
+        margin-left: var(--task-column-width, 300px);
       }
 
       /* Single overflow container for H + V scroll / panning */
@@ -377,7 +454,27 @@ export class TimelineBoard extends LitElement {
         position: relative;
         cursor: grab;
         background: var(--app-background, #fff);
+        display: grid;
+        grid-template-columns: var(--task-column-width, 300px) max-content;
+        grid-template-rows: auto 1fr;
+        align-content: start;
       }
+
+      .task-toolbar { grid-column: 1; grid-row: 1; position: sticky; top: 0; left: 0;
+        z-index: 150; background: var(--color-bg, #f7f7f7); display: flex; align-items: center;
+        gap: 4px; padding: 4px; min-width: 0; box-sizing: border-box; border-right: 1px solid #bec8d2;
+        cursor: default; }
+      .task-toolbar input { min-width: 0; width: 100%; padding: 5px; box-sizing: border-box;
+        border: 1px solid #bec8d2; border-radius: 4px; font: inherit; }
+      .task-toolbar button { flex: 0 0 24px; width: 24px; height: 26px; padding: 0;
+        border: 0; background: transparent; cursor: pointer; color: #23344d; }
+      .task-toolbar button:disabled { opacity: .4; cursor: default; }
+      .task-toolbar output { font-size: 10px; white-space: nowrap; }
+      .column-resizer { position: absolute; right: 0; top: 0; bottom: 0; width: 5px;
+        cursor: col-resize; touch-action: none; }
+      .column-resizer:hover, .column-resizer:focus-visible { background: #347ab3; }
+      task-list { grid-column: 1; grid-row: 2; }
+      [hidden] { display: none !important; }
 
       #scroll-container.panning {
         cursor: grabbing;
@@ -394,11 +491,12 @@ export class TimelineBoard extends LitElement {
       }
 
       /* Timeline header sticks vertically, scrolls horizontally with content.
-         z-index must exceed feature-card ghost titles (z-index: 120) so cards
-         scrolling past the header clip beneath it rather than overlapping.
+        Cards scrolling past the header clip beneath it.
          Timeline never reacts to board zoom (X-axis only, like the graph);
          only #board-area (feature-board's cards) receives --board-zoom. */
       timeline-lit {
+        grid-column: 2;
+        grid-row: 1;
         position: sticky;
         top: 0;
         z-index: 130;
@@ -413,6 +511,8 @@ export class TimelineBoard extends LitElement {
        * size only; it never touches width, which stays owned by the timeline scale.
        */
       #board-area {
+        grid-column: 2;
+        grid-row: 2;
         position: relative;
         /* Ensure the board background (stripes) fills the visible viewport
            even when there are few or no feature cards. */
@@ -521,15 +621,50 @@ export class TimelineBoard extends LitElement {
   // ---------------------------------------------------------------------------
 
   render() {
+    const options = this._view.value;
+    const packed = options.displayMode === 'packed';
+    const collapsed = options.taskColumnCollapsed;
     return html`
       <section id="maingraph-section" aria-label="Organisational Load Graph">
         <maingraph-lit></maingraph-lit>
       </section>
 
       <div id="scroll-container">
+        <div class="task-toolbar" ?hidden=${packed} @mousedown=${(event) => event.stopPropagation()}>
+          <button id="collapse-tasks" title=${collapsed ? 'Restore task list' : 'Collapse task list'}
+            aria-label=${collapsed ? 'Restore task list' : 'Collapse task list'} aria-expanded=${String(!collapsed)}
+            @click=${() => cmd.view.setTaskColumnCollapsed(!collapsed)}>${collapsed ? html`&#9656;` : html`&#9666;`}</button>
+          ${collapsed ? '' : html`
+            <input type="search" aria-label="Search tasks" placeholder="Search tasks" .value=${this._query}
+              @input=${(event) => { this._query = event.target.value; }}
+              @keydown=${(event) => {
+                if (event.key === 'Enter' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  this.shadowRoot.querySelector('task-list').navigateMatch(event.key === 'ArrowUp' || event.shiftKey ? -1 : 1);
+                } else if (event.key === 'Escape') { event.stopPropagation(); this._query = ''; }
+              }}>
+            <output aria-live="polite">${this._query.trim() === '' ? '' : `${this._searchStatus.index}/${this._searchStatus.count}`}</output>
+            <button title="Previous matching task" aria-label="Previous matching task" ?disabled=${this._searchStatus.count === 0}
+              @click=${() => this.shadowRoot.querySelector('task-list').navigateMatch(-1)}>&#8593;</button>
+            <button title="Next matching task" aria-label="Next matching task" ?disabled=${this._searchStatus.count === 0}
+              @click=${() => this.shadowRoot.querySelector('task-list').navigateMatch(1)}>&#8595;</button>
+            <div class="column-resizer" role="separator" tabindex="0" aria-label="Task column width"
+              aria-orientation="vertical" aria-valuemin="200" aria-valuemax="600" aria-valuenow=${options.taskColumnWidth}
+              @pointerdown=${this._startColumnResize} @keydown=${this._resizeColumnByKey}></div>`}
+        </div>
         <timeline-lit></timeline-lit>
+        <task-list .layout=${this._taskLayout} .query=${this._query} .highlightedId=${this._highlightedTask}
+          style="--board-zoom: ${this.boardZoom}" ?hidden=${packed || collapsed}
+          @search-status-changed=${(event) => { this._searchStatus = event.detail; }}
+          @task-navigate=${this._navigateTask} @task-highlight=${this._highlightTask}
+          @feature-fold-toggle=${(event) => this.shadowRoot.querySelector('feature-board')._onFeatureFoldToggle(event)}
+          @group-toggle=${(event) => this.shadowRoot.querySelector('feature-board')._onGroupToggle(event)}
+          @feature-context-menu=${(event) => this._onFeatureContextMenu(event)}
+          @group-context-menu=${(event) => this._onGroupContextMenu(event)}></task-list>
         <div id="board-area" style="--board-zoom: ${this.boardZoom}" role="region" aria-label="Timeline and Features">
-          <feature-board></feature-board>
+          <feature-board .taskListVisible=${!packed && !collapsed}
+            @task-highlight=${this._highlightTask}
+            @task-layout-changed=${(event) => { this._taskLayout = event.detail; }}></feature-board>
           <!-- Vertical marker for today's date -->
           <div id="today-line" aria-hidden="true"></div>
           <!--

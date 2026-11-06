@@ -67,7 +67,7 @@ export async function prepareDocsPage(page) {
 export async function openPlanner(page) {
   await prepareDocsPage(page);
   await page.goto('/');
-  await expect(page.locator('app-sidebar aside.sidebar')).toBeVisible();
+  await expect(page.getByRole('searchbox', { name: 'Search tasks' })).toBeVisible();
   await expect(page.locator('feature-card-lit').first()).toBeVisible({ timeout: 20000 });
   await page.waitForTimeout(800);
 }

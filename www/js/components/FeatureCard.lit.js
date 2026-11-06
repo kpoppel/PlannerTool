@@ -8,19 +8,15 @@ import { cmd, sel } from '../application/imports.js';
 import { startDragMove, startResize, computeResizeUpdates } from './dragManager.js';
 import { addDays, parseDate } from './util.js';
 import { getIconTemplate } from '../services/IconService.js';
-import { getBoardZoom, findInBoard } from './board-utils.js';
+import { getBoardZoom } from './board-utils.js';
 import { hasTimelinePlacement, isAnchorPresentation } from '../application/shared/featurePresentation.js';
 import { ceilAllocation } from '../application/shared/teamAllocation.js';
 import { StoreController } from '../core/StoreController.js';
 import { store } from '../application/store.js';
 
-// Minimum visible gap (px) required to the left of a card, within the
-// scroll container's viewport, before its ghost title flips to the right.
-const GHOST_RIGHT_THRESHOLD = 200;
-
 /**
  * FeatureCardLit - Lit-based feature card component.
- * Each card self-manages layout classes and ghost title visibility
+ * Each card self-manages layout classes
  * via width-driven local checks - no board-level measurement needed.
  */
 export class FeatureCardLit extends LitElement {
@@ -33,9 +29,7 @@ export class FeatureCardLit extends LitElement {
     project: { type: Object },
     /** Colour of the group that directly owns this card, null when ungrouped. */
     groupColor: { type: String },
-    /** When true, suppresses the ghost (overflow) title label.
-     *  Required in packed mode where multiple cards share a lane. */
-    hideGhostTitle: { type: Boolean },
+    hideTitle: { type: Boolean },
     foldCount: { type: Number },
     folded: { type: Boolean },
     _resizePolicy: { state: true },
@@ -552,60 +546,7 @@ export class FeatureCardLit extends LitElement {
       box-shadow: 0 2px 8px #0003;
     }
 
-    /* Inline ghost title placed to the left of the card. Rendered inside
-       the FeatureCard so no external coordinate math is required. */
-    .ghost-title {
-      position: absolute;
-      right: 100%;
-      margin-right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: transparent;
-      border: 1px dashed rgba(0, 0, 0, 0.25);
-      padding: calc(2px * var(--board-zoom, 1)) 6px;
-      border-radius: 4px;
-      font-size: 0.9em;
-      color: rgba(0, 0, 0, 0.75);
-      z-index: 120;
-      pointer-events: none;
-      line-height: 1.1;
-      text-align: left;
-      white-space: nowrap;
-      visibility: hidden;
-      opacity: 0;
-      max-width: none;
-      box-sizing: border-box;
-    }
-
-    /* If the card is too close to the left edge, place the ghost to the right side */
-    .ghost-title.right {
-      left: 100%;
-      right: auto;
-      margin-left: 12px;
-      margin-right: 0;
-    }
-
-    :host(.ghost-visible) .ghost-title {
-      visibility: visible;
-      opacity: 1;
-    }
-
-    .ghost-title .ghost-title-text {
-      display: inline-block;
-      white-space: nowrap;
-    }
-
-    .ghost-title .ghost-title-arrow {
-      position: absolute;
-      right: -10px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 0;
-      height: 0;
-      border-top: 10px solid transparent;
-      border-bottom: 10px solid transparent;
-      border-left: 10px solid rgba(0, 0, 0, 0.1);
-    }
+    :host(.task-highlighted) .feature-card { box-shadow: 0 0 0 2px #347ab3; }
   `;
 
   constructor() {
@@ -622,13 +563,11 @@ export class FeatureCardLit extends LitElement {
     this.selected = false;
     this.project = null;
     this.groupColor = null;
-    this.hideGhostTitle = false;
+    this.hideTitle = false;
     this.foldCount = 0;
     this.folded = false;
     this._suppressClickUntil = 0;
     this._rootCard = null;
-    this._titleEl = null;
-    this._ghostEl = null;
     this._width = 0; // cached width used for overflow decisions
     this._lastTitle = null; // track title changes for overflow re-check
     this._connected = false; // whether this card is in current connected set
@@ -649,11 +588,6 @@ export class FeatureCardLit extends LitElement {
       const cards = Array.from(FeatureCardLit._pendingCards);
       FeatureCardLit._pendingCards.clear();
 
-      // Ghost-title placement needs the viewport-relative position, since
-      // card.style.left is absolute within the full scrollable timeline.
-      const scrollContainer = findInBoard('#scroll-container');
-      const scrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
-
       // --- Read phase (one forced reflow, then all reads are cached) ---
       const results = [];
       for (const card of cards) {
@@ -663,8 +597,7 @@ export class FeatureCardLit extends LitElement {
         const isSmall = w < 40;
         let titleOverflows = isSmall;
         if (!isSmall) {
-          if (!card._titleEl) card._titleEl = rootCard.querySelector('.feature-title');
-          const titleEl = card._titleEl;
+          const titleEl = rootCard.querySelector('.feature-title');
           if (titleEl) {
             titleOverflows = titleEl.scrollWidth > titleEl.clientWidth + 2;
           }
@@ -684,13 +617,6 @@ export class FeatureCardLit extends LitElement {
         r.rootCard.classList.toggle('small-feature', r.isSmall);
         r.rootCard.classList.toggle('culled', r.isCulled);
         r.rootCard.classList.toggle('narrow', r.titleOverflows && !r.isSmall);
-        r.card.classList.toggle('ghost-visible', r.titleOverflows && !r.card.hideGhostTitle);
-        r.card.classList.toggle('title-overflow', r.titleOverflows);
-
-        if (r.titleOverflows) {
-          r.card.refreshGhostPlacement(scrollLeft);
-        }
-
         r.card._lastLayoutKey = r.card._computeLayoutKey();
       }
     });
@@ -710,7 +636,7 @@ export class FeatureCardLit extends LitElement {
       String(this.feature.title),
       Math.round(this._width || 0),
       this.condensed ? '1' : '0',
-      this.hideGhostTitle ? '1' : '0',
+      this.hideTitle ? '1' : '0',
       String(getBoardZoom()),
     ].join('|');
   }
@@ -745,12 +671,7 @@ export class FeatureCardLit extends LitElement {
     this._boundOnFeatureSelected = () => {
       const selId = sel.feature.getSelectedFeatureId();
       const myId = String(this.feature.id);
-      if (!selId || myId !== selId) {
-        if (this.selected) {
-          this.selected = false;
-          this.requestUpdate();
-        }
-      }
+      this.selected = myId === selId;
     };
     bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
     // Listen for connected-set updates from the board
@@ -786,7 +707,7 @@ export class FeatureCardLit extends LitElement {
     bus.on(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
     // Board zoom scales font-size only (not card width), so the title's
     // scrollWidth-vs-clientWidth overflow state can flip without a width
-    // change; force a re-check so ghost titles stay in sync with zoom.
+    // change; force a re-check so narrow cards stay in sync with zoom.
     this._boundOnZoomChanged = () => this._requestLayout(true);
     bus.on(BoardEvents.ZOOM_CHANGED, this._boundOnZoomChanged);
   }
@@ -815,7 +736,7 @@ export class FeatureCardLit extends LitElement {
       this._requestLayout();
     }
 
-    if (changedProperties.has('hideGhostTitle')) this._requestLayout();
+    if (changedProperties.has('hideTitle') || changedProperties.has('condensed')) this._requestLayout();
   }
 
   disconnectedCallback() {
@@ -856,9 +777,6 @@ export class FeatureCardLit extends LitElement {
     if (dirty !== undefined && this.feature) this.feature.dirty = dirty;
     if (project !== undefined) this.project = project;
 
-    if (left !== undefined) {
-      this.refreshGhostPlacement();
-    }
     if (width !== undefined) {
       const widthNow = this._getCurrentWidth();
       if (widthNow > 0 && widthNow !== this._width) {
@@ -869,26 +787,6 @@ export class FeatureCardLit extends LitElement {
 
     this.classList.toggle('dirty', !!dirty);
     this.requestUpdate();
-  }
-
-  /**
-   * Re-evaluate ghost-title left/right placement against the scroll
-   * container's current viewport. Cheap (no forced reflow) so it can run on
-   * every scroll tick; pass a known scrollLeft to skip the container lookup.
-   */
-  refreshGhostPlacement(scrollLeft) {
-    if (!this._ghostEl && this.shadowRoot) {
-      this._ghostEl = this.shadowRoot.querySelector('.ghost-title');
-    }
-    if (!this._ghostEl) return;
-    let left = scrollLeft;
-    if (left === undefined) {
-      const scrollContainer = findInBoard('#scroll-container');
-      left = scrollContainer ? scrollContainer.scrollLeft : 0;
-    }
-    const parsedLeft = parseFloat(this.style.left);
-    const visibleLeft = (Number.isNaN(parsedLeft) ? 0 : parsedLeft) - left;
-    this._ghostEl.classList.toggle('right', visibleLeft < GHOST_RIGHT_THRESHOLD);
   }
 
   // Transient live-dates used during drag/resize
@@ -1130,37 +1028,6 @@ export class FeatureCardLit extends LitElement {
     }));
   }
 
-  _splitTitleAtMiddle(title) {
-    if (!title) return '';
-    const words = String(title).split(/\s+/);
-    if (words.length < 4) return title;
-    const mid = Math.floor(words.length / 2);
-    const firstHalf = words.slice(0, mid).join(' ');
-    const secondHalf = words.slice(mid).join(' ');
-    return `${this._escapeHtml(firstHalf)}<br/>${this._escapeHtml(secondHalf)}`;
-  }
-
-  _escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  _renderGhostTitleText() {
-    const title = this.feature.title;
-    if (!title) return '';
-    if (this.condensed) return title;
-
-    const words = String(title).split(/\s+/);
-    if (words.length < 4) return title;
-    const mid = Math.floor(words.length / 2);
-    const firstHalf = words.slice(0, mid).join(' ');
-    const secondHalf = words.slice(mid).join(' ');
-    return html`${firstHalf}<br />${secondHalf}`;
-  }
-
   render() {
     const isAnchor = isAnchorPresentation(this.feature);
     const isUnplanned = !hasTimelinePlacement(this.feature);
@@ -1192,6 +1059,7 @@ export class FeatureCardLit extends LitElement {
           .join(' ')}
         data-id=${this.feature.id}
         role="listitem"
+        aria-label=${this.feature.title}
         draggable="false"
         title=${isAnchor ? `${this.feature.state} · historical anchor · ${presentation.date}` : ''}
         style="--project-color: ${projectColor}; --group-color: ${this.groupColor}"
@@ -1215,9 +1083,9 @@ export class FeatureCardLit extends LitElement {
             <span class="small-feature-dot"></span>
           </div>
           ${this._renderTypeIcon()}
-          <div class="feature-title" title=${this.feature.title}>
+          ${!this.hideTitle || this.condensed ? html`<div class="feature-title" title=${this.feature.title}>
             ${this.feature.title}
-          </div>
+          </div>` : ''}
           ${this.feature.ancestorOnly === true ? html`<span
             class="ancestor-context"
             title="Ancestor context only. Other child branches are not loaded."
@@ -1252,14 +1120,6 @@ export class FeatureCardLit extends LitElement {
       <reconciliation-task-marker .featureId=${this.feature.id}></reconciliation-task-marker>
       ${this._resizeTooltip !== '' ? html`<div class="resize-tooltip" id="resize-tooltip"
         role="tooltip">${this._resizeTooltip}</div>` : ''}
-      <div
-        class="ghost-title"
-        aria-hidden="true"
-        style="border-color: ${projectColor}"
-      >
-        <span class="ghost-title-text">${this._renderGhostTitleText()}</span>
-        <div class="ghost-title-arrow"></div>
-      </div>
     `;
   }
 }

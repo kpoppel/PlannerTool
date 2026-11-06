@@ -5,6 +5,7 @@ import { bus } from '../../core/EventBus.js';
 import { BoardEvents, FeatureEvents } from '../../core/EventRegistry.js';
 import { SIDEBAR_FILTER_DIMENSIONS } from './SidebarTaskFilters.lit.js';
 import { featureTypeKey } from '../../application/shared/workItemDisplay.js';
+import { findInBoard } from '../board-utils.js';
 
 function selectDependencies(state) {
   return { baseline: state.baseline, selection: state.selection, view: state.view,
@@ -34,6 +35,15 @@ export class SidebarController {
     this.connection += 1;
     this._connected = true;
     this._snapshot = null;
+    const board = findInBoard('feature-board');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+    if (board && customElements.get('feature-board') !== undefined) {
+      const state = board.getFoldState();
+      this.host.foldActive = state.active;
+      this.host.foldedCount = state.foldedCount;
+      this.host.foldableCount = state.foldableCount;
+      this.host.canCollapse = state.canCollapse;
+    }
     this._subscriptions = [
       bus.on(BoardEvents.FOLD_STATE, ({ active, foldedCount, foldableCount, canCollapse }) => {
         this.host.foldActive = active;

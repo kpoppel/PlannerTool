@@ -2,9 +2,34 @@ import { expect, fixture, html } from '@open-wc/testing';
 import { TimelineBoard } from '../../www/js/components/TimelineBoard.lit.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { BoardEvents } from '../../www/js/core/EventRegistry.js';
+import { cmd } from '../../www/js/application/imports.js';
 
 describe('TimelineBoard board zoom', () => {
-  it('leaves hierarchy controls to the sidebar instead of a toolbar above the timeline', async () => {
+  it('mounts one task list next to the retained board and follows column preferences and packed mode', async () => {
+    const board = await fixture(html`<timeline-board></timeline-board>`);
+    const root = board.shadowRoot;
+    expect(root.querySelector('task-list')).to.exist;
+    expect(root.querySelector('input[type="search"]')).to.exist;
+    expect(root.querySelector('#board-area > feature-board')).to.exist;
+    expect(root.querySelectorAll('#scroll-container').length).to.equal(1);
+    cmd.view.setTaskColumnWidth(412);
+    await board.updateComplete;
+    expect(board.style.getPropertyValue('--task-column-width')).to.equal('412px');
+    root.querySelector('#collapse-tasks').click();
+    await board.updateComplete;
+    expect(board.style.getPropertyValue('--task-column-width')).to.equal('32px');
+    expect(root.querySelector('task-list').hidden).to.equal(true);
+    cmd.view.setDisplayMode('packed');
+    await board.updateComplete;
+    expect(board.style.getPropertyValue('--task-column-width')).to.equal('0px');
+    cmd.view.setDisplayMode('normal');
+    cmd.view.setTaskColumnCollapsed(false);
+    cmd.view.setTaskColumnWidth(300);
+    await board.updateComplete;
+    expect(root.querySelector('task-list').hidden).to.equal(false);
+  });
+
+  it('leaves hierarchy controls to the header menu instead of a toolbar above the timeline', async () => {
     const board = await fixture(html`<timeline-board></timeline-board>`);
     expect(board.shadowRoot.querySelector('.fold-toolbar')).to.be.null;
     bus.emit(BoardEvents.FOLD_STATE, {

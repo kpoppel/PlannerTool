@@ -9,6 +9,9 @@ From left to right:
 - **View**: timeline scale, card mode, task sort, graph type and saved views. The badge shows the active view.
 - **Scenario**: switch, copy, save, publish, rename or delete scenarios. The badge shows the active scenario. See [Scenarios & Saving](scenarios.md).
 - **Plan**: choose which plans are on the board. The badge shows the plan name, or the number of selected plans.
+- **Teams**: team selection, allocation counts, colors and Plan overview/Team focus.
+- **Hierarchy**: fold or expand task branches one level or all at once.
+- **Task Filters**: schedule, allocation, hierarchy, relations, state and task-type filters. See [Task List and Filters](sidebar.md).
 - **Scope**: pull related work into the board around the selected plans. Arrows after the label show which scope options are on.
 - **Reconciliation**: schedule conflicts and plan quality findings, with counts per category. See [Reconciliation](plugin_reconciliation.md).
 - **Tools**: optional tools such as Portfolio Board or Cost Analysis. See [Tools Overview](tools_overview.md).
@@ -42,7 +45,7 @@ Menus close with Escape or by clicking outside them. Left and right arrow keys m
 
 ![Connected to](img/menu_plan_connected.png)
 
-Which teams appear in the Sidebar depends on the plans selected here (see [Sidebar](sidebar.md)).
+Which teams appear in the Teams menu depends on the plans selected here (see [Teams](sidebar.md#team-drill-down)).
 
 ## Scope menu
 
@@ -61,7 +64,7 @@ The number next to each option shows how many displayable tasks enabling it woul
 
 ![Board information](img/board_information.png)
 
-Click **N on board** to see how the number of cards is reached: tasks counted in the selected plans, shared tasks counted once, tasks added by Scope, tasks excluded from the current scope, then the tasks removed by each Sidebar filter and by team focus. The last line is the number of cards on the board. Hover a row for an explanation. The footer shows how many teams are in scope.
+Click **N on board** to see how the number of cards is reached: tasks counted in the selected plans, shared tasks counted once, tasks added by Scope, tasks excluded from the current scope, then the tasks removed by each task filter and by team focus. The last line is the number of cards on the board. Hover a row for an explanation. The footer shows how many teams are in scope.
 
 ## Tools menu
 

@@ -40,6 +40,23 @@ describe('TopMenu Data Funnel', () => {
     return plugin;
   }
 
+  it('opens board controls without mounting a sidebar and restores focus on Escape', async () => {
+    for (const [name, label] of [['teams', 'Teams'], ['hierarchy', 'Hierarchy'], ['filters', 'Task Filters']]) {
+      const trigger = menu.shadowRoot.querySelector(`#${name}MenuBtn`);
+      expect(trigger, label).to.exist;
+      trigger.click();
+      await menu.updateComplete;
+      const controls = menu.shadowRoot.querySelector('board-controls-menu');
+      await controls.updateComplete;
+      expect(controls.section).to.equal(name);
+      expect(document.querySelector('app-sidebar')).to.equal(null);
+      controls.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
+      await menu.updateComplete;
+      expect(menu.openMenu).to.equal(null);
+      expect(menu.shadowRoot.activeElement).to.equal(trigger);
+    }
+  });
+
   it('offers configuration and administration from the gear for authorized users', async () => {
     menu.permissions = ['manage_projects'];
     await menu.updateComplete;

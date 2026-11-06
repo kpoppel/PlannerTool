@@ -10,7 +10,7 @@ test('unread release is first, stays open on Escape and is acknowledged across b
   await page.goto('/');
   const reader = page.locator('release-notes');
   await expect(reader.getByRole('dialog')).toBeVisible();
-  await expect(page.locator('app-sidebar aside.sidebar')).toHaveCount(0);
+  await expect(page.locator('task-list [data-task-id]')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(reader.getByRole('dialog')).toBeVisible();
   await expect(reader.frameLocator('iframe').getByRole('heading', {
@@ -18,7 +18,7 @@ test('unread release is first, stays open on Escape and is acknowledged across b
   })).toBeVisible();
   await reader.getByRole('button', { name: 'Continue to Planner' }).click();
   await expect(reader).toHaveCount(0);
-  await expect(page.locator('app-sidebar aside.sidebar')).toBeVisible();
+  await expect(page.getByRole('searchbox', { name: 'Search tasks' })).toBeVisible();
   await expect(page.locator('onboarding-modal')).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('az_planner:onboarding_seen'))).toBeNull();
   const otherBrowser = await browser.newContext();
@@ -32,7 +32,7 @@ test('unread release is first, stays open on Escape and is acknowledged across b
     const secondPage = await otherBrowser.newPage();
     await secondPage.goto(page.url());
     await expect(secondPage.getByRole('navigation', { name: 'Top menu' })).toBeVisible();
-    await expect(secondPage.locator('app-sidebar aside.sidebar')).toBeVisible();
+    await expect(secondPage.getByRole('searchbox', { name: 'Search tasks' })).toBeVisible();
     await expect(secondPage.locator('release-notes')).toHaveCount(0);
   } finally {
     await otherBrowser.close();
@@ -61,7 +61,7 @@ test('capture release illustrations from isolated application components', async
     localStorage.setItem('az_planner:tour_seen', '1');
   });
   await page.reload();
-  await expect(page.locator('app-sidebar aside.sidebar')).toBeVisible();
+  await expect(page.getByRole('searchbox', { name: 'Search tasks' })).toBeVisible();
   await expect(page.locator('feature-card-lit').first()).toBeVisible({ timeout: 15000 });
   await page.screenshot({ path: testInfo.outputPath('planning-board.png') });
   await page.locator('feature-card-lit').first().click();

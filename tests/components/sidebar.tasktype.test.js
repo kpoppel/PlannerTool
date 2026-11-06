@@ -11,7 +11,7 @@ import { displayFixture } from '../helpers/workItemDisplay.js';
 
 import { expect } from '@open-wc/testing';
 import sinon from 'sinon';
-import '../../www/js/components/Sidebar.lit.js';
+import '../../www/js/components/BoardControlsMenu.lit.js';
 import '../../www/js/components/sidebar/SidebarFooter.lit.js';
 import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
@@ -39,7 +39,7 @@ describe('Sidebar task-type filter', () => {
       work_item_display: displayFixture(undefined, { New: 'Proposed', Active: 'InProgress', Resolved: 'Resolved' }), }];
     state.selection.projectIds = ['p1'];
     store.setState(state, true);
-    await customElements.whenDefined('app-sidebar');
+    await customElements.whenDefined('board-controls-menu');
     originalCheckHealth = dataService.checkHealth;
     dataService.checkHealth = async () => ({
       ok: true,
@@ -47,7 +47,8 @@ describe('Sidebar task-type filter', () => {
         status: 'ok', server_name: 'Test server', version: '1.2.3', uptime_seconds: 0,
       },
     });
-    sidebar = document.createElement('app-sidebar');
+    sidebar = document.createElement('board-controls-menu');
+    sidebar.section = 'filters';
     document.body.appendChild(sidebar);
     footer = document.createElement('app-footer');
     document.body.appendChild(footer);
@@ -149,7 +150,7 @@ describe('Sidebar task-type filter', () => {
   });
 
   it('keeps its extracted stylesheet in the existing shadow root', () => {
-    expect(sidebar.constructor.styles).to.equal(SIDEBAR_STYLES);
+    expect(sidebar.constructor.styles).to.include(SIDEBAR_STYLES);
     expect(SIDEBAR_STYLES.cssText).to.include('.team-drilldown-grid');
     expect(sidebar.shadowRoot.querySelector('.sidebar-config')).to.equal(null);
     expect(sidebar.shadowRoot).to.exist;
@@ -203,6 +204,7 @@ describe('Sidebar task-type filter', () => {
   });
 
   it('projects hydrated teams when a mounted Sidebar becomes ready', async () => {
+    sidebar.section = 'teams';
     sidebar.remove();
     store.setState((state) => ({ ...state,
       lifecycle: { ...state.lifecycle, status: 'bootstrapping' },
@@ -241,6 +243,7 @@ describe('Sidebar task-type filter', () => {
   });
 
   it('switches the team drill-down task view from Plan overview to Team focus', async () => {
+    sidebar.section = 'teams';
     cmd.view.setTaskViewMode('plan');
     sidebar._getTeamDrilldownTeams = () => [{ id: 'team-a', name: 'Team A', selected: true }];
     sidebar.requestUpdate();
@@ -258,22 +261,20 @@ describe('Sidebar task-type filter', () => {
     expect(buttons[1].getAttribute('aria-pressed')).to.equal('true');
   });
 
-  it('shows four task hierarchy commands below Task view and tracks board state', async () => {
+  it('shows four task hierarchy commands in its own menu and tracks board state', async () => {
+    sidebar.section = 'hierarchy';
     sidebar._getTeamDrilldownTeams = () => [{ id: 'team-a', name: 'Team A', selected: true }];
     bus.emit(BoardEvents.FOLD_STATE, {
       active: true, foldedCount: 1, foldableCount: 3, canCollapse: true,
     });
     await sidebar.updateComplete;
 
-    const taskView = sidebar.shadowRoot.querySelector('.team-view-mode-group');
     const hierarchy = sidebar.shadowRoot.querySelector('.hierarchy-fold-group');
     expect(hierarchy).to.exist;
-    expect(taskView.querySelector('.shortcut-pill').textContent).to.equal('V');
     expect([...hierarchy.querySelectorAll('.hierarchy-fold-heading .shortcut-pill')]
       .map((hint) => hint.textContent)).to.deep.equal(['-', '+']);
     expect(SIDEBAR_STYLES.cssText).to.include('.shortcut-pill');
     expect(SIDEBAR_STYLES.cssText).to.include('border: 1px solid rgba(255, 255, 255, 0.2)');
-    expect(Boolean(taskView.compareDocumentPosition(hierarchy) & Node.DOCUMENT_POSITION_FOLLOWING)).to.be.true;
     expect(hierarchy.textContent).to.include('1 of 3 branches folded');
     const buttons = hierarchy.querySelectorAll('button');
     expect(buttons).to.have.length(4);
@@ -432,6 +433,7 @@ describe('Sidebar task-type filter', () => {
   });
 
   it('renders per-type team counts for the focused teams', async () => {
+    sidebar.section = 'teams';
     sidebar.teams = [{ id: 'team-1', name: 'Alpha', short: 'A', color: '#123456', selected: true }];
     const originalGetContextTeams = sel.scope.getContextTeams;
     const originalGetTaskTypes = sel.feature.getAvailableTaskTypesOrdered;
@@ -445,7 +447,6 @@ describe('Sidebar task-type filter', () => {
     const root = sidebar.shadowRoot || sidebar;
     const titles = Array.from(root.querySelectorAll('.section-title'))
       .map((element) => element.textContent.trim());
-    expect(titles).to.include('Team Drill-down');
     expect(root.textContent).to.include('Alpha');
     expect(root.textContent).to.include('4');
     sel.scope.getContextTeams = originalGetContextTeams;
@@ -454,6 +455,7 @@ describe('Sidebar task-type filter', () => {
   });
 
   it('discloses hierarchy-ordered nonempty team counts without changing selection', async () => {
+    sidebar.section = 'teams';
     sidebar.teams = [
       { id: 'team-1', name: 'Connectivity & Interaction', selected: true },
       { id: 'team-2', name: 'Beta', selected: false },
@@ -494,6 +496,7 @@ describe('Sidebar task-type filter', () => {
   });
 
   it('renders Context-scoped teams with select-all and select-none controls', async () => {
+    sidebar.section = 'teams';
     const originalGetContextTeams = sel.scope.getContextTeams;
     sel.scope.getContextTeams = () => ['team-1', 'team-2'];
     sidebar.teams = [
@@ -505,7 +508,6 @@ describe('Sidebar task-type filter', () => {
     await sidebar.updateComplete;
 
     const root = sidebar.shadowRoot || sidebar;
-    expect(root.textContent).to.include('Team Drill-down');
     expect(root.textContent).to.include('Alpha');
     expect(root.textContent).to.include('Beta');
     expect(root.textContent).to.not.include('Outside scope');
@@ -513,6 +515,7 @@ describe('Sidebar task-type filter', () => {
   });
 
   it('shows the empty Team Drill-down state when Context has no teams', async () => {
+    sidebar.section = 'teams';
     const originalGetContextTeams = sel.scope.getContextTeams;
     sel.scope.getContextTeams = () => [];
     sidebar.requestUpdate();

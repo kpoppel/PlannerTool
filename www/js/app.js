@@ -86,7 +86,7 @@ async function init() {
     // TODO/DEBUG: For Debugging: Expose internals for automated tests and debugging
     // window.state = state; window.bus = bus;
 
-    // Sidebar must not mount before baseline/scenario/view hydration completes.
+    // Board rendering waits for baseline/scenario/view hydration to complete.
     // The initial store is intentionally in bootstrap mode until data is loaded.
     // Load top menu bar component so the <top-menu-bar> element in index.html upgrades
     await import('./components/TopMenu.lit.js');
@@ -144,8 +144,6 @@ async function init() {
     // View restore updates selection/filter slices; recompute capacity so graph data is fresh.
     cmd.data.recomputeCapacity();
 
-    const mod = await import('./components/Sidebar.lit.js');
-    await mod.initSidebar();
     const footer = await import('./components/sidebar/SidebarFooter.lit.js');
     footer.initAppFooter();
 

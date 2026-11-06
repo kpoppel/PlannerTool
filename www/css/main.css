@@ -49,7 +49,7 @@ body {
   overflow: hidden;
   min-height: 0;
   padding-top: 40px;
-  margin-left: var(--sidebar-width);
+  margin-left: 0;
 }
 /* Ensure direct children that are flex containers can shrink/grow properly inside .main */
 .main > * {

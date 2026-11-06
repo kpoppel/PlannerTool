@@ -26,6 +26,29 @@ describe('application/commands/viewRestoreCommands', () => {
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
+  it('round-trips task-column preferences and gives older views independent defaults', async () => {
+    let saved;
+    const restore = createViewRestoreCommands(store, {
+      saveView: async (payload) => { saved = { ...payload, id: 'tasks' }; return { id: 'tasks' }; },
+      listViews: async () => [saved],
+      getView: async (id) => id === 'tasks' ? saved : {
+        id: 'old', selectedProjects: {}, selectedTeams: {}, viewOptions: { displayMode: 'compact' },
+      },
+    }, null, vi.fn());
+    const commands = createViewCommands(store, bus);
+    commands.setTaskColumnWidth(412);
+    commands.setTaskColumnCollapsed(true);
+    await restore.saveCurrentView('Tasks');
+    store.setState(createInitialAppState(), true);
+    await restore.loadAndApplyView('tasks');
+    expect(store.getState().view.options).toMatchObject({ taskColumnWidth: 412, taskColumnCollapsed: true });
+    await restore.loadAndApplyView('old');
+    expect(store.getState().view.options).toMatchObject({ taskColumnWidth: 300, taskColumnCollapsed: false,
+      displayMode: 'compact' });
+    expect(() => commands.setTaskColumnWidth(100)).toThrow();
+    expect(() => commands.setTaskColumnWidth(Number.NaN)).toThrow();
+  });
+
   it('captures visible default task types before a Sidebar is mounted', async () => {
     store.setState((state) => ({ ...state, baseline: { ...state.baseline,
       features: [{ process_id: 'process', id: '1', type: 'epic' }, { process_id: 'process', id: '2', type: 'feature' }],

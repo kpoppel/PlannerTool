@@ -70,6 +70,20 @@ export function createViewCommands(store, bus) {
   }
 
   return {
+    setTaskColumnWidth(width) {
+      if (!Number.isFinite(width) || width < 200 || width > 600) {
+        throw new RangeError('Task column width must be between 200 and 600 pixels');
+      }
+      setViewOptions((options) => ({ ...options, taskColumnWidth: Math.round(width) }),
+        'view.setTaskColumnWidth');
+    },
+
+    setTaskColumnCollapsed(collapsed) {
+      if (typeof collapsed !== 'boolean') throw new TypeError('Task column collapse must be boolean');
+      setViewOptions((options) => ({ ...options, taskColumnCollapsed: collapsed }),
+        'view.setTaskColumnCollapsed');
+    },
+
     setContext(options, runtimeOptions = {}) {
       let context;
       store.setState(

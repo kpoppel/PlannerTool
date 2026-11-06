@@ -193,13 +193,13 @@ one `details-panel` shadow root; render modules do not introduce independent
 styling or event boundaries. Icon-bearing section tests use the bundled Lit
 renderer to match the application's directive implementation.
 
-### 5.2 Sidebar section contracts
+### 5.2 Board control menu contracts
 
-`Sidebar.lit.js` composes Team Drill-down, Hierarchy Controls, and Task Filters
-renderers under `components/sidebar/`. Renderers receive explicit `{ model, actions }`
-values and do not read selectors, subscribe, or call host methods. The
-`app-sidebar` shell owns the shadow root and adapts actions to commands.
-`Sidebar.styles.lit.js` supplies the shared stylesheet and cascade.
+`TopMenu` opens one `BoardControlsMenu` for Teams, Hierarchy or Task Filters.
+It reuses renderers under `components/sidebar/`, which receive explicit
+`{ model, actions }` values and do not read selectors, subscribe, or call host
+methods. The menu adapts actions to existing commands and owns its shadow root.
+`Sidebar.styles.lit.js` supplies shared control styles; no Sidebar host is mounted.
 
 `SidebarController` projects presentation from stable store dependencies, manages board
 fold-state notifications, and owns queued animation frames.
@@ -210,8 +210,8 @@ ready does not initialize, reset, or otherwise mutate restored application state
 `SidebarFooter.lit.js` now defines the independently mounted `app-footer` rather
 than a Sidebar section. It owns health requests, ignores obsolete responses after
 disconnect, and subscribes to scope dependencies for the informational task count.
-Sidebar and the Reconciliation toolbox reserve its fixed bottom space, keeping
-application status visible while the toolbox overlays or reveals Sidebar controls.
+The main board and Reconciliation toolbox reserve its fixed bottom space,
+keeping application status visible while the toolbox is open.
 
 Reconciliation uses `FeatureBoard.setReconciliationContext({ filter, featureIds })`
 for transient presentation (`featureIds` is a Set of loaded task IDs). The board
@@ -254,11 +254,34 @@ board row scaling and scroll position belong to the presentation layer.
 `BoardCoordinateService` supplies viewport/coordinate notifications used by
 cards and overlays, separate from canonical planning state.
 
+The scroll surface uses a frozen `task-list` column and its search/resize toolbar
+beside the existing timeline and `#board-area`. Both columns share one vertical
+scroll owner. The board remains the date-space origin; horizontal centering and
+scale fitting subtract the column's measured width rather than shifting task or
+overlay coordinates.
+
 FeatureBoard derives eligible tasks and groups through selectors, then computes
 hierarchy folding, group bands, swimlanes, ordering, and visible geometry.
 Large task sets use chunked/viewport-aware rendering; render generations prevent
 obsolete scheduled work from publishing stale output. Fold and viewport updates
 are board-local presentation signals, not edits to source tasks or allocations.
+
+`FeatureBoard.getTaskLayout()` and the composed `task-layout-changed` event expose
+existing row IDs, positions, heights, group/fold state, swimlanes, bands and total
+height. Rows follow the vertical render window but are independent of horizontal
+card culling. `searchFeatures` includes eligible unfolded tasks outside that
+window. Export requests `getTaskLayout({ full: true })`; neither consumer computes
+another layout. Task rows use shared selection commands and ID-based fold/context
+events, with bounded `actions-<taskId>` slots for future actions. Existing board
+insertion targeting remains authoritative; no task-creation control is added.
+
+Existing view options capture `taskColumnWidth` (integer, 200-600, default 300)
+and `taskColumnCollapsed` (boolean, default false). Older saved views use those
+defaults independently of the previously active view. The server preserves
+additive `viewOptions` fields, so no stored-data migration is needed. Per-row
+fold state stays board-local. Search does not mutate scope, filtering or folding.
+Normal cards hide their inline title only while the list is visible; compact and
+packed cards retain titles. Accessible names remain available without ghost titles.
 
 Feature cards, detail editors, and drag/resize interactions translate user actions
 into feature/group commands. Scenario-aware commands own the actual changes,

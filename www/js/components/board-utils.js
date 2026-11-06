@@ -15,6 +15,13 @@ export function findInBoard(selector) {
   return root && root.querySelector ? root.querySelector(selector) : null;
 }
 
+export function getTimelineViewportWidth(scrollContainer) {
+  const toolbar = findInBoard('.task-toolbar');
+  // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+  const columnWidth = toolbar === null ? 0 : toolbar.getBoundingClientRect().width;
+  return Math.max(0, scrollContainer.clientWidth - columnWidth);
+}
+
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
 let _cachedMonthsRef = null;

@@ -222,6 +222,8 @@ export function createViewRestoreCommands(
         ...snapshot.view.options,
         focusedPlanId: createDefaultViewOptions().focusedPlanId,
         taskViewMode: createDefaultViewOptions().taskViewMode,
+        taskColumnWidth: createDefaultViewOptions().taskColumnWidth,
+        taskColumnCollapsed: createDefaultViewOptions().taskColumnCollapsed,
         ...viewOptions,
       };
 

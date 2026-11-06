@@ -24,6 +24,7 @@ Template - do not change :
 
 ### Changed
 - Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
+- Replace the sidebar with a resizable, collapsible task column aligned to board rows, with ID/title search and saved column preferences. Move Teams, Hierarchy and Task Filters into top-menu popovers; normal cards use task-column titles, compact/packed cards retain inline titles, and ghost titles are removed.
 - Display ADO authentication as read-only deployment information instead of a disabled dropdown in Data Sources.
 - Share authentication discovery, status and typed recovery across planner and administration; broker mode hides PAT, enrollment and device/key controls.
 - Build/start source-declared app and broker services together, honoring pinned images, protected environment files and project names. Both images receive version and latest tags from the build script.

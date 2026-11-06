@@ -1,13 +1,18 @@
-# Sidebar — Team Drill-down & Task Filters
+# Task List, Teams, Hierarchy & Task Filters
 
-The Sidebar no longer hosts view options, plan/project selection, scenarios or plugin controls — those now live in the Top Menu (see [Top Menu & View Options](topmenu.md)). The Sidebar itself has two focused sections: a context-sensitive list of teams involved in the plans you've selected, and the task filters that narrow down what is displayed on the board.
+The frozen task column replaces the Sidebar. **Teams**, **Hierarchy** and **Task Filters** are top-menu popovers. Plan selection, scenarios, views and tools remain in the [Top Menu](topmenu.md).
 
-![Sidebar](img/sidebar.png)
+## Task List
 
-While the [Reconciliation](plugin_reconciliation.md) review is open, it temporarily takes the Sidebar's place.
+- Task and group labels follow the board's rows, folding, filtering and zoom. Horizontal scrolling keeps labels visible; vertical scrolling moves labels and cards together.
+- Click a task title to open the shared Details Panel. Fold controls affect the same branches as card chevrons. The ancestry number has a full-path tooltip, without deeper tasks widening the column.
+- Drag the column divider to resize it between 200 and 600 pixels. When the divider is focused, Left/Right changes width by 20 pixels; Home/End selects the limits. Escape cancels a pointer resize.
+- Collapse the column to restore titles on normal cards. Compact cards always retain inline titles; Packed mode hides the column. Width and collapse state are captured by saved views.
+- Search matches task IDs and titles, ignoring case, with ID matches first. Enter or the arrow buttons navigates through matches. Search does not filter tasks, change Scope, or unfold branches; only currently eligible, unfolded tasks are searched, including rows outside the virtualized viewport.
 
 ## Team Drill-down
 
+- Open **Teams** in the top menu.
 - Lists only teams explicitly allocated to tasks in the selected plans and enabled Scope. The list updates as plan selection or Scope changes.
 - Each team row shows a color dot (click to open the color popover), the team name, and counts for the two highest-ranking nonempty task types in the configured hierarchy. When more types have counts, expand **Counts** to see the full table. Types with no counts across the listed teams are omitted; individual zero cells are blank.
 - Counts show the number of tasks explicitly allocated to that team anywhere in the loaded data, including active scenario changes. Each task is counted once per allocated team, not by allocation percentage or by which plan the team belongs to. Tasks without a team allocation do not contribute to team counts.
@@ -19,14 +24,14 @@ While the [Reconciliation](plugin_reconciliation.md) review is open, it temporar
 
 ## Task Hierarchy
 
-Use **Fold one level** (`-`) and **Expand one level** (`+`) to change visible
+Open **Hierarchy** and use **Fold one level** (`-`) and **Expand one level** (`+`) to change visible
 task hierarchy depth one level at a time. **Fold all** and **Expand all** act on
 every branch. Controls stop at the available limits and folding is unavailable
 in Packed mode. The header shows `-` and `+` shortcut pills; Task view shows `V`.
 
 ## Task Filters
 
-Task Filters narrow down which tasks are displayed, independent of which plans and teams are selected:
+Open **Task Filters** to narrow down which tasks are displayed, independent of which plans and teams are selected. Tab moves between enabled options; Space or Enter toggles the focused option.
 
 - Schedule (`p`): Planned / Unplanned.
 - Allocation (`a`): Allocated / Unallocated.

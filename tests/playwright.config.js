@@ -25,7 +25,7 @@ export default {
   testDir: testDirPath,
   metadata: { testDataDir: isolatedDataDirPath, storageStatePath },
   testIgnore: ['**/device-auth.spec.js', '**/reconciliation.spec.js', '**/allocation-units.spec.js',
-    '**/keyboard-shortcuts.spec.js'],
+    '**/keyboard-shortcuts.spec.js', '**/task-list.spec.js'],
   timeout: 30000,
   expect: { timeout: 5000 },
   fullyParallel: false,

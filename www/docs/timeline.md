@@ -1,6 +1,6 @@
 # Timeline & Board
 
-The board is the main workspace. Each selected plan gets a horizontal band, labelled on the left, and its tasks are drawn as cards on a shared time axis. The month header at the top stays visible while you scroll, and a red line marks today.
+The board is the main workspace. Each selected plan gets a horizontal band, and its tasks are drawn as cards on a shared time axis. The frozen [task column](sidebar.md#task-list) keeps titles aligned beside their cards. The month header stays visible while you scroll, and a red line marks today.
 
 ![Board in Normal card mode](img/board_normal.png)
 
@@ -8,9 +8,9 @@ The board is the main workspace. Each selected plan gets a horizontal band, labe
 
 Choose the card mode in **View → Cards** or press `c`.
 
-- **Normal**: allocation badges, title and dates on each card.
+- **Normal**: allocation badges and dates on each card, with titles in the task column. Collapsing the column restores card titles.
 - **Compact**: one line per card with icon and title only, so more tasks fit on screen.
-- **Packed**: cards are packed tightly into as few rows as possible. Task sort and hierarchy folding are unavailable, and unplanned tasks are hidden.
+- **Packed**: cards retain titles and are packed tightly into as few rows as possible. The task column is hidden, task sort and hierarchy folding are unavailable, and unplanned tasks are hidden.
 
 ![Compact mode](img/board_compact.png)
 
@@ -18,7 +18,7 @@ Choose the card mode in **View → Cards** or press `c`.
 
 ## Planned and unplanned tasks
 
-A task is planned when it has both a start and an end date; its card spans those dates. A task without both dates is unplanned. It is drawn as a dashed "ghost" label next to its parent (or at the left of its plan band) and can be hidden with the Sidebar's **Schedule** filter. Dates are never inferred from parents, states or dependencies; see [Planning principles](best_practices.md#planning-principles).
+A task is planned when it has both a start and an end date; its card spans those dates. A task without both dates is unplanned. Its dashed placeholder appears next to its parent (or at the left of its plan band) and can be hidden with **Task Filters > Schedule**. Dates are never inferred from parents, states or dependencies; see [Planning principles](best_practices.md#planning-principles).
 
 ## Interactions
 
@@ -26,7 +26,7 @@ A task is planned when it has both a start and an end date; its card spans those
 - **Right-click** a card or the board background for the [group](groups.md) menu (editable scenarios only).
 - **Drag** the board background to pan; use the mouse wheel to scroll vertically.
 - **Ctrl + mouse wheel**, or `Ctrl` `+` / `Ctrl` `-` / `Ctrl` `0`, zooms the board — see [Keyboard Shortcuts](keyboard_shortcuts.md).
-- **Fold / expand**: cards with children show a chevron at their left edge. Click it to hide or show the children; a folded card shows how many tasks are hidden. The Sidebar's Task hierarchy buttons fold or expand one level for the whole board.
+- **Fold / expand**: cards and task rows with children show a chevron. Click it to hide or show the children; a folded row/card shows how many tasks are hidden. The **Hierarchy** menu folds or expands one level for the whole board.
 
 In an editable scenario (not Baseline) you can also change dates directly:
 
@@ -48,5 +48,5 @@ Use **View → Timeline Scale** (`t`) to switch between 3 months, weeks, months,
 ## Tips
 
 - Use Compact or Packed mode for overviews and Normal mode when you need allocations and dates.
-- Combine the timeline scale with Task Filters in the Sidebar to focus on a time window and team.
+- Combine the timeline scale with the Task Filters menu to focus on a time window and team.
 - The [Reconciliation](plugin_reconciliation.md) warning markers (!) on cards point to schedule conflicts or plan quality findings.

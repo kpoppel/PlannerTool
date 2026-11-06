@@ -2,10 +2,7 @@ import { test, expect } from '@playwright/test';
 import { clearOverlays, selectAllPlans } from './helpers.js';
 
 async function waitForSidebar(page) {
-  await page.waitForFunction(() => {
-    const host = document.querySelector('app-sidebar');
-    return !!(host && host.shadowRoot && host.shadowRoot.querySelector('aside.sidebar'));
-  });
+  await expect(page.getByRole('searchbox', { name: 'Search tasks' })).toBeVisible();
 }
 
 test.describe('Left Sidebar - filters and data funnel', () => {
@@ -47,14 +44,16 @@ test.describe('Left Sidebar - filters and data funnel', () => {
   });
 
   test('Team Drill-down explains when the selected plan has no assigned teams', async ({ page }) => {
+    await page.getByRole('button', { name: 'Teams', exact: true }).click();
     await expect(
-      page.locator('app-sidebar').getByText('This plan has no teams assigned.')
+      page.locator('board-controls-menu').getByText('This plan has no teams assigned.')
     ).toBeVisible();
   });
 
   test('task filter option toggles active class when enabled', async ({ page }) => {
+    await page.getByRole('button', { name: 'Task Filters', exact: true }).click();
     const stateBefore = await page.evaluate(() => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
+      const root = document.querySelector('top-menu-bar').shadowRoot.querySelector('board-controls-menu').shadowRoot;
       const option = root?.querySelector('.filter-dimensions .filter-option');
       return {
         exists: !!option,
@@ -67,13 +66,13 @@ test.describe('Left Sidebar - filters and data funnel', () => {
     test.skip(stateBefore.disabled, 'First filter option is currently disabled by context');
 
     await page.evaluate(() => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
+      const root = document.querySelector('top-menu-bar').shadowRoot.querySelector('board-controls-menu').shadowRoot;
       const option = root?.querySelector('.filter-dimensions .filter-option');
       option?.click();
     });
 
     await page.waitForFunction((before) => {
-      const root = document.querySelector('app-sidebar')?.shadowRoot;
+      const root = document.querySelector('top-menu-bar').shadowRoot.querySelector('board-controls-menu').shadowRoot;
       const option = root?.querySelector('.filter-dimensions .filter-option');
       return !!option && option.classList.contains('active') !== before;
     }, stateBefore.active);

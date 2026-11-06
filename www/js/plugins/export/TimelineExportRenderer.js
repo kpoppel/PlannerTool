@@ -67,7 +67,8 @@ export class TimelineExportRenderer {
 
   _appendToSvg(node) {
     if (!this._svg) return;
-    this._svg.appendChild(node);
+    const root = this._drawingRoot === undefined ? this._svg : this._drawingRoot;
+    root.appendChild(node);
   }
 
   /**
@@ -135,6 +136,7 @@ export class TimelineExportRenderer {
       height: this._height,
       viewBox: `0 0 ${this._width} ${this._height}`,
     });
+    this._drawingRoot = this._svg;
 
     // Add white background
     const bg = createSvgElement('rect', {
@@ -145,6 +147,18 @@ export class TimelineExportRenderer {
       fill: '#ffffff',
     });
     this._appendToSvg(bg);
+
+    const board = findInBoard('feature-board');
+    const list = findInBoard('task-list');
+    const columnWidth = board.taskListVisible ? Math.round(list.getBoundingClientRect().width) : 0;
+    const exportWidth = this._width;
+    this._width -= columnWidth;
+    const timelineLayer = createSvgElement('svg', {
+      x: columnWidth, y: 0, width: this._width, height: this._height,
+      viewBox: `0 0 ${this._width} ${this._height}`,
+    });
+    this._svg.appendChild(timelineLayer);
+    this._drawingRoot = timelineLayer;
 
     // Layer 1: MainGraph canvas image
     const mainGraphY = 0;
@@ -161,9 +175,6 @@ export class TimelineExportRenderer {
     // Layer 4: Feature cards
     this._renderFeatureCards(boardY, viewport);
 
-    // Layer 4.5: Ghost titles (for overflowing titles)
-    this._renderGhostTitles(boardY, viewport);
-
     // Layer 5: Dependency lines
     this._renderDependencies(boardY, viewport, includeDependencies);
 
@@ -171,6 +182,10 @@ export class TimelineExportRenderer {
     if (includeAnnotations) {
       this._renderAnnotations(viewport);
     }
+
+    this._width = exportWidth;
+    this._drawingRoot = this._svg;
+    if (columnWidth > 0) this._renderTaskLabels(boardY, columnWidth, board.getTaskLayout({ full: true }));
 
     return this._svg;
   }
@@ -339,7 +354,7 @@ export class TimelineExportRenderer {
     const cardHeight = laneHeight();
 
     // Get visible features from the board's current render state
-    const features = featureBoard.features || [];
+    const features = featureBoard.getTaskLayout({ full: true }).rows;
     if (features.length === 0) {
       console.warn(
         '[TimelineExportRenderer] No features found in feature-board. The board may not be fully rendered yet or there are no features to display.'
@@ -347,11 +362,9 @@ export class TimelineExportRenderer {
       return;
     }
 
-    // Track card data for ghost title rendering
-    this._cardData = [];
-
     let renderedCount = 0;
     for (const featureObj of features) {
+      if (featureObj.isGroup) continue;
       const { feature, left, width, top, project } = featureObj;
 
       // Adjust for scroll
@@ -417,9 +430,7 @@ export class TimelineExportRenderer {
       // Title text - show if card is wide enough
       // For left-clipped cards, show title starting at left edge (may overflow right)
       const title = feature.title || feature.name || `#${feature.id}`;
-      let titleOverflows = false;
-
-      if (visibleWidth > 40) {
+      if (visibleWidth > 40 && (!featureBoard.taskListVisible || featureObj.condensed)) {
         const baseTextX =
           isLeftClipped ?
             visibleX + CARD_PADDING // Start from visible left edge
@@ -437,8 +448,6 @@ export class TimelineExportRenderer {
           isLeftClipped ?
             title // Allow overflow
           : this._truncateText(title, availableWidth);
-
-        titleOverflows = !isLeftClipped && truncatedTitle.endsWith('…');
 
         const titleText = createSvgText(truncatedTitle, textX, cardY + cardHeight / 2, {
           fontSize: CARD_TITLE_FONT_SIZE,
@@ -461,27 +470,6 @@ export class TimelineExportRenderer {
         }
       }
 
-      // Store card data for ghost title rendering
-      // Small cards (<40px) or overflowing titles should show ghosts
-      const isSmallCard = visibleWidth <= 40;
-      if (isSmallCard || titleOverflows) {
-        this._cardData.push({
-          feature,
-          project,
-          title,
-          left,
-          cardX,
-          cardY,
-          width,
-          height: cardHeight,
-          scrollLeft,
-          visibleX,
-          visibleWidth,
-          isLeftClipped,
-          isRightClipped,
-        });
-      }
-
       // Append the assembled card group to the root svg so it sits above board background
       this._appendToSvg(cardGroup);
     }
@@ -493,167 +481,18 @@ export class TimelineExportRenderer {
     }
   }
 
-  /**
-   * Render ghost titles for overflowing feature card titles
-   * Matches the `.ghost-title` styling in FeatureCard.lit.js
-   */
-  _renderGhostTitles(yOffset, viewport) {
-    if (!this._cardData || this._cardData.length === 0) return;
-
-    // Match the .ghost-title styling in FeatureCard.lit.js
-    const GHOST_PADDING_VERTICAL = 2;
-    const GHOST_PADDING_HORIZONTAL = 6;
-    const GHOST_GAP = 12; // Match the gap in FeatureCard.lit.js's .ghost-title
-    const GHOST_FONT_SIZE = CARD_TITLE_FONT_SIZE * 0.9; // 0.9em
-    const GHOST_LINE_HEIGHT = GHOST_FONT_SIZE * 1.1; // line-height: 1.1
-    const ARROW_SIZE = 10;
-    const BORDER_LEFT_WIDTH_STUCK = 6;
-    for (const cardData of this._cardData) {
-      const { feature, project, title, left, cardX, cardY, width, height, scrollLeft } =
-        cardData;
-
-      // Split title like FeatureCard.lit.js's _renderGhostTitleText() does
-      const words = title.split(/\s+/);
-      let lines = [];
-
-      if (words.length < 4) {
-        // Short title - use as single line
-        lines = [title];
-      } else {
-        // Split at middle
-        const mid = Math.floor(words.length / 2);
-        lines = [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
-      }
-
-      // Calculate ghost width based on longest line
-      // Using 0.7 * fontSize as character width (conservative estimate)
-      const charWidth = GHOST_FONT_SIZE * 0.7;
-      let maxLineLength = 0;
-      for (const line of lines) {
-        if (line.length > maxLineLength) {
-          maxLineLength = line.length;
-        }
-      }
-
-      // Ghost width = text width + padding + extra buffer for safety
-      const ghostWidth = maxLineLength * charWidth + GHOST_PADDING_HORIZONTAL * 2 + 30;
-      const ghostHeight = GHOST_PADDING_VERTICAL * 2 + lines.length * GHOST_LINE_HEIGHT;
-
-      // Calculate ghost position using the same logic as FeatureCard.lit.js
-      // cardLeft is the absolute position on the board
-      const cardLeft = left;
-      const cardInViewportX = cardLeft - scrollLeft;
-      const cardRightInViewportX = cardInViewportX + width;
-
-      // Check if card is visible in viewport
-      const cardLeftVisible = cardInViewportX >= 0 && cardInViewportX <= this._width;
-      const cardRightVisible =
-        cardRightInViewportX >= 0 && cardRightInViewportX <= this._width;
-      const isCardOnScreen = cardLeftVisible || cardRightVisible;
-
-      let ghostLeft;
-      let stuckToEdge = false;
-
-      if (isCardOnScreen) {
-        // Card is on-screen: position ghost to the left of the card
-        // Account for ghost width + gap + arrow
-        ghostLeft = cardLeft - ghostWidth - GHOST_GAP - ARROW_SIZE;
-
-        // Clamp ghostLeft to not go off the left edge of visible area
-        if (ghostLeft < scrollLeft) {
-          ghostLeft = scrollLeft + GHOST_GAP;
-          stuckToEdge = true;
-        }
-      } else {
-        // Card is off-screen: stick ghost to the visible edge
-        stuckToEdge = true;
-        if (cardRightInViewportX < 0) {
-          // Card is off-screen to the left: stick ghost to left edge with gap
-          ghostLeft = scrollLeft + GHOST_GAP;
-        } else if (cardInViewportX > this._width) {
-          // Card is off-screen to the right: stick ghost to right edge (but we probably won't have these)
-          ghostLeft = scrollLeft + this._width - ghostWidth - GHOST_GAP - ARROW_SIZE;
-        } else {
-          // Fallback to normal positioning
-          ghostLeft = cardLeft - ghostWidth - GHOST_GAP - ARROW_SIZE;
-          if (ghostLeft < scrollLeft) {
-            ghostLeft = scrollLeft + GHOST_GAP;
-          }
-        }
-      }
-
-      // Convert to viewport coordinates for rendering
-      const ghostX = ghostLeft - scrollLeft;
-      const ghostY = cardY + (height - ghostHeight) / 2;
-
-      // Create ghost group
-      const ghostGroup = createSvgElement('g', { class: 'ghost-title' });
-
-      // Background rect - transparent fill with dashed border
-      const bgRect = createSvgElement('rect', {
-        x: ghostX,
-        y: ghostY,
-        width: ghostWidth,
-        height: ghostHeight,
-        rx: 4,
-        ry: 4,
-        fill: 'none',
-        stroke: 'rgba(0,0,0,0.25)',
-        'stroke-width': 1,
-        'stroke-dasharray': '3,3',
-      });
-      ghostGroup.appendChild(bgRect);
-
-      // Solid border when stuck to edge
-      if (stuckToEdge) {
-        const projectColor = project?.color || '#666666';
-        const solidBorder = createSvgElement('rect', {
-          x: ghostX,
-          y: ghostY,
-          width: BORDER_LEFT_WIDTH_STUCK,
-          height: ghostHeight,
-          rx: 4,
-          ry: 4,
-          fill: projectColor,
-        });
-        ghostGroup.appendChild(solidBorder);
-
-        // Clip right side to square it off
-        const borderClip = createSvgElement('rect', {
-          x: ghostX + 4,
-          y: ghostY,
-          width: BORDER_LEFT_WIDTH_STUCK - 4,
-          height: ghostHeight,
-          fill: projectColor,
-        });
-        ghostGroup.appendChild(borderClip);
-      }
-
-      // Render text lines
-      const textX = ghostX + GHOST_PADDING_HORIZONTAL;
-      const firstLineY = ghostY + GHOST_PADDING_VERTICAL + GHOST_FONT_SIZE;
-
-      for (let i = 0; i < lines.length; i++) {
-        const lineY = firstLineY + i * GHOST_LINE_HEIGHT;
-        const lineText = createSvgText(lines[i], textX, lineY, {
-          fontSize: GHOST_FONT_SIZE,
-          fill: 'rgba(0,0,0,0.75)',
-          anchor: 'start',
-        });
-        ghostGroup.appendChild(lineText);
-      }
-
-      // Arrow pointing to card (right-pointing triangle on right edge)
-      const arrowX = ghostX + ghostWidth;
-      const arrowY = ghostY + ghostHeight / 2;
-      const arrow = createSvgElement('polygon', {
-        points: `${arrowX},${arrowY - ARROW_SIZE} ${arrowX + ARROW_SIZE},${arrowY} ${arrowX},${arrowY + ARROW_SIZE}`,
-        fill: 'rgba(0,0,0,0.1)',
-      });
-      ghostGroup.appendChild(arrow);
-
-      // Append ghost to SVG
-      this._appendToSvg(ghostGroup);
+  _renderTaskLabels(yOffset, width, layout) {
+    this._appendToSvg(createSvgElement('rect', {
+      x: 0, y: 0, width, height: this._height, fill: '#f7f7f7',
+    }));
+    for (const row of layout.rows) {
+      const title = row.isGroup ? row.groupObj.name : row.feature.title;
+      const label = createSvgText(this._truncateText(title, width - 24), 12,
+        yOffset + row.top + row.height / 2, { fontSize: CARD_TITLE_FONT_SIZE, fill: '#333333' });
+      label.setAttribute('class', 'task-label');
+      label.appendChild(createSvgElement('title'));
+      label.lastChild.textContent = title;
+      this._appendToSvg(label);
     }
   }
 
@@ -676,11 +515,12 @@ export class TimelineExportRenderer {
 
     const scrollLeft = viewport.scrollLeft;
     const cardHeight = laneHeight();
-    const features = featureBoard.features || [];
+    const features = featureBoard.getTaskLayout({ full: true }).rows;
 
     // Build a map of feature positions
     const positionById = new Map();
     for (const featureObj of features) {
+      if (featureObj.isGroup) continue;
       const { feature, left, width, top } = featureObj;
       positionById.set(String(feature.id), {
         left: left - scrollLeft,

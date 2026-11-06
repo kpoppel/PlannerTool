@@ -15,6 +15,19 @@ describe('feature-board updateCardsById', () => {
     sinon.restore();
   });
 
+  it('publishes edited task titles to labels and search during incremental updates', async () => {
+    const feature = { id: 'f1', title: 'Before' };
+    board._fullRenderList = [{ feature, top: 0 }];
+    board._taskSearchFeatures = [feature];
+    await board.updateComplete;
+    const changed = sinon.spy();
+    board.addEventListener('task-layout-changed', changed);
+    board._updateCachedRenderItemById('f1', { ...feature, title: 'After' });
+    await board.updateComplete;
+    expect(board.getTaskLayout().searchFeatures[0].title).to.equal('After');
+    expect(changed.called).to.be.true;
+  });
+
   it('updateCardsById updates existing nodes via applyVisuals', async () => {
     // create a mocked feature node and cache it
     const node = document.createElement('div');

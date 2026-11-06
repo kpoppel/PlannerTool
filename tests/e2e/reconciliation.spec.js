@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
     const { PluginReconciliation } = await import('/js/plugins/PluginReconciliation.js');
     await import('/js/components/TopMenu.lit.js');
     await import('/js/components/FeatureCard.lit.js');
-    await import('/js/components/Sidebar.lit.js');
+    await import('/js/components/BoardControlsMenu.lit.js');
     await import('/js/components/sidebar/SidebarFooter.lit.js');
     await import('/js/components/DetailsPanel.lit.js');
     const state = createInitialAppState();
@@ -52,7 +52,9 @@ test.beforeEach(async ({ page }) => {
       exclusive: false, dependencies: [], menuPosition: 'before-tools', description: 'Live plan issues',
     }));
     document.body.prepend(document.createElement('top-menu-bar'));
-    document.body.append(document.createElement('app-sidebar'), document.createElement('app-footer'),
+    const filters = document.createElement('board-controls-menu');
+    filters.section = 'filters';
+    document.body.append(filters, document.createElement('app-footer'),
       document.createElement('details-panel'));
     const card = document.createElement('feature-card-lit');
     card.feature = sel.feature.getEffectiveFeatureById('delivery');
@@ -64,7 +66,7 @@ test.beforeEach(async ({ page }) => {
     document.querySelector('main').appendChild(space);
     await card.updateComplete;
     await document.querySelector('top-menu-bar').updateComplete;
-    await document.querySelector('app-sidebar').updateComplete;
+    await filters.updateComplete;
     await document.querySelector('app-footer').updateComplete;
     await document.querySelector('details-panel').updateComplete;
   });
@@ -416,7 +418,7 @@ test('toggles the toolbox directly from its active top-bar button without a drop
 test('keeps the independent footer visible and clear of the toolbox', async ({ page }) => {
   const footer = page.locator('app-footer');
   await expect(footer.locator('[role="contentinfo"]')).toBeVisible();
-  await expect(page.locator('app-sidebar .sidebar-config')).toHaveCount(0);
+  await expect(page.locator('board-controls-menu .sidebar-config')).toHaveCount(0);
   await page.locator('[data-plugin-id="plugin-reconciliation"]').click();
   await expect(footer).toContainText('Loaded dataset: 2 tasks');
   const footerBounds = await footer.boundingBox();
@@ -461,7 +463,7 @@ for (const width of [1366, 1024]) {
     await expect(dialog).toBeHidden();
     const restore = page.getByRole('button', { name: 'Show reconciliation toolbox', exact: true });
     await expect(restore).toBeFocused();
-    await expect(page.locator('app-sidebar .sidebar')).toBeVisible();
+    await expect(page.locator('board-controls-menu .controls')).toBeVisible();
     await page.keyboard.press('Tab');
     expect(await dialog.evaluate((element) => element.contains(element.getRootNode().activeElement))).toBe(false);
     await restore.click();
@@ -737,7 +739,7 @@ test('keeps board and Sidebar interactive and removes hidden toolbox on plugin d
   await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   await review.getByRole('searchbox').fill('Integration');
   await review.getByRole('button', { name: 'Hide reconciliation toolbox' }).click();
-  const sidebarControl = page.locator('app-sidebar .filter-option').first();
+  const sidebarControl = page.locator('board-controls-menu .filter-option').first();
   await sidebarControl.click();
   await review.getByRole('button', { name: 'Show reconciliation toolbox' }).click();
   await expect(review.getByRole('searchbox')).toHaveValue('Integration');
@@ -748,7 +750,7 @@ test('keeps board and Sidebar interactive and removes hidden toolbox on plugin d
   });
   await expect(review).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Show reconciliation toolbox' })).toHaveCount(0);
-  await expect(page.locator('app-sidebar .sidebar')).toBeVisible();
+  await expect(page.locator('board-controls-menu .controls')).toBeVisible();
 });
 
 test('shows ordered category pairs, counts tasks rather than findings and hides zero pairs', async ({ page }) => {

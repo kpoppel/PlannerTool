@@ -22,6 +22,8 @@ export function createDefaultViewOptions() {
     showUnplannedWork: true,
     showOnlyProjectHierarchy: false,
     taskViewMode: 'plan',
+    taskColumnWidth: 300,
+    taskColumnCollapsed: false,
     highlightFeatureRelationMode: true,
     hiddenTypes: [],
     debugFlag: false,

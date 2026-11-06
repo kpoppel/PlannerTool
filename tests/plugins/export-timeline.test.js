@@ -3,6 +3,7 @@ import { stub } from 'sinon';
 import PluginExportTimeline from '../../www/js/plugins/PluginExportTimeline.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginEvents } from '../../www/js/core/EventRegistry.js';
+import { TimelineExportRenderer } from '../../www/js/plugins/export/TimelineExportRenderer.js';
 
 describe('PluginExportTimeline', () => {
   let emitStub;
@@ -13,6 +14,21 @@ describe('PluginExportTimeline', () => {
 
   afterEach(() => {
     emitStub.restore();
+  });
+
+  it('exports task labels from board geometry without ghost titles', () => {
+    const renderer = new TimelineExportRenderer();
+    renderer._svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    renderer._renderTaskLabels(32, 300, { rows: [
+      { id: 'f1', top: 60, height: 60, feature: { title: 'Release delivery' } },
+      { id: 'g1', top: 0, height: 28, isGroup: true, groupObj: { name: 'Release' } },
+    ] });
+    const labels = renderer._svg.querySelectorAll('.task-label');
+    expect(labels).to.have.length(2);
+    expect(labels[0].firstChild.textContent).to.equal('Release delivery');
+    expect(labels[0].querySelector('title').textContent).to.equal('Release delivery');
+    expect(labels[0].getAttribute('y')).to.equal('122');
+    expect(renderer._renderGhostTitles).to.equal(undefined);
   });
 
   it('activate mounts element to the app root, opens it, and destroys cleanly', async () => {
