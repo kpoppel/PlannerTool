@@ -36,7 +36,7 @@ config. The v4.2.1 server config can still be the owned writable
 used as a runtime fallback. Its `people` record may lack a schema-version field.
 
 The explicit post-baseline chain is `24 -> 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
--> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43 -> 44`;
+-> 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43 -> 44 -> 45`;
 there was no migration 25. Revisions preserve their historical IDs.
 Revision 26 drops disposable remote records, 27 fills scenario metadata, 28 adds
 account IDs, 29 converts view Context flags, 30 adds plan container types, 31
@@ -45,10 +45,19 @@ plugin settings using a fixed packaged menu resource. Revision 34 persists packe
 Unplanned preferences in saved views. The server registry has no
 pre-v4.2.1 migrations or reverse functions; older IDs are admission evidence only.
 
-Fresh installations initialize revision 44 directly and invoke no upgrades.
+Fresh installations initialize revision 45 directly and invoke no upgrades.
 External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
+
+### Revision 45 Feature Cards
+
+`0045.compact-feature-cards` replaces the old Normal and Compact card sizes with
+one compact-height Normal mode. Saved `compact` views become `normal`; `packed`
+views retain their layout. All saved views have `condensedCards: true`, with
+`packedMode` matching their display mode. Other view data is preserved. New saves
+and current-schema validation require these flags; runtime reads do not repair
+legacy records.
 
 ### Revision 44 Authentication Policy
 

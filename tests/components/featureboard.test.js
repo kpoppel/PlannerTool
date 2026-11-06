@@ -10,6 +10,18 @@ describe('FeatureBoard & DragSurface Tests', () => {
     sinon.restore();
   });
 
+  it('keeps swimlane tints subtler than card progress fills', async () => {
+    await import('../../www/js/components/FeatureBoard.lit.js');
+    const board = await fixture(html`<feature-board></feature-board>`);
+    board._swimlanes = [{ id: 'plan', name: 'Plan', type: 'plan', color: '#347ab3',
+      topPx: 0, heightPx: 100, origins: [] }];
+    board.requestUpdate();
+    await board.updateComplete;
+    const band = board.shadowRoot.querySelector('.swimlane-band');
+    expect(band.style.backgroundColor).to.equal('rgba(52, 122, 179, 0.04)');
+    expect(band.style.borderTopColor).to.equal('rgba(52,122,179,0.12)');
+  });
+
   it('batches selected plans and invalidates pending loads on deselection', async () => {
     const board = document.createElement('feature-board');
     board.renderFeatures = sinon.stub();

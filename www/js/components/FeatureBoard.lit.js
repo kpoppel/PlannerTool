@@ -230,7 +230,7 @@ class FeatureBoard extends LitElement {
             ${this._swimlanes.map(
               (s) => html`<div
                 class="swimlane-band"
-                style="top:${s.topPx}px; height:${s.heightPx}px; background: ${this._hexToRgba(s.color, 0.15)}; border-top: 2px solid ${this._hexToRgba(s.color, 0.3)};"
+                style="top:${s.topPx}px; height:${s.heightPx}px; background: ${this._hexToRgba(s.color, 0.04)}; border-top: 2px solid ${this._hexToRgba(s.color, 0.12)};"
                 aria-hidden="true"
               ></div>`
             )}
