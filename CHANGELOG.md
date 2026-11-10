@@ -24,11 +24,12 @@ Template - do not change :
 
 ### Changed
 - Show Task Types first and State second in Task Filters, followed by the remaining selectors.
-- Use the space beside the load graph for selected task-type icons, state colors, filter-category indicators and search, removing the empty strip below the timeline header. Match category icons in the overview and filter menu.
+- Fit a persistent View context overview to the load graph's height, with Plan/Team focus controls, team drill-down, and type/state choices that stay visible when off. Keep advanced-filter indicators and quick cycling visible with detailed choices in the menu. Place task search beside the Tasks heading without an empty strip below the graph or timeline header.
+- Make team selection explicit, separate color editing from selection, and clarify All plan work versus Selected teams. Distinguish Expand/Collapse actions from Parent links filters, align filter checkboxes, and expose navigation for overflowing top menus.
 - Align Plan, Scenario, Teams and Saved Views menus with compact rows and inline team abbreviations.
 - Place Cards and Task Sort side by side in the View menu to reduce its height.
 - Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
-- Replace the sidebar with a resizable, collapsible task column aligned to board rows, with ID/title search and saved column preferences. Move Teams, Hierarchy and Task Filters into top-menu popovers; card titles live in the task column and tooltips, and ghost titles are removed.
+- Replace the sidebar with a resizable, collapsible task column aligned to board rows, with ID/title search and saved column preferences. Consolidate Teams, Hierarchy and Task filters in one Filters menu, retaining direct section access from the overview; card titles live in the task column and tooltips, and ghost titles are removed.
 - Show task-column rows with a single-line title, type icon, task/parent IDs and owning plan, using board group colors. Keep consistent breathing room around rows and cards without extra gaps at swimlane transitions. Drag the full-height edge to resize, collapse or restore the column; click a selected row again to align its card's start beside the list.
 - Move server status, uptime, loaded-task totals and attribution into a persistent, single-line footer along the bottom of Help instead of overlaying the task list.
 - Use compact-height cards in Normal and Packed layouts, showing type icon, ID, allocation bars and right-aligned closed/total descendant counts. Fill each card with a pastel project color in proportion to completed descendants, keep swimlane tints faint to distinguish that progress, and hide whole fields from right to left when space runs out. Migrate saved Compact views to Normal in revision 45.

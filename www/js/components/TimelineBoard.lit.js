@@ -457,6 +457,8 @@ export class TimelineBoard extends LitElement {
 
       .board-overview {
         display: grid;
+        height: 120px;
+        grid-template-rows: 120px;
         grid-template-columns: var(--task-column-width, 300px) minmax(0, 1fr);
         flex: 0 0 auto;
         min-width: 0;
@@ -487,41 +489,84 @@ export class TimelineBoard extends LitElement {
       }
 
       .task-toolbar { grid-column: 1; grid-row: 1;
-        background: var(--color-bg, #f7f7f7); display: flex; flex-direction: column;
-        justify-content: space-between; gap: 4px; padding: 8px; min-width: 0;
+        background: var(--color-bg, #f7f7f7); display: grid;
+        grid-template-rows: repeat(5, 20px); gap: 3px; padding: 4px 6px; min-width: 0;
+        height: 120px; min-height: 0; overflow: hidden;
+        container-type: inline-size;
         box-sizing: border-box; border-right: 1px solid #bec8d2;
         cursor: default; }
-      .task-summary { font-size: 12px; font-weight: 600; white-space: nowrap;
-        overflow: hidden; text-overflow: ellipsis; }
-      .task-search, .filter-markers, .filter-status, .filter-dimensions {
+      .task-search, .filter-markers {
         display: flex; align-items: center; gap: 6px; min-width: 0; }
-      .filter-markers { overflow-x: auto; height: 20px; }
+      .filter-markers { overflow-x: auto; height: 20px; scrollbar-width: none; }
+      .filter-markers::-webkit-scrollbar { display: none; }
       .filter-marker { display: inline-flex; align-items: center; justify-content: center;
-        flex: 0 0 16px; width: 16px; height: 16px; }
+        width: 14px; height: 14px; }
       .filter-marker svg { width: 16px; height: 16px; }
-      .filter-state { flex: 0 0 12px; width: 12px; height: 12px; border-radius: 2px;
-        box-shadow: inset 0 0 0 1px #0002; }
-      .filter-status .filter-markers { flex: 1; }
-      .filter-status .task-summary { font-size: 10px; font-weight: 400; color: #526170; }
-      .filter-dimensions { justify-content: space-between; }
-      .filter-dimension-marker { display: inline-flex; align-items: center; justify-content: center;
-        width: 24px; height: 22px; box-sizing: border-box; border: 1px solid transparent;
-        border-radius: 3px; color: #526170; }
-      .filter-dimension-marker[data-selection="some"] { color: #096b65; background: #e0f1ee;
-        border-color: #75b8ad; }
-      .filter-dimension-marker[data-selection="none"] { color: #aa3434; background: #fbe9e9;
-        border-color: #dba3a3; }
+      .filter-overview-title { display: flex; align-items: center; justify-content: space-between; }
+      .filter-overview-title h2 { margin: 0; font-size: 11px; line-height: 14px; font-weight: 600; }
+      .compact-label { display: none; }
+      @container (max-width: 240px) {
+        .wide-label { display: none; }
+        .compact-label { display: inline; }
+      }
+      .advanced-controls { display: flex; align-items: center; gap: 2px; min-width: 0; }
+      .task-toolbar .advanced-open { flex: 0 0 auto; width: auto; height: 18px;
+        padding: 0 3px; font-size: 10px; white-space: nowrap; }
+      .task-toolbar .advanced-filter { flex: 0 0 16px; width: 16px; height: 18px;
+        display: flex; align-items: center; justify-content: center; border: 1px solid transparent;
+        border-radius: 2px; color: #64727f; }
+      .advanced-filter svg { width: 12px; height: 12px; }
+      .task-toolbar .advanced-filter[data-selection="some"] { background: #e0f1ee;
+        color: #096b65; border-color: #75b8ad; }
+      .task-toolbar .advanced-filter[data-selection="none"] { background: #fbe9e9;
+        color: #aa3434; border-color: #dba3a3; }
+      .focus-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+        background: #e5e9ec; border-radius: 3px; padding: 1px; min-width: 0; }
+      .task-toolbar .focus-mode button { width: auto; height: 18px; font-size: 11px;
+        border-radius: 2px; }
+      .task-toolbar .focus-mode button[aria-pressed="true"] { background: #fff;
+        box-shadow: 0 0 0 1px #b6c3cd; font-weight: 600; }
+      .task-toolbar .focus-mode button[data-team-focus="true"][aria-pressed="true"] {
+        color: #096b65; box-shadow: 0 0 0 1px #75b8ad; }
+      .task-toolbar .team-choice { flex: 0 0 auto; width: auto; max-width: 84px; height: 18px;
+        display: inline-flex; align-items: center; gap: 4px; padding: 0 4px;
+        border: 1px dashed #98a4af; border-radius: 3px; font-size: 10px; opacity: .6; }
+      .task-toolbar .team-choice[aria-pressed="true"] { opacity: 1;
+        border: 1px solid #197c76; background: #e0f1ee; }
+      .team-choice .team-color { width: 6px; height: 10px; flex: 0 0 6px; border-radius: 1px; }
+      .team-choice .team-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .task-toolbar .filter-summary { width: 100%; height: 20px;
+        display: flex; align-items: center; gap: 4px; padding: 0; border-radius: 3px;
+        text-align: left; min-width: 0; }
+      .task-toolbar .filter-summary-label { flex: 0 0 42px; width: 42px; height: 18px;
+        text-align: left; font-size: 10px; color: #526170; }
+      .filter-summary .filter-markers { flex: 1; }
+      .filter-summary-count { flex: 0 0 auto; font-size: 10px; color: #526170;
+        font-variant-numeric: tabular-nums; }
+      .task-toolbar button:hover:not(:disabled) { background-color: #e4eaf0; }
+      .task-toolbar button:focus-visible { outline: 2px solid #347ab3; outline-offset: 1px; }
+      .task-toolbar .filter-choice { position: relative; flex: 0 0 18px; width: 18px; height: 18px;
+        display: inline-flex; align-items: center; justify-content: center; padding: 1px;
+        border: 1px dashed #98a4af; border-radius: 3px; box-sizing: border-box; opacity: .55; }
+      .task-toolbar .filter-choice[aria-pressed="true"] { opacity: 1; border: 1px solid #197c76;
+        box-shadow: inset 0 -2px #197c76; background: #e0f1ee; }
       .filter-empty { font-size: 10px; color: #aa3434; }
       .task-column-heading { grid-column: 1; grid-row: 1; position: sticky; top: 0; left: 0;
-        z-index: 150; padding: 4px 10px; font-size: 11px; line-height: 16px;
+        z-index: 150; padding: 2px 8px; font-size: 11px; line-height: 16px;
+        display: flex; align-items: center; gap: 6px; min-width: 0;
         background: var(--color-bg, #f7f7f7); border-right: 1px solid #bec8d2;
         box-sizing: border-box; }
-      .task-toolbar input { min-width: 0; width: 100%; padding: 5px; box-sizing: border-box;
+      .task-column-title { flex: 0 0 auto; }
+      .task-search { flex: 1; gap: 2px; }
+      .task-search input { min-width: 0; width: 100%; height: 22px; padding: 2px 5px; box-sizing: border-box;
         border: 1px solid #bec8d2; border-radius: 4px; font: inherit; }
       .task-toolbar button { flex: 0 0 24px; width: 24px; height: 26px; padding: 0;
         border: 0; background: transparent; cursor: pointer; color: #23344d; }
       .task-toolbar button:disabled { opacity: .4; cursor: default; }
-      .task-toolbar output { font-size: 10px; white-space: nowrap; }
+      .task-search button { flex: 0 0 16px; width: 16px; height: 20px; border: 0;
+        padding: 0; background: transparent; color: #23344d; cursor: pointer; }
+      .task-search button:disabled { opacity: .4; cursor: default; }
+      .task-search output { font-size: 10px; white-space: nowrap; }
       .column-resizer { grid-column: 1; grid-row: 1 / 3; position: sticky;
         left: calc(var(--task-column-width, 300px) - 8px); top: 0; width: 8px;
         justify-self: end; align-self: stretch; z-index: 160; background: #bec8d255;
@@ -674,6 +719,18 @@ export class TimelineBoard extends LitElement {
   // Template
   // ---------------------------------------------------------------------------
 
+  _openFilterMenu(event, group) {
+    event.stopPropagation();
+    this.dispatchEvent(new CustomEvent('task-filter-menu-open', {
+      bubbles: true, composed: true, detail: { group, trigger: event.currentTarget },
+    }));
+  }
+
+  _toggleTeamFocus(team) {
+    cmd.selection.setTeamSelected(team.id, !team.selected, { displayOnly: true });
+    cmd.view.setTaskViewMode('team');
+  }
+
   render() {
     const options = this._view.value;
     const packed = options.displayMode === 'packed';
@@ -682,6 +739,12 @@ export class TimelineBoard extends LitElement {
     const filters = getTaskFilterPresentation();
     const selectedTypes = filters.types.filter((type) => type.active);
     const selectedStates = filters.states.filter((state) => state.active);
+    const contextTeamIds = new Set(sel.scope.getContextTeams().map((id) => String(id)));
+    const teams = sel.selection.getTeams().filter((team) => contextTeamIds.has(String(team.id)));
+    const selectedTeams = teams.filter((team) => team.selected);
+    const teamFocus = sel.view.getTaskViewMode() === 'team';
+    const restrictedFilters = filters.dimensions.filter((dimension) =>
+      dimension.options.some((option) => !option.active)).length;
     return html`
       <div class="board-overview">
         <section id="maingraph-section" aria-label="Organisational Load Graph">
@@ -689,30 +752,75 @@ export class TimelineBoard extends LitElement {
         </section>
         <div class="task-toolbar" ?hidden=${packed || collapsed} @mousedown=${(event) => event.stopPropagation()}>
           ${collapsed ? '' : html`
-            <div class="filter-markers" role="group" aria-label="Selected task types">
-              ${selectedTypes.map((type) => html`<span class="filter-marker" data-filter-type=${type.key}
-                role="img" aria-label=${type.name} title=${type.name}>${getIconTemplate(type.name)}</span>`)}
-              ${selectedTypes.length === 0 ? html`<span class="filter-empty">No task types</span>` : ''}
-            </div>
-            <div class="filter-status">
-              <div class="filter-markers" role="group" aria-label="Selected states">
-                ${selectedStates.map((state) => html`<span class="filter-state" data-filter-state=${state.name}
-                  role="img" aria-label=${state.name} title=${state.name} style="background:${state.color}"></span>`)}
-                ${selectedStates.length === 0 ? html`<span class="filter-empty">No states</span>` : ''}
+            <div class="filter-overview-title">
+              <h2 aria-label="View context"><span class="wide-label">View context</span><span class="compact-label">Context</span></h2>
+              <div class="advanced-controls" role="group" aria-label="Advanced filters">
+                <button class="advanced-open" aria-label="Advanced filters" aria-haspopup="dialog"
+                  title=${`${restrictedFilters} restricted advanced filters`}
+                  @click=${(event) => this._openFilterMenu(event, 'schedule')}>
+                  <span class="wide-label">Advanced</span><span class="compact-label" aria-hidden="true">&#8230;</span>${restrictedFilters > 0 ? ` (${restrictedFilters})` : ''}</button>
+                ${filters.dimensions.map((dimension) => {
+                  const active = dimension.options.filter((option) => option.active);
+                  const label = `${dimension.title}: ${active.length === 0 ? 'None' : active.map((option) => option.label).join(', ')}`;
+                  return html`<button class="advanced-filter" data-filter-dimension=${dimension.key}
+                    data-selection=${active.length === 0 ? 'none' : active.length === dimension.options.length ? 'all' : 'some'}
+                    title=${label} aria-label=${label} ?disabled=${dimension.options.every((option) => option.disabled)}
+                    @click=${() => cmd.filter.cycleTaskFilter(dimension.key)}>
+                    ${renderFilterDimensionIcon(dimension.key)}</button>`;
+                })}
               </div>
-              <span class="task-summary">${this._taskLayout.searchFeatures.length} tasks</span>
             </div>
-            <div class="filter-dimensions" role="group" aria-label="Selected task filters">
-              ${filters.dimensions.map((dimension) => {
-                const active = dimension.options.filter((option) => option.active);
-                const label = `${dimension.title}: ${active.length === 0 ? 'None' : active.map((option) => option.label).join(', ')}`;
-                return html`<span class="filter-dimension-marker" data-filter-dimension=${dimension.key}
-                  data-selection=${active.length === 0 ? 'none' : active.length === dimension.options.length ? 'all' : 'some'}
-                  role="img" aria-label=${label} title=${label} tabindex="0">
-                  ${renderFilterDimensionIcon(dimension.key)}</span>`;
-              })}
+            <div class="focus-mode" role="group" aria-label="Work shown">
+              <button aria-pressed=${!teamFocus} title="Show all scoped plan work"
+                @click=${() => cmd.view.setTaskViewMode('plan')}>Plan</button>
+              <button aria-pressed=${teamFocus} data-team-focus="true" ?disabled=${teams.length === 0}
+                title="Show selected teams in their full work context"
+                @click=${() => cmd.view.setTaskViewMode('team')}>Team focus</button>
             </div>
-            <div class="task-search">
+            <div class="filter-summary">
+              <button class="filter-summary-label" aria-label="Team drill-down" title="Open team drill-down"
+                aria-haspopup="dialog" @click=${(event) => this._openFilterMenu(event, 'teams')}>Teams</button>
+              <span class="filter-markers" role="group" aria-label="Team choices">
+                ${teams.map((team) => html`<button class="team-choice" aria-label=${team.name}
+                  title=${`${team.name}: ${team.selected ? 'selected' : 'not selected'}`}
+                  aria-pressed=${team.selected} @click=${() => this._toggleTeamFocus(team)}>
+                  <span class="team-color" style="background:${team.color}"></span>
+                  <span class="team-name">${team.short ? team.short : team.name}</span></button>`)}
+                ${teams.length === 0 ? html`<span class="filter-empty">No teams</span>` : ''}
+              </span>
+              <span class="filter-summary-count">${selectedTeams.length}/${teams.length}</span>
+            </div>
+            <div class="filter-summary">
+              <button class="filter-summary-label" aria-label="Task types" title="Open task type filters"
+                aria-haspopup="dialog" @click=${(event) => this._openFilterMenu(event, 'types')}>Types</button>
+              <span class="filter-markers" role="group" aria-label="Selected task types">
+              ${filters.types.map((type) => html`<button class="filter-choice" data-filter-type=${type.key}
+                aria-label=${type.name} title=${`${type.name}: ${type.active ? 'shown' : 'hidden'}`}
+                aria-pressed=${type.active} ?disabled=${type.disabled}
+                @click=${() => cmd.filter.setTaskTypeSelected(type.key, !type.active)}>
+                <span class="filter-marker">${getIconTemplate(type.name)}</span></button>`)}
+              </span>
+              <span class="filter-summary-count">${selectedTypes.length}/${filters.types.length}</span>
+            </div>
+            <div class="filter-summary">
+              <button class="filter-summary-label" aria-label="States" title="Open state filters"
+                aria-haspopup="dialog" @click=${(event) => this._openFilterMenu(event, 'states')}>States</button>
+              <span class="filter-markers" role="group" aria-label="Selected states">
+                ${filters.states.map((state) => html`<button class="filter-choice filter-state" data-filter-state=${state.name}
+                  aria-label=${state.name} title=${`${state.name}: ${state.active ? 'shown' : 'hidden'}`}
+                  style="background:${state.color}" aria-pressed=${state.active} ?disabled=${state.disabled}
+                  @click=${() => cmd.filter.toggleStateSelected(state.name)}></button>`)}
+              </span>
+              <span class="filter-summary-count">${selectedStates.length}/${filters.states.length}</span>
+            </div>
+            `}
+        </div>
+      </div>
+
+      <div id="scroll-container">
+        <div class="task-column-heading" ?hidden=${packed || collapsed} @mousedown=${(event) => event.stopPropagation()}>
+          <span class="task-column-title">Tasks</span>
+          <div class="task-search">
             <input type="search" aria-label="Search tasks" placeholder="Search tasks" .value=${this._query}
               @input=${(event) => { this._query = event.target.value; }}
               @keydown=${(event) => {
@@ -727,12 +835,7 @@ export class TimelineBoard extends LitElement {
             <button title="Next matching task" aria-label="Next matching task" ?disabled=${this._searchStatus.count === 0}
               @click=${() => this.shadowRoot.querySelector('task-list').navigateMatch(1)}>&#8595;</button>
             </div>
-            `}
         </div>
-      </div>
-
-      <div id="scroll-container">
-        <div class="task-column-heading" ?hidden=${packed || collapsed}>Tasks</div>
         <div class="column-resizer" ?hidden=${packed} role="separator" tabindex="0" aria-label="Task column width"
           aria-orientation="vertical" aria-valuemin="8" aria-valuemax="600" aria-valuenow=${columnWidth}
           @mousedown=${(event) => event.stopPropagation()}

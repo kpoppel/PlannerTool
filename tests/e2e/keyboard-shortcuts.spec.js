@@ -174,7 +174,7 @@ test.describe('Board letter shortcuts', () => {
       const root = button.getRootNode();
       return {
         button: button.getBoundingClientRect().left,
-        team: root.querySelector('.team-drilldown-row').getBoundingClientRect().left,
+        team: root.querySelector('.team-color-button').getBoundingClientRect().left,
         heading: root.querySelector('#task-view-label').getBoundingClientRect().left,
       };
     });

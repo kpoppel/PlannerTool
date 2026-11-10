@@ -44,14 +44,14 @@ test.describe('Left Sidebar - filters and data funnel', () => {
   });
 
   test('Team Drill-down explains when the selected plan has no assigned teams', async ({ page }) => {
-    await page.getByRole('button', { name: 'Teams', exact: true }).click();
+    await page.getByRole('button', { name: 'Filters', exact: true }).click();
     await expect(
       page.locator('board-controls-menu').getByText('This plan has no teams assigned.')
     ).toBeVisible();
   });
 
   test('task filter option toggles active class when enabled', async ({ page }) => {
-    await page.getByRole('button', { name: 'Task Filters', exact: true }).click();
+    await page.getByRole('button', { name: 'Filters', exact: true }).click();
     const stateBefore = await page.evaluate(() => {
       const root = document.querySelector('top-menu-bar').shadowRoot.querySelector('board-controls-menu').shadowRoot;
       const option = root?.querySelector('.filter-dimensions .filter-option');

@@ -41,14 +41,20 @@ describe('TopMenu Data Funnel', () => {
   }
 
   it('opens board controls without mounting a sidebar and restores focus on Escape', async () => {
-    for (const [name, label] of [['teams', 'Teams'], ['hierarchy', 'Hierarchy'], ['filters', 'Task Filters']]) {
+    expect(menu.shadowRoot.querySelector('#teamsMenuBtn')).to.equal(null);
+    expect(menu.shadowRoot.querySelector('#hierarchyMenuBtn')).to.equal(null);
+    for (const [name, label] of [['filters', 'Filters']]) {
       const trigger = menu.shadowRoot.querySelector(`#${name}MenuBtn`);
       expect(trigger, label).to.exist;
       trigger.click();
       await menu.updateComplete;
       const controls = menu.shadowRoot.querySelector('board-controls-menu');
       await controls.updateComplete;
-      expect(controls.section).to.equal(name);
+      expect(controls.section).to.equal('all');
+      expect(controls.getAttribute('aria-label')).to.equal(label);
+      expect(controls.shadowRoot.querySelector('[aria-label="Teams"]')).to.exist;
+      expect(controls.shadowRoot.querySelector('[aria-label="Hierarchy"]')).to.exist;
+      expect(controls.shadowRoot.querySelector('[aria-label="Task filters"]')).to.exist;
       expect(document.querySelector('app-sidebar')).to.equal(null);
       controls.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
       await menu.updateComplete;

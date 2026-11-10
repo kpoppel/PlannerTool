@@ -81,7 +81,7 @@ describe('Sidebar task-type filter', () => {
       .map((heading) => [...heading.childNodes]
         .filter((node) => node.nodeType === Node.TEXT_NODE)
         .map((node) => node.textContent).join('').trim())).to.deep.equal([
-      'Task Types', 'State', 'Schedule', 'Allocation', 'Hierarchy', 'Relations',
+      'Task Types', 'State', 'Schedule', 'Allocation', 'Parent links', 'Relations',
     ]);
   });
 
@@ -262,7 +262,7 @@ describe('Sidebar task-type filter', () => {
 
     const buttons = sidebar.shadowRoot.querySelectorAll('.team-view-mode button');
     expect(Array.from(buttons, (button) => button.textContent.trim())).to.deep.equal([
-      'Plan overview', 'Team focus',
+      'All plan work', 'Selected teams',
     ]);
     expect(buttons[0].getAttribute('aria-pressed')).to.equal('true');
 
@@ -289,9 +289,10 @@ describe('Sidebar task-type filter', () => {
     expect(hierarchy.textContent).to.include('1 of 3 branches folded');
     const buttons = hierarchy.querySelectorAll('button');
     expect(buttons).to.have.length(4);
-    expect(Array.from(buttons, (button) => button.textContent.trim())).to.deep.equal([
-      'Fold all', 'Fold one level', 'Expand one level', 'Expand all',
+    expect(Array.from(buttons, (button) => button.getAttribute('aria-label'))).to.deep.equal([
+      'Collapse all', 'Collapse one level', 'Expand one level', 'Expand all',
     ]);
+    expect(hierarchy.querySelector('.segmented-group')).to.equal(null);
     const actions = [];
     const onAction = ({ action }) => actions.push(action);
     bus.on(BoardEvents.FOLD_ACTION, onAction);
@@ -492,6 +493,16 @@ describe('Sidebar task-type filter', () => {
     expect(types()).to.deep.equal(['Epic', 'Feature']);
     expect(toggle.getAttribute('aria-expanded')).to.equal('false');
     expect(root.textContent).to.include('Connectivity & Interaction');
+    expect(root.querySelector('.team-selection-status').textContent).to.include('1 of 2');
+    const selectedRow = root.querySelector('.team-drilldown-row');
+    expect(selectedRow.querySelector('.team-selection-check').getAttribute('data-selected')).to.equal('true');
+    expect(selectedRow.querySelector('button')).to.equal(null);
+    expect(root.querySelector('button.team-color-button').getAttribute('aria-label'))
+      .to.equal('Change color for Connectivity & Interaction');
+    const changeColor = sinon.stub(sidebar, '_openTeamColorPopover').resolves();
+    root.querySelector('button.team-color-button').click();
+    expect(changeColor.calledOnce).to.equal(true);
+    expect(selection.called).to.equal(false);
     const empty = root.querySelectorAll('.team-drilldown-row')[1].querySelector('.chip-badge');
     expect(empty.textContent).to.equal('');
     expect(empty.getAttribute('aria-label')).to.equal('Epic: 0');

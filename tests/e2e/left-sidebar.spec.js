@@ -37,11 +37,11 @@ test.describe('Task list and board menus', () => {
   });
 
   test('task filters section renders options', async ({ page }) => {
-    await page.getByRole('button', { name: 'Task Filters', exact: true }).click();
+    await page.getByRole('button', { name: 'Filters', exact: true }).click();
     const controls = page.locator('board-controls-menu');
     expect(await controls.locator('.filter-dimensions .filter-option').count()).toBeGreaterThan(2);
     await controls.press('Escape');
-    await expect(page.getByRole('button', { name: 'Task Filters', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeFocused();
   });
 
   test('aligns frozen labels with board rows while scrolling and restores titles when collapsed', async ({ page }) => {

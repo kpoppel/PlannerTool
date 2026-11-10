@@ -508,7 +508,7 @@ test('descendant scope includes linked context without leaking owners or context
   const descendants = page.locator('scope-menu .scope-option').filter({ hasText: 'Descendant work' });
   if (await descendants.getAttribute('aria-pressed') !== 'true') await descendants.click();
   await page.locator('top-menu-bar #scopeMenuBtn').click();
-  await page.getByRole('button', { name: 'Teams', exact: true }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.locator('board-controls-menu').getByRole('button', { name: 'Plan overview', exact: true }).click();
   const cards = page.locator('feature-card-lit');
   const cardIds = () => cards.evaluateAll((elements) => elements
@@ -579,7 +579,7 @@ test('team focus keeps allocated work, its ancestors and unallocated descendants
     if (await option.getAttribute('aria-pressed') !== 'true') await option.click();
   }
   await page.locator('top-menu-bar #scopeMenuBtn').click();
-  await page.getByRole('button', { name: 'Teams', exact: true }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   const sidebar = page.locator('board-controls-menu');
   await sidebar.getByRole('button', { name: 'Plan overview', exact: true }).click();
   const selectedRow = sidebar.locator('.team-drilldown-row[title="Selected Team"]');

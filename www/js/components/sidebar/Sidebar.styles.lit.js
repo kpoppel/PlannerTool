@@ -227,7 +227,7 @@ export const SIDEBAR_STYLES = css`
       grid-template-columns: subgrid;
     }
     .team-drilldown-row {
-      grid-column: 1 / -1;
+      grid-column: 2 / -1;
       width: 100%;
       min-width: 0;
       position: relative;
@@ -290,6 +290,17 @@ export const SIDEBAR_STYLES = css`
       border-color: transparent;
       color: var(--color-sidebar-text);
     }
+    .team-name-col .team-name-line { display: flex; align-items: center; gap: 6px; }
+    .team-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .team-selection-check { display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 12px; width: 12px; height: 12px; border: 1px solid #ffffff80;
+      border-radius: 2px; box-sizing: border-box; }
+    .team-selection-check[data-selected='true'] { background: #197c76; border-color: #80cec1; }
+    .team-selection-check[data-selected='true']::after { content: '\\2713'; font-size: 10px; color: white; }
+    .team-color-button { grid-column: 1; width: 14px; height: 26px; padding: 0;
+      border: 1px solid #ffffff40; border-radius: 3px; cursor: pointer; }
+    .team-color-button:focus-visible { outline: 2px solid #5cc8ff; outline-offset: 2px; }
+    .team-selection-status { margin: 12px 0 4px; font-size: 11px; opacity: .8; }
     .team-drilldown-row .chip-badge {
       width: 32px;
       height: 20px;
@@ -478,8 +489,8 @@ export const SIDEBAR_STYLES = css`
       background: rgba(255, 255, 255, 0.1);
     }
     .filter-option.active {
-      background: rgba(102, 126, 234, 0.25);
-      border-color: rgba(102, 126, 234, 0.4);
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.08);
     }
     .filter-checkbox {
       width: 14px;
@@ -493,8 +504,8 @@ export const SIDEBAR_STYLES = css`
       flex-shrink: 0;
     }
     .filter-option.active .filter-checkbox {
-      background: rgba(102, 126, 234, 0.8);
-      border-color: rgba(102, 126, 234, 1);
+      background: #197c76;
+      border-color: #80cec1;
     }
     .filter-checkbox::after {
       content: '✓';
@@ -592,19 +603,24 @@ export const SIDEBAR_STYLES = css`
       white-space: nowrap;
     }
 
-    .hierarchy-fold-group { margin-top: 12px; }
+    .hierarchy-fold-group { margin-top: 0; }
     .hierarchy-fold-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.85rem; }
     .hierarchy-fold-heading .group-label { margin-bottom: 0; }
     .hierarchy-fold-status { font-size: 11px; opacity: 0.7; text-align: right; }
-    .hierarchy-fold-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 5px; }
-    .hierarchy-fold-actions .segment-btn {
+    .hierarchy-fold-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px; margin-top: 10px; }
+    .hierarchy-fold-actions .fold-action {
+      display: flex; align-items: center; gap: 8px; text-align: left;
       min-width: 0;
-      min-height: 36px;
-      padding: 4px 2px;
-      font-size: 11px;
-      line-height: 1.15;
-      white-space: normal;
+      min-height: 32px;
+      padding: 6px 8px;
+      font: inherit; font-size: 12px; color: inherit; cursor: pointer;
+      border: 1px solid #ffffff30; border-radius: 3px; background: #ffffff08;
     }
+    .fold-action span { flex: 0 0 14px; text-align: center; font-size: 16px; }
+    .fold-action:hover:not(:disabled) { background: #ffffff20; }
+    .fold-action:disabled { opacity: .35; cursor: default; }
+    .fold-action:focus-visible { outline: 2px solid #5cc8ff; outline-offset: 2px; }
 
     /* Sidebar-specific chips and lists */
     .sidebar-chip {

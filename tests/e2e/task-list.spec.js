@@ -102,6 +102,30 @@ test('plan scenario team and saved view menu rows share a compact height', async
   await page.screenshot({ path: testInfo.outputPath('compact-menu-rows-desktop.png'), fullPage: true });
 });
 
+test('top menu exposes off-screen menus at compact desktop widths', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.locator('top-menu-bar').evaluate((menu) => {
+    menu.projects = menu.projects.map((project) => ({ ...project,
+      name: 'Release planning and cross-team coordination',
+    }));
+  });
+  const next = page.getByRole('button', { name: 'Later menus', exact: true });
+  const previous = page.getByRole('button', { name: 'Earlier menus', exact: true });
+  await expect(next).toBeVisible();
+  await expect(previous).toBeDisabled();
+  await next.click();
+  await expect(next).toBeDisabled();
+  await expect(previous).toBeEnabled();
+  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  await expect(tools).toBeInViewport({ ratio: 1 });
+  await tools.click();
+  await expect.poll(() => page.locator('top-menu-bar').evaluate((menu) => menu.openMenu)).toBe('tools');
+  await page.keyboard.press('Escape');
+  await previous.click();
+  await expect(previous).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^View/ })).toBeInViewport({ ratio: 1 });
+});
+
 test('view menu places card size and task sort side by side', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'View', exact: true }).click();
   const menu = page.locator('view-menu');
@@ -416,53 +440,162 @@ test('swimlane tags stay on the board and pin below the header while their lane 
   await page.screenshot({ path: testInfo.outputPath('swimlane-tags-desktop.png') });
 });
 
-test('search and quick status fill the graph corner without a strip below the timeline', async ({ page }, testInfo) => {
+test('team focus stays visible and the overview fits the graph height', async ({ page }) => {
+  await page.evaluate(() => {
+    window.taskBoardStore.setState((state) => ({ ...state,
+      baseline: { ...state.baseline,
+        teams: [{ id: 'a', name: 'Platform', short: 'PLT', color: '#347ab3', kind: 'team', group_id: null },
+          { id: 'b', name: 'Experience', short: 'EXP', color: '#ba6546', kind: 'team', group_id: null }],
+        features: state.baseline.features.map((feature, index) => ({ ...feature,
+          capacity: index === 2 ? [{ team: 'a', capacity: 50 }]
+            : index >= 7 ? [{ team: 'b', capacity: 50 }] : [] })),
+      }, selection: { ...state.selection, teamIds: ['a'] },
+    }));
+  });
+  const overview = page.locator('timeline-board .board-overview');
+  await expect(overview.getByRole('button', { name: 'Team focus', exact: true })).toBeVisible();
+  const platform = overview.getByRole('button', { name: 'Platform', exact: true });
+  const experience = overview.getByRole('button', { name: 'Experience', exact: true });
+  await expect(platform).toHaveAttribute('aria-pressed', 'true');
+  await expect(experience).toHaveAttribute('aria-pressed', 'false');
+  await overview.getByRole('button', { name: 'Team focus', exact: true }).click();
+  await expect(page.locator('task-list [data-task-id="task-0"]')).toBeVisible();
+  await expect(page.locator('task-list [data-task-id="task-1"]')).toBeVisible();
+  await expect(page.locator('task-list [data-task-id="task-6"]')).toBeVisible();
+  await expect(page.locator('task-list [data-task-id="task-8"]')).toHaveCount(0);
+  await experience.click();
+  await expect(experience).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('task-list [data-task-id="task-8"]')).toHaveCount(1);
+  await overview.getByRole('button', { name: 'Plan', exact: true }).click();
+  await platform.click();
+  await expect(overview.getByRole('button', { name: 'Team focus', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const dimensions = await page.locator('timeline-board').evaluate((board) => {
+    const root = board.shadowRoot;
+    return { overview: root.querySelector('.board-overview').getBoundingClientRect().height,
+      graphBottom: root.querySelector('maingraph-lit').shadowRoot.querySelector('canvas').getBoundingClientRect().bottom,
+      timelineTop: root.querySelector('timeline-lit').getBoundingClientRect().top };
+  });
+  expect(dimensions.overview).toBe(120);
+  expect(Math.abs(dimensions.graphBottom - dimensions.timelineTop)).toBeLessThan(1);
+  await page.setViewportSize({ width: 1366, height: 580 });
+  const teamMenu = overview.getByRole('button', { name: 'Team drill-down', exact: true });
+  await teamMenu.click();
+  await expect(page.getByRole('dialog', { name: 'Filters', exact: true })).toBeVisible();
+  await expect(page.locator('board-controls-menu .team-view-mode button[aria-pressed="true"]'))
+    .toHaveText('Selected teams');
+  const menuBounds = await page.locator('board-controls-menu .controls').evaluate((controls) => ({
+    bottom: controls.getBoundingClientRect().bottom,
+    viewport: innerHeight,
+  }));
+  expect(menuBounds.bottom).toBeLessThanOrEqual(menuBounds.viewport - 8);
+  await page.keyboard.press('Escape');
+  await expect(teamMenu).toBeFocused();
+  await overview.getByRole('button', { name: 'States', exact: true }).click();
+  const stateFilter = page.locator('board-controls-menu').getByRole('checkbox', { name: 'Active', exact: true });
+  await expect(stateFilter).toBeFocused();
+  await expect(stateFilter).toBeInViewport();
+  await page.keyboard.press('Escape');
+  const separator = page.getByRole('separator', { name: 'Task column width' });
+  for (let step = 0; step < 5; step += 1) await separator.press('ArrowLeft');
+  const narrow = await overview.locator('.task-toolbar').evaluate((toolbar) => ({
+    height: toolbar.getBoundingClientRect().height,
+    overflowing: [...toolbar.children].some((row) => row.scrollWidth > row.clientWidth + 1),
+  }));
+  expect(narrow.height).toBe(120);
+  expect(narrow.overflowing).toBe(false);
+});
+
+test('filter overview keeps toggle choices visible and search shares the Tasks header', async ({ page }, testInfo) => {
   const overview = page.locator('timeline-board .board-overview');
   const search = page.getByRole('searchbox', { name: 'Search tasks' });
-  await expect(overview.getByRole('searchbox', { name: 'Search tasks' })).toBeVisible();
-  await expect(overview.locator('.task-summary')).toContainText('70 tasks');
+  await expect(overview.getByRole('searchbox', { name: 'Search tasks' })).toHaveCount(0);
+  await expect(overview.getByRole('heading', { name: 'View context', exact: true })).toBeVisible();
+  await expect(overview.locator('.task-summary')).toHaveCount(0);
+  const typeSummary = overview.getByRole('button', { name: 'Task types', exact: true });
+  await typeSummary.click();
+  await expect(page.getByRole('dialog', { name: 'Filters', exact: true })).toBeVisible();
+  await expect(page.locator('board-controls-menu [data-type-key]').first()).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(typeSummary).toBeFocused();
+  await overview.getByRole('button', { name: 'States', exact: true }).click();
+  await expect(page.locator('board-controls-menu').getByRole('checkbox', { name: 'Active', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
   const geometry = await page.locator('timeline-board').evaluate((board) => {
     const root = board.shadowRoot;
     return {
-      searchBottom: root.querySelector('input[type="search"]').getBoundingClientRect().bottom,
-      timelineTop: root.querySelector('timeline-lit').getBoundingClientRect().top,
+      searchMiddle: root.querySelector('input[type="search"]').getBoundingClientRect().y
+        + root.querySelector('input[type="search"]').getBoundingClientRect().height / 2,
+      titleMiddle: root.querySelector('.task-column-title').getBoundingClientRect().y
+        + root.querySelector('.task-column-title').getBoundingClientRect().height / 2,
       timelineBottom: root.querySelector('timeline-lit').shadowRoot.querySelector('.timeline-header')
         .getBoundingClientRect().bottom,
       boardTop: root.querySelector('#board-area').getBoundingClientRect().top,
     };
   });
-  expect(geometry.searchBottom).toBeLessThanOrEqual(geometry.timelineTop);
+  expect(Math.abs(geometry.searchMiddle - geometry.titleMiddle)).toBeLessThan(1);
   expect(Math.abs(geometry.boardTop - geometry.timelineBottom)).toBeLessThan(1);
   await expect(overview.getByRole('group', { name: 'Row height' })).toHaveCount(0);
   await expect(overview.locator('[data-filter-type]')).toHaveCount(7);
-  await expect(overview.locator('[data-filter-type]').first().locator('svg')).toHaveCount(1);
+  const firstType = overview.locator('[data-filter-type]').first();
+  await expect(firstType.locator('svg')).toHaveCount(1);
+  await firstType.click();
+  await expect(firstType).toHaveAttribute('aria-pressed', 'false');
+  await expect(overview.locator('[data-filter-type]')).toHaveCount(7);
+  await firstType.click();
+  await expect(firstType).toHaveAttribute('aria-pressed', 'true');
   await expect(overview.locator('[data-filter-state="Active"]')).toBeVisible();
   const stateColor = await overview.locator('[data-filter-state="Active"]').evaluate((swatch) =>
     getComputedStyle(swatch).backgroundColor);
   expect(stateColor).not.toBe('rgba(0, 0, 0, 0)');
+  const stateChoice = overview.locator('[data-filter-state="Active"]');
+  await stateChoice.click();
+  await expect(stateChoice).toHaveAttribute('aria-pressed', 'false');
+  await expect(stateChoice).toBeVisible();
+  await stateChoice.click();
+  await expect(stateChoice).toHaveAttribute('aria-pressed', 'true');
+  await page.evaluate(() => window.taskBoardCommands.filter.setSidebarDisabledElements({
+    taskTypes: ['["process","epic"]'], states: ['Active'],
+    taskFilters: { schedule: ['unplanned'] },
+  }));
+  await expect(firstType).toBeDisabled();
+  await expect(firstType).toBeVisible();
+  await expect(stateChoice).toBeDisabled();
+  await expect(stateChoice).toBeVisible();
+  await expect(overview.locator('[data-filter-dimension="schedule"]')).toBeEnabled();
+  await page.evaluate(() => window.taskBoardCommands.filter.clearSidebarDisabledElements());
+  await expect(firstType).toBeEnabled();
   for (const dimension of ['schedule', 'allocation', 'hierarchy', 'relations']) {
-    await expect(overview.locator(`[data-filter-dimension="${dimension}"] svg`)).toHaveCount(1);
-    await expect(overview.locator(`[data-filter-dimension="${dimension}"]`)).toHaveAttribute('data-selection', 'all');
+    const control = overview.locator(`[data-filter-dimension="${dimension}"]`);
+    await expect(control.locator('svg')).toHaveCount(1);
+    await expect(control).toHaveAttribute('data-selection', 'all');
   }
+  const schedule = overview.locator('[data-filter-dimension="schedule"]');
+  await schedule.click();
+  await expect(schedule).toHaveAttribute('title', 'Schedule: Planned');
+  await overview.getByRole('button', { name: 'Advanced filters', exact: true }).click();
+  await expect(page.locator('board-controls-menu').getByRole('checkbox', { name: 'Planned', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
   await page.evaluate(() => {
     window.taskBoardCommands.filter.setTaskFilter('schedule', 'unplanned', false);
     window.taskBoardCommands.filter.setTaskTypeSelected('["process","epic"]', false);
   });
-  await expect(overview.locator('[data-filter-type]')).toHaveCount(6);
-  await expect(overview.locator('[data-filter-dimension="schedule"]')).toHaveAttribute('title', 'Schedule: Planned');
-  await expect(overview.locator('[data-filter-dimension="schedule"]')).toHaveAttribute('data-selection', 'some');
+  await expect(overview.locator('[data-filter-type]')).toHaveCount(7);
+  await expect(firstType).toHaveAttribute('aria-pressed', 'false');
+  await expect(schedule).toHaveAttribute('data-selection', 'some');
   await page.evaluate(() => {
     window.taskBoardCommands.filter.setTaskFilter('schedule', 'planned', false);
     window.taskBoardCommands.filter.toggleStateSelected('Active');
   });
-  await expect(overview.locator('[data-filter-dimension="schedule"]')).toHaveAttribute('data-selection', 'none');
-  await expect(overview.getByRole('group', { name: 'Selected states', exact: true })).toHaveText('No states');
+  await expect(schedule).toHaveAttribute('data-selection', 'none');
+  const activeState = overview.locator('[data-filter-state="Active"]');
+  await expect(activeState).toBeVisible();
+  await expect(activeState).toHaveAttribute('aria-pressed', 'false');
   await page.evaluate(() => {
     window.taskBoardCommands.filter.setTaskFilter('schedule', 'planned', true);
     window.taskBoardCommands.filter.toggleStateSelected('Active');
   });
   await expect(overview.locator('[data-filter-state="Active"]')).toBeVisible();
-  await page.getByRole('button', { name: 'Task Filters', exact: true }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   const menu = page.locator('board-controls-menu');
   for (const dimension of ['schedule', 'allocation', 'hierarchy', 'relations']) {
     const icon = overview.locator(`[data-filter-dimension="${dimension}"] path`);
@@ -546,17 +679,23 @@ test('dragging the full-height column edge closed and open retains width and sea
   await page.screenshot({ path: testInfo.outputPath('task-column-resized-desktop.png') });
 });
 
-test('folding is shared by rows, cards and the header hierarchy menu', async ({ page }) => {
+test('folding is shared by rows, cards and the combined Filters menu', async ({ page }) => {
   const row = page.locator('task-list [data-task-id="task-0"]');
   await row.locator('.fold').click();
   await expect(page.locator('task-list [data-task-id="task-6"]')).toHaveCount(0);
   await expect(page.locator('feature-card-lit[data-feature-id="task-6"]')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Hierarchy', exact: true }).click();
+  await expect(page.locator('top-menu-bar #teamsMenuBtn')).toHaveCount(0);
+  await expect(page.locator('top-menu-bar #hierarchyMenuBtn')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+  for (const section of ['Teams', 'Hierarchy', 'Task filters']) {
+    await expect(filters.getByRole('heading', { name: section, exact: true })).toBeVisible();
+  }
   await expect(page.locator('board-controls-menu .hierarchy-fold-status')).toContainText('1 of');
   await page.locator('board-controls-menu').getByRole('button', { name: 'Expand all', exact: true }).click();
   await expect(page.locator('task-list [data-task-id="task-6"]')).toHaveCount(1);
   await page.locator('board-controls-menu').press('Escape');
-  await expect(page.getByRole('button', { name: 'Hierarchy', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeFocused();
 });
 
 for (const type of ['Task', 'User Story']) {
@@ -605,8 +744,8 @@ test('group rows stay aligned after filtering and export retains the frozen labe
     return label.getBoundingClientRect().top - group.getBoundingClientRect().top;
   });
   expect(Math.abs(groupDelta)).toBeLessThan(1);
-  await page.getByRole('button', { name: 'Task Filters', exact: true }).click();
-  await expect(page.getByRole('checkbox', { name: 'Planned', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await expect(page.locator('board-controls-menu').getByRole('button', { name: 'Collapse all', exact: true })).toBeFocused();
   const type = page.locator('board-controls-menu .filter-option[data-type-key]').filter({ hasText: 'Epic' });
   await type.press('Space');
   await page.keyboard.press('Escape');

@@ -164,8 +164,8 @@ export function createFilterSelectors(store) {
       return type === undefined ? [] : type.states.filter((state) => state.category !== 'Removed');
     },
 
-    getFeatureStateColors() {
-      return deriveStateColorMap(selectors.getAvailableFeatureStates());
+    getFeatureStateColors(states = selectors.getAvailableFeatureStates()) {
+      return deriveStateColorMap(states);
     },
 
     featurePassesFilters(feature) {

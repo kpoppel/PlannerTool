@@ -19,10 +19,14 @@ export class BoardControlsMenu extends LitElement {
 
   static styles = [SIDEBAR_STYLES, css`
     :host { display: block; width: min(360px, calc(100vw - 16px)); }
-    .controls { padding: 12px; max-height: calc(100vh - 64px); overflow: auto;
+    .controls { box-sizing: border-box; padding: 12px;
+      max-height: var(--board-controls-max-height, calc(100vh - 64px)); overflow: auto;
       background: var(--color-sidebar-bg); color: var(--color-sidebar-text);
       border: 1px solid rgba(255,255,255,.2); border-radius: 4px;
       box-shadow: 0 6px 18px rgba(0,0,0,.25); font-size: 13px; }
+    .controls-section + .controls-section { margin-top: 16px; padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,.2); }
+    .controls-section h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
   `];
 
   constructor() {
@@ -79,21 +83,27 @@ export class BoardControlsMenu extends LitElement {
   render() {
     const model = this._controller.getPresentationModel(this._getTeamDrilldownTeams());
     return html`<section class="controls" aria-label=${this.section}>
-      ${this.section === 'teams' ? renderSidebarTeams({ model: model.teams, actions: {
+      ${this.section === 'all' || this.section === 'teams' ? html`
+        <section class="controls-section" data-filter-section="teams" aria-label="Teams">
+        <h2>Teams</h2>${renderSidebarTeams({ model: model.teams, actions: {
         toggleAll: () => this._toggleAllTeamDrilldown(),
         toggleCounts: () => { this.teamCountsOpen = !this.teamCountsOpen; },
         toggleTeam: (id) => this._toggleTeamDrilldown(id),
         changeColor: (event, id) => this._openTeamColorPopover(event, id),
         setTaskViewMode: (mode) => cmd.view.setTaskViewMode(mode),
-      } }) : ''}
-      ${this.section === 'hierarchy' ? renderSidebarHierarchy({ model: model.hierarchy, actions: {
+      } })}</section>` : ''}
+      ${this.section === 'all' || this.section === 'hierarchy' ? html`
+        <section class="controls-section" aria-label="Hierarchy">
+        <h2>Hierarchy</h2>${renderSidebarHierarchy({ model: model.hierarchy, actions: {
         fold: (action) => bus.emit(BoardEvents.FOLD_ACTION, { action }),
-      } }) : ''}
-      ${this.section === 'filters' ? renderSidebarTaskFilters({ model: model.filters, actions: {
+      } })}</section>` : ''}
+      ${this.section === 'all' || this.section === 'filters' ? html`
+        <section class="controls-section" aria-label="Task filters">
+        <h2>Task filters</h2>${renderSidebarTaskFilters({ model: model.filters, actions: {
         toggleFilter: (dimension, option) => this._toggleTaskFilter(dimension, option),
         toggleState: (name) => this._toggleState(name),
         toggleType: (name) => this._toggleTaskType(name),
-      } }) : ''}
+      } })}</section>` : ''}
     </section>`;
   }
 }

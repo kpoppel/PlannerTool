@@ -43,6 +43,9 @@ export class TopMenuBarLit extends LitElement {
     permissions: { type: Array },
     baseUrl: { type: String },
     manageBackupSnapshots: { type: Boolean },
+    _menusOverflow: { state: true },
+    _menusAtStart: { state: true },
+    _menusAtEnd: { state: true },
   };
 
   static styles = css`
@@ -80,6 +83,13 @@ export class TopMenuBarLit extends LitElement {
       font-weight: 700;
     }
     /* menu items positioned above timeline left edge (right edge of sidebar) */
+    .menu-navigation { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+      min-width: 0; align-items: center; }
+    .menu-scroll { width: 22px; height: 28px; padding: 0; border: 0; border-radius: 3px;
+      background: #ffffff10; color: white; font-size: 22px; cursor: pointer; }
+    .menu-scroll:disabled { opacity: .3; cursor: default; }
+    .menu-scroll[hidden] { display: none; }
+    .menu-scroll:focus-visible { outline: 2px solid #5cc8ff; outline-offset: -2px; }
     .menu-items {
       display: flex;
       gap: 8px;
@@ -92,6 +102,7 @@ export class TopMenuBarLit extends LitElement {
       padding: 4px;
     }
     .menu-items::-webkit-scrollbar { display: none; }
+    .menu-items > * { flex-shrink: 0; }
     .menu-right {
       display: flex;
       gap: 12px;
@@ -342,6 +353,10 @@ export class TopMenuBarLit extends LitElement {
     };
     this.scopeContext = { parent: false, child: false, dependency: false, otherAllocations: false };
     this.menuPlugins = [];
+    this._menusOverflow = false;
+    this._menusAtStart = true;
+    this._menusAtEnd = false;
+    this._menuResizeObserver = new ResizeObserver(() => this._updateMenuOverflow());
     this._notifications = new StoreController(this, sel.ui.notifications);
     this._ensureGlobalMenuStyles();
   }
@@ -426,6 +441,17 @@ export class TopMenuBarLit extends LitElement {
     this._onPluginMenusChanged();
     this._onMenuResize = () => this._closeMenu(false);
     window.addEventListener('resize', this._onMenuResize);
+    this._menuResizeObserver.observe(this);
+    this._onFilterOverviewOpen = (event) => {
+      this._menuButton = event.detail.trigger;
+      this._menuButtonRect = this._menuButton.getBoundingClientRect();
+      this.openMenu = 'filters';
+      this._menuElement = null;
+      this._filterGroup = event.detail.group;
+      this._focusBoardControls = true;
+      this.requestUpdate();
+    };
+    document.addEventListener('task-filter-menu-open', this._onFilterOverviewOpen);
 
     if (this.application === 'admin') return;
 
@@ -517,6 +543,8 @@ export class TopMenuBarLit extends LitElement {
     bus.off(PluginEvents.UNREGISTERED, this._onPluginMenusChanged);
     bus.off(PluginEvents.MENU_STATUS_CHANGED, this._onPluginMenusChanged);
     if (this._onMenuResize) window.removeEventListener('resize', this._onMenuResize);
+    document.removeEventListener('task-filter-menu-open', this._onFilterOverviewOpen);
+    this._menuResizeObserver.disconnect();
 
     // Clean up event listeners
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
@@ -559,6 +587,7 @@ export class TopMenuBarLit extends LitElement {
 
   _toggleMenu(menuName, e) {
     e.stopPropagation();
+    this._filterGroup = null;
     if (menuName.startsWith('plugin:')) {
       const metadata = this.menuPlugins.find((plugin) => `plugin:${plugin.id}` === menuName);
       if (!metadata) throw new Error(`Plugin menu ${menuName} is not registered`);
@@ -574,7 +603,7 @@ export class TopMenuBarLit extends LitElement {
     this._menuElement = null;
 
     if (this.openMenu) {
-      if (['teams', 'hierarchy', 'filters'].includes(menuName)) this._focusBoardControls = true;
+      if (menuName === 'filters') this._focusBoardControls = true;
       if (menuName === 'settings') this._focusSettingsMenu = true;
       if (menuName === 'notifications') cmd.ui.markNotificationsRead();
       if (menuName.startsWith('plugin:')) {
@@ -614,13 +643,31 @@ export class TopMenuBarLit extends LitElement {
       .filter((element) => element instanceof HTMLElement);
   }
 
+  _updateMenuOverflow() {
+    if (this.application === 'admin') return;
+    const menus = this.shadowRoot.querySelector('.menu-items');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+    if (menus === null) return;
+    this._menusOverflow = menus.scrollWidth > menus.clientWidth + 1;
+    this._menusAtStart = menus.scrollLeft <= 1;
+    this._menusAtEnd = menus.scrollLeft + menus.clientWidth >= menus.scrollWidth - 1;
+  }
+
+  _scrollMenus(direction) {
+    const menus = this.shadowRoot.querySelector('.menu-items');
+    menus.scrollBy({ left: direction * menus.clientWidth, behavior: 'smooth' });
+  }
+
   async updated() {
+    this._updateMenuOverflow();
     if (this._focusBoardControls) {
       this._focusBoardControls = false;
       const controls = this.shadowRoot.querySelector('board-controls-menu');
       await controls.updateComplete;
       if (controls.isConnected) {
-        const first = controls.shadowRoot.querySelector('button:not([disabled]), [tabindex="0"]');
+        const first = controls.shadowRoot.querySelector(this._filterGroup === null
+          ? 'button:not([disabled]), [tabindex="0"]'
+          : `[data-filter-section="${this._filterGroup}"] button:not([disabled]), [data-filter-section="${this._filterGroup}"] [tabindex="0"]`);
         // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
         if (first) first.focus();
       }
@@ -751,7 +798,11 @@ export class TopMenuBarLit extends LitElement {
         </div>
 
         ${this.application === 'admin' ? html`<div class="menu-items">Administration</div>` : html`
-        <div class="menu-items" role="menubar" aria-label="Main menus" @scroll=${() => this._closeMenu(false)}>
+        <div class="menu-navigation">
+        <button class="menu-scroll" ?hidden=${!this._menusOverflow} ?disabled=${this._menusAtStart}
+          aria-label="Earlier menus" title="Earlier menus" @click=${() => this._scrollMenus(-1)}>&#8249;</button>
+        <div class="menu-items" role="menubar" aria-label="Main menus"
+          @scroll=${() => { this._closeMenu(false); this._updateMenuOverflow(); }}>
           <div
             class="menu-item ${this.openMenu === 'view' ? 'active' : ''}"
             id="viewMenuBtn"
@@ -790,11 +841,9 @@ export class TopMenuBarLit extends LitElement {
                 : this.selectedProjectsCount}</span>`
             : ''}
           </div>
-          ${[['teams', 'Teams'], ['hierarchy', 'Hierarchy'], ['filters', 'Task Filters']].map(([name, label]) => html`
-            <button class="menu-item ${this.openMenu === name ? 'active' : ''}" id=${`${name}MenuBtn`}
-              aria-haspopup="dialog" aria-expanded=${this.openMenu === name ? 'true' : 'false'}
-              @click=${(event) => this._toggleMenu(name, event)}>${label}</button>
-          `)}
+          <button class="menu-item ${this.openMenu === 'filters' ? 'active' : ''}" id="filtersMenuBtn"
+            aria-haspopup="dialog" aria-expanded=${this.openMenu === 'filters' ? 'true' : 'false'}
+            @click=${(event) => this._toggleMenu('filters', event)}>Filters</button>
           <div
             class="menu-item ${this.openMenu === 'scope' ? 'active' : ''}"
             id="scopeMenuBtn"
@@ -819,6 +868,9 @@ export class TopMenuBarLit extends LitElement {
             Tools
           </div>
           ${this._renderPluginTriggers('after-tools')}
+        </div>
+        <button class="menu-scroll" ?hidden=${!this._menusOverflow} ?disabled=${this._menusAtEnd}
+          aria-label="Later menus" title="Later menus" @click=${() => this._scrollMenus(1)}>&#8250;</button>
         </div>`}
 
         <div class="menu-right">
@@ -897,13 +949,11 @@ export class TopMenuBarLit extends LitElement {
     `;
 
     switch (this.openMenu) {
-      case 'teams':
-      case 'hierarchy':
       case 'filters':
-        return html`<board-controls-menu .section=${this.openMenu}
-          style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;left:${Math.max(8,
+        return html`<board-controls-menu section="all"
+          style="--board-controls-max-height:calc(100vh - ${this._menuButtonRect.bottom + 12}px);position:fixed;top:${this._menuButtonRect.bottom + 4}px;left:${Math.max(8,
             Math.min(this._menuButtonRect.left, window.innerWidth - 376))}px;z-index:2000"
-          role="dialog" aria-label=${this._menuButton.textContent.trim()}
+          role="dialog" aria-label="Filters"
           @keydown=${this._onMenuKeyDown}></board-controls-menu>`;
       case 'settings':
         return html`<div class="plugin-menu-popover settings-menu" id="settingsMenu" role="menu" aria-label="Settings"
