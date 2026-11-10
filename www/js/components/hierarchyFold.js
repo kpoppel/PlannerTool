@@ -1,8 +1,6 @@
-import { displayTypes, featureTypeKey } from '../application/shared/workItemDisplay.js';
 import { featureHasEligibleParent } from '../application/shared/featureProjection.js';
 
 export function buildFoldModel(features, sections, folded, display) {
-  const types = new Map(displayTypes(display).map((type) => [type.key, type]));
   const byId = new Map(features.map((feature) => [String(feature.id), feature]));
   const children = new Map(features.map((feature) => [String(feature.id), []]));
   const roots = [];
@@ -11,10 +9,7 @@ export function buildFoldModel(features, sections, folded, display) {
     const parentId = feature.parentId && String(feature.parentId);
     const id = String(feature.id);
     const parent = byId.get(parentId);
-    const type = types.get(featureTypeKey(feature));
-    const parentType = parent === undefined ? undefined : types.get(featureTypeKey(parent));
-    if (parent !== undefined && type !== undefined && parentType !== undefined
-      && type.processId === parentType.processId && type.level === parentType.level + 1
+    if (parent !== undefined
       && featureHasEligibleParent(feature, parent) && sections.get(id) === sections.get(parentId)) {
       children.get(parentId).push(feature);
     } else {

@@ -416,6 +416,66 @@ test('swimlane tags stay on the board and pin below the header while their lane 
   await page.screenshot({ path: testInfo.outputPath('swimlane-tags-desktop.png') });
 });
 
+test('search and quick status fill the graph corner without a strip below the timeline', async ({ page }, testInfo) => {
+  const overview = page.locator('timeline-board .board-overview');
+  const search = page.getByRole('searchbox', { name: 'Search tasks' });
+  await expect(overview.getByRole('searchbox', { name: 'Search tasks' })).toBeVisible();
+  await expect(overview.locator('.task-summary')).toContainText('70 tasks');
+  const geometry = await page.locator('timeline-board').evaluate((board) => {
+    const root = board.shadowRoot;
+    return {
+      searchBottom: root.querySelector('input[type="search"]').getBoundingClientRect().bottom,
+      timelineTop: root.querySelector('timeline-lit').getBoundingClientRect().top,
+      timelineBottom: root.querySelector('timeline-lit').shadowRoot.querySelector('.timeline-header')
+        .getBoundingClientRect().bottom,
+      boardTop: root.querySelector('#board-area').getBoundingClientRect().top,
+    };
+  });
+  expect(geometry.searchBottom).toBeLessThanOrEqual(geometry.timelineTop);
+  expect(Math.abs(geometry.boardTop - geometry.timelineBottom)).toBeLessThan(1);
+  await expect(overview.getByRole('group', { name: 'Row height' })).toHaveCount(0);
+  await expect(overview.locator('[data-filter-type]')).toHaveCount(7);
+  await expect(overview.locator('[data-filter-type]').first().locator('svg')).toHaveCount(1);
+  await expect(overview.locator('[data-filter-state="Active"]')).toBeVisible();
+  const stateColor = await overview.locator('[data-filter-state="Active"]').evaluate((swatch) =>
+    getComputedStyle(swatch).backgroundColor);
+  expect(stateColor).not.toBe('rgba(0, 0, 0, 0)');
+  for (const dimension of ['schedule', 'allocation', 'hierarchy', 'relations']) {
+    await expect(overview.locator(`[data-filter-dimension="${dimension}"] svg`)).toHaveCount(1);
+    await expect(overview.locator(`[data-filter-dimension="${dimension}"]`)).toHaveAttribute('data-selection', 'all');
+  }
+  await page.evaluate(() => {
+    window.taskBoardCommands.filter.setTaskFilter('schedule', 'unplanned', false);
+    window.taskBoardCommands.filter.setTaskTypeSelected('["process","epic"]', false);
+  });
+  await expect(overview.locator('[data-filter-type]')).toHaveCount(6);
+  await expect(overview.locator('[data-filter-dimension="schedule"]')).toHaveAttribute('title', 'Schedule: Planned');
+  await expect(overview.locator('[data-filter-dimension="schedule"]')).toHaveAttribute('data-selection', 'some');
+  await page.evaluate(() => {
+    window.taskBoardCommands.filter.setTaskFilter('schedule', 'planned', false);
+    window.taskBoardCommands.filter.toggleStateSelected('Active');
+  });
+  await expect(overview.locator('[data-filter-dimension="schedule"]')).toHaveAttribute('data-selection', 'none');
+  await expect(overview.getByRole('group', { name: 'Selected states', exact: true })).toHaveText('No states');
+  await page.evaluate(() => {
+    window.taskBoardCommands.filter.setTaskFilter('schedule', 'planned', true);
+    window.taskBoardCommands.filter.toggleStateSelected('Active');
+  });
+  await expect(overview.locator('[data-filter-state="Active"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Task Filters', exact: true }).click();
+  const menu = page.locator('board-controls-menu');
+  for (const dimension of ['schedule', 'allocation', 'hierarchy', 'relations']) {
+    const icon = overview.locator(`[data-filter-dimension="${dimension}"] path`);
+    await expect(menu.locator(`[data-filter-dimension="${dimension}"] path`))
+      .toHaveAttribute('d', await icon.getAttribute('d'));
+  }
+  await page.keyboard.press('Escape');
+  await search.fill('task-6');
+  await search.press('Enter');
+  await expect(page.locator('feature-card-lit[data-feature-id="task-6"]')).toHaveClass(/search-highlight/);
+  await page.screenshot({ path: testInfo.outputPath('task-overview-desktop.png') });
+});
+
 test('search navigates without filtering and task selection opens read-only details', async ({ page }) => {
   const count = await page.locator('task-list [data-task-id]').count();
   const search = page.getByRole('searchbox', { name: 'Search tasks' });
@@ -498,6 +558,30 @@ test('folding is shared by rows, cards and the header hierarchy menu', async ({ 
   await page.locator('board-controls-menu').press('Escape');
   await expect(page.getByRole('button', { name: 'Hierarchy', exact: true })).toBeFocused();
 });
+
+for (const type of ['Task', 'User Story']) {
+  test(`same-type ${type} parents nest and fold rows together with cards`, async ({ page }) => {
+    await page.evaluate((type) => {
+      window.taskBoardStore.setState((state) => ({ ...state,
+        baseline: { ...state.baseline, features: state.baseline.features.map((feature, index) =>
+          index < 7 ? { ...feature, type } : feature) },
+      }));
+    }, type);
+    const parent = page.locator('task-list [data-task-id="task-1"]');
+    const leaf = page.locator('task-list [data-task-id="task-6"]');
+    await expect(parent.locator('.fold')).toBeVisible();
+    await expect(leaf).toBeVisible();
+    expect(Math.abs((await alignment(page, 'task-6')).delta)).toBeLessThan(1);
+    await parent.locator('.fold').click();
+    await expect(leaf).toHaveCount(0);
+    await expect(page.locator('feature-card-lit[data-feature-id="task-6"]')).toHaveCount(0);
+    await expect(page.locator('task-list [data-task-id="task-0"]')).toBeVisible();
+    await parent.locator('.fold').click();
+    await expect(leaf).toBeVisible();
+    await expect(page.locator('feature-card-lit[data-feature-id="task-6"]')).toHaveCount(1);
+    expect(Math.abs((await alignment(page, 'task-6')).delta)).toBeLessThan(1);
+  });
+}
 
 test('group rows stay aligned after filtering and export retains the frozen labels', async ({ page }) => {
   await page.evaluate(() => {

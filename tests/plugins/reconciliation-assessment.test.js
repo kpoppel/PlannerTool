@@ -150,6 +150,7 @@ describe('Reconciliation assessment', () => {
     ['Feature', 'User Story', false], ['Feature', 'Bug', false],
     ['User Story', 'Bug', true], ['Epic', 'User Story', true],
     ['Epic', 'Epic', true], ['Feature', 'Epic', true], ['Task', 'Task', true],
+    ['User Story', 'User Story', true],
   ])('preserves hierarchy checks for %s above %s', (parentType, childType, invalid) => {
     const features = [task('parent', { type: parentType }),
       task('child', { type: childType, parentId: 'parent' })];

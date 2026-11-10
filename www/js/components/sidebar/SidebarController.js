@@ -3,8 +3,7 @@ import { isStoreReady } from '../../application/store.js';
 import { StoreController } from '../../core/StoreController.js';
 import { bus } from '../../core/EventBus.js';
 import { BoardEvents, FeatureEvents } from '../../core/EventRegistry.js';
-import { SIDEBAR_FILTER_DIMENSIONS } from './SidebarTaskFilters.lit.js';
-import { featureTypeKey } from '../../application/shared/workItemDisplay.js';
+import { getTaskFilterPresentation } from './SidebarTaskFilters.lit.js';
 import { findInBoard } from '../board-utils.js';
 
 function selectDependencies(state) {
@@ -88,12 +87,6 @@ export class SidebarController {
 
   getPresentationModel(teams) {
     const taskTypes = sel.feature.getAvailableTaskTypesOrdered();
-    const features = sel.scope.getPresentableContextFeatures();
-    const scopedTypes = new Set(features.map(featureTypeKey));
-    const scopedStates = new Set(features.map((feature) => feature.state));
-    const filters = sel.filter.getTaskFilters();
-    const colors = sel.filter.getFeatureStateColors();
-    const selectedStates = sel.filter.getSelectedFeatureStateSet();
     const teamCounts = new Map(teams.map((team) => [team.id, sel.feature.getCountsForTeam(team.id)]));
     const nonemptyTypes = taskTypes.filter((type) =>
       teams.some((team) => teamCounts.get(team.id).get(type) > 0));
@@ -118,21 +111,7 @@ export class SidebarController {
       },
       hierarchy: { active: this.host.foldActive, foldedCount: this.host.foldedCount,
         foldableCount: this.host.foldableCount, canCollapse: this.host.canCollapse },
-      filters: {
-        dimensions: SIDEBAR_FILTER_DIMENSIONS.map((dimension) => ({ ...dimension,
-          options: dimension.options.map((option) => ({ ...option,
-            active: filters[dimension.key][option.key],
-            disabled: sel.filter.isSidebarControlDisabled('taskFilter', dimension.key, option.key),
-          })),
-        })),
-        states: sel.filter.getAvailableFeatureStates().filter((name) => scopedStates.has(name)).map((name) => ({
-          name, color: colors[name].background, active: selectedStates.has(name),
-          disabled: sel.filter.isSidebarControlDisabled('state', name),
-        })),
-        types: sel.feature.getTaskTypeOptions().filter((type) => scopedTypes.has(type.key))
-          .map((type) => ({ ...type, active: sel.view.isTypeVisible(type.key),
-            disabled: sel.filter.isSidebarControlDisabled('taskType', type.key) })),
-      },
+      filters: getTaskFilterPresentation(),
     };
   }
 }

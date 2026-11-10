@@ -24,6 +24,7 @@ Template - do not change :
 
 ### Changed
 - Show Task Types first and State second in Task Filters, followed by the remaining selectors.
+- Use the space beside the load graph for selected task-type icons, state colors, filter-category indicators and search, removing the empty strip below the timeline header. Match category icons in the overview and filter menu.
 - Align Plan, Scenario, Teams and Saved Views menus with compact rows and inline team abbreviations.
 - Place Cards and Task Sort side by side in the View menu to reduce its height.
 - Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
@@ -40,6 +41,7 @@ Template - do not change :
 
 ### Fixed
 - Render the task list when restored views include context-only tasks without a configured owning plan.
+- Nest and fold tasks by their actual parent links, including same-type parents, while retaining hierarchy-type warnings in health reports.
 - Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
 - Load Help documents and images correctly when the development server runs under an instance sub-path.
 - Clear old sessions atomically when authentication policy changes so later restarts do not reject stale source-bound sessions.

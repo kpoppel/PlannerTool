@@ -48,7 +48,7 @@ describe('normalized work item display', () => {
     expect(isAdjacentTypeParent(display, { ...feature, process_id: 'second' }, story)).toBe(false);
   });
 
-  it('folds adjacent type tiers but never sibling or skipped-tier links', () => {
+  it('folds actual parent links including sibling and skipped-tier types', () => {
     const configured = [{ process_id: 'first', process_name: 'First', tiers: [
       [{ name: 'Epic', states: [] }], [{ name: 'Feature', states: [] }],
       [{ name: 'Story', states: [] }, { name: 'Bug', states: [] }],
@@ -62,11 +62,44 @@ describe('normalized work item display', () => {
     ];
     const model = buildFoldModel(features, new Map(features.map((feature) => [feature.id, 'board'])),
       new Set(['root']), configured);
-    expect(model.visible.map((feature) => feature.id)).toEqual(['root', 'sibling', 'skip']);
+    expect(model.visible.map((feature) => feature.id)).toEqual(['root']);
     expect(model.depth.get('story')).toBe(2);
-    expect(model.depth.get('sibling')).toBe(0);
-    expect(model.counts.get('root')).toBe(2);
+    expect(model.depth.get('sibling')).toBe(3);
+    expect(model.depth.get('skip')).toBe(1);
+    expect(model.counts.get('root')).toBe(4);
   });
+
+  it.each(['Task', 'User Story'])('nests and folds same-type %s parents', (type) => {
+    const features = [
+      { id: 'child', process_id: 'first', type, parentId: 'parent' },
+      { id: 'parent', process_id: 'first', type, parentId: 'root' },
+      { id: 'root', process_id: 'first', type },
+    ];
+    const sections = new Map(features.map((feature) => [feature.id, 'board']));
+    const expanded = buildFoldModel(features, sections, new Set(), display);
+    expect(expanded.visible.map((feature) => feature.id)).toEqual(['root', 'parent', 'child']);
+    expect(expanded.depth.get('child')).toBe(2);
+    expect(expanded.counts.get('root')).toBe(2);
+    const folded = buildFoldModel(features, sections, new Set(['parent']), display);
+    expect(folded.visible.map((feature) => feature.id)).toEqual(['root', 'parent']);
+    expect(folded.hidden.has('child')).toBe(true);
+  });
+
+  it.each(['section', 'child-boundary', 'parent-boundary', 'excluded-child'])(
+    'keeps %s boundaries when folding actual parent links', (boundary) => {
+      const parent = { id: 'parent', process_id: 'first', type: 'Story' };
+      const child = { id: 'child', process_id: 'first', type: 'Story', parentId: 'parent' };
+      if (boundary === 'child-boundary') child.traversalBoundary = true;
+      if (boundary === 'parent-boundary') parent.traversalBoundary = true;
+      if (boundary === 'excluded-child') parent.excludedChildIds = ['child'];
+      const sections = new Map([['parent', 'board'],
+        ['child', boundary === 'section' ? 'other' : 'board']]);
+      const model = buildFoldModel([parent, child], sections, new Set(['parent']), display);
+      expect(model.visible.map((feature) => feature.id)).toEqual(['parent', 'child']);
+      expect(model.depth.get('child')).toBe(0);
+      expect(model.counts.size).toBe(0);
+    },
+  );
 });
 
 describe('application/shared/stateDerivations', () => {

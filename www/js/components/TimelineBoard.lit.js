@@ -26,6 +26,8 @@ import { boardCoords } from '../services/BoardCoordinateService.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, TimelineEvents, BoardEvents } from '../core/EventRegistry.js';
 import { calcTodayX, setBoardZoom } from './board-utils.js';
+import { getIconTemplate } from '../services/IconService.js';
+import { getTaskFilterPresentation, renderFilterDimensionIcon } from './sidebar/SidebarTaskFilters.lit.js';
 import './TaskList.lit.js';
 
 const BOARD_ZOOM_STEP = 0.1;
@@ -52,6 +54,7 @@ export class TimelineBoard extends LitElement {
     super();
     this.boardZoom = 1;
     this._view = new StoreController(this, (state) => state.view.options);
+    this._filterSelection = new StoreController(this, (state) => state.selection);
     this._taskLayout = { height: 0, rows: [], groups: [], swimlanes: [], searchFeatures: [] };
     this._query = '';
     this._searchStatus = { count: 0, index: 0 };
@@ -452,13 +455,21 @@ export class TimelineBoard extends LitElement {
         height: 100%;
       }
 
+      .board-overview {
+        display: grid;
+        grid-template-columns: var(--task-column-width, 300px) minmax(0, 1fr);
+        flex: 0 0 auto;
+        min-width: 0;
+      }
+
       #maingraph-section {
+        grid-column: 2;
+        grid-row: 1;
         flex: 0 0 auto;
         margin: 0;
         padding: 0;
         border: 0;
         background: transparent;
-        margin-left: var(--task-column-width, 300px);
       }
 
       /* Single overflow container for H + V scroll / panning */
@@ -475,10 +486,36 @@ export class TimelineBoard extends LitElement {
         align-content: start;
       }
 
-      .task-toolbar { grid-column: 1; grid-row: 1; position: sticky; top: 0; left: 0;
-        z-index: 150; background: var(--color-bg, #f7f7f7); display: flex; align-items: center;
-        gap: 4px; padding: 4px; min-width: 0; box-sizing: border-box; border-right: 1px solid #bec8d2;
+      .task-toolbar { grid-column: 1; grid-row: 1;
+        background: var(--color-bg, #f7f7f7); display: flex; flex-direction: column;
+        justify-content: space-between; gap: 4px; padding: 8px; min-width: 0;
+        box-sizing: border-box; border-right: 1px solid #bec8d2;
         cursor: default; }
+      .task-summary { font-size: 12px; font-weight: 600; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; }
+      .task-search, .filter-markers, .filter-status, .filter-dimensions {
+        display: flex; align-items: center; gap: 6px; min-width: 0; }
+      .filter-markers { overflow-x: auto; height: 20px; }
+      .filter-marker { display: inline-flex; align-items: center; justify-content: center;
+        flex: 0 0 16px; width: 16px; height: 16px; }
+      .filter-marker svg { width: 16px; height: 16px; }
+      .filter-state { flex: 0 0 12px; width: 12px; height: 12px; border-radius: 2px;
+        box-shadow: inset 0 0 0 1px #0002; }
+      .filter-status .filter-markers { flex: 1; }
+      .filter-status .task-summary { font-size: 10px; font-weight: 400; color: #526170; }
+      .filter-dimensions { justify-content: space-between; }
+      .filter-dimension-marker { display: inline-flex; align-items: center; justify-content: center;
+        width: 24px; height: 22px; box-sizing: border-box; border: 1px solid transparent;
+        border-radius: 3px; color: #526170; }
+      .filter-dimension-marker[data-selection="some"] { color: #096b65; background: #e0f1ee;
+        border-color: #75b8ad; }
+      .filter-dimension-marker[data-selection="none"] { color: #aa3434; background: #fbe9e9;
+        border-color: #dba3a3; }
+      .filter-empty { font-size: 10px; color: #aa3434; }
+      .task-column-heading { grid-column: 1; grid-row: 1; position: sticky; top: 0; left: 0;
+        z-index: 150; padding: 4px 10px; font-size: 11px; line-height: 16px;
+        background: var(--color-bg, #f7f7f7); border-right: 1px solid #bec8d2;
+        box-sizing: border-box; }
       .task-toolbar input { min-width: 0; width: 100%; padding: 5px; box-sizing: border-box;
         border: 1px solid #bec8d2; border-radius: 4px; font: inherit; }
       .task-toolbar button { flex: 0 0 24px; width: 24px; height: 26px; padding: 0;
@@ -642,14 +679,40 @@ export class TimelineBoard extends LitElement {
     const packed = options.displayMode === 'packed';
     const columnWidth = this._getTaskColumnWidth();
     const collapsed = columnWidth === 8;
+    const filters = getTaskFilterPresentation();
+    const selectedTypes = filters.types.filter((type) => type.active);
+    const selectedStates = filters.states.filter((state) => state.active);
     return html`
-      <section id="maingraph-section" aria-label="Organisational Load Graph">
-        <maingraph-lit></maingraph-lit>
-      </section>
-
-      <div id="scroll-container">
+      <div class="board-overview">
+        <section id="maingraph-section" aria-label="Organisational Load Graph">
+          <maingraph-lit></maingraph-lit>
+        </section>
         <div class="task-toolbar" ?hidden=${packed || collapsed} @mousedown=${(event) => event.stopPropagation()}>
           ${collapsed ? '' : html`
+            <div class="filter-markers" role="group" aria-label="Selected task types">
+              ${selectedTypes.map((type) => html`<span class="filter-marker" data-filter-type=${type.key}
+                role="img" aria-label=${type.name} title=${type.name}>${getIconTemplate(type.name)}</span>`)}
+              ${selectedTypes.length === 0 ? html`<span class="filter-empty">No task types</span>` : ''}
+            </div>
+            <div class="filter-status">
+              <div class="filter-markers" role="group" aria-label="Selected states">
+                ${selectedStates.map((state) => html`<span class="filter-state" data-filter-state=${state.name}
+                  role="img" aria-label=${state.name} title=${state.name} style="background:${state.color}"></span>`)}
+                ${selectedStates.length === 0 ? html`<span class="filter-empty">No states</span>` : ''}
+              </div>
+              <span class="task-summary">${this._taskLayout.searchFeatures.length} tasks</span>
+            </div>
+            <div class="filter-dimensions" role="group" aria-label="Selected task filters">
+              ${filters.dimensions.map((dimension) => {
+                const active = dimension.options.filter((option) => option.active);
+                const label = `${dimension.title}: ${active.length === 0 ? 'None' : active.map((option) => option.label).join(', ')}`;
+                return html`<span class="filter-dimension-marker" data-filter-dimension=${dimension.key}
+                  data-selection=${active.length === 0 ? 'none' : active.length === dimension.options.length ? 'all' : 'some'}
+                  role="img" aria-label=${label} title=${label} tabindex="0">
+                  ${renderFilterDimensionIcon(dimension.key)}</span>`;
+              })}
+            </div>
+            <div class="task-search">
             <input type="search" aria-label="Search tasks" placeholder="Search tasks" .value=${this._query}
               @input=${(event) => { this._query = event.target.value; }}
               @keydown=${(event) => {
@@ -663,8 +726,13 @@ export class TimelineBoard extends LitElement {
               @click=${() => this.shadowRoot.querySelector('task-list').navigateMatch(-1)}>&#8593;</button>
             <button title="Next matching task" aria-label="Next matching task" ?disabled=${this._searchStatus.count === 0}
               @click=${() => this.shadowRoot.querySelector('task-list').navigateMatch(1)}>&#8595;</button>
+            </div>
             `}
         </div>
+      </div>
+
+      <div id="scroll-container">
+        <div class="task-column-heading" ?hidden=${packed || collapsed}>Tasks</div>
         <div class="column-resizer" ?hidden=${packed} role="separator" tabindex="0" aria-label="Task column width"
           aria-orientation="vertical" aria-valuemin="8" aria-valuemax="600" aria-valuenow=${columnWidth}
           @mousedown=${(event) => event.stopPropagation()}

@@ -1,5 +1,20 @@
 import { html } from '../../vendor/lit.js';
 import { getIconTemplate } from '../../services/IconService.js';
+import { sel } from '../../application/imports.js';
+import { featureTypeKey } from '../../application/shared/workItemDisplay.js';
+
+const FILTER_ICON_PATHS = {
+  schedule: 'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z',
+  allocation: 'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2',
+  hierarchy: 'M9 2h6v6H9ZM2 16h6v6H2Zm14 0h6v6h-6ZM12 8v4M5 16v-4h14v4',
+  relations: 'm10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 1 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0',
+};
+
+export function renderFilterDimensionIcon(key) {
+  return html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+    aria-hidden="true"><path d=${FILTER_ICON_PATHS[key]}></path></svg>`;
+}
 
 function onFilterKeyDown(event) {
   if (event.key !== ' ' && event.key !== 'Enter') return;
@@ -21,6 +36,30 @@ export const SIDEBAR_FILTER_DIMENSIONS = [
     { key: 'hasLinks', label: 'Has Links' }, { key: 'noLinks', label: 'No Links' },
   ] },
 ];
+
+export function getTaskFilterPresentation() {
+  const features = sel.scope.getPresentableContextFeatures();
+  const scopedTypes = new Set(features.map(featureTypeKey));
+  const scopedStates = new Set(features.map((feature) => feature.state));
+  const filters = sel.filter.getTaskFilters();
+  const colors = sel.filter.getFeatureStateColors();
+  const selectedStates = sel.filter.getSelectedFeatureStateSet();
+  return {
+    dimensions: SIDEBAR_FILTER_DIMENSIONS.map((dimension) => ({ ...dimension,
+      options: dimension.options.map((option) => ({ ...option,
+        active: filters[dimension.key][option.key],
+        disabled: sel.filter.isSidebarControlDisabled('taskFilter', dimension.key, option.key),
+      })),
+    })),
+    states: sel.filter.getAvailableFeatureStates().filter((name) => scopedStates.has(name)).map((name) => ({
+      name, color: colors[name].background, active: selectedStates.has(name),
+      disabled: sel.filter.isSidebarControlDisabled('state', name),
+    })),
+    types: sel.feature.getTaskTypeOptions().filter((type) => scopedTypes.has(type.key))
+      .map((type) => ({ ...type, active: sel.view.isTypeVisible(type.key),
+        disabled: sel.filter.isSidebarControlDisabled('taskType', type.key) })),
+  };
+}
 
 /** Render only projected values and dispatch named, value-based actions. */
 export function renderSidebarTaskFilters({ model, actions }) {
@@ -77,7 +116,8 @@ export function renderSidebarTaskFilters({ model, actions }) {
     <div class="filter-dimensions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       ${model.dimensions.map((dimension) => html`
         <div class="filter-dimension">
-          <div class="filter-dimension-title shortcut-heading">${dimension.title}
+          <div class="filter-dimension-title shortcut-heading" data-filter-dimension=${dimension.key}>
+            ${renderFilterDimensionIcon(dimension.key)} ${dimension.title}
             <kbd class="shortcut-pill" title=${`Cycle ${dimension.title} (${dimension.shortcut})`}>${dimension.shortcut}</kbd>
           </div>
           <div class="filter-options" style="display:flex;flex-direction:column;gap:6px;">
