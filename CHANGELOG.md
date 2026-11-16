@@ -16,7 +16,7 @@ Template - do not change :
 ## [v5.2.0] - unreleased
 ### Added
 - Add a read-only Cone of Uncertainty tool with three configurable forecast scopes, browser-saved duration uncertainty preferences, and shaded task finish ranges for communicating long-range planning assumptions. Compact rows use task-board type icons to identify the work being forecast.
-- Show display-only Virtual rows and timeline cards for selected teams' effective commitments hidden by task type or held in other loaded plans, with source details, source-plan attribution and no virtual editing actions.
+- Show display-only Virtual rows and timeline cards for selected teams' effective commitments held in other loaded plans, respecting task-type filters, with source details, source-plan attribution and no virtual editing actions.
 - Support external Entra broker login with encrypted persistent MSAL caches, browser-bound PKCE handoffs, on-demand delegated ADO credentials and instance-scoped logout. Real-tenant acceptance remains required.
 - Bootstrap the first administrator on empty live installations and offer one-time claims for existing accounts. Manual claims accept email entry alone, including administrators, and require a restricted migration audience.
 - Support mock broker sign-in that can reuse existing account permissions. Fake credentials are rejected before ADO/wiki calls without ending local sessions or cached access.
@@ -44,6 +44,7 @@ Template - do not change :
 
 ### Fixed
 - Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
+- Keep type-filtered tasks hidden instead of turning selected-plan work into virtual context; deselecting all task types clears task rows and cards without changing calculated team demand.
 - Render the task list when restored views include context-only tasks without a configured owning plan.
 - Nest and fold tasks by their actual parent links, including same-type parents, while retaining hierarchy-type warnings in health reports.
 - Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.

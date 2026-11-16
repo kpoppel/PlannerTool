@@ -208,7 +208,6 @@ export function createScopeSelectors(store) {
     const state = store.getState();
     const selectedPlans = toIdSet(state.selection.projectIds);
     if (selectedPlans.size === 0) return [];
-    const exclude = createCardExclusionFilter();
     const excludeExternal = createCardExclusionFilter(state.view.context, false);
     return projectVirtualAllocations({
       features: getResolvedFeatures(),
@@ -217,8 +216,7 @@ export function createScopeSelectors(store) {
       selectedTeamIds: toIdSet(state.selection.teamIds),
       isEligible(feature) {
         const external = !selectedPlans.has(String(feature.project));
-        const reason = external ? excludeExternal(feature) : exclude(feature);
-        return reason === 'taskTypes' || (external && reason === null);
+        return external && excludeExternal(feature) === null;
       },
     });
   }

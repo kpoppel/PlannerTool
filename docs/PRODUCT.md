@@ -42,12 +42,17 @@ reservations do not contribute a residual allocation. Project and organization
 reporting retain their existing scope, and no additional tasks are fetched.
 
 With teams selected, both Plan overview and Team focus automatically show
-**Virtual** entries for effective allocations whose source type is hidden or
-whose source belongs to another loaded plan. Each source appears once, combining
+**Virtual** entries for effective allocations whose source belongs to another
+loaded plan outside the selected plans. Each source appears once, combining
 only the selected teams' effective demand. A visible real source replaces its
-virtual presentation. State, schedule, allocation, hierarchy and relationship
-filters and applicable branch/group folds still apply; those display choices do
-not remove calculated demand.
+virtual presentation. Task-type, state, schedule, allocation, hierarchy and
+relationship filters and applicable branch/group folds still apply. Hiding a
+task type never converts selected-plan work into virtual context. Deselecting
+all task types hides all task rows and cards, including virtual entries. These
+display choices do not remove calculated demand from the team allocation graph.
+Incoming demand is determined by selected teams, not the selected plan's level:
+selecting all teams on a project plan can show external commitments across all
+those teams, while a team plan can focus the same context on its selected team.
 
 Virtual rows and cards retain the source type marker, title, dates and ordering,
 with a Virtual label and subtle diagonal shading. External sources use identified
