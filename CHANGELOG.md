@@ -15,6 +15,7 @@ Template - do not change :
 ---
 ## [v5.2.0] - unreleased
 ### Added
+- Add whole-hour allocation entry alongside Percent and Man-days, using each team or group's workforce project-hour budget in task details and the portfolio table, with effort preserved when scheduling changes.
 - Add a read-only Cone of Uncertainty tool with three configurable forecast scopes, browser-saved duration uncertainty preferences, and shaded task finish ranges for communicating long-range planning assumptions. Compact rows use task-board type icons to identify the work being forecast.
 - Show display-only Virtual rows and timeline cards for selected teams' effective commitments held in other loaded plans, respecting task-type filters, with source details, source-plan attribution and no virtual editing actions.
 - Support external Entra broker login with encrypted persistent MSAL caches, browser-bound PKCE handoffs, on-demand delegated ADO credentials and instance-scoped logout. Real-tenant acceptance remains required.

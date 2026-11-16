@@ -8,7 +8,7 @@ import { ColorService, PALETTE } from '../../services/ColorService.js';
 import { featureFlags } from '../../config.js';
 import { deriveEffectiveFeatures } from '../shared/featureProjection.js';
 import { deriveOrderedFeatureStateNames } from '../shared/stateDerivations.js';
-import { normalizeStaffing } from '../shared/allocationUnits.js';
+import { normalizeStaffing, normalizeHourlyStaffing } from '../shared/allocationUnits.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 /** @typedef {import('../types.js').EventBusLike} EventBusLike */
@@ -89,7 +89,7 @@ export function createDataCommands(store, bus, dataService) {
   let staffingRequest = null;
 
   function applyAllocationUnit(unit) {
-    if (unit !== 'percent' && unit !== 'man-days') throw new Error(`Invalid allocation unit: ${unit}`);
+    if (!['percent', 'man-days', 'hours'].includes(unit)) throw new Error(`Invalid allocation unit: ${unit}`);
     if (store.getState().allocation.unit === unit) return;
     store.setState((state) => ({
       ...state, allocation: { ...state.allocation, unit },
@@ -108,7 +108,7 @@ export function createDataCommands(store, bus, dataService) {
     },
 
     async setAllocationUnit(unit) {
-      if (unit !== 'percent' && unit !== 'man-days') throw new Error(`Invalid allocation unit: ${unit}`);
+      if (!['percent', 'man-days', 'hours'].includes(unit)) throw new Error(`Invalid allocation unit: ${unit}`);
       await dataService.setLocalPref('allocation.unit', unit);
       applyAllocationUnit(unit);
       if (store.getState().allocation.staffing.status !== 'ready') {
@@ -123,7 +123,7 @@ export function createDataCommands(store, bus, dataService) {
         ...state,
         allocation: {
           ...state.allocation,
-          staffing: { status: 'idle', fteById: {}, error: null,
+          staffing: { status: 'idle', fteById: {}, hourlyById: {}, error: null,
             generation: state.allocation.staffing.generation + 1 },
         },
       }), false, 'data.clearAllocationStaffing');
@@ -135,7 +135,7 @@ export function createDataCommands(store, bus, dataService) {
       store.setState((state) => ({
         ...state,
         allocation: { ...state.allocation,
-          staffing: { status: 'loading', fteById: {}, error: null, generation } },
+          staffing: { status: 'loading', fteById: {}, hourlyById: {}, error: null, generation } },
       }), false, 'data.loadAllocationStaffing');
       const request = { promise: null };
       staffingRequest = request;
@@ -144,10 +144,11 @@ export function createDataCommands(store, bus, dataService) {
           const result = await dataService.getCostTeams();
           if (!result.ok) throw new Error(result.error.message);
           const fteById = normalizeStaffing(result.data);
+          const hourlyById = normalizeHourlyStaffing(result.data);
           if (store.getState().allocation.staffing.generation !== generation) return { ok: false };
           store.setState((state) => ({
             ...state, allocation: { ...state.allocation,
-              staffing: { status: 'ready', fteById, error: null, generation } },
+              staffing: { status: 'ready', fteById, hourlyById, error: null, generation } },
           }), false, 'data.allocationStaffingReady');
           return { ok: true };
         } catch (error) {
@@ -155,7 +156,7 @@ export function createDataCommands(store, bus, dataService) {
           console.error('Loading allocation staffing failed', error);
           store.setState((state) => ({
             ...state, allocation: { ...state.allocation,
-              staffing: { status: 'error', fteById: {}, error: error.message, generation } },
+              staffing: { status: 'error', fteById: {}, hourlyById: {}, error: error.message, generation } },
           }), false, 'data.allocationStaffingFailed');
           return asFailure(bus, 'allocation-staffing', { message: error.message });
         } finally {

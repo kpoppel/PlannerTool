@@ -77,7 +77,7 @@ export function createInitialAppState() {
     },
     allocation: {
       unit: 'percent',
-      staffing: { status: 'idle', fteById: {}, error: null, generation: 0 },
+      staffing: { status: 'idle', fteById: {}, hourlyById: {}, error: null, generation: 0 },
     },
     notifications: [],
   };

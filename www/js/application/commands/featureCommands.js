@@ -168,7 +168,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null, noti
           }
           if (maxChildEnd && requestedEnd && requestedEnd < maxChildEnd) {
             requestedEnd = maxChildEnd;
-            if (explicitResize || snapshot.allocation.unit === 'man-days') {
+            if (explicitResize || snapshot.allocation.unit !== 'percent') {
               scheduleLimits.push({ featureId: id, childId: limitingChildId, end: maxChildEnd });
             }
           }
@@ -293,7 +293,9 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null, noti
             message: 'Schedule unchanged: staffing is unavailable. Retry staffing in Configuration.' });
           return [];
         }
-        const converted = resizeAllocations(original, feature, snapshot.allocation.staffing.fteById);
+        const staffing = snapshot.allocation.unit === 'hours'
+          ? snapshot.allocation.staffing.hourlyById : snapshot.allocation.staffing.fteById;
+        const converted = resizeAllocations(original, feature, staffing);
         if (converted.exceeded.length > 0) {
           const allocations = converted.exceeded.map((row) => `${feature.id}/${row.team}`).join(', ');
           notify({ source: 'Allocation', code: 'allocation-resize-limit', severity: 'warning',
@@ -348,7 +350,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null, noti
 
   return {
     updateFeatureDates(updates) {
-      const policy = store.getState().allocation.unit === 'man-days' ? 'keep-effort' : 'keep-allocation';
+      const policy = store.getState().allocation.unit !== 'percent' ? 'keep-effort' : 'keep-allocation';
       return applyFeatureDates(updates, policy, false);
     },
 

@@ -2,12 +2,37 @@ import { describe, expect, it } from 'vitest';
 import {
   countWorkingDays, getAllocationBasis, manDaysToPercent, percentToManDays,
   formatManDays, resizeAllocations, normalizeStaffing,
+  normalizeHourlyStaffing, getEffortBasis, percentToEffort, effortToPercent,
 } from '../../../www/js/application/shared/allocationUnits.js';
 
 const span = { start: '2026-10-05', end: '2026-10-16' };
 const staffing = { alpha: 5, beta: 2.5, group: 7.5, empty: 0 };
 
 describe('allocation units', () => {
+  it('converts hours using each team workforce monthly hours, including groups', () => {
+    const hourlyById = normalizeHourlyStaffing({ teams: {
+      alpha: { internal: { monthly_hours: 480 }, external: { monthly_hours: 232 } },
+      beta: { internal: { monthly_hours: 116 }, external: { monthly_hours: 0 } },
+    }, groups: { group: {
+      internal: { monthly_hours: 596 }, external: { monthly_hours: 232 },
+    } } });
+    const allocation = { unit: 'hours', staffing: { hourlyById } };
+    const basis = getEffortBasis('alpha', span, allocation);
+    expect(basis.max).toBeCloseTo(712 * 10 / (5 * 52 / 12), 12);
+    expect(percentToEffort(25, basis)).toBeCloseTo(basis.max / 4, 12);
+    expect(effortToPercent(80, basis)).toBeCloseTo(80 / basis.max * 100, 12);
+    expect(getEffortBasis('beta', span, allocation).max)
+      .toBeCloseTo(116 * 10 / (5 * 52 / 12), 12);
+    expect(hourlyById.group).toBeCloseTo(828 / (5 * 52 / 12), 12);
+    expect(getEffortBasis('missing', span, allocation).reason).toContain('staffing');
+    for (const value of [-1, 0.5, Infinity, basis.max + 1]) {
+      expect(() => effortToPercent(value, basis)).toThrow();
+    }
+    expect(() => normalizeHourlyStaffing({ teams: { alpha: {
+      internal: { monthly_hours: -1 }, external: { monthly_hours: 0 },
+    } }, groups: {} })).toThrow();
+  });
+
   it('uses inclusive weekdays and validates calendar dates', () => {
     expect(countWorkingDays(span)).toBe(10);
     expect(countWorkingDays({ start: '2026-10-05', end: '2026-10-05' })).toBe(1);

@@ -1,5 +1,5 @@
 import { html } from '../../vendor/lit.js';
-import { formatManDays, getAllocationBasis, percentToManDays } from '../../application/shared/allocationUnits.js';
+import { formatManDays, getEffortBasis, percentToEffort } from '../../application/shared/allocationUnits.js';
 import { ceilAllocation } from '../../application/shared/teamAllocation.js';
 
 const capacityInputCommits = new WeakMap();
@@ -13,14 +13,14 @@ const WHEEL_COMMIT_DELAY = 75;
 export function buildDetailsPanelCapacityModel({ capacity, orgLoad, teams, availability,
   showAddTeamPopover, allocation, feature }) {
   const teamsById = new Map(teams.map((team) => [team.id, team]));
-  const manDays = allocation.unit === 'man-days';
+  const effort = allocation.unit !== 'percent';
   function inputModel(teamId, percent) {
-    if (!manDays) return { inputValue: ceilAllocation(percent), max: 100, reason: '' };
-    const basis = getAllocationBasis(teamId, feature, allocation.staffing.fteById);
+    if (!effort) return { inputValue: ceilAllocation(percent), max: 100, reason: '' };
+    const basis = getEffortBasis(teamId, feature, allocation);
     const reason = allocation.staffing.status !== 'ready' ? 'Staffing is unavailable'
       : !teamsById.has(teamId) ? 'Team staffing is unknown' : basis.reason;
     return { inputValue: reason === ''
-      ? formatManDays(percentToManDays(percent, basis.fte, basis.days)) : '',
+      ? formatManDays(percentToEffort(percent, basis)) : '',
     max: basis.max, reason };
   }
   const rows = [];
@@ -52,7 +52,9 @@ export function buildDetailsPanelCapacityModel({ capacity, orgLoad, teams, avail
   }
   const allocatedTeamIds = new Set(capacity.map((allocation) => allocation.team));
   return {
-    manDays,
+    effort,
+    unitLabel: allocation.unit,
+    unitSuffix: allocation.unit === 'hours' ? ' h' : effort ? ' MD' : '%',
     rows,
     availableTeams: teams.filter((team) => availability.allowed_ids.includes(team.id)
       && !allocatedTeamIds.has(team.id)).map((team) => ({ ...team, ...inputModel(team.id, 0) })),
@@ -69,10 +71,10 @@ export function buildDetailsPanelCapacityModel({ capacity, orgLoad, teams, avail
   };
 }
 
-function stepCapacityInput(event, manDays) {
+function stepCapacityInput(event, effort) {
   event.preventDefault();
   if (event.target.disabled) return event.target.value;
-  if (manDays) {
+  if (effort) {
     const current = Number(event.target.value);
     event.target.value = formatManDays(Math.max(0,
       Math.min(Number(event.target.max), current + (event.deltaY < 0 ? 1 : -1))));
@@ -90,7 +92,7 @@ function commitCapacityInput(event, row, model, actions) {
   const input = event.target;
   cancelCapacityWheel(input);
   if (input.value !== '' && Number(input.value) === Number(row.inputValue)) return;
-  if (model.manDays) {
+  if (model.effort) {
     if (input.value === '' || !input.checkValidity()) {
       input.reportValidity();
       return;
@@ -100,7 +102,7 @@ function commitCapacityInput(event, row, model, actions) {
   if (committed !== undefined && committed.row === row && committed.value === input.value) return;
   const result = actions.changeCapacity(row.teamId, input.value);
   if (result !== false) {
-    if (model.manDays && typeof result === 'string') input.value = result;
+    if (model.effort && typeof result === 'string') input.value = result;
     capacityInputCommits.set(input, { row, value: input.value });
   }
 }
@@ -121,7 +123,7 @@ export function cancelCapacityWheelEdits(root) {
 
 function queueCapacityWheel(event, row, model, actions) {
   const input = event.target;
-  stepCapacityInput(event, model.manDays);
+  stepCapacityInput(event, model.effort);
   if (input.disabled) return;
   cancelCapacityWheel(input);
   const timer = setTimeout(() => {
@@ -137,7 +139,7 @@ function queueCapacityWheel(event, row, model, actions) {
 export function renderDetailsPanelCapacity({ model, actions }) {
   return html`
     <div class="capacity-section">
-      <div class="details-label">Allocated Capacity${model.manDays ? ' (man-days)' : ''}:</div>
+      <div class="details-label">Allocated Capacity${model.effort ? ` (${model.unitLabel})` : ''}:</div>
       <div class="capacity-bars">
         ${model.rows.map((row) => html`
           <div class="capacity-bar-row">
@@ -162,10 +164,10 @@ export function renderDetailsPanelCapacity({ model, actions }) {
                 </div>
               </div>
               <div class="capacity-bar-input-container" title=${row.reason}>
-                ${model.readonly ? html`<span class="capacity-value">${row.inputValue}${model.manDays ? ' MD' : '%'}</span>`
+                ${model.readonly ? html`<span class="capacity-value">${row.inputValue}${model.unitSuffix}</span>`
                 : html`<input type="number" class="capacity-bar-input" min="0" max=${row.max}
-                  step="1" ?required=${model.manDays}
-                  aria-label=${`${row.name} allocation ${model.manDays ? 'man-days' : 'percent'}`}
+                  step="1" ?required=${model.effort}
+                  aria-label=${`${row.name} allocation ${model.unitLabel}`}
                   ?disabled=${row.reason !== ''}
                   .value=${row.inputValue}
                   @keydown=${(event) => {
@@ -199,7 +201,7 @@ export function renderDetailsPanelCapacity({ model, actions }) {
               const team = model.availableTeams.find((item) => item.id === event.target.value);
               const form = event.target.form;
               const input = form.querySelector('input');
-              const unavailable = model.manDays && (team === undefined || team.reason !== '');
+              const unavailable = model.effort && (team === undefined || team.reason !== '');
               input.disabled = unavailable;
               input.max = team === undefined ? '0' : String(team.max);
               input.title = team === undefined ? '' : team.reason;
@@ -212,13 +214,13 @@ export function renderDetailsPanelCapacity({ model, actions }) {
             </select>
             <div class="add-team-form-input-row">
               <input type="number" min="0" max="100" step="1"
-                placeholder=${model.manDays ? 'Man-days' : 'Capacity %'} required
-                aria-label=${model.manDays ? 'New allocation man-days' : 'New allocation percent'}
-                ?disabled=${model.manDays}
-                @wheel=${(event) => stepCapacityInput(event, model.manDays)} />
+                placeholder=${model.effort ? model.unitLabel : 'Capacity %'} required
+                aria-label=${`New allocation ${model.unitLabel}`}
+                ?disabled=${model.effort}
+                @wheel=${(event) => stepCapacityInput(event, model.effort)} />
             </div>
             <div class="add-team-form-buttons">
-              <button type="submit" ?disabled=${model.manDays}>Add</button>
+              <button type="submit" ?disabled=${model.effort}>Add</button>
               <button type="button" class="cancel" @click=${actions.cancelAddTeam}>Cancel</button>
             </div>
           </form>

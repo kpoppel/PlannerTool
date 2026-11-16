@@ -29,13 +29,14 @@ Every work item needs its own start and end dates to be planned. Dates are not i
 
 Choosing a preset or an alignment button is an explicit action that sets dates; it is not implicit date resolution.
 
-Date fields, presets and alignment buttons retain allocation percentages in **Percent** mode and preserve effort in **Man-days** mode. To choose either behavior for an individual resize without changing entry units, use the card's [two-part resize handle](card_workflows.md#resizing-a-task): upper teal keeps allocation; lower ochre keeps effort. The whole handle takes the chosen color for the duration of the drag.
+Date fields, presets and alignment buttons retain allocation percentages in **Percent** mode and preserve effort in **Man-days** and **Hours** modes. To choose either behavior for an individual resize without changing entry units, use the card's [two-part resize handle](card_workflows.md#resizing-a-task): upper teal keeps allocation; lower ochre keeps effort. The whole handle takes the chosen color for the duration of the drag.
 
 ## Allocated Capacity
 
 - One row per allocated team with a bar and a value field. Bars are always percentages.
-- Choose **Percent** (default) or **Man-days** as entry unit in Configuration. The heading then reads "Allocated Capacity (man-days)". This browser-local setting changes the entry unit, not the estimate's accuracy.
-- Enter whole numbers. The mouse wheel over a field changes percentages in 10% steps and man-days in single-day steps. Values display rounded up; leaving a rounded value unchanged keeps the stored precision.
+- Choose **Percent** (default), **Man-days** or **Hours** as entry unit in Configuration. This browser-local setting changes the entry unit, not the estimate's accuracy.
+- Hours depend on each team's internal/external workforce project-hour budget and the task's working days, not a fixed eight-hour day. Groups use their aggregate budget.
+- Enter whole numbers. The mouse wheel over a field changes percentages in 10% steps, man-days in single-day steps and hours in single-hour steps. Values display rounded up; leaving a rounded value unchanged keeps the stored precision.
 - **+ Add Team** opens a small form: choose the team, enter a value and click **Add**.
 - **Total Capacity Overview** shows the task's organisation load and the number of teams.
 - Man-days are team-specific and not comparable between teams as measures of output, productivity or cost. Allocations support forward resource planning; they are not automatically delivery commitments. See [Capacity and allocations](best_practices.md#capacity-and-allocations).

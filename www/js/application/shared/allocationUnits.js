@@ -49,6 +49,39 @@ export function getAllocationBasis(teamId, feature, staffing) {
   return { fte, days, max: fte * days, reason };
 }
 
+export function normalizeHourlyStaffing(metadata) {
+  const staffing = Object.create(null);
+  // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+  for (const collection of [metadata.teams, metadata.groups]) {
+    for (const [id, basis] of Object.entries(collection)) {
+      const internal = basis.internal.monthly_hours;
+      const external = basis.external.monthly_hours;
+      if (!Number.isFinite(internal) || !Number.isFinite(external)
+        || internal < 0 || external < 0 || !Number.isFinite(internal + external)) {
+        throw new Error(`Invalid staffing monthly hours: ${id}`);
+      }
+      staffing[id] = (internal + external) / (5 * 52 / 12);
+    }
+  }
+  return staffing;
+}
+
+export function getEffortBasis(teamId, feature, allocation) {
+  return getAllocationBasis(teamId, feature, allocation.unit === 'hours'
+    ? allocation.staffing.hourlyById : allocation.staffing.fteById);
+}
+
+export function percentToEffort(percent, basis) {
+  return percent / 100 * basis.max;
+}
+
+export function effortToPercent(value, basis) {
+  if (!Number.isInteger(value) || value < 0 || basis.max <= 0 || value > basis.max) {
+    throw new Error('Effort must be whole numbers within the staffed capacity');
+  }
+  return value / basis.max * 100;
+}
+
 export function percentToManDays(percent, fte, days) {
   return percent / 100 * fte * days;
 }

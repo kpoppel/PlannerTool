@@ -32,7 +32,7 @@ export function renderUnallocatedPanel({
   getProjectName,
 }) {
   const subtitle = `${features.length} task${features.length === 1 ? '' : 's'}`;
-  const unit = allocation.unit === 'man-days' ? 'MD' : '%';
+  const unit = allocation.unit === 'hours' ? 'h' : allocation.unit === 'man-days' ? 'MD' : '%';
 
   const expandedClass = isBoardCollapsed ? 'expanded' : '';
 

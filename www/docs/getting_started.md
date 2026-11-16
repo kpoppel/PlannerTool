@@ -17,7 +17,7 @@ Fields
 - Personal Access Token (PAT): paste a PAT from Azure DevOps with Work Items (Read/Write/Manage) scope, and Wiki permission (read/write). Installations using a demo or static data source may not need one.
 - Remembered browsers: lists the browsers that remember your account; use **Refresh device list** to update it. See [Account Access](account_access.md) to revoke a browser.
 - Autosave interval (minutes, 0=off): saves changed editable scenarios to your account at this interval. This is a browser preference; it does not publish changes to Azure DevOps. See [Scenarios & Saving](scenarios.md).
-- Allocation unit: enter allocations in Percent (default) or Man-days. This is a browser-local preference.
+- Allocation unit: enter allocations in Percent (default), Man-days or Hours. Hours reflect each team's workforce project-hour budget. This is a browser-local preference.
 - Letter shortcuts: enables or disables the plain-letter board shortcuts in this browser.
 
 Buttons: **Sign out**, **Delete account** (see [Account Access](account_access.md)), **Save** and **Close**.

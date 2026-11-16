@@ -126,8 +126,8 @@
  *   pluginState: Record<string, any>,
  *   capacity: CapacityState,
  *   featureDisplay: FeatureDisplayState,
- *   allocation: {unit: 'percent'|'man-days', staffing: {
- *     status: string, fteById: Record<string, number>, error: string|null, generation: number
+ *   allocation: {unit: 'percent'|'man-days'|'hours', staffing: {
+ *     status: string, fteById: Record<string, number>, hourlyById: Record<string, number>, error: string|null, generation: number
  *   }},
  *   notifications: NotificationEntry[]
  * }} AppState

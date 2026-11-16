@@ -136,12 +136,13 @@ describe('application/commands/featureCommands', () => {
     state.baseline.teams[0].group_id = null;
     state.scenarios.items[0].overrides = {};
     state.allocation = { unit: 'man-days', staffing: {
-      status: 'ready', fteById: { A: 5, G: 10 }, generation: 1, error: null,
+      status: 'ready', fteById: { A: 5, G: 10 }, hourlyById: { A: 25, G: 50 },
+      generation: 1, error: null,
     } };
     return state;
   }
 
-  for (const unit of ['percent', 'man-days']) {
+  for (const unit of ['percent', 'man-days', 'hours']) {
     for (const [end, expected] of [['2026-10-09', 40], ['2026-10-30', 10]]) {
       for (const policy of ['keep-allocation', 'keep-effort']) {
         it(`${unit} resize ${policy} to ${end} uses the gesture policy`, () => {
@@ -181,8 +182,11 @@ describe('application/commands/featureCommands', () => {
     expect(store.getState()).toBe(before);
   });
 
-  it('preserves man-days once per final task schedule and commits dates with integer allocations', () => {
-    store.setState(prepareManDayState(), true);
+  for (const unit of ['man-days', 'hours']) {
+  it(`preserves ${unit} once per final task schedule and commits dates with integer allocations`, () => {
+    const state = prepareManDayState();
+    state.allocation.unit = unit;
+    store.setState(state, true);
     const notify = vi.fn();
     const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), notify);
     const commits = [];
@@ -199,6 +203,7 @@ describe('application/commands/featureCommands', () => {
     commands.revertFeature('f1');
     expect(store.getState().scenarios.items[0].overrides.f1).toBeUndefined();
   });
+  }
 
   it('removes unconvertible rows while retaining valid allocations and the requested dates', () => {
     store.setState(prepareManDayState([
@@ -214,6 +219,18 @@ describe('application/commands/featureCommands', () => {
       message: expect.stringContaining('unknown') }));
     commands.updateFeatureDates([{ id: 'f1', start: null, end: null }]);
     expect(store.getState().scenarios.items[0].overrides.f1.capacity).toEqual([]);
+  });
+
+  it('removes allocations with zero project hours when preserving hours despite positive FTE', () => {
+    const state = prepareManDayState();
+    state.allocation.unit = 'hours';
+    state.allocation.staffing.hourlyById.A = 0;
+    store.setState(state, true);
+    const notify = vi.fn();
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn(), notify);
+    commands.updateFeatureDates([{ id: 'f1', end: '2026-10-23' }]);
+    expect(store.getState().scenarios.items[0].overrides.f1.capacity).toEqual([]);
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning' }));
   });
 
   it('rejects over-capacity man-day resizing without losing allocations or committing partial dates', () => {

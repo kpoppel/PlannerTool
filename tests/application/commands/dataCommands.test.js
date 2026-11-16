@@ -48,7 +48,8 @@ describe('application/commands/dataCommands', () => {
     service.getLocalPref = vi.fn(async () => undefined);
     service.setLocalPref = vi.fn(async () => {});
     service.getCostTeams = vi.fn(async () => ({ ok: true, data: {
-      teams: { alpha: { internal: { fte: 3 }, external: { fte: 2 } } }, groups: {},
+      teams: { alpha: { internal: { fte: 3, monthly_hours: 480 },
+        external: { fte: 2, monthly_hours: 232 } } }, groups: {},
     } }));
     const commands = createDataCommands(store, { emit: vi.fn() }, service);
     const scenarios = store.getState().scenarios;
@@ -67,7 +68,15 @@ describe('application/commands/dataCommands', () => {
     expect(store.getState().allocation).toBe(loadedAllocation);
     expect(store.getState().allocation.unit).toBe('man-days');
     expect(service.getCostTeams).toHaveBeenCalledTimes(1);
-    await expect(commands.setAllocationUnit('hours')).rejects.toThrow('allocation unit');
+    await commands.setAllocationUnit('hours');
+    expect(store.getState().allocation.unit).toBe('hours');
+    expect(store.getState().allocation.staffing.hourlyById.alpha).toBeCloseTo(712 / (5 * 52 / 12));
+    expect(service.setLocalPref).toHaveBeenCalledWith('allocation.unit', 'hours');
+    service.getLocalPref.mockResolvedValue('hours');
+    await commands.initializeAllocationPreferences();
+    expect(store.getState().allocation.unit).toBe('hours');
+    expect(store.getState().scenarios).toBe(scenarios);
+    await expect(commands.setAllocationUnit('invalid')).rejects.toThrow('allocation unit');
   });
 
   it('reports a failed staffing load when saving percent configuration', async () => {

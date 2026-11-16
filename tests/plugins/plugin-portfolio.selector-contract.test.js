@@ -88,6 +88,36 @@ describe('PluginPortfolioComponent selector seam', () => {
     expect(feature.capacity[0].capacity).to.equal(20.2);
   });
 
+  it('edits hours with team-specific limits and preserves rounded untouched values', () => {
+    const feature = { id: 'effort', start: '2026-10-05', end: '2026-10-16',
+      capacity: [{ team: 't1', capacity: 20.2 }] };
+    mockSel.feature.getEffectiveFeatureById.mockReturnValue(feature);
+    mockSel.capacity.getAllocationSettings.mockReturnValue({ unit: 'hours',
+      staffing: { status: 'ready', fteById: { t1: 5, t2: 2.5 },
+        hourlyById: { t1: 25, t2: 10 } } });
+    const el = new PluginPortfolioComponent();
+    expect(el._getTableAllocationCell(feature, 't1')).toEqual({ value: '51', max: 250, reason: '' });
+    expect(el._getTableAllocationCell(feature, 't2').max).toBe(100);
+    const input = document.createElement('input');
+    input.value = '51';
+    el._commitTableAllocation(feature, 't1', input);
+    expect(updateFeatureField).not.toHaveBeenCalled();
+    input.value = '60';
+    el._commitTableAllocation(feature, 't1', input);
+    expect(updateFeatureField).toHaveBeenLastCalledWith('effort', 'capacity', [
+      { team: 't1', capacity: 24 },
+    ]);
+    input.value = '20';
+    el._commitTableAllocation(feature, 't2', input);
+    expect(updateFeatureField).toHaveBeenLastCalledWith('effort', 'capacity', [
+      { team: 't1', capacity: 20.2 }, { team: 't2', capacity: 20 },
+    ]);
+    updateFeatureField.mockClear();
+    input.value = '101';
+    el._commitTableAllocation(feature, 't2', input);
+    expect(updateFeatureField).not.toHaveBeenCalled();
+  });
+
   it('adds and removes team allocations while rejecting invalid and read-only edits', () => {
     const feature = { id: 'editable', capacity: [{ team: 't1', capacity: 20 }] };
     mockSel.feature.getEffectiveFeatureById.mockReturnValue(feature);

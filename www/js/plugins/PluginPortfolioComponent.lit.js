@@ -15,7 +15,7 @@ import { pluginManager } from '../core/PluginManager.js';
 import { cmd, sel } from '../application/imports.js';
 import { store } from '../application/store.js';
 import { featureTypeKey } from '../application/shared/workItemDisplay.js';
-import { formatManDays, getAllocationBasis, manDaysToPercent, percentToManDays } from '../application/shared/allocationUnits.js';
+import { formatManDays, getEffortBasis, effortToPercent, percentToEffort } from '../application/shared/allocationUnits.js';
 import { ceilAllocation } from '../application/shared/teamAllocation.js';
 import { getIconTemplate } from '../services/IconService.js';
 import {
@@ -883,11 +883,11 @@ export class PluginPortfolioComponent extends LitElement {
     if (settings.unit === 'percent') {
       return { value: ceilAllocation(percent), max: 100, reason };
     }
-    const basis = getAllocationBasis(teamId, feature, settings.staffing.fteById);
+    const basis = getEffortBasis(teamId, feature, settings);
     const unavailable = settings.staffing.status !== 'ready' ? 'Staffing is unavailable'
       : reason !== '' ? reason : basis.reason;
     return { value: unavailable === ''
-      ? formatManDays(percentToManDays(percent, basis.fte, basis.days)) : '',
+      ? formatManDays(percentToEffort(percent, basis)) : '',
     max: Math.floor(basis.max), reason: unavailable };
   }
 
@@ -907,9 +907,8 @@ export class PluginPortfolioComponent extends LitElement {
     input.setCustomValidity('');
     if (value === Number(cell.value)) return;
     const settings = sel.capacity.getAllocationSettings();
-    const basis = getAllocationBasis(teamId, current, settings.staffing.fteById);
-    const percent = settings.unit === 'man-days'
-      ? manDaysToPercent(value, basis.fte, basis.days) : value;
+    const percent = settings.unit === 'percent' ? value
+      : effortToPercent(value, getEffortBasis(teamId, current, settings));
     const capacity = current.capacity
       .filter((entry) => entry.team !== teamId || percent > 0)
       .map((entry) => entry.team === teamId ? { ...entry, capacity: percent } : entry);

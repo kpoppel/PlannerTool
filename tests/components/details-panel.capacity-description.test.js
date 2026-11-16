@@ -319,10 +319,12 @@ describe('DetailsPanel capacity section contract', () => {
     }
   });
 
-  it('renders man-day inputs while keeping bars in percent and unavailable rows visible', async () => {
+  for (const unit of ['man-days', 'hours']) {
+  it(`renders ${unit} inputs while keeping bars in percent and unavailable rows visible`, async () => {
     const model = buildDetailsPanelCapacityModel({
-      allocation: { unit: 'man-days', staffing: {
-        status: 'ready', fteById: { t1: 5, t2: 2.5 }, generation: 1,
+      allocation: { unit, staffing: {
+        status: 'ready', fteById: { t1: 5, t2: 2.5 },
+        hourlyById: { t1: 25, t2: 12.5 }, generation: 1,
       } }, feature,
       capacity: [{ team: 't1', capacity: 20 }, { team: 'missing', capacity: 40 }],
       orgLoad: '20%', teams, availability: { allowed_ids: ['t2'] }, showAddTeamPopover: true,
@@ -330,9 +332,10 @@ describe('DetailsPanel capacity section contract', () => {
     const actions = createActions();
     const root = await fixture(html`<div>${renderDetailsPanelCapacity({ model, actions })}</div>`);
     const inputs = root.querySelectorAll('.capacity-bar-input');
-    expect(inputs[0].value).to.equal('10');
+    expect(inputs[0].value).to.equal(unit === 'hours' ? '50' : '10');
+    expect(inputs[0].getAttribute('aria-label')).to.include(unit);
     expect(inputs[0].step).to.equal('1');
-    expect(inputs[0].max).to.equal('50');
+    expect(inputs[0].max).to.equal(unit === 'hours' ? '250' : '50');
     expect(inputs[1].disabled).to.be.true;
     expect(root.querySelector('.capacity-bar-fill').style.width).to.equal('20%');
     expect(root.textContent).to.include('20%');
@@ -344,8 +347,9 @@ describe('DetailsPanel capacity section contract', () => {
     select.value = 't2';
     select.dispatchEvent(new Event('change'));
     expect(addInput.disabled).to.be.false;
-    expect(addInput.max).to.equal('25');
+    expect(addInput.max).to.equal(unit === 'hours' ? '125' : '25');
   });
+  }
 });
 
 describe('DetailsPanel behavior', () => {

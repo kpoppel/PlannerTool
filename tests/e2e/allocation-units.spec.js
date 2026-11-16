@@ -86,8 +86,10 @@ test.describe('Man-day allocation desktop', () => {
     await page.route('**/api/config', (route) => route.fulfill({ json: { ok: true } }));
     await page.route('**/api/cost/teams', (route) => route.fulfill({ json: {
       teams: {
-        alpha: { internal: { fte: 3 }, external: { fte: 2 } },
-        beta: { internal: { fte: 2.5 }, external: { fte: 0 } },
+        alpha: { internal: { fte: 3, monthly_hours: 480 },
+          external: { fte: 2, monthly_hours: 232 } },
+        beta: { internal: { fte: 2.5, monthly_hours: 290 },
+          external: { fte: 0, monthly_hours: 0 } },
       }, groups: {},
     } }));
   });
@@ -104,6 +106,64 @@ test.describe('Man-day allocation desktop', () => {
     });
     return page.locator('plugin-portfolio-board .ugrid');
   }
+
+  test('hours use workforce capacity in details and portfolio and survive schedule changes', async ({ page }, testInfo) => {
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await mountEditor(page);
+    await page.evaluate(() => document.body.appendChild(document.createElement('config-modal')));
+    await page.locator('config-modal #allocationUnit').selectOption('hours');
+    await page.locator('config-modal #saveConfigBtn').click();
+    await expect(page.locator('config-modal #configStatus')).toContainText('Configuration saved');
+    await page.locator('config-modal #closeConfigBtn').click();
+    const alphaMax = 712 * 10 / (5 * 52 / 12);
+    const betaMax = 290 * 10 / (5 * 52 / 12);
+    const alpha = page.getByRole('spinbutton', { name: 'Alpha allocation hours', exact: true });
+    await expect(alpha).toHaveValue('66');
+    expect(Number(await alpha.getAttribute('max'))).toBeCloseTo(alphaMax, 12);
+    await alpha.press('Tab');
+    expect(await overrides(page)).toEqual({});
+    await alpha.fill('80');
+    await alpha.press('Enter');
+    await expect.poll(async () => (await overrides(page)).task.capacity[0].capacity)
+      .toBeCloseTo(80 / alphaMax * 100, 12);
+    await alpha.hover();
+    await page.mouse.wheel(0, -100);
+    await expect(alpha).toHaveValue('81');
+    await expect.poll(async () => (await overrides(page)).task.capacity[0].capacity)
+      .toBeCloseTo(81 / alphaMax * 100, 12);
+    await page.locator('details-panel .add-team-btn').click();
+    await page.getByLabel('Allocation team', { exact: true }).selectOption('beta');
+    const newHours = page.getByLabel('New allocation hours', { exact: true });
+    expect(Number(await newHours.getAttribute('max'))).toBeCloseTo(betaMax, 12);
+    await newHours.fill('40');
+    await page.locator('details-panel .add-team-form button[type="submit"]').click();
+    const beta = page.getByRole('spinbutton', { name: 'Beta allocation hours', exact: true });
+    await expect(beta).toHaveValue('40');
+    await page.getByRole('combobox', { name: 'Schedule preset' }).selectOption('longer');
+    await expect(alpha).toHaveValue('81');
+    await expect(beta).toHaveValue('40');
+    await expect.poll(async () => (await overrides(page)).task.capacity[0].capacity)
+      .toBeCloseTo(81 / (alphaMax * 1.5) * 100, 12);
+    await page.screenshot({ path: testInfo.outputPath('hours-details-desktop.png') });
+    const saved = await overrides(page);
+    await page.reload();
+    await mountEditor(page, { overrides: saved });
+    await expect(alpha).toHaveValue('81');
+    await page.evaluate(() => document.body.appendChild(document.createElement('config-modal')));
+    await expect(page.locator('config-modal #allocationUnit')).toHaveValue('hours');
+    await page.locator('config-modal #closeConfigBtn').click();
+    const table = await openPortfolio(page);
+    const tableAlpha = table.getByRole('spinbutton', { name: 'task Alpha allocation', exact: false });
+    await expect(tableAlpha).toHaveValue('81');
+    await tableAlpha.fill('90');
+    await tableAlpha.press('Enter');
+    await expect.poll(async () => (await overrides(page)).task.capacity[0].capacity)
+      .toBeCloseTo(90 / (alphaMax * 1.5) * 100, 12);
+    await expect(table.locator('.allocation-heading').first()).toContainText('h');
+    await page.screenshot({ path: testInfo.outputPath('hours-portfolio-desktop.png') });
+    expect(errors).toEqual([]);
+  });
 
   for (const unit of ['percent', 'man-days']) {
     test(`portfolio task table edits ${unit} by keyboard and wheel and adds a team`, async ({ page }, testInfo) => {
@@ -366,7 +426,8 @@ test.describe('Man-day allocation desktop', () => {
     await expect(config.locator('#allocationUnit')).toHaveValue('percent');
     await expect(config.locator('#retryStaffingBtn')).toBeVisible();
     await page.route('**/api/cost/teams', (route) => route.fulfill({ json: {
-      teams: { alpha: { internal: { fte: 5 }, external: { fte: 0 } } }, groups: {},
+      teams: { alpha: { internal: { fte: 5, monthly_hours: 712 },
+        external: { fte: 0, monthly_hours: 0 } } }, groups: {},
     } }));
     await config.locator('#retryStaffingBtn').click();
     await expect(config.locator('#configStatus')).toHaveText('Staffing loaded.');

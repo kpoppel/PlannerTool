@@ -264,9 +264,10 @@ describe('DetailsPanel editing and scheduling commands', () => {
     await el.updateComplete;
   });
 
-  it('validates direct man-day input and converts new team allocations without clamping', async () => {
-    store.setState((state) => ({ ...state, allocation: { unit: 'man-days', staffing: {
-      status: 'ready', fteById: { t1: 5 }, generation: 1, error: null,
+  for (const unit of ['man-days', 'hours']) {
+  it(`validates direct ${unit} input and converts new team allocations without clamping`, async () => {
+    store.setState((state) => ({ ...state, allocation: { unit, staffing: {
+      status: 'ready', fteById: { t1: 5 }, hourlyById: { t1: 5 }, generation: 1, error: null,
     } } }));
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'first', state: 'New', start: '2026-10-05', end: '2026-10-16',
@@ -283,6 +284,7 @@ describe('DetailsPanel editing and scheduling commands', () => {
     el._addCapacityTeam('t1', '10');
     expect(update.calledOnceWithExactly('first', 'capacity', [{ team: 't1', capacity: 20 }])).to.be.true;
   });
+  }
 
   it('preserves fractional percentages from whole man-day entry without rounding notices', async () => {
     store.setState((state) => ({ ...state, allocation: { unit: 'man-days', staffing: {

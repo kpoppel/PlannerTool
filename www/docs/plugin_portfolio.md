@@ -24,9 +24,9 @@ Open **Tools → Portfolio Board**. The board area is replaced by the "Portfolio
 
 The table shows a column for each team allocated to its visible tasks. Use **+** to add a column from the available team pool, then enter allocations for the tasks that team should work on. Adding a column alone does not assign the team to any task.
 
-Allocation cells use the unit selected in Configuration: percent or whole man-days. Type a value and press Enter or leave the cell to apply it. Scroll over a cell to adjust by one percentage point or one man-day; zero removes that team's assignment. Escape cancels an uncommitted typed value. Team columns stay compact and adjacent, with horizontal scrolling when needed. Edits go into the active scenario without changing Baseline.
+Allocation cells use the unit selected in Configuration: percent, whole man-days or whole hours. Hours reflect each team's workforce project-hour budget over the task's working days. Type a value and press Enter or leave the cell to apply it. Scroll over a cell to adjust by one percentage point, one man-day or one hour; zero removes that team's assignment. Escape cancels an uncommitted typed value. Team columns stay compact and adjacent, with horizontal scrolling when needed. Edits go into the active scenario without changing Baseline.
 
-Cells are disabled in read-only scenarios and for teams unavailable to the task. Man-day editing also requires loaded, nonzero team staffing and a schedule with working days. Values cannot exceed the team's staffed working-day capacity (100%).
+Cells are disabled in read-only scenarios and for teams unavailable to the task. Man-day and hour editing also require loaded, nonzero team staffing or project hours and a schedule with working days. Values cannot exceed the team's staffed capacity (100%).
 
 ## Editing dates in the task table
 

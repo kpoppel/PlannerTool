@@ -10,7 +10,7 @@ import { renderDetailsPanelScheduling } from './details-panel/DetailsPanelSchedu
 import { renderDetailsPanelCapacity } from './details-panel/DetailsPanelCapacity.lit.js';
 import { parseDetailsPanelTags, renderDetailsPanelTags } from './details-panel/DetailsPanelTags.lit.js';
 import { renderDetailsPanelRelations } from './details-panel/DetailsPanelRelations.lit.js';
-import { formatManDays, getAllocationBasis, manDaysToPercent, percentToManDays } from '../application/shared/allocationUnits.js';
+import { formatManDays, getEffortBasis, effortToPercent, percentToEffort } from '../application/shared/allocationUnits.js';
 
 export class DetailsPanelLit extends LitElement {
   static properties = {
@@ -223,12 +223,11 @@ export class DetailsPanelLit extends LitElement {
   }
 
   _saveCapacityEdit(teamId, newValue) {
-    if (sel.capacity.getAllocationSettings().unit === 'man-days') {
+    if (sel.capacity.getAllocationSettings().unit !== 'percent') {
       const row = this.feature.capacity.find((item) => item.team === teamId);
-      const basis = getAllocationBasis(teamId, this.feature,
-        sel.capacity.getAllocationSettings().staffing.fteById);
+      const basis = getEffortBasis(teamId, this.feature, sel.capacity.getAllocationSettings());
       if (row !== undefined && basis.reason === '' && newValue !== ''
-        && Number(newValue) === Number(formatManDays(percentToManDays(row.capacity, basis.fte, basis.days)))) {
+        && Number(newValue) === Number(formatManDays(percentToEffort(row.capacity, basis)))) {
         return true;
       }
     }
@@ -249,9 +248,9 @@ export class DetailsPanelLit extends LitElement {
     this.editingCapacityTeam = null;
     this.requestUpdate();
     const settings = sel.capacity.getAllocationSettings();
-    if (settings.unit === 'man-days') {
-      const basis = getAllocationBasis(teamId, this.feature, settings.staffing.fteById);
-      return formatManDays(percentToManDays(clampedCapacity, basis.fte, basis.days));
+    if (settings.unit !== 'percent') {
+      const basis = getEffortBasis(teamId, this.feature, settings);
+      return formatManDays(percentToEffort(clampedCapacity, basis));
     }
     return true;
   }
@@ -262,15 +261,15 @@ export class DetailsPanelLit extends LitElement {
       const parsed = parseInt(value, 10);
       return Math.max(0, Math.min(100, Number.isNaN(parsed) ? 0 : parsed));
     }
-    const basis = getAllocationBasis(teamId, this.feature, allocation.staffing.fteById);
-    const manDays = Number(value);
+    const basis = getEffortBasis(teamId, this.feature, allocation);
+    const effort = Number(value);
     if (allocation.staffing.status !== 'ready' || basis.reason !== '' || value.trim() === ''
-      || !Number.isInteger(manDays) || manDays < 0 || manDays > basis.max) {
-      cmd.ui.addNotification({ source: 'Allocation', code: 'invalid-man-days', severity: 'warning',
-        message: 'Allocation unchanged: enter whole man-days within the staffed working-day capacity.' });
+      || !Number.isInteger(effort) || effort < 0 || effort > basis.max) {
+      cmd.ui.addNotification({ source: 'Allocation', code: `invalid-${allocation.unit}`, severity: 'warning',
+        message: `Allocation unchanged: enter whole ${allocation.unit} within the staffed working-day capacity.` });
       return null;
     }
-    return manDaysToPercent(manDays, basis.fte, basis.days);
+    return effortToPercent(effort, basis);
   }
 
   _handleDeleteCapacity(teamId, e) {

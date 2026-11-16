@@ -228,6 +228,7 @@ class ConfigModal extends LitElement {
               <select id="allocationUnit">
                 <option value="percent" .selected=${sel.capacity.getAllocationSettings().unit === 'percent'}>Percent</option>
                 <option value="man-days" .selected=${sel.capacity.getAllocationSettings().unit === 'man-days'}>Man-days</option>
+                <option value="hours" .selected=${sel.capacity.getAllocationSettings().unit === 'hours'}>Hours</option>
               </select>
             </div>
             <div class="form-row">
