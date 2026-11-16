@@ -26,6 +26,7 @@ Template - do not change :
 
 ### Changed
 - Show Task Types first and State second in Task Filters, followed by the remaining selectors.
+- Show the active tool's name in the Tools menu button, or the number of active tools when several are selected.
 - Fit a persistent View context overview to the load graph's height, with Plan/Team focus controls, team drill-down, and type/state choices that stay visible when off. Keep advanced-filter indicators and quick cycling visible with detailed choices in the menu. Place task search beside the Tasks heading without an empty strip below the graph or timeline header.
 - Make team selection explicit, separate color editing from selection, and clarify All plan work versus Selected teams. Distinguish Expand/Collapse actions from Parent links filters, align filter checkboxes, and expose navigation for overflowing top menus.
 - Align Plan, Scenario, Teams and Saved Views menus with compact rows and inline team abbreviations.

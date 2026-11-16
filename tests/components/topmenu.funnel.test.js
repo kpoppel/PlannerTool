@@ -230,13 +230,58 @@ describe('TopMenu Data Funnel', () => {
     expect(trigger.querySelector('.menu-count-badge').textContent).to.equal('First plan');
   });
 
-  it('places plugin menus after Scope on both sides of Tools', async () => {
+  it('shows the active tool name or count and clears the badge when none are active', async () => {
+    const tools = [
+      { id: 'first-tool', name: 'First tool' },
+      { id: 'second-tool', name: 'Second tool' },
+    ];
+    const activeIds = new Set();
+    vi.spyOn(pluginManager, 'listTools').mockImplementation(() => tools);
+    vi.spyOn(pluginManager, 'isActive').mockImplementation((id) => activeIds.has(id));
+    const badge = () => menu.shadowRoot.querySelector('#toolsMenuBtn .menu-count-badge');
+    expect(badge()).to.equal(null);
+
+    activeIds.add('first-tool');
+    bus.emit(PluginEvents.ACTIVATED, { plugin: 'first-tool' });
+    await menu.updateComplete;
+    expect(badge().textContent).to.equal('First tool');
+
+    activeIds.add('second-tool');
+    bus.emit(PluginEvents.ACTIVATED, { plugin: 'second-tool' });
+    await menu.updateComplete;
+    expect(badge().textContent).to.equal('2');
+
+    activeIds.delete('first-tool');
+    bus.emit(PluginEvents.DEACTIVATED, { plugin: 'first-tool' });
+    await menu.updateComplete;
+    expect(badge().textContent).to.equal('Second tool');
+
+    tools.pop();
+    bus.emit(PluginEvents.UNREGISTERED, { plugin: 'second-tool' });
+    await menu.updateComplete;
+    expect(badge()).to.equal(null);
+  });
+
+  it('shows a tool that is already active when the top menu connects', async () => {
+    menu.remove();
+    vi.spyOn(pluginManager, 'listTools').mockReturnValue([
+      { id: 'existing-tool', name: 'Existing tool' },
+    ]);
+    vi.spyOn(pluginManager, 'isActive').mockReturnValue(true);
+    menu = document.createElement('top-menu-bar');
+    document.body.appendChild(menu);
+    await menu.updateComplete;
+    expect(menu.shadowRoot.querySelector('#toolsMenuBtn .menu-count-badge').textContent)
+      .to.equal('Existing tool');
+  });
+
+  it('places Scope before Filters and plugin menus on both sides of Tools', async () => {
     await registerMenu('test-before-menu', 'before-tools');
     await registerMenu('test-after-menu', 'after-tools');
     const labels = [...menu.shadowRoot.querySelectorAll('.menu-item')].map((element) =>
       element.dataset.pluginId === undefined ? element.id : element.dataset.pluginId);
-    expect(labels.slice(-4)).to.deep.equal([
-      'scopeMenuBtn', 'test-before-menu', 'toolsMenuBtn', 'test-after-menu',
+    expect(labels.slice(-5)).to.deep.equal([
+      'scopeMenuBtn', 'filtersMenuBtn', 'test-before-menu', 'toolsMenuBtn', 'test-after-menu',
     ]);
   });
 

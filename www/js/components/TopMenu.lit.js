@@ -39,6 +39,7 @@ export class TopMenuBarLit extends LitElement {
     boardBreakdown: { type: Object },
     scopeContext: { type: Object },
     menuPlugins: { type: Array },
+    activeTools: { state: true },
     application: { type: String },
     permissions: { type: Array },
     baseUrl: { type: String },
@@ -353,6 +354,7 @@ export class TopMenuBarLit extends LitElement {
     };
     this.scopeContext = { parent: false, child: false, dependency: false, otherAllocations: false };
     this.menuPlugins = [];
+    this.activeTools = [];
     this._menusOverflow = false;
     this._menusAtStart = true;
     this._menusAtEnd = false;
@@ -439,6 +441,14 @@ export class TopMenuBarLit extends LitElement {
     bus.on(PluginEvents.UNREGISTERED, this._onPluginMenusChanged);
     bus.on(PluginEvents.MENU_STATUS_CHANGED, this._onPluginMenusChanged);
     this._onPluginMenusChanged();
+    this._onActiveToolsChanged = () => {
+      this.activeTools = pluginManager.listTools().filter((tool) => pluginManager.isActive(tool.id));
+    };
+    bus.on(PluginEvents.REGISTERED, this._onActiveToolsChanged);
+    bus.on(PluginEvents.UNREGISTERED, this._onActiveToolsChanged);
+    bus.on(PluginEvents.ACTIVATED, this._onActiveToolsChanged);
+    bus.on(PluginEvents.DEACTIVATED, this._onActiveToolsChanged);
+    this._onActiveToolsChanged();
     this._onMenuResize = () => this._closeMenu(false);
     window.addEventListener('resize', this._onMenuResize);
     this._menuResizeObserver.observe(this);
@@ -542,6 +552,10 @@ export class TopMenuBarLit extends LitElement {
     bus.off(PluginEvents.REGISTERED, this._onPluginMenusChanged);
     bus.off(PluginEvents.UNREGISTERED, this._onPluginMenusChanged);
     bus.off(PluginEvents.MENU_STATUS_CHANGED, this._onPluginMenusChanged);
+    bus.off(PluginEvents.REGISTERED, this._onActiveToolsChanged);
+    bus.off(PluginEvents.UNREGISTERED, this._onActiveToolsChanged);
+    bus.off(PluginEvents.ACTIVATED, this._onActiveToolsChanged);
+    bus.off(PluginEvents.DEACTIVATED, this._onActiveToolsChanged);
     if (this._onMenuResize) window.removeEventListener('resize', this._onMenuResize);
     document.removeEventListener('task-filter-menu-open', this._onFilterOverviewOpen);
     this._menuResizeObserver.disconnect();
@@ -841,9 +855,6 @@ export class TopMenuBarLit extends LitElement {
                 : this.selectedProjectsCount}</span>`
             : ''}
           </div>
-          <button class="menu-item ${this.openMenu === 'filters' ? 'active' : ''}" id="filtersMenuBtn"
-            aria-haspopup="dialog" aria-expanded=${this.openMenu === 'filters' ? 'true' : 'false'}
-            @click=${(event) => this._toggleMenu('filters', event)}>Filters</button>
           <div
             class="menu-item ${this.openMenu === 'scope' ? 'active' : ''}"
             id="scopeMenuBtn"
@@ -857,6 +868,9 @@ export class TopMenuBarLit extends LitElement {
             ${this.scopeContext.dependency ? html`<span class="scope-icons" title="Dependencies">↔</span>` : ''}
             ${this.scopeContext.otherAllocations ? html`<span class="scope-icons" title="Other work by participating teams">●</span>` : ''}
           </div>
+          <button class="menu-item ${this.openMenu === 'filters' ? 'active' : ''}" id="filtersMenuBtn"
+            aria-haspopup="dialog" aria-expanded=${this.openMenu === 'filters' ? 'true' : 'false'}
+            @click=${(event) => this._toggleMenu('filters', event)}>Filters</button>
           ${this._renderPluginTriggers('before-tools')}
           <div
             class="menu-item ${this.openMenu === 'tools' ? 'active' : ''}"
@@ -866,6 +880,9 @@ export class TopMenuBarLit extends LitElement {
             @click=${(e) => this._toggleMenu('tools', e)}
           >
             Tools
+            ${this.activeTools.length > 0 ? html`
+              <span class="menu-count-badge">${this.activeTools.length === 1
+                ? this.activeTools[0].name : this.activeTools.length}</span>` : ''}
           </div>
           ${this._renderPluginTriggers('after-tools')}
         </div>
