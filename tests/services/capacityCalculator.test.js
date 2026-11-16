@@ -9,6 +9,77 @@ function planConfig(id, type = 'project') {
 }
 
 describe('CapacityCalculator (unit)', () => {
+  it('includes loaded ancestor-only reservations in team demand without adding reporting records', () => {
+    const features = [
+      { id: 'own', project: 'p1', state: 'active', start: '2025-01-06', end: '2025-01-06',
+        capacity: [{ team: 'A', capacity: 20 }] },
+      { id: 'reservation', project: 'external-owner', ancestorOnly: true, sourcePlanIds: [],
+        state: 'active', start: '2025-01-06', end: '2025-01-06', capacity: [{ team: 'A', capacity: 40 }] },
+    ];
+    const result = new CapacityCalculator(bus).calculate(features,
+      { selectedProjects: ['p1'], selectedStates: ['active'] }, [{ id: 'A' }], [planConfig('p1')]);
+    expect(result.teamDailyCapacityMap).to.deep.equal([{ A: 60 }]);
+    expect(result.totalOrgDailyCapacity).to.deep.equal([20]);
+    expect(result.planDailyCapacityMap).to.deep.equal([{ p1: 20 }]);
+  });
+
+  for (const reservationTeam of ['A', 'G']) {
+    it(`includes loaded peer and higher-level ${reservationTeam} demand without expanding reporting scope`, () => {
+      const teams = [{ id: 'A', kind: 'team', group_id: 'G' },
+        { id: 'B', kind: 'team', group_id: 'G' }, { id: 'G', kind: 'group' }];
+      const projects = [planConfig('own'), planConfig('peer'), planConfig('program', 'program')];
+      const features = [
+        { id: 'own-task', project: 'own', state: 'active',
+          start: '2025-01-06', end: '2025-01-07', capacity: [{ team: 'A', capacity: 20 }] },
+        { id: 'peer-request', project: 'peer', state: 'active',
+          start: '2025-01-06', end: '2025-01-07', capacity: [{ team: 'A', capacity: 30 }] },
+        { id: 'reservation', project: 'program', state: 'active',
+          start: '2025-01-06', end: '2025-01-07',
+          capacity: [{ team: reservationTeam, capacity: 40 }] },
+        { id: 'closed-request', project: 'peer', state: 'closed',
+          start: '2025-01-06', end: '2025-01-07', capacity: [{ team: 'A', capacity: 100 }] },
+      ];
+      const calculate = (selectedProjects) => new CapacityCalculator(bus).calculate(features,
+        { selectedProjects, selectedStates: ['active'] }, teams, projects);
+      const own = calculate(['own']);
+      const peer = calculate(['peer']);
+      const memberLoad = reservationTeam === 'G' ? 40 : 0;
+      expect(own.teamDailyCapacity).to.deep.equal([
+        [90, memberLoad, (90 + memberLoad) / 2],
+        [90, memberLoad, (90 + memberLoad) / 2],
+      ]);
+      expect(peer.teamDailyCapacity).to.deep.equal(own.teamDailyCapacity);
+      expect(own.teamDailyCapacityMap).to.deep.equal([
+        { A: 90, G: (90 + memberLoad) / 2, ...(memberLoad > 0 ? { B: memberLoad } : {}) },
+        { A: 90, G: (90 + memberLoad) / 2, ...(memberLoad > 0 ? { B: memberLoad } : {}) },
+      ]);
+      expect(own.totalOrgDailyCapacity).to.deep.equal([20, 20]);
+      expect(own.totalOrgDailyPerTeamAvg).to.deep.equal([10, 10]);
+      expect(own.projectDailyCapacityMap).to.deep.equal([{ own: 20 }, { own: 20 }]);
+      expect(own.planDailyCapacityMap).to.deep.equal([{ own: 20 }, { own: 20 }]);
+      expect(own.planTeamDailyCapacityMap).to.deep.equal([{ own: { A: 20 } }, { own: { A: 20 } }]);
+      expect(peer.totalOrgDailyCapacity).to.deep.equal([30, 30]);
+      expect(peer.planDailyCapacityMap).to.deep.equal([{ peer: 30 }, { peer: 30 }]);
+    });
+  }
+
+  it('supersedes a reservation with cross-plan descendant demand without a residual load', () => {
+    const teams = [{ id: 'A' }, { id: 'B' }];
+    const features = [
+      { id: 'reservation', project: 'program', state: 'active',
+        start: '2025-01-06', end: '2025-01-06',
+        capacity: [{ team: 'A', capacity: 50 }, { team: 'B', capacity: 40 }] },
+      { id: 'delivery', parentId: 'reservation', project: 'own', state: 'active',
+        start: '2025-01-06', end: '2025-01-06', capacity: [{ team: 'A', capacity: 20 }] },
+    ];
+    const projects = [planConfig('own'), planConfig('program', 'program')];
+    const result = new CapacityCalculator(bus).calculate(features,
+      { selectedProjects: ['own'], selectedStates: ['active'] }, teams, projects);
+    expect(result.teamDailyCapacityMap).to.deep.equal([{ A: 20, B: 40 }]);
+    expect(result.totalOrgDailyCapacity).to.deep.equal([20]);
+    expect(result.planDailyCapacityMap).to.deep.equal([{ own: 20, program: 20 }]);
+  });
+
   it('expands winning groups without duplicating organization load or its denominator', () => {
     const teams = [
       { id: 'A', kind: 'team', group_id: 'G' },

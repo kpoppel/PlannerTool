@@ -105,7 +105,7 @@ describe('MainGraph selector seam', () => {
     await el.updateComplete;
 
     expect(mockSel.selection.getSelectedTeamIds).toHaveBeenCalled();
-    expect(mockSel.scope.getContextTeams).toHaveBeenCalled();
+    expect(mockSel.selection.getEffectiveSelectedProjectIds).toHaveBeenCalled();
     expect(mockSel.scope.getContextFeatures).toHaveBeenCalled();
     expect(el._renderData.selectedProjectIds).toEqual(['p1', 'program-1']);
     expect(mockSel.view.getEffectiveCapacityViewMode).toHaveBeenCalled();
@@ -130,6 +130,15 @@ describe('MainGraph selector seam', () => {
     expect(subscribedEvents).toContain(TimelineEvents.SCALE_CHANGED);
   });
 
+  it('retains selected teams and plans even when Context has no work for them', async () => {
+    mockSel.scope.getContextFeatures.mockReturnValueOnce([]);
+    mockSel.scope.getContextTeams.mockReturnValueOnce([]);
+    const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
+    await el.updateComplete;
+    expect(el._renderData.selectedTeamIds).toEqual(['t1']);
+    expect(el._renderData.selectedProjectIds).toEqual(['p1']);
+  });
+
   it('renders custom lowest containers as lines with raw team percentages', async () => {
     const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
     const context = HTMLCanvasElement.prototype.getContext.mock.results[0].value;
@@ -145,6 +154,7 @@ describe('MainGraph selector seam', () => {
         { id: 'leaf', type: 'squad', container_order: 2, container_types: ['portfolio', 'program', 'squad'] },
       ],
       capacityDates: ['2026-01-01'],
+      teamDailyCapacityMap: [{ t1: 80 }],
       planDailyCapacityMap: [{ leaf: 80 }],
       planTeamDailyCapacityMap: [{ leaf: { t1: 80 } }],
       capacityViewMode: 'squad',
@@ -156,6 +166,41 @@ describe('MainGraph selector seam', () => {
     ]);
     expect(context.fillRect).not.toHaveBeenCalled();
     expect(context.stroke).toHaveBeenCalled();
+  });
+
+  it('uses canonical team demand across selected plans without adding plan totals twice', async () => {
+    const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
+    const context = HTMLCanvasElement.prototype.getContext.mock.results[0].value;
+    el._canvasRef = { width: 60, height: 120 };
+    for (const selectedPlans of [['own'], ['peer'], ['own', 'peer', 'program']]) {
+      el._hoverDays = [];
+      el._fullRender(context, {
+        months: [new Date('2026-01-01T00:00:00Z')],
+        teams: [
+          { id: 'A', name: 'Delivery', color: '#112233' },
+          { id: 'B', name: 'Other team' },
+          { id: 'G', name: 'Group', color: '#445566' },
+          { id: 'idle', name: 'Idle', color: '#778899' },
+        ],
+        projects: [
+          { id: 'own', type: 'squad', container_order: 2, container_types: ['portfolio', 'program', 'squad'] },
+          { id: 'peer', type: 'squad', container_order: 2, container_types: ['portfolio', 'program', 'squad'] },
+          { id: 'program', type: 'program', container_order: 1 },
+        ],
+        capacityDates: ['2026-01-01'],
+        teamDailyCapacityMap: [{ A: 90, B: 40, G: 65 }],
+        planDailyCapacityMap: [{ own: 20, peer: 30, program: 80 }],
+        planTeamDailyCapacityMap: [{ own: { A: 20 }, peer: { A: 30 }, program: { A: 40, B: 40 } }],
+        capacityViewMode: 'squad',
+        selectedTeamIds: new Set(['A', 'G', 'idle']),
+        selectedProjectIds: new Set(selectedPlans),
+      });
+      expect(el._hoverDays[0].entries).toEqual([
+        { name: 'Delivery', color: '#112233', value: 90 },
+        { name: 'Group', color: '#445566', value: 65 },
+        { name: 'Idle', color: '#778899', value: 0 },
+      ]);
+    }
   });
 
   it('renders intermediate containers as organisationally weighted stacked bars', async () => {

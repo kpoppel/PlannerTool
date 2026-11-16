@@ -55,6 +55,19 @@
       "dependencies": []
     },
     {
+      "id": "plugin-cone-of-uncertainty",
+      "type": "tool",
+      "icon": "timeline",
+      "name": "Cone of Uncertainty",
+      "version": "1.0.0",
+      "description": "Executive forecast with configurable duration uncertainty ranges",
+      "enabled": true,
+      "activateOnStartup": false,
+      "exclusive": true,
+      "mountPoint": "app",
+      "dependencies": []
+    },
+    {
       "id": "plugin-dependencies",
       "type": "hidden",
       "icon": "account_tree",

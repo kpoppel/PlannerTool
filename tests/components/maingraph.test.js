@@ -151,7 +151,7 @@ describe('MainGraph Tests', () => {
           [5, 15, 25],
           [0, 0, 0],
         ],
-        teamDailyCapacityMap: null,
+        teamDailyCapacityMap: [{ t1: 10 }, { t1: 5 }, {}],
         projectDailyCapacity: [],
         projectDailyCapacityMap: null,
         planDailyCapacityMap: [{ p1: 10 }, { p1: 5 }, {}],

@@ -62,6 +62,81 @@ function baseState(overrides = {}) {
 }
 
 describe('application/selectors/scopeSelectors', () => {
+  function virtualState() {
+    const state = baseState({ selection: { teamIds: ['team-a'] } });
+    state.baseline.features = [
+      { id: 'real', project: 'selected', type: 'Feature', capacity: [{ team: 'team-a', capacity: 20 }] },
+      { id: 'hidden', project: 'selected', type: 'Epic', capacity: [{ team: 'team-a', capacity: 50 }, { team: 'team-b', capacity: 60 }] },
+      { id: 'peer', project: 'other', type: 'Feature', capacity: [{ team: 'team-a', capacity: 30 }] },
+    ].map((feature) => ({ process_id: 'process', parentId: null, state: 'Active',
+      start: '2026-10-01', end: '2026-10-31', relations: [], ...feature }));
+    return state;
+  }
+
+  it('projects hidden types and unrelated loaded plans without changing canonical visibility', () => {
+    const state = virtualState();
+    const selectors = createScopeSelectors(createStore(state));
+    for (const taskViewMode of ['plan', 'team']) {
+      state.view.options = { ...state.view.options, taskViewMode };
+      const entries = selectors.getBoardPresentation();
+      expect(entries.map((entry) => [entry.kind, entry.sourceId])).toEqual([
+        ['task', 'real'], ['virtual', 'hidden'], ['virtual', 'peer'],
+      ]);
+      expect(entries[1].allocations).toEqual([{ team: 'team-a', capacity: 50 }]);
+      expect(entries[1].feature.capacity).toHaveLength(2);
+      expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['real']);
+      expect(selectors.getBoardBreakdown().tasksVisible).toBe(1);
+    }
+    state.selection.teamIds = ['team-a', 'team-b'];
+    expect(selectors.getBoardPresentation().filter((entry) => entry.sourceId === 'hidden'))
+      .toHaveLength(1);
+    expect(selectors.getBoardPresentation().find((entry) => entry.sourceId === 'hidden').allocations)
+      .toHaveLength(2);
+    state.selection.teamIds = [];
+    expect(selectors.getBoardPresentation()).toEqual([]);
+    state.view.options = { ...state.view.options, taskViewMode: 'plan' };
+    expect(selectors.getBoardPresentation().map((entry) => entry.sourceId)).toEqual(['real']);
+  });
+
+  it('deduplicates ordinary sources and preserves unrelated virtual eligibility filters', () => {
+    const state = virtualState();
+    const selectors = createScopeSelectors(createStore(state));
+    state.selection.taskTypeNames = [];
+    state.selection.projectIds = ['selected', 'other'];
+    expect(selectors.getBoardPresentation().map((entry) => entry.kind)).toEqual(['task', 'task', 'task']);
+    state.selection.projectIds = ['selected'];
+    state.selection.featureStateNames = ['Closed'];
+    expect(selectors.getBoardPresentation()).toEqual([]);
+    state.selection.featureStateNames = ['Active'];
+    state.selection.taskFilters = { schedule: {}, allocation: { allocated: false }, hierarchy: {}, relations: {} };
+    expect(selectors.getBoardPresentation()).toEqual([]);
+    state.selection.taskFilters = { schedule: {}, allocation: {}, hierarchy: {}, relations: { hasLinks: true, noLinks: false } };
+    expect(selectors.getBoardPresentation()).toEqual([]);
+    state.selection.taskFilters = { schedule: { planned: false, unplanned: true }, allocation: {}, hierarchy: {}, relations: {} };
+    expect(selectors.getBoardPresentation()).toEqual([]);
+    state.selection.taskFilters = { schedule: {}, allocation: {}, hierarchy: { hasParent: true, noParent: false }, relations: {} };
+    expect(selectors.getBoardPresentation()).toEqual([]);
+  });
+
+  it('resolves full-graph precedence and group expansion before projecting scenario allocations', () => {
+    const state = virtualState();
+    state.baseline.teams = [{ id: 'team-a', kind: 'team', group_id: 'group' },
+      { id: 'team-b', kind: 'team', group_id: 'group' }, { id: 'group', kind: 'group' }];
+    state.baseline.features[1].capacity = [{ team: 'group', capacity: 50 }];
+    state.baseline.features[2].parentId = 'hidden';
+    const selectors = createScopeSelectors(createStore(state));
+    expect(selectors.getBoardPresentation().map((entry) => entry.sourceId)).toEqual(['real', 'peer']);
+    state.baseline.features = state.baseline.features.map((feature) => feature.id === 'peer'
+      ? { ...feature, parentId: null } : feature);
+    expect(selectors.getBoardPresentation().find((entry) => entry.sourceId === 'hidden').allocations)
+      .toEqual([{ team: 'team-a', capacity: 50 }]);
+    state.selection.teamIds = ['group'];
+    expect(selectors.getBoardPresentation().find((entry) => entry.sourceId === 'hidden').allocations)
+      .toEqual([{ team: 'team-a', capacity: 50 }, { team: 'team-b', capacity: 50 }]);
+    state.scenarios.items = [{ id: 'baseline', overrides: { hidden: { capacity: [] } } }];
+    expect(selectors.getBoardPresentation().map((entry) => entry.sourceId)).toEqual(['real', 'peer']);
+  });
+
   it('keeps historical anchors visible as planned when unplanned work is hidden', () => {
     const state = baseState({
       selection: {

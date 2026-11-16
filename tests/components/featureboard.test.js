@@ -4,10 +4,71 @@ import { sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { AppEvents, ProjectEvents } from '../../www/js/core/EventRegistry.js';
 import { groupService } from '../../www/js/services/GroupService.js';
+import { initTimeline } from '../../www/js/components/Timeline.lit.js';
 
 describe('FeatureBoard & DragSurface Tests', () => {
+  before(async () => { await initTimeline(); });
+
   afterEach(() => {
     sinon.restore();
+  });
+
+  it('carries virtual source metadata through shared layout without changing the source', async () => {
+    await import('../../www/js/components/FeatureBoard.lit.js');
+    const board = await fixture(html`<feature-board></feature-board>`);
+    const feature = { id: 'virtual-source', title: 'Reservation', project: 'p1',
+      type: 'Epic', parentId: null, start: '2026-10-01', end: '2026-10-31',
+      capacity: [{ team: 'A', capacity: 50 }, { team: 'B', capacity: 40 }], relations: [] };
+    const presentation = { kind: 'virtual', sourceId: feature.id, feature,
+      allocations: [{ team: 'A', capacity: 50 }] };
+    sinon.stub(sel.feature, 'getEffectiveFeatures').returns([feature]);
+    sinon.stub(sel.scope, 'getVisibleFeatures').returns([]);
+    sinon.stub(sel.scope, 'getBoardPresentation').returns([presentation]);
+    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', name: 'Plan', selected: true }]);
+    sinon.stub(sel.selection, 'getTeams').returns([{ id: 'A' }, { id: 'B' }]);
+    await board.renderFeatures();
+    expect(board.getTaskLayout({ full: true }).rows[0].presentation).to.equal(presentation);
+    expect(board.getTaskLayout({ full: true }).searchFeatures[0]).to.equal(feature);
+    expect(feature.capacity).to.have.lengthOf(2);
+  });
+
+  it('does not resurrect virtual descendants beneath a folded hidden source ancestor', async () => {
+    await import('../../www/js/components/FeatureBoard.lit.js');
+    const board = await fixture(html`<feature-board></feature-board>`);
+    const parent = { id: 'parent', title: 'Hidden parent', project: 'p1', type: 'Epic',
+      parentId: null, capacity: [], relations: [] };
+    const child = { ...parent, id: 'child', title: 'Demand', parentId: 'parent',
+      start: '2026-10-01', end: '2026-10-31', capacity: [{ team: 'A', capacity: 20 }] };
+    sinon.stub(sel.feature, 'getEffectiveFeatures').returns([parent, child]);
+    sinon.stub(sel.scope, 'getVisibleFeatures').returns([]);
+    sinon.stub(sel.scope, 'getBoardPresentation').returns([
+      { kind: 'virtual', sourceId: child.id, feature: child, allocations: child.capacity },
+    ]);
+    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', name: 'Plan', selected: true }]);
+    board._foldedFeatures.add('parent');
+    await board.renderFeatures();
+    expect(board.getTaskLayout({ full: true }).rows).to.have.lengthOf(0);
+  });
+
+  it('retains the expand control when a visible parent folds virtual descendants', async () => {
+    await import('../../www/js/components/FeatureBoard.lit.js');
+    const board = await fixture(html`<feature-board></feature-board>`);
+    const parent = { id: 'parent', title: 'Parent', project: 'p1', type: 'Feature',
+      parentId: null, start: '2026-10-01', end: '2026-10-31', capacity: [], relations: [] };
+    const child = { ...parent, id: 'child', title: 'Demand', parentId: 'parent',
+      start: '2026-10-01', end: '2026-10-31', capacity: [{ team: 'A', capacity: 20 }] };
+    sinon.stub(sel.feature, 'getEffectiveFeatures').returns([parent, child]);
+    sinon.stub(sel.scope, 'getVisibleFeatures').returns([parent]);
+    sinon.stub(sel.scope, 'getBoardPresentation').returns([
+      { kind: 'virtual', sourceId: child.id, feature: child, allocations: child.capacity },
+    ]);
+    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', name: 'Plan', selected: true }]);
+    board._foldedFeatures.add('parent');
+    await board.renderFeatures();
+    const rows = board.getTaskLayout({ full: true }).rows;
+    expect(rows).to.have.lengthOf(1);
+    expect(rows[0].foldCount).to.equal(1);
+    expect(rows[0].folded).to.equal(true);
   });
 
   it('keeps swimlane tints subtler than card progress fills', async () => {

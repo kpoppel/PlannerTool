@@ -26,6 +26,21 @@ describe('FeatureBoard incremental updates', () => {
     sinon.restore();
   });
 
+  for (const existingVirtual of [false, true]) {
+    it(`reprojects changed allocations when virtual entries ${existingVirtual ? 'already exist' : 'become eligible'}`, async () => {
+      await import('../../www/js/components/FeatureBoard.lit.js');
+      const board = await fixture(html`<feature-board></feature-board>`);
+      const feature = { id: 'source' };
+      board._fullRenderList = existingVirtual
+        ? [{ feature, presentation: { kind: 'virtual' } }] : [];
+      sinon.stub(sel.scope, 'getBoardPresentation').returns(existingVirtual
+        ? [] : [{ kind: 'virtual', sourceId: 'source', feature, allocations: [] }]);
+      const render = sinon.stub(board, 'renderFeatures').resolves();
+      await board.updateCardsById(['source']);
+      expect(render.calledOnce).to.be.true;
+    });
+  }
+
   it('updateCardsById patches existing lit cards', async () => {
     // Stub ResizeObserver to avoid loop errors in headless test runs
     if (!window.__origResizeObserver) {

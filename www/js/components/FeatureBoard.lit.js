@@ -38,6 +38,7 @@ import {
   resolveInsertionSlot,
 } from './groupBandLayout.js';
 import { RANK_GAP } from '../application/shared/ordering.js';
+import { featureHasEligibleParent } from '../application/shared/featureProjection.js';
 import { applyFoldAction, buildFoldModel } from './hierarchyFold.js';
 import './FeatureGroup.lit.js';
 export { initBoard } from './FeatureBoard.init.js';
@@ -305,6 +306,7 @@ class FeatureBoard extends LitElement {
           }
           return html`<feature-card-lit
             .feature=${item.feature}
+            .presentation=${item.presentation}
             .bus=${bus}
             .teams=${item.teams}
             .condensed=${item.condensed}
@@ -711,8 +713,13 @@ class FeatureBoard extends LitElement {
     });
     const ordinaryFeatures = sel.scope.getVisibleFeatures();
     const reviewContext = this._reconciliationContext;
+    const presentations = reviewContext === null
+      ? sel.scope.getBoardPresentation().filter((entry) => entry.kind === 'virtual') : [];
+    const presentationById = new Map(presentations.map((entry) => [entry.sourceId, entry]));
+    const virtualIds = new Set(presentationById.keys());
     const ordinaryIds = new Set(ordinaryFeatures.map((feature) => String(feature.id)));
-    const visibleFeatures = reviewContext === null ? ordinaryFeatures
+    let visibleFeatures = reviewContext === null
+      ? [...ordinaryFeatures, ...presentations.map((entry) => entry.feature)]
       : sourceFeatures.filter((feature) => reviewContext.featureIds.has(String(feature.id))
         || (!reviewContext.filter && ordinaryIds.has(String(feature.id))));
     const months = getTimelineMonths();
@@ -729,7 +736,8 @@ class FeatureBoard extends LitElement {
     const candidateSwimlanes = buildSwimlaneList(
       selectedProjects,
       visibleFeatures,
-      context
+      context,
+      virtualIds
     );
     const swimlaneActive = isSwimlaneMode(
       selectedProjects,
@@ -764,15 +772,53 @@ class FeatureBoard extends LitElement {
       }
       return false;
     };
+    const allFeaturesById = new Map(rawFeatures.map((feature) => [String(feature.id), feature]));
+    const canonicalSection = (feature) => {
+      const lane = swimlaneActive ? assignFeatureToSwimlane(feature, candidateSwimlanes,
+        allFeaturesById, context, groupedOwnerPlanByFeatureId.get(String(feature.id))) : 'board';
+      return `${lane}:${groupByMember.get(String(feature.id))}`;
+    };
+    const presentedIds = new Set(visibleFeatures.map((feature) => String(feature.id)));
+    const foldedVirtualCounts = new Map();
+    const presentationSection = (feature) => {
+      const lane = swimlaneActive ? assignFeatureToSwimlane(feature, candidateSwimlanes,
+        allFeaturesById, context, groupedOwnerPlanByFeatureId.get(String(feature.id)),
+        virtualIds.has(String(feature.id))) : 'board';
+      return `${lane}:${groupByMember.get(String(feature.id))}`;
+    };
+    if (!isPacked && reviewContext === null) {
+      visibleFeatures = visibleFeatures.filter((feature) => {
+        if (!virtualIds.has(String(feature.id))) return true;
+        let current = feature;
+        const visited = new Set([String(current.id)]);
+        while (current.parentId) {
+          const parentId = String(current.parentId);
+          if (visited.has(parentId)) break;
+          visited.add(parentId);
+          const parent = allFeaturesById.get(parentId);
+          if (parent === undefined || !featureHasEligibleParent(current, parent)
+            || canonicalSection(current) !== canonicalSection(parent)) break;
+          if (this._foldedFeatures.has(parentId)) {
+            if (!presentedIds.has(parentId)) return false;
+            if (presentationSection(feature) !== presentationSection(parent)) {
+              const count = foldedVirtualCounts.has(parentId) ? foldedVirtualCounts.get(parentId) : 0;
+              foldedVirtualCounts.set(parentId, count + 1);
+              return false;
+            }
+          }
+          current = parent;
+        }
+        return true;
+      });
+    }
     const foldableFeatures = visibleFeatures.filter(
       (feature) => !groupIsCollapsed(groupByMember.get(String(feature.id)))
     );
     const sections = new Map();
-    const allFeaturesById = new Map(rawFeatures.map((feature) => [String(feature.id), feature]));
     for (const feature of foldableFeatures) {
       const lane = swimlaneActive ? assignFeatureToSwimlane(
         feature, candidateSwimlanes, allFeaturesById, context,
-        groupedOwnerPlanByFeatureId.get(String(feature.id))
+        groupedOwnerPlanByFeatureId.get(String(feature.id)), virtualIds.has(String(feature.id))
       ) : 'board';
       const groupId = groupByMember.get(String(feature.id));
       sections.set(String(feature.id), `${lane}:${groupId ? groupId : 'ungrouped'}`);
@@ -785,6 +831,12 @@ class FeatureBoard extends LitElement {
       foldedFeatures,
       sel.feature.getWorkItemDisplay()
     );
+    if (this._foldModel !== null) {
+      for (const [id, count] of foldedVirtualCounts) {
+        const existing = this._foldModel.counts.has(id) ? this._foldModel.counts.get(id) : 0;
+        this._foldModel.counts.set(id, existing + count);
+      }
+    }
     this._foldState = {
       active: this._foldModel !== null && this._foldModel.counts.size > 0,
       foldableCount: this._foldModel === null ? 0 : this._foldModel.counts.size,
@@ -827,7 +879,7 @@ class FeatureBoard extends LitElement {
           swimlanes,
           allFeaturesById,
           context,
-          groupedOwnerPlanByFeatureId.get(String(feature.id)) || null
+          groupedOwnerPlanByFeatureId.get(String(feature.id)), virtualIds.has(String(feature.id))
         );
         const bucket = buckets.get(sid) ?? buckets.get(swimlanes[0]?.id);
         if (bucket) bucket.push(feature);
@@ -940,7 +992,7 @@ class FeatureBoard extends LitElement {
               preserveFeatureOrder: true,
               dateFeatures: visibleFeatures.filter((feature) => assignFeatureToSwimlane(
                 feature, swimlanes, allFeaturesById, context,
-                groupedOwnerPlanByFeatureId.get(String(feature.id))
+                groupedOwnerPlanByFeatureId.get(String(feature.id)), virtualIds.has(String(feature.id))
               ) === swimlane.id),
             }
           );
@@ -1065,6 +1117,9 @@ class FeatureBoard extends LitElement {
       totalHeight = allGroups.length > 0 ? gHeight : gHeight + this._overlayOffset;
     }
 
+    for (const item of renderList) {
+      if (!item.isGroup) item.presentation = presentationById.get(String(item.feature.id));
+    }
     this._applyRenderList(renderList);
     this._cardMap.clear();
     // Explicitly size the host so #board-area (the positioned parent) has the
@@ -1242,6 +1297,12 @@ class FeatureBoard extends LitElement {
   }
 
   async updateCardsById(ids = []) {
+    const hasVirtualEntries = this._fullRenderList.some((item) => !item.isGroup
+      && item.presentation !== undefined && item.presentation.kind === 'virtual');
+    if (hasVirtualEntries || sel.scope.getBoardPresentation().some((entry) => entry.kind === 'virtual')) {
+      await this.renderFeatures();
+      return;
+    }
     // In packed mode any date change can shift a card into an occupied lane.
     // A full repack is required to keep the layout consistent.
     if (sel.view.getPackedMode()) {

@@ -22,6 +22,7 @@ import { store } from '../application/store.js';
 export class FeatureCardLit extends LitElement {
   static properties = {
     feature: { type: Object },
+    presentation: { attribute: false },
     bus: { type: Object },
     teams: { type: Array },
     condensed: { type: Boolean },
@@ -68,6 +69,14 @@ export class FeatureCardLit extends LitElement {
     .feature-card:hover {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
+
+    .feature-card.virtual::after {
+      content: ''; position: absolute; inset: 0; border-radius: inherit;
+      pointer-events: none;
+      background: repeating-linear-gradient(135deg, transparent 0 5px, #526d7914 5px 8px);
+    }
+    .virtual-label { flex: 0 0 auto; font-size: 10px; font-weight: 600; color: #435b64; }
+    .feature-card:focus-visible { outline: 2px solid #347ab3; outline-offset: 1px; }
 
     .fold-toggle {
       position: absolute;
@@ -419,6 +428,7 @@ export class FeatureCardLit extends LitElement {
     this._resizeTooltip = '';
     this._resizeTooltipTimer = null;
     this.feature = {};
+    this.presentation = null;
     this.bus = null;
     this.teams = [];
     this.condensed = false;
@@ -585,6 +595,7 @@ export class FeatureCardLit extends LitElement {
   }
 
   updated(changedProperties) {
+    if (changedProperties.has('presentation') && this._isVirtual) this._cancelEditingGesture();
     if (!this._rootCard) this._rootCard = this.shadowRoot.querySelector('.feature-card');
     const inner = this._rootCard;
     if (inner) inner.classList.toggle('dirty', !!this.feature.dirty);
@@ -604,7 +615,7 @@ export class FeatureCardLit extends LitElement {
       this._requestLayout();
     }
 
-    if (changedProperties.has('feature') || changedProperties.has('teams') ||
+    if (changedProperties.has('feature') || changedProperties.has('teams') || changedProperties.has('presentation') ||
       changedProperties.has('condensed')) this._requestLayout(true);
   }
 
@@ -667,8 +678,13 @@ export class FeatureCardLit extends LitElement {
     this.setLiveDates('');
   }
 
+  get _isVirtual() {
+    return this.presentation !== null && this.presentation !== undefined
+      && this.presentation.kind === 'virtual';
+  }
+
   _handleMouseDown(e) {
-    if (!sel.scenario.isActiveScenarioMutable()) {
+    if (this._isVirtual || !sel.scenario.isActiveScenarioMutable()) {
       e.stopPropagation();
       return;
     }
@@ -780,6 +796,10 @@ export class FeatureCardLit extends LitElement {
 
   _handleContextMenu(e) {
     e.preventDefault();
+    if (this._isVirtual) {
+      e.stopPropagation();
+      return;
+    }
     if (e.composedPath().includes(this.shadowRoot.querySelector('.drag-handle'))) return;
     this.dispatchEvent(new CustomEvent('feature-context-menu', {
       detail: { feature: this.feature, clientX: e.clientX, clientY: e.clientY },
@@ -789,7 +809,7 @@ export class FeatureCardLit extends LitElement {
   }
 
   _handleDoubleClick(e) {
-    if (!sel.scenario.isActiveScenarioMutable()) return;
+    if (this._isVirtual || !sel.scenario.isActiveScenarioMutable()) return;
     const path = e.composedPath();
     if (path.includes(this.shadowRoot.querySelector('.drag-handle'))) return;
     cmd.feature.revertFeature(this.feature.id);
@@ -820,7 +840,7 @@ export class FeatureCardLit extends LitElement {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
     event.stopPropagation();
-    if (!sel.scenario.isActiveScenarioMutable()) return;
+    if (this._isVirtual || !sel.scenario.isActiveScenarioMutable()) return;
     if (!this.feature.start || !this.feature.end) return;
     const end = addDays(parseDate(this.feature.end), event.key === 'ArrowRight' ? 1 : -1);
     if (end < parseDate(this.feature.start)) return;
@@ -831,8 +851,10 @@ export class FeatureCardLit extends LitElement {
 
   _renderTeamLoadRow() {
     const descendantTeams = sel.feature.getDescendantAllocationTeams(this.feature.id);
-    const allocations = this.feature.capacity === undefined ? [] : this.feature.capacity;
-    const supersededCount = allocations.filter((item) => descendantTeams.has(item.team)).length;
+    const allocations = this._isVirtual ? this.presentation.allocations
+      : this.feature.capacity === undefined ? [] : this.feature.capacity;
+    const supersededCount = this._isVirtual ? 0
+      : allocations.filter((item) => descendantTeams.has(item.team)).length;
     const allSuperseded = allocations.length > 0 && supersededCount === allocations.length;
 
     const orgBox = html`
@@ -847,7 +869,7 @@ export class FeatureCardLit extends LitElement {
           if (!team) return null;
           return html`
             <span
-              class="team-load-box ${team.selected && !descendantTeams.has(tl.team) ? '' : 'team-load-box--dimmed'}"
+              class="team-load-box ${this._isVirtual || (team.selected && !descendantTeams.has(tl.team)) ? '' : 'team-load-box--dimmed'}"
               style="background: #e4e8e7; color: #172321; --team-color: ${team.color}; --allocation-width: ${Math.min(100, Math.max(0, tl.capacity))}%"
               title="${team.name}: ${ceilAllocation(tl.capacity)}"
             >
@@ -867,7 +889,7 @@ export class FeatureCardLit extends LitElement {
         ${supersededCount > 0 ?
           html`<span class="dim-info" role="img">ℹ️</span>`
         : ''}
-        ${orgBox} ${teamBoxes}
+        ${this._isVirtual ? '' : orgBox} ${teamBoxes}
       </div>
     `;
   }
@@ -900,6 +922,7 @@ export class FeatureCardLit extends LitElement {
     const completion = sel.feature.getDescendantCompletion(this.feature.id);
     const progress = completion.total > 0 ? completion.closed / completion.total : isCompleted ? 1 : 0;
     this._cardTooltip = `${this.feature.id}: ${this.feature.title}${dateLabel ? ` · ${dateLabel}` : ''}${isAnchor ? ' · historical anchor' : ''}${this.feature.ancestorOnly === true ? ' · Ancestor context only. Other child branches are not loaded.' : ''}`;
+    if (this._isVirtual) this._cardTooltip += ` - Virtual - ${this.project === null || this.project === undefined ? this.feature.sourcePlanName : this.project.name}`;
 
     const cardClasses = {
       'feature-card': true,
@@ -909,6 +932,7 @@ export class FeatureCardLit extends LitElement {
       ghosted: isUnplanned,
       completed: isCompleted,
       'historical-anchor': isAnchor,
+      virtual: this._isVirtual,
       'in-group': !!this.groupColor,
       'has-children': this.foldCount > 0,
     };
@@ -922,11 +946,18 @@ export class FeatureCardLit extends LitElement {
         role="listitem"
         aria-label=${this.feature.title}
         draggable="false"
+        tabindex=${this._isVirtual ? '0' : '-1'}
         title=${this._cardTooltip}
         style="--project-color: ${projectColor}; --completion: ${progress * 100}%; --group-color: ${this.groupColor === null ? 'transparent' : this.groupColor}"
         @click=${this._handleClick}
         @dblclick=${this._handleDoubleClick}
         @contextmenu=${this._handleContextMenu}
+        @keydown=${(event) => {
+          if (this._isVirtual && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            this._handleClick(event);
+          }
+        }}
         part="feature-card"
       >
         <div class="completion-fill" aria-hidden="true"></div>
@@ -942,10 +973,11 @@ export class FeatureCardLit extends LitElement {
         <div class="card-content">
           ${this._renderTypeIcon()}
           <span class="feature-id">${this.feature.id}</span>
+          ${this._isVirtual ? html`<span class="virtual-label">Virtual</span>` : ''}
           ${this._renderTeamLoadRow()}
           <span class="completion-count" title=${`${completion.closed} closed / ${completion.total} sub-items`}>${completion.closed}/${completion.total}</span>
         </div>
-        ${sel.scenario.isActiveScenarioMutable() ? html`<div class="drag-handle"
+        ${!this._isVirtual && sel.scenario.isActiveScenarioMutable() ? html`<div class="drag-handle"
           data-active-policy=${this._resizePolicy} data-drag-handle part="drag-handle">
           <button class="resize-zone" type="button" data-resize-policy="keep-allocation"
             aria-label="Keep allocation: resize duration and effort"

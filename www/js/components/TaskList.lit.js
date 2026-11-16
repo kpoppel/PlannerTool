@@ -21,6 +21,8 @@ export class TaskList extends LitElement {
       background: color-mix(in srgb, var(--group-color) 8%, transparent); }
     .row:hover, .row.highlighted, .row:focus-within { background: #e4eef7; }
     .row.selected { background: #d3e6f8; box-shadow: inset 3px 0 #347ab3; }
+    .row.virtual { background-image: repeating-linear-gradient(135deg,
+      transparent 0 5px, #526d7914 5px 8px); }
     .group { font-weight: 600; }
     .fold { flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0;
       background: transparent; color: inherit; cursor: pointer; }
@@ -124,12 +126,15 @@ export class TaskList extends LitElement {
         height:${group.height}px;border-color:${group.color}"></div>`)}
       ${repeat(this.layout.rows, (row) => row.id, (row) => {
         const group = row.isGroup === true;
+        const virtual = row.presentation !== undefined && row.presentation !== null
+          && row.presentation.kind === 'virtual';
         const title = group ? row.groupObj.name : row.feature.title;
         const ancestry = group ? [] : this._ancestry(row.feature, byId);
         const foldable = group || row.foldCount > 0;
         const folded = group ? row.collapsed : row.folded;
         const groupColor = group ? row.groupObj.color : row.groupColor;
         const metadata = [];
+        if (virtual) metadata.push('Virtual');
         if (!group) {
           metadata.push(`#${row.feature.id}`);
           if (row.feature.parentId !== null && row.feature.parentId !== undefined) {
@@ -139,8 +144,9 @@ export class TaskList extends LitElement {
             String(project.id) === String(row.feature.project));
           // Context-only tasks have no configured owning plan.
           if (owningPlan !== undefined) metadata.push(owningPlan.name);
+          else if (virtual) metadata.push(row.feature.sourcePlanName);
         }
-        return html`<div class="row ${group ? 'group' : ''} ${this._selection.value === row.id ? 'selected' : ''}
+        return html`<div class="row ${group ? 'group' : ''} ${virtual ? 'virtual' : ''} ${this._selection.value === row.id ? 'selected' : ''}
           ${this.highlightedId === row.id ? 'highlighted' : ''}" data-task-id=${row.id}
           style="top:${row.top}px;height:${row.height}px;--group-color:${groupColor === null || groupColor === undefined ? 'transparent' : groupColor}" role="listitem"
           @click=${() => group ? this._emit('group-toggle', { groupId: row.id, collapsed: !folded }) : this._select(row.feature)}
@@ -151,6 +157,7 @@ export class TaskList extends LitElement {
           @contextmenu=${(event) => {
             event.preventDefault();
             event.stopPropagation();
+            if (virtual) return;
             this._emit(group ? 'group-context-menu' : 'feature-context-menu', {
               group: group ? row.groupObj : null, feature: group ? null : row.feature,
               clientX: event.clientX, clientY: event.clientY,
@@ -171,7 +178,7 @@ export class TaskList extends LitElement {
             ${group ? '' : html`<span class="task-meta" title=${metadata.join(' - ')}>${metadata.join(' \u00b7 ')}</span>`}
           </div>
           ${folded && !group ? html`<span class="count">${row.foldCount}</span>` : ''}
-          <span class="actions" @click=${(event) => event.stopPropagation()}><slot name=${`actions-${row.id}`}></slot></span>
+          ${virtual ? '' : html`<span class="actions" @click=${(event) => event.stopPropagation()}><slot name=${`actions-${row.id}`}></slot></span>`}
         </div>`;
       })}
     </div>`;

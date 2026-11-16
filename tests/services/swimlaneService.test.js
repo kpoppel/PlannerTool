@@ -29,6 +29,30 @@ describe('SwimlaneService', () => {
     expect(lanes).toEqual([{ id: 'p1', name: 'p1', color: '#aaa', type: 'plan' }]);
   });
 
+  it('creates source lanes for virtual allocations independently of Context', () => {
+    const features = [mkFeature('real', 'p1'), mkFeature('virtual', 'p2', 'real')];
+    const virtualIds = new Set(['virtual']);
+    const lanes = buildSwimlaneList(projects, features, noContext, virtualIds);
+    expect(lanes.map((lane) => lane.id)).toEqual(['p1', 'p2']);
+    expect(assignFeatureToSwimlane(features[1], lanes,
+      new Map(features.map((feature) => [feature.id, feature])),
+      { ...noContext, parent: true }, 'p1', true)).toBe('p2');
+  });
+
+  it('identifies a loaded virtual source with an unconfigured owner without Context expansion', () => {
+    const feature = { ...mkFeature('reservation', 'external-owner'), ancestorOnly: true,
+      sourcePlanName: 'Portfolio reservation' };
+    const lanes = buildSwimlaneList(projects, [feature], noContext, new Set(['reservation']));
+    expect(lanes[1]).toMatchObject({ id: 'external-owner', name: 'Portfolio reservation', contextOnly: true });
+    expect(assignFeatureToSwimlane(feature, lanes, new Map(), noContext, null, true)).toBe('external-owner');
+  });
+
+  it('uses the loaded source identity for a virtual internal owner without plan metadata', () => {
+    const feature = { ...mkFeature('shared', 'internal-owner'), sourcePlanName: 'Internal source' };
+    const lanes = buildSwimlaneList(projects, [feature], noContext, new Set(['shared']));
+    expect(lanes[1]).toMatchObject({ id: 'internal-owner', name: 'Internal source', contextOnly: true });
+  });
+
   it('orders selected ancestor plan lanes before their selected descendants', () => {
     const features = [mkFeature('parent', 'p1'), mkFeature('child', 'p2', 'parent')];
     const lanes = buildSwimlaneList(

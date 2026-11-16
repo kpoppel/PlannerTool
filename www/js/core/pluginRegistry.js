@@ -16,6 +16,7 @@ import PluginDependencies from '../plugins/PluginDependencies.js';
 import PluginEventsPlugin from '../plugins/PluginEvents.js';
 import PluginXYBoard from '../plugins/PluginXYBoard.js';
 import PluginPortfolio from '../plugins/PluginPortfolio.js';
+import PluginConeOfUncertainty from '../plugins/PluginConeOfUncertainty.js';
 
 const PluginRegistry = {
   'sample-plugin': SamplePlugin,
@@ -32,6 +33,7 @@ const PluginRegistry = {
   'plugin-events': PluginEventsPlugin,
   'plugin-xy-board': PluginXYBoard,
   'plugin-portfolio-board': PluginPortfolio,
+  'plugin-cone-of-uncertainty': PluginConeOfUncertainty,
 };
 
 export default PluginRegistry;

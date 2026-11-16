@@ -199,11 +199,11 @@ export class MainGraphLit extends LitElement {
     this._maingraphUnsubs = [];
     const buildSnapshot = () => {
       const months = getTimelineMonths();
-      const selectedProjectIds = [...new Set(sel.scope.getContextFeatures()
-        .map((feature) => String(feature.project)))];
-      const contextTeamIds = new Set(sel.scope.getContextTeams().map((id) => String(id)));
-      const selectedTeamIds = sel.selection.getSelectedTeamIds()
-        .filter((id) => contextTeamIds.has(String(id)));
+      const selectedProjectIds = [...new Set([
+        ...sel.selection.getEffectiveSelectedProjectIds().map(String),
+        ...sel.scope.getContextFeatures().map((feature) => String(feature.project)),
+      ])];
+      const selectedTeamIds = sel.selection.getSelectedTeamIds();
       return {
         months,
         teams: sel.selection.getTeams(),
@@ -599,20 +599,13 @@ export class MainGraphLit extends LitElement {
       const teamBucket = {};
       let maxTeamVal = 0;
       if (usingTeam) {
-        const dayPlanTeams = planTeamDailyCapacityMap[idx];
-        for (const plan of projects) {
-          if (plan.type !== capacityViewMode || !selectedProjectIdSet.has(String(plan.id))) continue;
-          const loads = dayPlanTeams[plan.id];
-          if (!loads) continue;
-          for (const [teamId, load] of Object.entries(loads)) {
-            if (teamBucket[teamId] === undefined) teamBucket[teamId] = 0;
-            teamBucket[teamId] += load;
-          }
+        const dayTeams = teamDailyCapacityMap[idx];
+        for (const team of teams) {
+          if (!selectedTeamIdSet.has(String(team.id))) continue;
+          const load = dayTeams[team.id];
+          teamBucket[team.id] = load === undefined ? 0 : load;
+          if (teamBucket[team.id] > maxTeamVal) maxTeamVal = teamBucket[team.id];
         }
-      }
-      for (const team of teams) {
-        if (!selectedTeamIdSet.has(String(team.id))) delete teamBucket[team.id];
-        else if (teamBucket[team.id] > maxTeamVal) maxTeamVal = teamBucket[team.id];
       }
       teamDayMap.set(d, teamBucket);
 

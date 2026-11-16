@@ -112,6 +112,44 @@ The toolbox itself does not mutate tasks or publish changes.
 New contextual fix commands, scenario acceptances, save and
 publication separation, and asynchronous reconciliation are later slices.
 
+## Cone of Uncertainty
+
+Open **Tools → Cone of Uncertainty** for a simplified, read-only roadmap. The plugin
+uses the selected plans and effective scenario dates, independently of board
+task-type, state and team filters. It initially shows hierarchy roots among the
+selected plans; **All levels** includes their loaded children. Search matches task
+IDs and titles. It does not create tasks, change their estimates, or reschedule work.
+Compact rows show the same task-type icons as the task board, alongside the task
+title and ID, while keeping finish ranges aligned with their timeline bars.
+
+The forecast origin defaults to today and can be changed using the date control.
+Three consecutive scopes default to 0–6, 6–18 and 18–48 calendar months, with
+duration uncertainties of −10%/+30%, −25%/+75% and −40%/+150%, respectively.
+**Uncertainty settings** lets users change each scope's end month and bounds.
+Save writes the settings to the existing browser user preferences
+(`coneOfUncertainty.scopes`); they survive reloads but are not shared across browsers
+or stored in saved views. Reset explicitly replaces them with the defaults.
+The forecast date, search and hierarchy choices are temporary view controls.
+
+A task's planned start selects its scope; a start exactly on a boundary belongs
+to the next scope. The start remains fixed. For inclusive calendar-day duration
+`D = end − start + 1`, finish bounds use `floor(D × (1 + lower/100))` and
+`ceil(D × (1 + upper/100))`, each with a minimum duration of one day.
+The solid segment ends at the earliest finish; shading spans the possible finish
+range, and a dark marker identifies the planned finish. Labels use month/year to
+avoid implying day-level forecast precision.
+
+The final scope's end is the forecast horizon, not a clipping boundary for finish
+ranges: the axis extends when needed to show their full extent. Tasks beginning
+beyond the horizon or ending before the origin are counted and omitted.
+Ongoing work starting before the origin remains visible, explicitly unmodeled.
+Missing, invalid or reversed schedules are counted and omitted. No ranges are
+silently extrapolated outside the configured scopes.
+
+These are illustrative planning assumptions, **not statistical confidence
+intervals or commitments**. Dependencies, capacity constraints, uncertainty in
+start dates and correlated delays are not modeled.
+
 ## Upgrade
 
 The server upgrades existing installations before opening an HTTP listener; no

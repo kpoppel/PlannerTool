@@ -34,6 +34,29 @@ PlannerTool helps users:
 - Scope options and schedule, allocation, hierarchy, relations, state and task-type filters still apply.
 - Hierarchy relevance never creates team allocations or changes assigned-task counts, capacity or cost calculations.
 
+The team allocation graph includes effective demand from all configured, loaded
+plans: own-plan tasks, unrelated peer-plan requests, and higher-level direct or
+group reservations. Selecting different plans does not remove that team demand.
+Existing descendant-over-ancestor precedence still applies; superseded
+reservations do not contribute a residual allocation. Project and organization
+reporting retain their existing scope, and no additional tasks are fetched.
+
+With teams selected, both Plan overview and Team focus automatically show
+**Virtual** entries for effective allocations whose source type is hidden or
+whose source belongs to another loaded plan. Each source appears once, combining
+only the selected teams' effective demand. A visible real source replaces its
+virtual presentation. State, schedule, allocation, hierarchy and relationship
+filters and applicable branch/group folds still apply; those display choices do
+not remove calculated demand.
+
+Virtual rows and cards retain the source type marker, title, dates and ordering,
+with a Virtual label and subtle diagonal shading. External sources use identified
+source-plan lanes even with Context expansion off; single-band rows retain plan
+metadata. Clicking a row or card opens the actual source details with existing
+permissions. Virtual presentations have no drag, resize, allocation, revert or
+group-move actions. They are never saved as tasks, added to task counts, or used
+as additional inputs to allocation, cost or reconciliation calculations.
+
 ### Scenario-based experimentation
 
 The application supports:

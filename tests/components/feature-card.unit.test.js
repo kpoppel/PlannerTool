@@ -5,6 +5,49 @@ import { cmd, sel } from '../../www/js/application/imports.js';
 import { buildDescendantAllocationTeams } from '../../www/js/application/shared/teamAllocation.js';
 
 describe('FeatureCardLit basic behaviors', () => {
+  it('renders virtual source demand but blocks mutation gestures in an editable scenario', async () => {
+    sinon.stub(sel.scenario, 'isActiveScenarioMutable').returns(true);
+    sinon.stub(sel.view, 'getHighlightFeatureRelationMode').returns(false);
+    const revert = sinon.stub(cmd.feature, 'revertFeature');
+    const resize = sinon.stub(cmd.feature, 'resizeFeatureDates');
+    const select = sinon.stub(cmd.feature, 'setSelectedFeature');
+    const el = await fixture('<feature-card-lit style="width:400px"></feature-card-lit>');
+    el.feature = { id: 'source', title: 'Source reservation', type: 'Epic',
+      start: '2026-10-01', end: '2026-10-31', capacity: [
+        { team: 'A', capacity: 50 }, { team: 'B', capacity: 80 }] };
+    el.teams = [{ id: 'A', name: 'Alpha', selected: true }, { id: 'B', name: 'Beta', selected: true }];
+    el.presentation = { kind: 'virtual', sourceId: 'source', allocations: [{ team: 'A', capacity: 50 }] };
+    el.project = { name: 'Program', color: '#347ab3' };
+    sinon.stub(sel.feature, 'getEffectiveFeatureById').returns(el.feature);
+    await el.updateComplete;
+    const root = el.shadowRoot.querySelector('.feature-card');
+    expect(root.classList.contains('virtual')).to.be.true;
+    expect(root.title).to.include('Virtual');
+    expect(root.title).to.include('Program');
+    expect(el.shadowRoot.querySelector('.virtual-label').textContent).to.equal('Virtual');
+    expect(el.shadowRoot.querySelector('.drag-handle')).to.be.null;
+    expect(el.shadowRoot.querySelectorAll('.team-load-box')).to.have.lengthOf(1);
+    const background = sinon.spy();
+    const context = sinon.spy();
+    el.parentElement.addEventListener('mousedown', background);
+    el.addEventListener('feature-context-menu', context);
+    root.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, composed: true, button: 0 }));
+    expect(background.called).to.be.false;
+    expect(el._boundOnPreMove).not.to.be.a('function');
+    root.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true }));
+    el._handleDoubleClick({ composedPath: () => [] });
+    el._onResizeKeyDown({ key: 'ArrowRight', preventDefault() {}, stopPropagation() {} });
+    expect(context.called).to.be.false;
+    expect(revert.called).to.be.false;
+    expect(resize.called).to.be.false;
+    root.click();
+    expect(select.calledOnceWithExactly(el.feature)).to.be.true;
+    el.feature = { ...el.feature, project: 'external-owner', sourcePlanName: 'Portfolio source' };
+    el.project = null;
+    await el.updateComplete;
+    expect(root.title).to.include('Portfolio source');
+  });
+
   it('renders type, ID and allocation bars without titles or dates in both sizes', async () => {
     const el = await fixture('<feature-card-lit style="width:400px"></feature-card-lit>');
     el.teams = [{ id: 'team', name: 'Team', color: '#123456', selected: true }];

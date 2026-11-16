@@ -26,6 +26,7 @@ import { Plugin } from '../core/Plugin.js';
  *   Vite production builds (Vite rewrites the chunk URLs during build).
  */
 const pluginComponentLoaders = {
+  './PluginConeOfUncertaintyComponent.lit.js': () => import('./PluginConeOfUncertaintyComponent.lit.js'),
   './PluginAnnotationsComponent.js': () => import('./PluginAnnotationsComponent.js'),
   './PluginCostComponent.js': () => import('./PluginCostComponent.js'),
   './PluginDependenciesComponent.js': () => import('./PluginDependenciesComponent.js'),

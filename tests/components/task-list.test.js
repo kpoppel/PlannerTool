@@ -22,6 +22,32 @@ describe('Task list presentation', () => {
   });
   afterEach(() => { list.remove(); vi.restoreAllMocks(); });
 
+  it('labels virtual rows and selects their source without exposing mutation menus', async () => {
+    const selected = vi.spyOn(cmd.feature, 'setSelectedFeature');
+    const context = vi.fn();
+    list.addEventListener('feature-context-menu', context);
+    list.layout = { ...list.layout, rows: list.layout.rows.map((row) => row.id === '42'
+      ? { ...row, presentation: { kind: 'virtual', sourceId: '42', allocations: [] } } : row) };
+    await list.updateComplete;
+    const row = list.shadowRoot.querySelector('[data-task-id="42"]');
+    expect(row.classList.contains('virtual')).toBe(true);
+    expect(row.querySelector('.task-meta').textContent).toContain('Virtual');
+    expect(row.querySelector('.task-meta').textContent).toContain('Release plan');
+    expect(row.querySelector('.task-type').title).toBe('Feature');
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(context).not.toHaveBeenCalled();
+    row.click();
+    expect(selected).toHaveBeenCalledWith(list.layout.rows[1].feature);
+  });
+
+  it('retains the source-plan name for virtual rows without a configured owner', async () => {
+    list.layout = { ...list.layout, rows: list.layout.rows.filter((row) => row.id === '42')
+      .map((row) => ({ ...row, presentation: { kind: 'virtual' },
+        feature: { ...row.feature, project: 'external-owner', sourcePlanName: 'Portfolio source' } })) };
+    await list.updateComplete;
+    expect(list.shadowRoot.querySelector('.task-meta').textContent).toContain('Portfolio source');
+  });
+
   it('uses supplied row positions and emits ID-based folding and context actions', async () => {
     const row = list.shadowRoot.querySelector('[data-task-id="42"]');
     expect(row.style.top).toBe('28px');

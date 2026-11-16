@@ -40,8 +40,8 @@ export class CapacityCalculator {
       return this._emptyResult();
     }
 
-    // Selected plans and task states define calculation scope. Team Drill-down
-    // is presentation-only and must not alter organization-wide capacity.
+    // Selected plans define reporting scope; team demand spans loaded plans.
+    // Task states apply to both, and team drill-down is presentation-only.
     if (
       selectedProjects.length === 0 ||
       selectedStates.length === 0
@@ -173,8 +173,7 @@ export class CapacityCalculator {
 
     for (const f of features) {
       if (!f || !f.start || !f.end) continue;
-      if (f.ancestorOnly === true) continue;
-      if (!featureMatchesPlans(f, selectedProjectSet)) continue;
+      const inReportingScope = f.ancestorOnly !== true && featureMatchesPlans(f, selectedProjectSet);
       const fState = f.state;
       if (!selectedStateSet.has(fState)) continue;
 
@@ -195,6 +194,11 @@ export class CapacityCalculator {
         for (const tl of tls) {
           const ti = teamIndexById.get(tl.team);
           const load = Number(tl.capacity);
+          if (ti !== undefined) {
+            teamDaily[di][ti] += load;
+            teamDailyMap[di][tl.team] = teamDaily[di][ti];
+          }
+          if (!inReportingScope) continue;
           for (const planId of ancestorPlanIds) {
             if (planDailyMap[di][planId] === undefined) planDailyMap[di][planId] = 0;
             planDailyMap[di][planId] += load;
@@ -202,10 +206,6 @@ export class CapacityCalculator {
             const teamLoads = planTeamDailyMap[di][planId];
             if (teamLoads[tl.team] === undefined) teamLoads[tl.team] = 0;
             teamLoads[tl.team] += load;
-          }
-          if (ti !== undefined) {
-            teamDaily[di][ti] += load;
-            teamDailyMap[di][tl.team] = teamDaily[di][ti];
           }
           if (pi !== undefined) {
             projectDaily[di][pi] += load;

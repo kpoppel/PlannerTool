@@ -31,7 +31,7 @@ export function isSwimlaneMode(projects, swimlanes = []) {
  * @param {{parent:boolean,child:boolean,dependency:boolean,otherAllocations:boolean}} context
  * @returns {Array<{id:string,name:string,color:string,type:'plan'|'expanded-plan'}>}
  */
-export function buildSwimlaneList(projects, visibleFeatures, context) {
+export function buildSwimlaneList(projects, visibleFeatures, context, virtualIds = new Set()) {
   const swimlanes = [];
   const addedIds = new Set();
   const featuresById = new Map(visibleFeatures.map((feature) => [String(feature.id), feature]));
@@ -67,14 +67,14 @@ export function buildSwimlaneList(projects, visibleFeatures, context) {
     || context.child
     || context.dependency
     || context.otherAllocations;
-  if (!includeSourcePlans) return swimlanes;
-
   const projectsById = new Map(projects.map((project) => [String(project.id), project]));
   for (const feature of visibleFeatures) {
+    if (!includeSourcePlans && !virtualIds.has(String(feature.id))) continue;
     const projectId = String(feature.project);
     if (addedIds.has(projectId)) continue;
     const project = projectsById.get(projectId);
-    if (project === undefined && feature.ancestorOnly === true) {
+    if (project === undefined
+      && (feature.ancestorOnly === true || virtualIds.has(String(feature.id)))) {
       swimlanes.push({
         id: feature.project,
         name: feature.sourcePlanName,
@@ -107,10 +107,12 @@ export function assignFeatureToSwimlane(
   swimlanes,
   allFeaturesById,
   context,
-  groupedOwnerPlanId = null
+  groupedOwnerPlanId = null,
+  virtual = false
 ) {
   if (swimlanes.length === 0) return null;
   const swimlaneById = new Map(swimlanes.map((swimlane) => [String(swimlane.id), swimlane]));
+  if (virtual) return swimlaneById.get(String(feature.project)).id;
   const groupedOwnerLane = groupedOwnerPlanId === null
     ? null
     : swimlaneById.get(String(groupedOwnerPlanId));

@@ -60,6 +60,229 @@ async function alignment(page, id = 'task-0') {
   }, id);
 }
 
+async function mountVirtualDemand(page, reservationTeam = 'A') {
+  await page.evaluate(async (reservationTeam) => {
+    const { sel } = await import('/js/application/imports.js');
+    const store = window.taskBoardStore;
+    const project = { ...store.getState().baseline.projects[0],
+      allocation_defaults: { program: [], team: [] } };
+    const projects = [
+      { ...project, type: 'team', container_order: 1, container_types: ['program', 'team'] },
+      { ...project, id: 'peer-plan', name: 'Peer plan', type: 'team', container_order: 1,
+        container_types: ['program', 'team'], color: '#298864' },
+      { ...project, id: 'program-plan', name: 'Program plan', type: 'program', container_order: 0,
+        container_types: ['program', 'team'], color: '#a65b65' },
+    ];
+    const teams = [
+      { id: 'A', name: 'Alpha', short: 'A', kind: 'team', group_id: 'G', color: '#298864' },
+      { id: 'B', name: 'Beta', short: 'B', kind: 'team', group_id: 'G', color: '#a65b65' },
+      { id: 'G', name: 'Delivery group', short: 'DG', kind: 'group', color: '#347ab3' },
+    ];
+    const features = [
+      { id: 'own', title: 'Own-plan delivery', project: 'plan', type: 'Feature', originalRank: 20,
+        capacity: [{ team: 'A', capacity: 20 }] },
+      { id: 'hidden', title: 'Hidden reservation withaverylongunbrokensourcetitle', project: 'plan', type: 'Epic',
+        originalRank: 10, capacity: [{ team: 'A', capacity: 10 }, { team: 'B', capacity: 70 }] },
+      { id: 'peer', title: 'Peer request', project: 'peer-plan', type: 'Feature', originalRank: 30,
+        capacity: [{ team: 'A', capacity: 30 }] },
+      { id: 'reservation', title: 'Program reservation', project: 'program-plan', type: 'Epic', originalRank: 40,
+        capacity: [{ team: reservationTeam, capacity: 40 }] },
+    ].map((feature, index) => ({ process_id: 'process', state: 'Active', stateCategory: 'InProgress',
+      parentId: null, start: `2026-10-${String([1, 4, 2, 3][index]).padStart(2, '0')}`,
+      end: '2026-11-20', relations: [], tags: '', description: '', ...feature }));
+    store.setState((state) => ({ ...state,
+      baseline: { ...state.baseline, projects, teams, features },
+      selection: { ...state.selection, projectIds: ['plan'], teamIds: ['A'],
+        taskTypeNames: ['["process","feature"]'] },
+      view: { ...state.view, context: { parent: false, child: false, dependency: false, otherAllocations: false },
+        options: { ...state.view.options, taskViewMode: 'plan', highlightFeatureRelationMode: false } },
+      scenarios: { ...state.scenarios, activeId: 'virtual-draft', items: [...state.scenarios.items,
+        { id: 'virtual-draft', name: 'Virtual draft', readonly: false, overrides: {},
+          groupOverrides: {}, scenarioGroups: [], pluginData: {} }] },
+    }));
+    window.taskBoardCommands.data.recomputeCapacity();
+    window.virtualDemandBaseline = structuredClone(sel.capacity.getTeamDailyCapacityMap());
+    await document.querySelector('timeline-board').shadowRoot.querySelector('feature-board').renderFeatures();
+  }, reservationTeam);
+  await expect(page.locator('task-list .row.virtual')).toHaveCount(3);
+}
+
+for (const reservationTeam of ['A', 'G']) {
+  test(`virtual allocations explain ${reservationTeam} demand in both board views without duplicate load`, async ({ page }, testInfo) => {
+    await mountVirtualDemand(page, reservationTeam);
+    await page.evaluate(() => window.taskBoardCommands.view.setCapacityViewMode('team'));
+    await expect.poll(() => page.locator('maingraph-lit').evaluate((graph) =>
+      Math.max(...graph._hoverDays.flatMap((day) => day.entries
+        .filter((entry) => entry.name === 'Alpha').map((entry) => entry.value))))).toBe(100);
+    const row = page.locator('task-list [data-task-id="hidden"]');
+    const card = page.locator('feature-card-lit[data-feature-id="hidden"]');
+    for (const mode of ['plan', 'team']) {
+      await page.evaluate((mode) => window.taskBoardCommands.view.setTaskViewMode(mode), mode);
+      await expect(page.locator('task-list .row.virtual')).toHaveCount(3);
+      await expect(row.locator('.task-meta')).toContainText('Virtual');
+      await expect(row.locator('.task-type')).toHaveAttribute('title', 'Epic');
+      await expect(card.locator('.virtual-label')).toHaveText('Virtual');
+      await expect(card.locator('.team-load-box')).toHaveCount(1);
+      await expect(page.locator('feature-board .swimlane-label')).toHaveText([
+        'Release plan', 'Peer plan', 'Program plan',
+      ]);
+      await expect.poll(async () => Math.abs((await alignment(page, 'hidden')).delta)).toBeLessThan(1);
+      const demand = await page.evaluate(async () => {
+        const { sel } = await import('/js/application/imports.js');
+        const index = sel.capacity.getCapacityDates().indexOf('2026-10-05');
+        return { load: sel.capacity.getTeamDailyCapacityMap()[index].A,
+          stable: JSON.stringify(sel.capacity.getTeamDailyCapacityMap()) === JSON.stringify(window.virtualDemandBaseline) };
+      });
+      expect(demand).toEqual({ load: 100, stable: true });
+    }
+    for (const width of [1366, 1000]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(async () => Math.abs((await alignment(page, 'hidden')).delta)).toBeLessThan(1);
+      const styles = await row.evaluate((element) => ({
+        stripe: getComputedStyle(element).backgroundImage,
+        overflow: element.querySelector('.task-meta').getBoundingClientRect().bottom > element.getBoundingClientRect().bottom,
+      }));
+      expect(styles.stripe).toContain('repeating-linear-gradient');
+      expect(styles.overflow).toBe(false);
+      expect(await card.locator('.feature-card').evaluate((element) =>
+        getComputedStyle(element, '::after').backgroundImage)).toContain('repeating-linear-gradient');
+      await page.screenshot({ path: testInfo.outputPath(`virtual-${reservationTeam}-${width}.png`) });
+    }
+    await page.evaluate(() => document.querySelector('timeline-board').adjustBoardZoom(-1));
+    await expect.poll(async () => Math.abs((await alignment(page, 'hidden')).delta)).toBeLessThan(1);
+    await page.evaluate(() => window.taskBoardCommands.view.setFeatureSortMode('date'));
+    await expect(page.locator('task-list [data-task-id]').first()).toHaveAttribute('data-task-id', 'own');
+    await page.evaluate(() => window.taskBoardCommands.view.setFeatureSortMode('rank'));
+    await expect(page.locator('task-list [data-task-id]').first()).toHaveAttribute('data-task-id', 'hidden');
+    await page.evaluate(() => window.taskBoardCommands.filter.setTaskFilter('allocation', 'allocated', false));
+    await expect(page.locator('task-list .row.virtual')).toHaveCount(0);
+    await page.evaluate(() => window.taskBoardCommands.filter.setTaskFilter('allocation', 'allocated', true));
+    await expect(page.locator('task-list .row.virtual')).toHaveCount(3);
+    const search = page.getByRole('searchbox', { name: 'Search tasks' });
+    await search.fill('hidden');
+    await search.press('Enter');
+    await expect(card).toHaveClass(/search-highlight/);
+    await row.click();
+    await expect(page.locator('details-panel .panel')).toBeVisible();
+    await expect(row).toHaveClass(/selected/);
+    await expect(page.locator('details-panel')).toContainText('Hidden reservation');
+    await page.evaluate(() => window.taskBoardCommands.filter.setSelectedTaskTypes([
+      '["process","feature"]', '["process","epic"]',
+    ]));
+    await expect(row).not.toHaveClass(/virtual/);
+    await expect(card.locator('.virtual-label')).toHaveCount(0);
+    await expect(page.locator('task-list [data-task-id="hidden"]')).toHaveCount(1);
+    await expect(card.locator('.resize-zone')).toHaveCount(2);
+  });
+}
+
+test('virtual cards and rows cannot mutate their sources but open canonical editable details', async ({ page }) => {
+  await mountVirtualDemand(page);
+  const row = page.locator('task-list [data-task-id="hidden"]');
+  const card = page.locator('feature-card-lit[data-feature-id="hidden"]');
+  await expect(card.locator('.resize-zone')).toHaveCount(0);
+  const before = await page.evaluate(() => JSON.stringify(window.taskBoardStore.getState().scenarios.items));
+  await row.click({ button: 'right' });
+  await expect(page.locator('group-context-menu')).toBeHidden();
+  await card.locator('.feature-card').click({ button: 'right' });
+  await expect(page.locator('group-context-menu')).toBeHidden();
+  await card.locator('.feature-card').dblclick();
+  await card.locator('.feature-card').focus();
+  await page.keyboard.press('ArrowRight');
+  await card.locator('.team-load-box').dispatchEvent('wheel', { deltaY: -120, bubbles: true });
+  const bounds = await card.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 100, bounds.y + bounds.height / 2 + 40, { steps: 8 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => JSON.stringify(window.taskBoardStore.getState().scenarios.items))).toBe(before);
+  await card.locator('.feature-card').press('Enter');
+  await expect(page.locator('details-panel .panel')).toBeVisible();
+  await expect(page.locator('details-panel .capacity-bar-input').first()).toBeVisible();
+  expect(await page.evaluate(() => window.taskBoardStore.getState().featureDisplay.selectedId)).toBe('hidden');
+  await page.evaluate(() => window.taskBoardCommands.scenario.activateScenario('baseline'));
+  await row.click();
+  await expect(page.locator('details-panel .panel')).toBeVisible();
+  await expect(page.locator('details-panel .capacity-bar-input')).toHaveCount(0);
+  expect(await page.evaluate(() => window.taskBoardStore.getState().featureDisplay.selectedId)).toBe('hidden');
+});
+
+test('virtual sources respect retained branch and group folds and reproject canonical scenario edits', async ({ page }, testInfo) => {
+  let taskRequests = 0;
+  page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/tasks') taskRequests++; });
+  await mountVirtualDemand(page);
+  await page.evaluate(async () => {
+    window.taskBoardStore.setState((state) => ({ ...state, baseline: { ...state.baseline,
+      features: state.baseline.features.map((feature) => feature.id === 'hidden'
+        ? { ...feature, parentId: 'own' } : feature),
+    } }));
+    window.taskBoardCommands.data.recomputeCapacity();
+    await document.querySelector('timeline-board').shadowRoot.querySelector('feature-board').renderFeatures();
+  });
+  const parent = page.locator('task-list [data-task-id="own"]');
+  const hidden = page.locator('task-list [data-task-id="hidden"]');
+  await parent.locator('.fold').click();
+  await expect(hidden).toHaveCount(0);
+  await expect(parent.locator('.fold')).toBeEnabled();
+  await page.evaluate(() => window.taskBoardCommands.filter.setSelectedTaskTypes(['["process","user story"]']));
+  await expect(parent).toHaveCount(0);
+  await expect(hidden).toHaveCount(0);
+  await page.evaluate(() => window.taskBoardCommands.filter.setSelectedTaskTypes(['["process","feature"]']));
+  await expect(parent).toBeVisible();
+  await expect(hidden).toHaveCount(0);
+  await parent.locator('.fold').click();
+  await expect(hidden).toHaveClass(/virtual/);
+  await page.evaluate(() => window.taskBoardCommands.feature.updateFeatureField('hidden', 'capacity', []));
+  await expect(hidden).toHaveCount(0);
+  await page.evaluate(() => window.taskBoardCommands.feature.revertFeature('hidden'));
+  await expect(hidden).toHaveClass(/virtual/);
+  await page.evaluate(() => window.taskBoardCommands.feature.updateFeatureDates([
+    { id: 'hidden', start: '2026-10-10', end: '2026-11-10', shiftChildren: false },
+  ]));
+  await expect.poll(() => page.locator('feature-card-lit[data-feature-id="hidden"]')
+    .evaluate((card) => card.feature.start)).toBe('2026-10-10');
+  expect(await page.evaluate(() => Object.keys(window.taskBoardStore.getState().scenarios.items
+    .find((scenario) => scenario.id === 'virtual-draft').overrides))).toEqual(['hidden']);
+  const beforeGroup = await page.evaluate(() => JSON.stringify(window.taskBoardStore.getState().capacity.teamDailyMap));
+  await page.evaluate(() => {
+    window.taskBoardStore.setState((state) => ({ ...state, groups: {
+      byPlanId: { plan: [{ id: 'virtual-group', plan_id: 'plan', name: 'Source group',
+        members: ['hidden'], rank: -1024, parent_id: null, color: '#298864' }] },
+      loadedPlanIds: ['plan'],
+    } }));
+    window.reloadTaskGroups();
+  });
+  const group = page.locator('task-list [data-task-id="virtual-group"]');
+  await group.locator('.fold').click();
+  await expect(hidden).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.stringify(window.taskBoardStore.getState().capacity.teamDailyMap)))
+    .toBe(beforeGroup);
+  await group.locator('.fold').click();
+  await expect(hidden).toHaveClass(/virtual/);
+  await page.evaluate(() => window.taskBoardCommands.selection.setTeamSelected('B', true));
+  await expect(page.locator('feature-card-lit[data-feature-id="hidden"] .team-load-box')).toHaveCount(2);
+  await expect(hidden).toHaveCount(1);
+  await page.evaluate(() => window.taskBoardCommands.view.setDisplayMode('packed'));
+  await expect(page.locator('feature-card-lit[data-feature-id="hidden"] .virtual-label')).toHaveText('Virtual');
+  await expect(page.locator('feature-card-lit[data-feature-id="hidden"] .resize-zone')).toHaveCount(0);
+  await page.evaluate(() => window.taskBoardCommands.view.setDisplayMode('normal'));
+  await page.evaluate(() => {
+    window.taskBoardCommands.feature.updateFeatureField('peer', 'capacity', []);
+    window.taskBoardCommands.feature.updateFeatureField('reservation', 'capacity', []);
+  });
+  await expect(page.locator('feature-board .swimlane-label')).toHaveCount(0);
+  await expect(hidden.locator('.task-meta')).toContainText('Release plan');
+  await expect.poll(async () => Math.abs((await alignment(page, 'hidden')).delta)).toBeLessThan(1);
+  await page.screenshot({ path: testInfo.outputPath('virtual-single-band-desktop.png') });
+  await page.evaluate(() => {
+    window.taskBoardCommands.selection.setTeamSelected('A', false);
+    window.taskBoardCommands.selection.setTeamSelected('B', false);
+  });
+  await expect(page.locator('task-list .row.virtual')).toHaveCount(0);
+  await expect(parent).toHaveCount(1);
+  expect(taskRequests).toBe(0);
+});
+
 test('plan scenario team and saved view menu rows share a compact height', async ({ page }, testInfo) => {
   await page.evaluate(async () => {
     const { render } = await import('/js/vendor/lit.js');

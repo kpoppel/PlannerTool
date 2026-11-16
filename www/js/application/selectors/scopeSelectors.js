@@ -9,6 +9,7 @@ import {
 import { expandAllocationFocusIds, hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
 import { hasTimelinePlacement } from '../shared/featurePresentation.js';
 import { featureTypeKey } from '../shared/workItemDisplay.js';
+import { projectVirtualAllocations } from '../shared/virtualAllocations.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
@@ -156,7 +157,7 @@ export function createScopeSelectors(store) {
     return getContextFeatures().filter((feature) => canPresentInContext(feature, context));
   }
 
-  function createCardExclusionFilter(context = store.getState().view.context) {
+  function createCardExclusionFilter(context = store.getState().view.context, checkPresentation = true) {
     const state = store.getState();
     const selectedFeatureStates = new Set(
       state.selection.featureStateNames.map((stateName) => String(stateName).toLowerCase())
@@ -167,7 +168,7 @@ export function createScopeSelectors(store) {
     const hiddenTypes = new Set(state.view.options.hiddenTypes.map((type) => String(type)));
     const membership = getScopeMembership();
     return (feature) => {
-      if (!canPresentInContext(feature, context)) return 'presentation';
+      if (checkPresentation && !canPresentInContext(feature, context)) return 'presentation';
       const dimension = filterSelectors.getTaskFilterExclusion(feature);
       if (dimension === 'schedule'
         || (!state.view.options.showUnplannedWork && !hasTimelinePlacement(feature))) return 'schedule';
@@ -201,6 +202,25 @@ export function createScopeSelectors(store) {
       contextFeatures, toIdSet(state.selection.teamIds), state.view.options.taskViewMode === 'team'
     );
     return visibleCache;
+  }
+
+  function getBoardPresentation() {
+    const state = store.getState();
+    const selectedPlans = toIdSet(state.selection.projectIds);
+    if (selectedPlans.size === 0) return [];
+    const exclude = createCardExclusionFilter();
+    const excludeExternal = createCardExclusionFilter(state.view.context, false);
+    return projectVirtualAllocations({
+      features: getResolvedFeatures(),
+      visibleFeatures: getVisibleFeatures(),
+      teams: state.baseline.teams,
+      selectedTeamIds: toIdSet(state.selection.teamIds),
+      isEligible(feature) {
+        const external = !selectedPlans.has(String(feature.project));
+        const reason = external ? excludeExternal(feature) : exclude(feature);
+        return reason === 'taskTypes' || (external && reason === null);
+      },
+    });
   }
 
   function getBoardFeatures(contextFeatures, selectedTeamIds, teamFocus, context = store.getState().view.context) {
@@ -329,6 +349,7 @@ export function createScopeSelectors(store) {
     getContextFeatures,
     getPresentableContextFeatures,
     getVisibleFeatures,
+    getBoardPresentation,
     getVisibleTeams,
     getContextTeams,
     getTeamDrilldownIds,
