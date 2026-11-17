@@ -2,11 +2,11 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
 import { store } from '../application/store.js';
 import { bus } from '../core/EventBus.js';
-import { FeatureEvents, FilterEvents } from '../core/EventRegistry.js';
+import { DataEvents, FeatureEvents, FilterEvents } from '../core/EventRegistry.js';
 import { featureTypeKey } from '../application/shared/workItemDisplay.js';
 import { dataService } from '../services/dataService.js';
 import { getIconTemplate } from '../services/IconService.js';
-import { DEFAULT_SCOPES, addMonths, buildForecast, selectPlanTasks, validateScopes } from './coneOfUncertainty.js';
+import { DEFAULT_SCOPES, addMonths, buildForecast, projectEvents, selectPlanTasks, validateScopes } from './coneOfUncertainty.js';
 
 const PREFERENCE_KEY = 'coneOfUncertainty.scopes';
 const SORT_MODE_PREFERENCE_KEY = 'coneOfUncertainty.sortMode';
@@ -33,6 +33,11 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
     _error: { state: true },
     _saving: { state: true },
     _status: { state: true },
+    _events: { state: true },
+    _categories: { state: true },
+    _eventsError: { state: true },
+    _eventsLoading: { state: true },
+    _axisWidth: { state: true },
   };
 
   static styles = css`
@@ -84,6 +89,14 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
       overflow: visible; white-space: nowrap;
       color: var(--scope-color); background: var(--scope-tint); }
     .track { position: relative; min-height: 39px; }
+    .event-marker { position: absolute; top: 0; bottom: 0; pointer-events: none;
+      border-left: 1px dashed var(--event-color); }
+    .event-marker::before { content: ''; position: absolute; inset: 0;
+      background: var(--event-color); opacity: 0.12; }
+    .event-label { position: absolute; width: 156px; height: 20px; padding: 2px 6px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 3px;
+      font-size: 11px; line-height: 16px; color: white; background: var(--event-color); }
+    .event-label.special { outline: 1px solid black; outline-offset: -1px; }
     .bar, .uncertainty, .baseline-line {
       position: absolute; top: 50%; height: 18px; transform: translateY(-50%);
     }
@@ -119,6 +132,16 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
     this._error = '';
     this._saving = false;
     this._status = '';
+    this._events = [];
+    this._categories = [];
+    this._eventsError = '';
+    this._eventsLoading = false;
+    this._eventRequest = 0;
+    this._axisWidth = 700;
+    this._observedAxis = null;
+    this._axisObserver = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) this._axisWidth = entry.contentRect.width;
+    });
   }
 
   connectedCallback() {
@@ -126,13 +149,29 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
     this._unsubscribe = store.subscribe((state) => state, () => this.requestUpdate());
     this._unsubscribeFeatureUpdates = bus.on(FeatureEvents.UPDATED, () => this.requestUpdate());
     this._unsubscribeFilterChanges = bus.on(FilterEvents.CHANGED, () => this._persistFilterPreferences());
+    this._unsubscribeEvents = bus.on(DataEvents.PLAN_EVENTS_CHANGED, () => {
+      if (this.hasAttribute('open')) this.eventsReady = this._refreshEvents();
+    });
     this.ready = this._loadPreferences();
+  }
+
+  updated() {
+    const axis = this.renderRoot.querySelector('.axis');
+    if (axis !== this._observedAxis) {
+      this._axisObserver.disconnect();
+      this._observedAxis = axis;
+      if (axis !== null) this._axisObserver.observe(axis);
+    }
   }
 
   disconnectedCallback() {
     this._unsubscribe();
     this._unsubscribeFeatureUpdates();
     this._unsubscribeFilterChanges();
+    this._unsubscribeEvents();
+    this._eventRequest += 1;
+    this._axisObserver.disconnect();
+    this._observedAxis = null;
     if (this.hasAttribute('open')) this.close();
     else cmd.filter.clearSidebarDisabledElements();
     super.disconnectedCallback();
@@ -153,11 +192,14 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
     cmd.filter.setSelectedStates(this._filters.states);
     cmd.filter.setSelectedTaskTypes(this._filters.types);
     cmd.view.setFeatureSortMode(this._sortMode);
+    this.eventsReady = this._refreshEvents();
     this.requestUpdate();
+    await this.eventsReady;
   }
 
   close() {
     this.removeAttribute('open');
+    this._eventRequest += 1;
     cmd.filter.clearSidebarDisabledElements();
     if (this._previousFilters !== null) {
       cmd.filter.setSelectedStates(this._previousFilters.states);
@@ -167,6 +209,41 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
     if (this._previousSortMode !== null) {
       cmd.view.setFeatureSortMode(this._previousSortMode);
       this._previousSortMode = null;
+    }
+  }
+
+  async _refreshEvents() {
+    const request = ++this._eventRequest;
+    this._eventsLoading = true;
+    this._eventsError = '';
+    try {
+      const [events, categories] = await Promise.all([
+        dataService.getEvents(), dataService.getEventCategories(),
+      ]);
+      if (request !== this._eventRequest) return;
+      if (!events.ok) throw new Error(events.error.message);
+      if (!categories.ok) throw new Error(categories.error.message);
+      // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+      if (!(events.data instanceof Array) || !(categories.data instanceof Array)
+        || !events.data.every((event) => event !== null && typeof event === 'object'
+          && typeof event.id === 'string' && typeof event.title === 'string'
+          && typeof event.plan_id === 'string' && typeof event.category === 'string')
+        || !categories.data.every((category) => category !== null && typeof category === 'object'
+          && typeof category.name === 'string' && typeof category.is_special === 'boolean')) {
+        throw new Error('Invalid event or category payload');
+      }
+      projectEvents(events.data, events.data.map((event) => event.plan_id),
+        buildForecast([], this.origin, DEFAULT_SCOPES));
+      this._events = events.data;
+      this._categories = categories.data;
+    } catch (error) {
+      if (request !== this._eventRequest) return;
+      console.error('Loading cone of uncertainty events failed', error);
+      this._events = [];
+      this._categories = [];
+      this._eventsError = `Cannot load events: ${error.message}`;
+    } finally {
+      if (request === this._eventRequest) this._eventsLoading = false;
     }
   }
 
@@ -349,7 +426,36 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
     });
   }
 
-  _renderRow(row, forecast) {
+  _layoutEvents(forecast, planIds) {
+    const projects = sel.selection.getProjects();
+    const laneEnds = [];
+    return projectEvents(this._events, planIds, forecast).map(({ event, start, end }) => {
+      const left = this._position(start, forecast);
+      const width = this._position(end, forecast) - left;
+      const labelLeft = Math.max(0, Math.min(this._axisWidth - 156,
+        left / 100 * this._axisWidth - 78));
+      let lane = laneEnds.findIndex((right) => right + 4 <= labelLeft);
+      if (lane === -1) lane = laneEnds.length;
+      laneEnds[lane] = labelLeft + 156;
+      const plan = projects.find((project) => String(project.id) === event.plan_id);
+      const color = event.plan_id === '' ? '#1565c0' : plan.color;
+      const dates = event.end_date === undefined || event.end_date === ''
+        ? event.date : `${event.date} - ${event.end_date}`;
+      const title = `${event.title}\n${event.plan_id === '' ? 'Global' : plan.name}\n${event.category}\n${dates}`;
+      const special = this._categories.some((category) => category.is_special
+        && category.name === event.category);
+      return { event, left, width, labelLeft, lane, color, title, special };
+    });
+  }
+
+  _renderEventMarkers(events) {
+    return events.map(({ event, left, width, color }) => html`
+      <span class="event-marker" aria-hidden="true" data-event-id=${event.id}
+        style=${`left:${left}%;width:${width}%;--event-color:${color}`}></span>
+    `);
+  }
+
+  _renderRow(row, forecast, events) {
     const left = Math.max(0, this._position(row.start, forecast));
     const planned = this._position(row.end, forecast);
     const earliest = row.earliest === null ? planned : this._position(row.earliest, forecast);
@@ -371,6 +477,7 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
         </div>
         <div class=${`track scope-${row.scopeIndex}`} role="cell" aria-label=${description}>
           ${this._renderPeriods(forecast)}
+          ${this._renderEventMarkers(events)}
           <div class="bar" title=${tooltip}
             style=${`left:${left}%;width:${Math.max(0, earliest - left)}%`}></div>
           ${row.scopeIndex >= 0 ? html`
@@ -401,6 +508,8 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
       stateCategory: sel.filter.getFeatureStateCategory(feature),
     }));
     const forecast = this._loaded ? buildForecast(tasks, this.origin, this.scopes) : null;
+    const events = forecast === null ? [] : this._layoutEvents(forecast, planIds);
+    const eventLanes = events.reduce((count, event) => Math.max(count, event.lane + 1), 0);
     const ticks = [];
     if (forecast !== null) {
       const sortMode = sel.view.getFeatureSortMode();
@@ -445,6 +554,8 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
         </div>
         ${this._renderSettings()}
         ${this._error !== '' ? html`<p class="error" role="alert">${this._error}</p>` : ''}
+        ${this._eventsError !== '' ? html`<p class="error event-error" role="alert">${this._eventsError}</p>` : ''}
+        ${this._eventsLoading ? html`<p role="status">Loading events...</p>` : ''}
         ${forecast === null ? '' : html`
           <p class="key">Solid: duration up to earliest finish · Shading: possible finish range ·
             Dark marker: planned finish. Ranges rounded outward to whole days; labels show months.</p>
@@ -463,14 +574,23 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
           <div class="chart-content" role="table" aria-label="Task finish forecasts">
             <div class="chart-header" role="row">
               <div class="column-title" role="columnheader">Task</div>
-              <div class="axis" role="columnheader" aria-label="Calendar timeline">
+              <div class="axis" role="columnheader" aria-label="Calendar timeline"
+                style=${`min-height:${84 + eventLanes * 24}px`}>
                 ${this._renderPeriods(forecast, true)}
+                ${this._renderEventMarkers(events)}
+                ${events.map(({ event, labelLeft, lane, color, title, special }) => html`
+                  <span class=${special ? 'event-label special' : 'event-label'}
+                    data-event-id=${event.id} title=${title} aria-label=${title}
+                    style=${`left:${labelLeft}px;top:${32 + lane * 24}px;--event-color:${color}`}>
+                    ${event.title}
+                  </span>
+                `)}
                 ${ticks.map((date) => html`<span class="tick"
                   style=${`left:clamp(0px, ${this._position(date, forecast)}%, calc(100% - 64px))`}>${MONTH_LABEL.format(date)}</span>`)}
               </div>
               <div class="column-title" role="columnheader">Forecast finish range</div>
             </div>
-            ${forecast.rows.map((row) => this._renderRow(row, forecast))}
+            ${forecast.rows.map((row) => this._renderRow(row, forecast, events))}
           </div>
           ${forecast.rows.length === 0
             ? html`<p class="empty">No scheduled tasks match. Select a plan, adjust the task hierarchy,

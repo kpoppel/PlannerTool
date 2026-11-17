@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_SCOPES, addMonths, buildForecast, selectPlanTasks, validateScopes,
+  DEFAULT_SCOPES, addMonths, buildForecast, projectEvents, selectPlanTasks, validateScopes,
 } from '../../www/js/plugins/coneOfUncertainty.js';
 
 const task = (id, start, end, extra = {}) => ({
@@ -8,6 +8,49 @@ const task = (id, start, end, extra = {}) => ({
 });
 
 describe('cone of uncertainty model', () => {
+  it('projects only global and selected-plan events without changing the forecast', () => {
+    const forecast = buildForecast([], '2027-01-01', DEFAULT_SCOPES);
+    const before = JSON.stringify(forecast);
+    const events = [
+      { id: 'global', title: 'Global', date: '2027-02-01', plan_id: '' },
+      { id: 'selected', title: 'Selected', date: '2027-02-02', plan_id: 'p1', end_date: '' },
+      { id: 'other', title: 'Other', date: '2027-02-03', plan_id: 'p2' },
+    ];
+    expect(projectEvents(events, ['p1'], forecast).map(({ event }) => event.id))
+      .toEqual(['global', 'selected']);
+    expect(projectEvents(events, [], forecast).map(({ event }) => event.id)).toEqual(['global']);
+    expect(projectEvents(events, ['p1', 'p2'], forecast)).toHaveLength(3);
+    expect(JSON.stringify(forecast)).toBe(before);
+  });
+
+  it('clips overlapping event ranges and excludes points outside the UTC axis', () => {
+    const forecast = buildForecast([], '2027-01-01', DEFAULT_SCOPES);
+    const events = [
+      { id: 'left', title: 'Left', date: '2026-01-01', end_date: '2027-02-01', plan_id: '' },
+      { id: 'right', title: 'Right', date: '2030-12-01', end_date: '2032-01-01', plan_id: '' },
+      { id: 'past', title: 'Past', date: '2026-09-30', plan_id: '' },
+      { id: 'end', title: 'End', date: '2031-01-02', plan_id: '' },
+      { id: 'same', title: 'Same day', date: '2027-03-01', end_date: '2027-03-01', plan_id: '' },
+    ];
+    const projected = projectEvents(events, [], forecast);
+    expect(projected.map(({ event }) => event.id)).toEqual(['left', 'same', 'right']);
+    expect(projected[0].start).toEqual(forecast.axisStart);
+    expect(projected[2].end).toEqual(forecast.rangeEnd);
+    expect(projected[1].start).toEqual(projected[1].end);
+    expect(projected[1].start.toISOString()).toBe('2027-03-01T00:00:00.000Z');
+  });
+
+  it('reports malformed event dates rather than silently dropping annotations', () => {
+    const forecast = buildForecast([], '2027-01-01', DEFAULT_SCOPES);
+    for (const dates of [
+      { date: '2027-02-30' },
+      { date: '2027-02-01', end_date: '2027-01-01' },
+    ]) {
+      expect(() => projectEvents([{ id: 'bad', title: 'Bad', plan_id: '', ...dates }], [], forecast))
+        .toThrow('Invalid dates for event bad');
+    }
+  });
+
   it('uses the requested three default scopes', () => {
     expect(DEFAULT_SCOPES).toEqual([
       { endMonth: 6, lower: -10, upper: 30 },

@@ -19,6 +19,29 @@ function parseDate(value) {
   return date;
 }
 
+export function projectEvents(events, planIds, forecast) {
+  const selectedIds = new Set(planIds.map(String));
+  return events.filter((event) => event.plan_id === '' || selectedIds.has(String(event.plan_id)))
+    .map((event) => {
+      const start = parseDate(event.date);
+      // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
+      const end = event.end_date === undefined || event.end_date === ''
+        ? start : parseDate(event.end_date);
+      if (start === null || end === null || end < start) {
+        throw new Error(`Invalid dates for event ${event.id}`);
+      }
+      return { event, start, end };
+    })
+    .filter(({ start, end }) => start < forecast.rangeEnd && end >= forecast.axisStart)
+    .map(({ event, start, end }) => ({
+      event,
+      start: new Date(Math.max(start.getTime(), forecast.axisStart.getTime())),
+      end: new Date(Math.min(end.getTime(), forecast.rangeEnd.getTime())),
+    }))
+    .sort((first, second) => first.start - second.start
+      || String(first.event.id).localeCompare(String(second.event.id)));
+}
+
 export function addMonths(value, months) {
   const date = value instanceof Date ? new Date(value.getTime()) : parseDate(value);
   if (date === null || !Number.isInteger(months)) throw new Error('Invalid forecast date or months');

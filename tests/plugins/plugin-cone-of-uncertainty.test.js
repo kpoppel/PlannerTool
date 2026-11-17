@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getLocalPref: vi.fn(),
+  getEvents: vi.fn(),
+  getEventCategories: vi.fn(),
+  getProjects: vi.fn(),
   setLocalPref: vi.fn(),
   getEffectiveFeatures: vi.fn(),
   getSelectedProjectIds: vi.fn(),
@@ -20,7 +23,10 @@ const mocks = vi.hoisted(() => ({
   clearSidebarDisabledElements: vi.fn(),
 }));
 vi.mock('../../www/js/services/dataService.js', () => ({
-  dataService: { getLocalPref: mocks.getLocalPref, setLocalPref: mocks.setLocalPref },
+  dataService: {
+    getLocalPref: mocks.getLocalPref, setLocalPref: mocks.setLocalPref,
+    getEvents: mocks.getEvents, getEventCategories: mocks.getEventCategories,
+  },
 }));
 vi.mock('../../www/js/application/imports.js', () => ({
   sel: {
@@ -28,7 +34,10 @@ vi.mock('../../www/js/application/imports.js', () => ({
       getEffectiveFeatures: mocks.getEffectiveFeatures,
       getTaskTypeOptions: mocks.getTaskTypeOptions,
     },
-    selection: { getSelectedProjectIds: mocks.getSelectedProjectIds },
+    selection: {
+      getSelectedProjectIds: mocks.getSelectedProjectIds,
+      getProjects: mocks.getProjects,
+    },
     view: { getFeatureSortMode: mocks.getFeatureSortMode },
     filter: {
       getFeatureStateCategory: mocks.getFeatureStateCategory,
@@ -58,7 +67,7 @@ import PluginRegistry from '../../www/js/core/pluginRegistry.js';
 import modulesConfig from '../../www/js/modules.config.json';
 import { mergePluginConfig } from '../../www/js/core/pluginConfigMerge.js';
 import { bus } from '../../www/js/core/EventBus.js';
-import { FeatureEvents, FilterEvents } from '../../www/js/core/EventRegistry.js';
+import { DataEvents, FeatureEvents, FilterEvents } from '../../www/js/core/EventRegistry.js';
 
 async function mount() {
   const el = document.createElement('plugin-cone-of-uncertainty');
@@ -72,6 +81,12 @@ describe('cone of uncertainty plugin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getLocalPref.mockResolvedValue(undefined);
+    mocks.getEvents.mockResolvedValue({ ok: true, data: [] });
+    mocks.getEventCategories.mockResolvedValue({ ok: true, data: [] });
+    mocks.getProjects.mockReturnValue([
+      { id: 'p1', name: 'First plan', color: '#137f52' },
+      { id: 'p2', name: 'Second plan', color: '#a63544' },
+    ]);
     mocks.setLocalPref.mockResolvedValue(undefined);
     mocks.getSelectedProjectIds.mockReturnValue(['p1']);
     mocks.getFeatureSortMode.mockReturnValue('rank');
@@ -102,6 +117,137 @@ describe('cone of uncertainty plugin', () => {
     ]);
   });
   afterEach(() => document.body.replaceChildren());
+
+  it('loads events on open and shows globals plus current selected plans in aligned tracks', async () => {
+    mocks.getEvents.mockResolvedValue({ ok: true, data: [
+      { id: 'global', title: 'Global launch', date: '2027-02-01', plan_id: '', category: 'Milestone' },
+      { id: 'first', title: 'First release', date: '2027-02-01', end_date: '2027-03-01', plan_id: 'p1', category: 'Milestone' },
+      { id: 'second', title: 'Second release', date: '2027-02-01', plan_id: 'p2', category: '' },
+    ] });
+    mocks.getEventCategories.mockResolvedValue({ ok: true, data: [
+      { id: 'milestone', name: 'Milestone', is_special: true },
+    ] });
+    const el = await mount();
+    await el.open();
+    el.origin = '2027-01-01';
+    await el.updateComplete;
+    expect(mocks.getEvents).toHaveBeenCalledWith();
+    expect(el.shadowRoot.querySelectorAll('.event-label')).toHaveLength(2);
+    const label = el.shadowRoot.querySelector('[data-event-id="first"].event-label');
+    expect(label.title).toContain('First plan');
+    expect(label.title).toContain('2027-02-01');
+    expect(label.classList.contains('special')).toBe(true);
+    expect(label.style.getPropertyValue('--event-color')).toBe('#137f52');
+    expect(el.shadowRoot.querySelectorAll('.track .event-marker')).toHaveLength(2);
+    expect(el.shadowRoot.querySelector('.track [data-event-id="first"]').style.width).not.toBe('0%');
+    mocks.getSelectedProjectIds.mockReturnValue(['p1', 'p2']);
+    el.requestUpdate();
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelectorAll('.event-label')).toHaveLength(3);
+    mocks.getSelectedProjectIds.mockReturnValue([]);
+    el.requestUpdate();
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelectorAll('.task-row')).toHaveLength(0);
+    expect([...el.shadowRoot.querySelectorAll('.event-label')].map((node) => node.textContent.trim()))
+      .toEqual(['Global launch']);
+  });
+
+  it('refreshes event data while open, ignores old requests and cleans up on disconnect', async () => {
+    const el = await mount();
+    await el.open();
+    let resolveOld;
+    mocks.getEvents.mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
+    const oldRequest = el._refreshEvents();
+    mocks.getEvents.mockResolvedValue({ ok: true, data: [
+      { id: 'new', title: 'New event', date: '2027-02-01', plan_id: '', category: '' },
+    ] });
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    await vi.waitFor(() => expect(el._events.map((event) => event.id)).toEqual(['new']));
+    resolveOld({ ok: true, data: [] });
+    await oldRequest;
+    expect(el._events.map((event) => event.id)).toEqual(['new']);
+    el.close();
+    const count = mocks.getEvents.mock.calls.length;
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    expect(mocks.getEvents).toHaveBeenCalledTimes(count);
+    await el.open();
+    expect(mocks.getEvents).toHaveBeenCalledTimes(count + 1);
+    el.remove();
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
+    expect(mocks.getEvents).toHaveBeenCalledTimes(count + 1);
+  });
+
+  it('uses the latest selection after loading and ignores responses after closing or disconnecting', async () => {
+    const el = await mount();
+    await el.open();
+    let resolvePending;
+    mocks.getEvents.mockImplementation(() => new Promise((resolve) => { resolvePending = resolve; }));
+    const pending = el._refreshEvents();
+    mocks.getSelectedProjectIds.mockReturnValue(['p2']);
+    resolvePending({ ok: true, data: [
+      { id: 'first', title: 'First', date: '2027-02-01', plan_id: 'p1', category: '' },
+      { id: 'second', title: 'Second', date: '2027-02-01', plan_id: 'p2', category: '' },
+    ] });
+    await pending;
+    el.origin = '2027-01-01';
+    await el.updateComplete;
+    expect([...el.shadowRoot.querySelectorAll('.event-label')].map((node) => node.dataset.eventId))
+      .toEqual(['second']);
+    const closing = el._refreshEvents();
+    el.close();
+    resolvePending({ ok: true, data: [] });
+    await closing;
+    expect(el._events).toHaveLength(2);
+    const disconnecting = el._refreshEvents();
+    el.remove();
+    resolvePending({ ok: true, data: [] });
+    await disconnecting;
+    expect(el._events).toHaveLength(2);
+  });
+
+  it('clears previously rendered annotations and explicitly reports a failed refresh', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.getEvents.mockResolvedValue({ ok: true, data: [
+      { id: 'global', title: 'Global', date: '2027-02-01', plan_id: '', category: '' },
+    ] });
+    const el = await mount();
+    await el.open();
+    el.origin = '2027-01-01';
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelectorAll('.event-label')).toHaveLength(1);
+    mocks.getEvents.mockResolvedValue({ ok: false, error: { message: 'Unavailable' } });
+    await el._refreshEvents();
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelectorAll('.event-label')).toHaveLength(0);
+    expect(el.shadowRoot.querySelector('.event-error').textContent).toContain('Unavailable');
+    expect(el.shadowRoot.querySelector('.chart')).not.toBeNull();
+    logged.mockRestore();
+  });
+
+  it.each(['events', 'categories', 'network', 'dates'])('reports %s failures without hiding forecasts and recovers on reopen', async (failure) => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failedResult = { ok: false, error: { message: 'Cannot read events' } };
+    if (failure === 'events') mocks.getEvents.mockResolvedValue(failedResult);
+    if (failure === 'categories') mocks.getEventCategories.mockResolvedValue(failedResult);
+    if (failure === 'network') mocks.getEvents.mockRejectedValue(new Error('Offline'));
+    if (failure === 'dates') mocks.getEvents.mockResolvedValue({ ok: true, data: [
+      { id: 'bad', title: 'Bad date', date: '2027-02-30', plan_id: '', category: '' },
+    ] });
+    const el = await mount();
+    await el.open();
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.event-error').textContent).toContain('Cannot load events');
+    expect(el.shadowRoot.querySelectorAll('.event-label')).toHaveLength(0);
+    expect(el.shadowRoot.querySelector('.chart')).not.toBeNull();
+    expect(logged).toHaveBeenCalled();
+    mocks.getEvents.mockResolvedValue({ ok: true, data: [] });
+    mocks.getEventCategories.mockResolvedValue({ ok: true, data: [] });
+    el.close();
+    await el.open();
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('.event-error')).toBeNull();
+    logged.mockRestore();
+  });
 
   it('shows top-level tasks, three labeled scopes and the forecast note', async () => {
     const el = await mount();
