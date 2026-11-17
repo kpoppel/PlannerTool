@@ -24,6 +24,8 @@ Template - do not change :
 - Add manifest-managed auth registration and per-instance secrets in the existing Compose deployment workflow.
 - Support public ACME, company-supplied TLS or Caddy's internal CA, with public root export, trusted hostname verification and actionable startup diagnostics.
 - Support broker-connected local development with localhost HTTPS, instance-prefixed callbacks and a protected authentication env file.
+- Support Entra application certificates with protected PEM certificate/key files and SHA-256 client assertions in broker and Compose configuration; recommend certificates over application secrets and PATs while retaining both alternatives.
+- Add offline credential preflight and actionable setup guidance to the development launcher and broker container, rejecting invalid, expired or mismatched application certificates before startup.
 
 ### Changed
 - Show Task Types first and State second in Task Filters, followed by the remaining selectors.

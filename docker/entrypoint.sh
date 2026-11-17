@@ -4,9 +4,9 @@ set -e
 # Check for required environment variables
 if [ -z "$PLANNER_SECRET_KEY" ]; then
   echo "ERROR: PLANNER_SECRET_KEY environment variable is not set"
-  echo "This key is required for encrypting Personal Access Tokens (PATs) at rest."
-  echo "Generate a key with: openssl rand -base64 32"
-  echo "Set it in docker-compose.yml or pass via: docker run -e PLANNER_SECRET_KEY=..."
+  echo "All authentication methods, including Entra certificates, require the installation encryption key."
+  echo "For existing data, restore the original key; never generate a replacement."
+  echo "Provision it through a protected Compose env file. See docs/DEPLOYMENT.md."
   exit 1
 fi
 

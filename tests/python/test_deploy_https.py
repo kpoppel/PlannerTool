@@ -830,7 +830,8 @@ def test_source_build_policy_requires_a_boolean(sandbox_manifest, kind):
         load_auth_services(config, manifest, None)
 
 
-def test_managed_live_registration_needs_only_real_ids_and_secret_file(tmp_path):
+@pytest.mark.parametrize('credential', ['secret', 'certificate'])
+def test_managed_live_registration_needs_only_real_ids_and_credential_file(tmp_path, credential):
     import yaml
     from deploy_auth import load_auth_services
 
@@ -845,6 +846,11 @@ def test_managed_live_registration_needs_only_real_ids_and_secret_file(tmp_path)
             'client_secret_file': str(secret),
         },
     }}, 'instances': [{'name': 'planning', 'auth_service': 'central'}]}
+    registration = config['auth_services']['central']['registration']
+    if credential == 'certificate':
+        del registration['client_secret_file']
+        registration['client_certificate_key_file'] = str(secret)
+        registration['client_certificate_file'] = str(secret)
     manifest = tmp_path / 'instances.yml'
     manifest.write_text(yaml.safe_dump(config))
     output = tmp_path / 'generated'
@@ -855,6 +861,48 @@ def test_managed_live_registration_needs_only_real_ids_and_secret_file(tmp_path)
     assert environment['ENTRA_ADO_TRANSPORT'] == 'live'
     assert environment['ENTRA_BROKER_STORE'].endswith('broker-v2-entra.sqlite')
     assert not any('GENERATION' in key or 'ENVIRONMENT' in key for key in environment)
-    assert compose['secrets']['auth-central-entra-secret']['file'] == str(secret)
+    if credential == 'certificate':
+        assert compose['secrets']['auth-central-entra-certificate-key']['file'] == str(secret)
+        assert environment['ENTRA_CLIENT_CERTIFICATE_KEY_FILE'] == '/run/secrets/entra-certificate-key'
+        assert environment['ENTRA_CLIENT_CERTIFICATE_FILE'] == '/run/secrets/entra-certificate'
+        assert compose['secrets']['auth-central-entra-certificate']['file'] == str(secret)
+        assert 'ENTRA_CLIENT_SECRET_FILE' not in environment
+        assert 'auth-central-entra-secret' not in compose['secrets']
+        assert {'source': 'auth-central-entra-certificate-key',
+                'target': 'entra-certificate-key'} in compose['services']['auth-central']['secrets']
+        assert compose['services']['planner-planning']['secrets'] == [
+            {'source': 'client-planning', 'target': 'auth-client'}]
+    else:
+        assert compose['secrets']['auth-central-entra-secret']['file'] == str(secret)
     assert secret.read_text() not in str(compose)
     assert not (output / '.auth' / 'central' / 'client-secret').exists()
+
+    external = {key: value for key, value in services['central'].items()
+                if not key.startswith('_')}
+    config['auth_services']['central'] = external
+    external_services = load_auth_services(config, manifest, 'planner.example.test')
+    assert generate_docker_compose(config['instances'], 'test', 'planner.example.test',
+                                   external_services) == compose
+
+
+@pytest.mark.parametrize('credentials', [
+    {'client_certificate_key_file': 'entra-secret'},
+    {'client_certificate_file': 'entra-secret'},
+    {'client_certificate_key_file': 'entra-secret', 'client_certificate_file': 'entra-secret',
+     'client_secret_file': 'entra-secret'},
+])
+def test_live_registration_rejects_incomplete_or_conflicting_certificates(sandbox_manifest, credentials):
+    from deploy_auth import load_auth_services
+
+    config, services, manifest = sandbox_manifest
+    config['auth_services'] = {'central': {
+        'mode': 'entra', 'public_url': 'https://planner.example.test/auth/',
+        'volume_source': 'auth-central-state', 'registration': {
+            'tenant_id': '11111111-1111-1111-1111-111111111111',
+            'client_id': '22222222-2222-2222-2222-222222222222',
+            'organization': 'example', **credentials,
+        },
+    }}
+    config['instances'] = [{'name': 'planning', 'auth_service': 'central'}]
+    with pytest.raises(ValueError, match='certificate|Certificate'):
+        load_auth_services(config, manifest, 'planner.example.test')

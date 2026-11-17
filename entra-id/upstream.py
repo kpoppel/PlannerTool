@@ -23,7 +23,7 @@ class EntraUpstream:
             cache.deserialize(serialized)
         try:
             client = self.client_factory(
-                self.settings.client_id, client_credential=self.settings.client_secret,
+                self.settings.client_id, client_credential=self.settings.client_credential,
                 authority=f'https://login.microsoftonline.com/{self.settings.tenant_id}',
                 token_cache=cache, http_cache=self.http_cache, timeout=20,
             )

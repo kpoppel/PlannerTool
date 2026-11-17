@@ -62,22 +62,244 @@ revision-44 upgrade from dev. Intermediate branch formats are unsupported.
 
 ### Live Entra Registration
 
-Register a single-tenant **Web** application with the exact callback
-`https://planner.example.test/auth/callback`. Configure delegated Azure DevOps
-`user_impersonation` permission and obtain tenant-required consent. Users need
-their own ADO organization access. Keep implicit grants and public-client flows off.
+For this deployment, prefer **Entra with a certificate**, followed by **Entra with
+an application secret**, then **PATs**. The first two methods use the same Entra
+application registration; select exactly one credential method below. PATs are
+created in Azure DevOps and do not require an Entra app registration. These are
+explicit choices, not automatic downgrade paths.
 
-Set `mode: entra`, real tenant/client IDs and the ADO organization name in
-`registration`. Add `registration.client_secret_file` pointing to the secret **value**
-in a mode-0600 file, such as `/etc/plannertool/entra-client-secret`. Never put it in
-YAML, history, chat or source control. The generator mounts it, never generates it.
-Allow broker outbound HTTPS to Entra and PlannerTool HTTPS to ADO.
+| Credential | Created by | Stored locally | Purpose |
+| --- | --- | --- | --- |
+| Entra application certificate | Your organization or OpenSSL | Public certificate PEM and private key PEM | Broker signs token-exchange assertions |
+| Entra application secret | Entra app registration | File containing the secret **value** | Broker authenticates token exchanges |
+| Azure DevOps PAT | Each user in Azure DevOps | Entered in PlannerTool's protected PAT field | That user's ADO requests in PAT mode |
+| Broker encryption key | Deployment generator or local Python command | Fernet key file | Encrypts the broker's persisted token cache |
+| Per-instance shared secret | Deployment generator or local Python command | A distinct secret file for each instance | Authenticates PlannerTool to the broker |
+| Installation encryption key | Installation operator | Retained `.encryption_key` / `PLANNER_SECRET_KEY` | Encrypts PlannerTool credentials at rest |
+
+Neither an application certificate nor an application secret is an ADO access token.
+MSAL obtains and renews delegated tokens after users sign in; do not generate or
+paste OAuth access/refresh tokens into the manifest. Users still need their own ADO
+organization access. Application credentials do not enable app-only ADO access.
+
+#### Common Entra App Registration Steps
+
+1. Open the **Microsoft Entra admin center**, select the tenant connected to your
+   Azure DevOps organization, then **App registrations > New registration**.
+2. Enter a recognizable name, choose **Accounts in this organizational directory
+   only**, and add a **Web** redirect URI. For Compose, use the exact
+   `https://planner.example.test/auth/callback`, replacing the hostname. For local
+   development, use `https://localhost:5174/auth/callback`. Add both only when the
+   same registration is deliberately used in both environments.
+3. Register the application. From **Overview**, record **Directory (tenant) ID**
+   and **Application (client) ID**. Use these GUIDs, not the application object ID.
+4. Under **API permissions > Add a permission > APIs my organization uses**, find
+   **Azure DevOps**, choose **Delegated permissions > user_impersonation**, then
+   **Add permissions**. Obtain administrator consent when tenant policy requires it.
+   Do not add Graph or application permissions for this integration.
+5. Under **Authentication**, retain the exact Web callback and leave implicit grants
+   and public-client flows disabled. Restrict the enterprise application's audience
+   during initial rollout and account claiming.
+6. Choose **Method A** or **Method B** below. In the manifest set `mode: entra`,
+   use the tenant/client GUIDs above and the ADO organization name, not its URL.
+
+#### Method A: Certificate (Recommended)
+
+Use an RSA certificate and matching **unencrypted PEM private key**. The examples
+below require OpenSSL 3 and run on the machine that will retain the private key.
+Do not use the Caddy/localhost HTTPS key for this purpose.
+
+1. Create a new protected directory outside the repository and generate a 3072-bit
+   RSA key. Run this once; `mkdir` intentionally fails if the directory already
+   exists, so do not rerun it over retained credentials. Stop on any command failure.
+
+```bash
+umask 077
+AUTH_DIR="$HOME/.config/plannertool/entra-certificate"
+mkdir -p "$(dirname "$AUTH_DIR")"
+mkdir -m 700 "$AUTH_DIR" && \
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 \
+   -out "$AUTH_DIR/entra-private-key.pem"
+```
+
+2. Obtain the public certificate using **one** of these routes. Follow your
+   organization's certificate policy. Entra supports an explicitly uploaded
+   self-signed application certificate; it does not need browser/HTTPS trust.
+
+For a self-signed certificate valid for one year:
+
+```bash
+openssl req -new -x509 -sha256 -days 365 \
+   -key "$AUTH_DIR/entra-private-key.pem" \
+   -subj '/CN=PlannerTool Entra client' \
+   -out "$AUTH_DIR/entra-certificate.pem"
+```
+
+For an organization-issued certificate, generate a CSR instead:
+
+```bash
+openssl req -new -sha256 -key "$AUTH_DIR/entra-private-key.pem" \
+   -subj '/CN=PlannerTool Entra client' -out "$AUTH_DIR/entra-request.csr"
+```
+
+Submit only the CSR to your certificate authority. Request a signing-capable RSA
+certificate according to its policy, and place the returned **leaf certificate in
+PEM format** at `$AUTH_DIR/entra-certificate.pem`. Never submit the private key.
+If the returned certificate is binary DER, convert it with:
+
+```bash
+openssl x509 -inform DER -in issued-certificate.cer \
+   -out "$AUTH_DIR/entra-certificate.pem"
+```
+
+3. Protect the files and inspect the public certificate's dates and fingerprint:
+
+```bash
+chmod 600 "$AUTH_DIR/entra-private-key.pem" "$AUTH_DIR/entra-certificate.pem"
+openssl pkey -in "$AUTH_DIR/entra-private-key.pem" -check -noout
+openssl x509 -in "$AUTH_DIR/entra-certificate.pem" -noout -subject -dates -fingerprint -sha256
+```
+
+Check that these two public-key hashes match before continuing:
+
+```bash
+openssl pkey -in "$AUTH_DIR/entra-private-key.pem" -pubout -outform DER | openssl dgst -sha256
+openssl x509 -in "$AUTH_DIR/entra-certificate.pem" -pubkey -noout \
+   | openssl pkey -pubin -outform DER | openssl dgst -sha256
+```
+
+4. In your app registration, open **Certificates & secrets > Certificates > Upload
+   certificate** and upload only `entra-certificate.pem`. Confirm its expiry and
+   registration. Never upload the private-key file. The portal may display a SHA-1
+   thumbprint; do not copy it into configuration. MSAL calculates SHA-256 itself.
+5. Configure the two file paths below. Substitute the absolute paths created above;
+   YAML values do not expand `$AUTH_DIR` or `~`. For Docker, have an administrator
+   provision broker UID 1000 access to protected files/directories without broadening
+   permissions. For direct local development, the current user owns the files.
+
+```yaml
+registration:
+   tenant_id: 11111111-1111-1111-1111-111111111111
+   client_id: 22222222-2222-2222-2222-222222222222
+   organization: example
+   client_certificate_file: /etc/plannertool/entra-certificate.pem
+   client_certificate_key_file: /etc/plannertool/entra-private-key.pem
+```
+
+Paths may be absolute or relative to the manifest. MSAL derives the SHA-256 certificate
+thumbprint and signs short-lived client assertions locally. The private key remains
+on the broker; only the public certificate and signed assertion reach Entra. This
+application credential is separate from the Caddy/localhost HTTPS certificate.
+
+If your organization supplies a PKCS#12/PFX bundle instead of separate PEM files,
+extract the public certificate and unencrypted private key into a new protected
+directory. OpenSSL prompts for the bundle password; enter it directly in the terminal,
+never in command arguments or chat:
+
+```bash
+umask 077
+openssl pkcs12 -in supplied-certificate.pfx -clcerts -nokeys -out entra-certificate.pem
+openssl pkcs12 -in supplied-certificate.pfx -nocerts -noenc -out entra-private-key.pem
+chmod 600 entra-certificate.pem entra-private-key.pem
+```
+
+Use an RSA bundle, protect the original PFX too, and perform the same key-match,
+upload and path-configuration steps above. The broker expects PEM paths, not a PFX
+path or a private-key passphrase setting.
+
+Monitor certificate expiry. To rotate, upload the replacement public certificate
+first, update the local certificate/key files and redeploy/recreate the broker, then
+verify sign-in and delegated token renewal before removing the old registration.
+Keep broker encryption and per-instance keys unchanged during credential rotation.
+
+#### Method B: Application Secret
+
+This remains a fully supported alternative to certificates. Complete the common
+Entra registration steps above, then:
+
+1. Open **Certificates & secrets > Client secrets > New client secret** in the app
+   registration. Enter a description and choose the shortest practical lifetime
+   allowed by your organization's policy, then select **Add**.
+2. Copy the new secret's **Value** immediately to your approved secret store. It is
+   shown only once. **Secret ID** is not a credential and will not work. Do not
+   generate a random local string instead: the value must come from Entra.
+3. On the broker host, store the value in a protected file. From the repository root
+   with `.venv` activated, the following commands prompt without echoing the secret
+   or putting its literal value in shell history. File creation refuses to overwrite
+   an existing secret. Use a new directory and stop if any command fails:
+
+```bash
+umask 077
+SECRET_DIR="$HOME/.config/plannertool/entra-secret"
+mkdir -p "$(dirname "$SECRET_DIR")"
+mkdir -m 700 "$SECRET_DIR"
+python -c 'from getpass import getpass; from pathlib import Path; import sys; Path(sys.argv[1]).open("x").write(getpass("Entra client secret Value: ") + "\n")' "$SECRET_DIR/client-secret"
+chmod 600 "$SECRET_DIR/client-secret"
+```
+
+Run without shell tracing (`set -x`), terminal recording or shared screen capture.
+For Docker, provision broker UID 1000 access as described for certificate files.
+
+Configure the secret file, with **neither** certificate field present:
+
+```yaml
+registration:
+   tenant_id: 11111111-1111-1111-1111-111111111111
+   client_id: 22222222-2222-2222-2222-222222222222
+   organization: example
+   client_secret_file: /etc/plannertool/entra-client-secret
+```
+
+Replace the example path with the actual protected file path. For a direct broker
+or local development launch, use `ENTRA_CLIENT_SECRET_FILE=/absolute/path/client-secret`
+and remove both `ENTRA_CLIENT_CERTIFICATE_*` entries. Direct launch also supports
+`ENTRA_CLIENT_SECRET`, but never set it together with `ENTRA_CLIENT_SECRET_FILE`;
+prefer the file so the value is absent from env files and process environments.
+
+Before expiry, create a second secret in Entra, replace the protected file and
+redeploy/recreate the broker. Verify sign-in and renewal before deleting the old
+secret in Entra. Do not rotate broker encryption or per-instance keys along with it.
+
+#### Start and Verify Either Entra Method
+
+Never configure both credential methods. Never put private keys or secret values
+in YAML, history, chat or source control. The generator mounts credentials only
+into the broker; it does not generate live Entra credentials. Allow broker outbound
+HTTPS to Entra and PlannerTool HTTPS to ADO.
 
 Rerun the ordinary deployment command after editing registration. No manual migration
 or source change is required. Restrict initial access: the first verified account on
 empty data becomes admin; existing accounts follow the one-time email claim policy
 in [Authentication](AUTHENTICATION.md). Offline tests do not prove consent, tenant
 policy or real ADO renewal; validate those with a limited audience before cutover.
+
+### PAT Authentication (No Entra App Registration)
+
+Use this method only when deployment policy permits PATs. It does not configure a
+client secret or certificate on the Entra broker.
+
+1. Set top-level `ado_authentication: pat` in the manifest. For a PAT-only deployment,
+   omit `auth_services` and each instance's `auth_service`/`auth_client_secret_file`
+   settings. Redeploy with the ordinary command.
+2. In Azure DevOps, open **User settings > Personal access tokens > New Token**.
+   Select the correct organization, a recognizable name and a short expiry. Grant
+   only the scopes required by enabled operations: **Work Items (Read)** for reading
+   boards and **Wiki (Read)** for reading wiki content; grant write permissions only
+   when you intend to use corresponding publishing/editing operations. Tenant policy
+   may restrict PAT creation or allowed scopes.
+3. Create the PAT and retain its value in your approved secret store immediately;
+   Azure DevOps shows it only once. A PAT is issued by Azure DevOps, not generated
+   with OpenSSL, and is not an Entra client secret or a PlannerTool account key.
+4. Enroll/sign in to PlannerTool. The administrator selects the live Azure DevOps
+   backend and organization in **Admin > Data Sources**. Each user supplies their
+   own PAT in the masked enrollment or account-configuration field when requested.
+   Do not put PATs into the manifest, shared broker files or another user's account.
+5. Verify an ADO refresh and any enabled publishing operations. Before PAT expiry,
+   create a replacement in Azure DevOps, update that user's PlannerTool configuration,
+   verify access and revoke the old PAT.
+
+PATs are encrypted at rest using the installation's retained `PLANNER_SECRET_KEY`.
+PAT mode uses PlannerTool enrollment/account-key login, not Entra browser login.
 
 ## Access From Your Computer
 
@@ -91,6 +313,29 @@ are rejected before ADO/wiki calls, preserving local/cached work. Live login red
 to Entra. Both return to the originating instance; logout affects only that session.
 
 ## Verify and Operate
+
+After generating Compose configuration and building/pulling the selected image, you
+can validate broker credentials without starting its HTTP listener or opening its
+token store. Substitute your auth service name and retain any normal `--env-file`
+or `--project-name` options:
+
+```bash
+docker compose --project-directory deployment run --rm --no-deps auth-central python app.py --check
+```
+
+This uses the same mounted certificate/key or secret files and the same non-root
+UID 1000 as normal broker startup. It reports the selected credential method, not
+credential contents. Normal startup performs these checks too: complete credential
+selection, nonempty protected files, valid PEM encoding, matching RSA keys of at
+least 2048 bits and current certificate dates. The broker image runs Python from
+`/opt/venv`; both broker and application images require their own dependencies.
+
+For `requires mode 0600`, restrict the named file's permissions. For unreadable
+files, ask the installation administrator to provision UID 1000 ownership/access
+to the file and its parent directories; do not make secrets world-readable or run
+the broker as root. Convert PFX to PEM using Method A before configuring certificate
+paths. A mismatch requires the private key corresponding to the uploaded certificate;
+an expired certificate requires registration and deployment of a replacement.
 
 From the repository root on the server:
 
@@ -119,7 +364,17 @@ the source-reloading backend and Vite to a local broker, use
 `./scripts/run_dev.sh --auth-env /absolute/path/to/dev-auth.env`. This trusted shell
 env file is sourced and must have no group/other permissions (`chmod 600`). Install
 both the root and `entra-id/requirements.txt` dependencies in the active `.venv`.
-Never put client secrets in chat, tracked files or command history.
+Never put private keys or client secrets in chat, tracked files or command history.
+
+The launcher always uses the repository's `.venv/bin/python`, even if another Python
+is on your shell's `PATH`. If prerequisites are missing, run `scripts/setup-dev.sh`
+for the ordinary development environment, then install the broker requirements in
+that environment:
+
+```bash
+.venv/bin/python -m pip install -r entra-id/requirements.txt
+./scripts/run_dev.sh --help
+```
 
 For live Entra, provision a browser-trusted localhost TLS certificate/key (for example
 with an already installed local CA tool). Register the exact **Web** redirect URI
@@ -130,9 +385,33 @@ URI to the existing registration. Keep implicit and public-client flows disabled
 Create a private directory outside the repository. Provision distinct random
 per-instance and broker encryption keys in mode-0600 files. The instance key must
 contain at least 256 bits of random material (43 URL-safe base64 characters); the
-broker key must be a Fernet key. Keep them across restarts. Store the Entra client
-secret **value** in a separate mode-0600 file. Example trusted env file, with paths
-and registration values replaced locally:
+broker key must be a Fernet key. Compose `--apply` generates these internal keys
+automatically; the following manual generation is only for direct/local development.
+From the repository root, activate the existing virtual environment, then run once
+for a **new** local broker:
+
+```bash
+source .venv/bin/activate
+umask 077
+DEV_AUTH_DIR="$HOME/.config/plannertool/dev-auth"
+mkdir -p "$(dirname "$DEV_AUTH_DIR")"
+mkdir -m 700 "$DEV_AUTH_DIR"
+python -c 'from cryptography.fernet import Fernet; from pathlib import Path; import sys; Path(sys.argv[1]).open("x").write(Fernet.generate_key().decode() + "\n")' "$DEV_AUTH_DIR/broker-key"
+python -c 'import secrets; from pathlib import Path; import sys; Path(sys.argv[1]).open("x").write(secrets.token_urlsafe(32) + "\n")' "$DEV_AUTH_DIR/instance-secret"
+```
+
+Stop on errors. Exclusive creation (`"x"`) refuses to overwrite an existing key.
+Generate a different instance-secret file for every additional instance. Keep the
+broker key, instance secrets and original installation encryption key across
+restarts; none is an Entra application credential. Keep the broker's database inside
+the mode-0700 directory too. Do not regenerate keys to repair a failed login.
+
+Choose the application credential independently: follow **Method A** above to
+generate/register a certificate and key, or **Method B** to create an Entra-issued
+secret value. The env example below uses Method A. Replace every
+`/absolute/private/dev-auth` path with your actual directory and point the two
+certificate paths at the files generated for Method A. Replace registration values
+locally and protect the trusted env file with `chmod 600`:
 
 ```bash
 DATA_DIR=/absolute/private/dev-auth/planner-data
@@ -149,7 +428,8 @@ PLANNER_DEV_TLS_KEY_FILE=/absolute/private/dev-auth/localhost-key.pem
 ENTRA_TENANT_ID=your-tenant-guid
 ENTRA_CLIENT_ID=your-client-guid
 ADO_ORGANIZATION=your-organization
-ENTRA_CLIENT_SECRET_FILE=/absolute/private/dev-auth/client-secret
+ENTRA_CLIENT_CERTIFICATE_FILE=/absolute/private/dev-auth/entra-certificate.pem
+ENTRA_CLIENT_CERTIFICATE_KEY_FILE=/absolute/private/dev-auth/entra-private-key.pem
 ENTRA_REDIRECT_URI=https://localhost:5174/auth/callback
 ENTRA_AUTH_MODE=entra
 ENTRA_ADO_TRANSPORT=live
@@ -159,6 +439,11 @@ ENTRA_BROKER_KEY_FILE=/absolute/private/dev-auth/broker-key
 ENTRA_BROKER_STORE=/absolute/private/dev-auth/broker.sqlite
 ENTRA_BROKER_REGISTRY_FILE=/absolute/private/dev-auth/instances.json
 ```
+
+To use an application secret instead, replace both `ENTRA_CLIENT_CERTIFICATE_*`
+entries with `ENTRA_CLIENT_SECRET_FILE=/absolute/private/dev-auth/client-secret`.
+Do not configure both credential methods. The Entra application certificate is
+distinct from `PLANNER_DEV_TLS_CERT_FILE` and `PLANNER_DEV_TLS_KEY_FILE`.
 
 Create the registry at `ENTRA_BROKER_REGISTRY_FILE`, with the same instance key path
 as `PLANNER_AUTH_SECRET_FILE`:
@@ -176,7 +461,22 @@ as `PLANNER_AUTH_SECRET_FILE`:
 }
 ```
 
-Start the launcher and open `https://localhost:5174/dev/` or
+Check the configuration before starting services:
+
+```bash
+./scripts/run_dev.sh --auth-env /absolute/path/to/dev-auth.env --check
+./scripts/run_dev.sh --auth-env /absolute/path/to/dev-auth.env
+```
+
+`--check` checks local dependencies, installation-key presence and broker
+configuration, including the selected application credential. It starts no services,
+makes no Microsoft requests and does not create/open the token database. Normal
+startup performs the same preflight before starting broker, backend or Vite; an
+invalid certificate or secret configuration stops the entire launch. It does not
+test free ports, HTTPS browser trust, Entra registration/consent or actual token
+renewal. Use `./scripts/run_dev.sh --check` for the ordinary PAT/enrollment setup.
+
+After starting the launcher, open `https://localhost:5174/dev/` or
 `https://localhost:5174/dev/admin/`. Vite terminates TLS and proxies `/auth/` to the
 loopback broker and `/dev/api/` to the backend. The backend port defaults to 8001;
 the example uses 8002 to avoid an existing dev server. The browser port is fixed by
@@ -193,9 +493,19 @@ deployment choice: use `PLANNER_AUTH_PROVIDER=entra` with
 the deployed authentication mode but cannot change it.
 
 For offline mock sign-in, use `http://localhost:5174` everywhere above, remove the
-two TLS variables, set both mode variables to `mock`, and set
-`ENTRA_ADO_TRANSPORT=fixture`. Supply canonical tenant/client GUIDs and a nonempty
-dummy client-secret file. Set registry `mock_registration` to an object containing
+two TLS variables and both `ENTRA_CLIENT_CERTIFICATE_*` entries, set both
+`PLANNER_AUTH_UPSTREAM_MODE` and `ENTRA_AUTH_MODE` to `mock`, and set
+`ENTRA_ADO_TRANSPORT=fixture`. Supply canonical tenant/client GUIDs. Create a
+nonempty dummy credential in your private development directory, not in Entra:
+
+```bash
+umask 077
+python -c 'from pathlib import Path; import sys; Path(sys.argv[1]).open("x").write("mock-only-not-an-entra-secret\n")' "$DEV_AUTH_DIR/mock-client-secret"
+```
+
+Use the activated `.venv` and set `ENTRA_CLIENT_SECRET_FILE` to that file's absolute
+path. Retain the broker encryption and per-instance keys generated above.
+Set registry `mock_registration` to an object containing
 the exact `tenant_id`, `client_id`, `redirect_uri` and `organization` from the env.
 Mock credentials cannot access live ADO/wiki. Restrict mock sign-in to your machine.
 
@@ -238,26 +548,26 @@ filesystems are suitable for generations.
 See [MIGRATIONS.md](MIGRATIONS.md) for admission, retry, offline restore/export,
 storage sizing, cleanup, and process-crash versus power-loss guarantees.
 
-In any situaion you need to have a secret encryption key.
+Every deployment needs an installation encryption key, regardless of its ADO
+authentication method. This is separate from all Entra, broker and HTTPS keys.
 
-# Generate a 32 character secrey encryption key
+# Generate the Installation Encryption Key
 
-To generate an encryption key run this command line:
+Only for a **new installation**, run from the repository root using the existing
+virtual environment. This generates 32 random bytes, base64-encodes them and writes
+the key without printing it. Exclusive creation refuses to overwrite an existing
+`.encryption_key`:
 
-   ```bash
-   # Generate a random encryption key (do this once and save it securely!)
-   openssl rand -base64 32 > .encryption_key
+```bash
+source .venv/bin/activate
+umask 077
+python -c 'import base64, secrets; from pathlib import Path; Path(".encryption_key").open("x").write(base64.b64encode(secrets.token_bytes(32)).decode() + "\n")'
+chmod 600 .encryption_key
+```
 
-   # Alternatives:
-   tr -dc A-Za-z0-9_ < /dev/urandom | head -c 32 > .encryption_key
-   # or:
-   python3 -c "import secrets; print(secrets.token_urlsafe(24))" > .encryption_key
-
-   # Make it user accessible only
-   chmod 600 .encryption_key
-   ```
-
-This key is used to encrypt Personal Access Tokens (PATs) at rest.
+This key encrypts PlannerTool credentials, including PATs, at rest. For an existing
+installation or copied data, restore its **original** key from your protected backup
+instead of generating a new one. Changing the key does not re-encrypt old credentials.
 
 **Note:**
 - Store the `.encryption_key` file securely and back it up
@@ -419,13 +729,23 @@ do not use `docker compose down -v`, which deletes persisted certificates and
 other application volumes. Caddy handles ACME/internal renewals without rerunning
 deployment; supplied company certificates require operator-managed renewal.
 
-**Set the encryption key**: Before starting the containers, you must set the `PLANNER_SECRET_KEY` environment variable. 
+### Compose Encryption Environment
 
-   ```bash
-   # Create the environment file for docker compose
-   echo "PLANNER_SECRET_KEY="$(cat .encryption_key) > deployment/.env
-   ```
-**Note**: For production deployments, consider using Docker secrets or a secrets management service
+Before starting containers, provision `PLANNER_SECRET_KEY` in the protected Compose
+env file. After `--apply` creates the output directory, run the following from the
+repository root for a **new** env file, with `.venv` activated:
+
+```bash
+umask 077
+python -c 'from pathlib import Path; key = Path(".encryption_key").read_text().strip(); Path("deployment/.env").open("x").write("PLANNER_SECRET_KEY=" + key + "\n")'
+chmod 600 deployment/.env
+```
+
+This copies the retained installation key; it does not generate another one.
+Existing env files are not overwritten. If you already have a protected env file,
+retain it and use `--env-file /absolute/path/to/it` when needed. Never print its
+contents, commit it or include it in support logs. A secret-management service may
+provision the same retained value instead.
 
 To start the services, either run the script with the `--start` flag, or do it manually:
    ```bash
@@ -492,22 +812,10 @@ If you want to keep your application source code separate from your production s
 5. **Run:** On the production server, navigate to the `deployment/` folder and execute `docker compose up -d`. 
 
 With this workflow, the production server only needs Docker installed. It does not require Python, the deployment script, or the application source code.
-
-
-
-   If running by docker container or development mode, set the environment variable
-   ```
-   # Create the environment file for docker compose
-   echo "PLANNER_SECRET_KEY="$(cat .encryption_key) > deployment/.env
-
-   export PLANNER_SECRET_KEY=$(cat .encryption_key)
-   ```
-
-   **Important**: 
-   - Store the `.encryption_key` file securely and back it up
-   - Never commit `.encryption_key` to version control
-   - The same key must be used consistently or encrypted PATs cannot be decrypted
-   - For production deployments, consider using Docker secrets or a secrets management service
+For Compose, use the protected env file described in
+[Compose Encryption Environment](#compose-encryption-environment). The development
+launcher reads the retained root `.encryption_key` itself; it does not require a
+second copy or a new key. Keep all copies and protected backups consistent.
 
 # Deploy using Vite dev server (recommended for development)
 

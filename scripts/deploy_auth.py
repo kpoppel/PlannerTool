@@ -8,6 +8,27 @@ from urllib.parse import urlsplit
 
 
 
+CLIENT_CREDENTIAL_FIELDS = {
+    'client_secret_file', 'client_certificate_key_file', 'client_certificate_file',
+}
+
+
+def load_client_credential(source, base):
+    fields = set(source) & CLIENT_CREDENTIAL_FIELDS
+    if fields == {'client_secret_file'}:
+        file_fields = ('client_secret_file',)
+    elif fields == {'client_certificate_key_file', 'client_certificate_file'}:
+        file_fields = ('client_certificate_key_file', 'client_certificate_file')
+    else:
+        raise ValueError('Configure a client secret file or a certificate and private key file, not both')
+    credential = {}
+    for field in file_fields:
+        credential[field] = protected_file(base, source[field])
+        if not Path(credential[field]).read_text().strip():
+            raise ValueError('Entra client credential file must not be empty')
+    return credential
+
+
 def validate_deployment_policy(config):
     mode = config.get('ado_authentication')
     if mode not in ('disabled', 'pat', 'entra'):
@@ -111,8 +132,9 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
         service = dict(config['auth_services'][name])
         managed = name in managed_services
         required = {'mode', 'public_url', 'volume_source'}
-        required |= {'registration'} if managed else {'env_file', 'registry_file', 'key_file', 'client_secret_file'}
-        if not required <= set(service) or set(service) - required - {'image', 'build_from_source'}:
+        required |= {'registration'} if managed else {'env_file', 'registry_file', 'key_file'}
+        allowed = {'image', 'build_from_source'} | (set() if managed else CLIENT_CREDENTIAL_FIELDS)
+        if not required <= set(service) or set(service) - required - allowed:
             raise ValueError('Auth service requires explicit configuration, registry, secrets and persistent volume')
         if 'build_from_source' in service and type(service['build_from_source']) is not bool:
             raise ValueError('Auth build_from_source must be a boolean')
@@ -139,23 +161,24 @@ def load_auth_services(config, manifest_path, https_hostname, *, output_dir='dep
             registration = service.pop('registration')
             fields = {'tenant_id', 'client_id', 'organization'}
             if service['mode'] == 'entra':
-                fields.add('client_secret_file')
+                fields |= set(registration) & CLIENT_CREDENTIAL_FIELDS
             if set(registration) != fields:
                 raise ValueError('Auth registration requires tenant_id, client_id, organization '
-                                 'and a client_secret_file in live mode')
+                                 'and a client secret or certificate in live mode')
             directory = Path(output_dir).resolve() / '.auth' / name
             service.update({field: str(directory / filename) for field, filename in {
                 'env_file': 'registration.env', 'registry_file': 'instances.json',
-                'key_file': 'broker-key', 'client_secret_file': 'client-secret',
+                'key_file': 'broker-key',
             }.items()})
             if service['mode'] == 'entra':
-                service['client_secret_file'] = protected_file(base, registration['client_secret_file'])
-                if not Path(service['client_secret_file']).read_text().strip():
-                    raise ValueError('Entra client secret file must not be empty')
+                service.update(load_client_credential(registration, base))
+            else:
+                service['client_secret_file'] = str(directory / 'client-secret')
             env = {'ENTRA_TENANT_ID': registration['tenant_id'], 'ENTRA_CLIENT_ID': registration['client_id'],
                    'ADO_ORGANIZATION': registration['organization']}
         else:
-            for field in ('env_file', 'registry_file', 'key_file', 'client_secret_file'):
+            service.update(load_client_credential(service, base))
+            for field in ('env_file', 'registry_file', 'key_file'):
                 service[field] = protected_file(base, service[field])
             from cryptography.fernet import Fernet
             Fernet(Path(service['key_file']).read_text().strip().encode())
@@ -251,29 +274,39 @@ def add_auth_compose(compose, instances, services, version):
     for name, service in services.items():
         dns = 'auth-' + name
         key_name = dns + '-key'
-        secret_name = dns + '-entra-secret'
+        certificate = 'client_certificate_key_file' in service
+        credential_target = 'entra-certificate-key' if certificate else 'entra-secret'
+        credential_field = 'client_certificate_key_file' if certificate else 'client_secret_file'
+        secret_name = dns + '-' + credential_target
         compose['secrets'][key_name] = {'file': service['key_file']}
-        compose['secrets'][secret_name] = {'file': service['client_secret_file']}
+        compose['secrets'][secret_name] = {'file': service[credential_field]}
         environment = {**service['_environment'],
                        'ENTRA_LISTEN_HOST': '0.0.0.0', 'ENTRA_LISTEN_PORT': '8000',
                        'ENTRA_NETWORK': 'private-compose', 'ENTRA_INTERNAL_HOST': dns,
-                       'ENTRA_CLIENT_SECRET_FILE': '/run/secrets/entra-secret',
                        'ENTRA_BROKER_KEY_FILE': '/run/secrets/broker-key',
                        'ENTRA_BROKER_REGISTRY_FILE': '/app/config/instances.json',
                        'ENTRA_BROKER_STORE': '/app/state/protected/broker-v2-' + service['mode'] + '.sqlite'}
+        if certificate:
+            environment['ENTRA_CLIENT_CERTIFICATE_KEY_FILE'] = '/run/secrets/' + credential_target
+            environment['ENTRA_CLIENT_CERTIFICATE_FILE'] = '/run/secrets/entra-certificate'
+            compose['secrets'][dns + '-entra-certificate'] = {'file': service['client_certificate_file']}
+        else:
+            environment['ENTRA_CLIENT_SECRET_FILE'] = '/run/secrets/' + credential_target
         auth = {
             'image': service.get('image', 'plannertool-auth:' + version),
             'environment': environment,
             'volumes': [service['registry_file'] + ':/app/config/instances.json:ro',
                         service['volume_source'] + ':/app/state'],
             'secrets': [{'source': key_name, 'target': 'broker-key'},
-                        {'source': secret_name, 'target': 'entra-secret'}],
+                        {'source': secret_name, 'target': credential_target}],
             'read_only': True, 'cap_drop': ['ALL'],
             'security_opt': ['no-new-privileges:true'], 'restart': 'unless-stopped',
             'healthcheck': {'test': ['CMD', 'python', '-c',
                 f"import urllib.request; urllib.request.urlopen('http://{dns}:8000/auth/health', timeout=2)"],
                 'interval': '10s', 'timeout': '3s', 'retries': 3},
         }
+        if certificate:
+            auth['secrets'].append({'source': dns + '-entra-certificate', 'target': 'entra-certificate'})
         if service.get('build_from_source') is True or 'image' not in service:
             auth['build'] = {'context': str(Path(__file__).resolve().parents[1] / 'entra-id')}
         for instance in service['_members']:
