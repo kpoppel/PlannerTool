@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   setLocalPref: vi.fn(),
   getEffectiveFeatures: vi.fn(),
   getSelectedProjectIds: vi.fn(),
+  getFeatureSortMode: vi.fn(),
 }));
 vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: { getLocalPref: mocks.getLocalPref, setLocalPref: mocks.setLocalPref },
@@ -13,6 +14,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
   sel: {
     feature: { getEffectiveFeatures: mocks.getEffectiveFeatures },
     selection: { getSelectedProjectIds: mocks.getSelectedProjectIds },
+    view: { getFeatureSortMode: mocks.getFeatureSortMode },
   },
 }));
 
@@ -39,11 +41,12 @@ describe('cone of uncertainty plugin', () => {
     mocks.getLocalPref.mockResolvedValue(undefined);
     mocks.setLocalPref.mockResolvedValue(undefined);
     mocks.getSelectedProjectIds.mockReturnValue(['p1']);
+    mocks.getFeatureSortMode.mockReturnValue('rank');
     mocks.getEffectiveFeatures.mockReturnValue([
       { id: 'root', title: 'Executive roadmap', type: 'Epic', project: 'p1', parentId: null,
-        start: '2027-01-01', end: '2027-04-01' },
+        start: '2027-01-01', end: '2027-04-01', originalRank: 1 },
       { id: 'child', title: 'Implementation', type: 'Feature', project: 'p1', parentId: 'root',
-        start: '2027-02-01', end: '2027-03-01' },
+        start: '2027-02-01', end: '2027-03-01', originalRank: 2 },
     ]);
   });
   afterEach(() => document.body.replaceChildren());
@@ -61,6 +64,26 @@ describe('cone of uncertainty plugin', () => {
     levels.dispatchEvent(new Event('change'));
     await el.updateComplete;
     expect(el.shadowRoot.querySelectorAll('.task-row')).toHaveLength(2);
+  });
+
+  it('sorts by board rank or latest forecast finish, including ongoing work', async () => {
+    mocks.getEffectiveFeatures.mockReturnValue([
+      { id: 'long', title: 'Alpha', type: 'Epic', project: 'p1', parentId: null,
+        start: '2027-01-01', end: '2027-01-19', originalRank: 30 },
+      { id: 'short', title: 'Zulu', type: 'Epic', project: 'p1', parentId: null,
+        start: '2027-01-16', end: '2027-01-20', originalRank: 10 },
+      { id: 'ongoing', title: 'Middle', type: 'Epic', project: 'p1', parentId: null,
+        start: '2026-12-01', end: '2027-01-15', originalRank: 20 },
+    ]);
+    const el = await mount();
+    const titles = () => [...el.shadowRoot.querySelectorAll('.task-copy strong')]
+      .map((item) => item.textContent);
+    expect(titles()).toEqual(['Zulu', 'Middle', 'Alpha']);
+
+    mocks.getFeatureSortMode.mockReturnValue('date');
+    el.requestUpdate();
+    await el.updateComplete;
+    expect(titles()).toEqual(['Middle', 'Zulu', 'Alpha']);
   });
 
   it('persists edited scopes in user preferences and restores them on remount', async () => {

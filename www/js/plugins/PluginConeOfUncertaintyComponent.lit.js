@@ -274,6 +274,17 @@ export class PluginConeOfUncertaintyComponent extends LitElement {
     const forecast = this._loaded ? buildForecast(tasks, this.origin, this.scopes) : null;
     const ticks = [];
     if (forecast !== null) {
+      const sortMode = sel.view.getFeatureSortMode();
+      forecast.rows.sort((first, second) => {
+        if (sortMode === 'date') {
+          const firstEnd = first.latest === null ? first.end : first.latest;
+          const secondEnd = second.latest === null ? second.end : second.latest;
+          return firstEnd.getTime() - secondEnd.getTime();
+        }
+        const firstRank = Number.isInteger(first.feature.originalRank) ? first.feature.originalRank : 0;
+        const secondRank = Number.isInteger(second.feature.originalRank) ? second.feature.originalRank : 0;
+        return firstRank - secondRank;
+      });
       const months = (forecast.rangeEnd.getUTCFullYear() - forecast.origin.getUTCFullYear()) * 12
         + forecast.rangeEnd.getUTCMonth() - forecast.origin.getUTCMonth();
       const step = Math.max(1, Math.ceil(months / 16));

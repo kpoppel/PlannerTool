@@ -116,6 +116,31 @@ test('reacts to plan selection and effective scenario dates without editing the 
   await expect(page.getByText('No scheduled tasks match.', { exact: false })).toBeVisible();
 });
 
+test('follows the board sort setting using rank and latest uncertainty finish', async ({ page }) => {
+  await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    store.setState((state) => ({
+      ...state,
+      baseline: { ...state.baseline, features: [
+        { id: 'long', title: 'Alpha', start: '2027-01-01', end: '2027-01-19', originalRank: 30 },
+        { id: 'short', title: 'Zulu', start: '2027-01-16', end: '2027-01-20', originalRank: 10 },
+        { id: 'ongoing', title: 'Middle', start: '2026-12-01', end: '2027-01-15', originalRank: 20 },
+      ].map((feature) => ({ project: 'plan', parentId: null, capacity: [], relations: [],
+        tags: '', state: 'Active', process_id: 'process', type: 'Epic', ...feature })) },
+      view: { ...state.view, options: { ...state.view.options, featureSortMode: 'rank' } },
+    }));
+  });
+  const titles = page.locator('plugin-cone-of-uncertainty .task-copy strong');
+  await expect(titles).toHaveText(['Zulu', 'Middle', 'Alpha']);
+  await page.evaluate(async () => {
+    const { store } = await import('/js/application/store.js');
+    store.setState((state) => ({ ...state,
+      view: { ...state.view, options: { ...state.view.options, featureSortMode: 'date' } },
+    }));
+  });
+  await expect(titles).toHaveText(['Middle', 'Zulu', 'Alpha']);
+});
+
 test('uses compact aligned rows and board type icons without clipping text or ranges', async ({ page }) => {
   const plugin = page.locator('plugin-cone-of-uncertainty');
   await expect(plugin.getByRole('img', { name: 'Epic', exact: true })).toHaveCount(3);
