@@ -12,7 +12,7 @@ export class PluginConeOfUncertainty extends FullscreenPlugin {
 
   async activate() {
     await super.activate();
-    this._el.open();
+    await this._el.open();
   }
 }
 

@@ -64,11 +64,12 @@ export function selectPlanTasks(features, planIds, rootsOnly, search) {
   }).sort((a, b) => String(a.title).localeCompare(String(b.title)));
 }
 
-/** Inclusive calendar-day durations; these are illustrative bounds, not probabilities. */
+/** Inclusive calendar-day durations; these are forecast ranges, not probabilities. */
 export function buildForecast(features, originValue, scopes) {
   validateScopes(scopes);
   const origin = parseDate(originValue);
   if (origin === null) throw new Error('Choose a valid forecast origin date.');
+  let axisStart = addMonths(origin, -3);
   const boundaries = [origin, ...scopes.map((scope) => addMonths(origin, scope.endMonth))];
   const horizon = boundaries[3];
   let maxEnd = horizon.getTime();
@@ -86,27 +87,30 @@ export function buildForecast(features, originValue, scopes) {
       outsideCount += 1;
       continue;
     }
-    const scopeIndex = start < origin ? -1
+    if (start < axisStart) axisStart = start;
+    const activeBeforeOrigin = start < origin && feature.stateCategory === 'InProgress';
+    const forecastStart = activeBeforeOrigin ? origin : start;
+    const scopeIndex = activeBeforeOrigin ? 0 : start < origin ? -1
       : boundaries.findIndex((boundary, index) => index > 0 && start < boundary) - 1;
     let earliest = null;
     let latest = null;
     if (scopeIndex >= 0) {
-      const duration = (end.getTime() - start.getTime()) / DAY + 1;
+      const duration = (end.getTime() - forecastStart.getTime()) / DAY + 1;
       const scope = scopes[scopeIndex];
       // Apply the delta before rounding so 100 days at -90% stays 10 days.
       const earlyDays = Math.max(1, Math.floor(duration + duration * scope.lower / 100));
       const lateDays = Math.max(1, Math.ceil(duration + duration * scope.upper / 100));
-      earliest = new Date(start.getTime() + (earlyDays - 1) * DAY);
-      latest = new Date(start.getTime() + (lateDays - 1) * DAY);
+      earliest = new Date(forecastStart.getTime() + (earlyDays - 1) * DAY);
+      latest = new Date(forecastStart.getTime() + (lateDays - 1) * DAY);
       if (!Number.isFinite(latest.getTime())) {
         throw new Error(`Uncertainty range exceeds supported dates for task ${feature.id}.`);
       }
     }
     maxEnd = Math.max(maxEnd, end.getTime(), latest === null ? 0 : latest.getTime());
-    rows.push({ feature, start, end, earliest, latest, scopeIndex });
+    rows.push({ feature, start, forecastStart, end, earliest, latest, scopeIndex });
   }
   return {
-    rows, invalidCount, outsideCount, boundaries, origin, horizon,
+    rows, invalidCount, outsideCount, boundaries, origin, axisStart, horizon,
     rangeEnd: new Date(maxEnd + DAY),
   };
 }

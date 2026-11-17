@@ -16,6 +16,19 @@ describe('cone of uncertainty model', () => {
     ]);
   });
 
+  it('starts the visualization three months before the fixed forecast origin', () => {
+    const forecast = buildForecast([], '2027-01-11', DEFAULT_SCOPES);
+    expect(forecast.origin.toISOString().slice(0, 10)).toBe('2027-01-11');
+    expect(forecast.axisStart.toISOString().slice(0, 10)).toBe('2026-10-11');
+  });
+
+  it('extends the visible past to include task starts earlier than the three-month context', () => {
+    const forecast = buildForecast([
+      task('active', '2026-06-15', '2026-12-15', { stateCategory: 'InProgress' }),
+    ], '2026-11-17', DEFAULT_SCOPES);
+    expect(forecast.axisStart.toISOString().slice(0, 10)).toBe('2026-06-15');
+  });
+
   it('adds calendar months without overflowing month ends or leap days', () => {
     expect(addMonths('2028-01-31', 1).toISOString().slice(0, 10)).toBe('2028-02-29');
     expect(addMonths('2028-02-29', 12).toISOString().slice(0, 10)).toBe('2029-02-28');
@@ -54,6 +67,21 @@ describe('cone of uncertainty model', () => {
     expect(forecast.rangeEnd.getTime()).toBeGreaterThan(
       forecast.rows[1].latest.getTime()
     );
+  });
+
+  it('models active work from the forecast origin using its remaining duration', () => {
+    const scopes = DEFAULT_SCOPES.map((scope) => ({ ...scope, lower: -50, upper: 50 }));
+    const forecast = buildForecast([
+      task('active', '2027-01-01', '2027-01-20', { stateCategory: 'InProgress' }),
+      task('proposed', '2027-01-01', '2027-01-20', { stateCategory: 'Proposed' }),
+    ], '2027-01-11', scopes);
+    const active = forecast.rows.find((row) => row.feature.id === 'active');
+    const proposed = forecast.rows.find((row) => row.feature.id === 'proposed');
+    expect(active.scopeIndex).toBe(0);
+    expect(active.earliest.toISOString().slice(0, 10)).toBe('2027-01-15');
+    expect(active.latest.toISOString().slice(0, 10)).toBe('2027-01-25');
+    expect(proposed.scopeIndex).toBe(-1);
+    expect(proposed.earliest).toBeNull();
   });
 
   it('handles one-day tasks and does not mutate tasks or settings', () => {
