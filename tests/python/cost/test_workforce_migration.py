@@ -243,7 +243,8 @@ def test_canonical_runtime_registration_uses_only_migrated_workforce_owners(
     candidate_storage.save('config', 'cost_config', source['cost'])
     upgrade_workforce_candidate(candidate_storage)
     container = ServiceContainer()
-    for key in ('project_repository', 'backend', 'credential_provider', 'account_manager', 'azure_client'):
+    for key in ('project_repository', 'backend', 'credential_provider', 'account_manager',
+                'azure_client', 'planner_database'):
         container.register_factory(key, Mock)
     container.register_singleton('storage', candidate_storage)
     container.register_singleton('remote_cache_storage', candidate_storage)

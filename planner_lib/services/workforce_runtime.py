@@ -30,6 +30,7 @@ def register_workforce_runtime(container: ServiceContainer) -> None:
         project_repository=container.get('project_repository'),
         account_manager=container.get('account_manager'), azure_client=container.get('azure_client'),
         reloadable_services=[container.get('backend'), container.get('cost_service')],
+        planner_database=container.get('planner_database'),
     ))
 
 

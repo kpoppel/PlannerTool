@@ -44,8 +44,16 @@ class ConfigManager:
     def __init__(
         self,
         storage: StorageBackend,
+        *,
+        planner_database=None,
     ) -> None:
         self._storage = storage
+        self._planner_database = planner_database
+
+    def _required_planner_database(self):
+        if self._planner_database is None:
+            raise RuntimeError('Logical backup and restore require the planner database')
+        return self._planner_database
 
     # ------------------------------------------------------------------
     # Read / write
@@ -257,8 +265,11 @@ class ConfigManager:
         return cache.transact() if cache is not None else nullcontext()
 
     def get_backup(self) -> dict:
+        # Hold the DiskCache transaction while reading SQLite so both stores match.
         with self._transaction():
-            return self._get_backup()
+            backup = self._get_backup()
+            backup['planner_database'] = self._required_planner_database().export_rows()
+            return backup
 
     def _get_backup(self) -> dict:
         """Create a logical data backup without authentication authority."""
@@ -343,7 +354,8 @@ class ConfigManager:
         from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
 
         if not isinstance(data, dict) or set(data) - {
-            'schema_revision', 'config', 'accounts', 'authentication', 'views', 'scenarios', '_meta'
+            'schema_revision', 'config', 'accounts', 'authentication', 'views', 'scenarios', '_meta',
+            'planner_database',
         }:
             raise ValueError('Logical backups cannot restore recovery metadata or unknown sections')
         if '_meta' in data and data['_meta'] != {'authentication': 'excluded'}:
@@ -356,6 +368,8 @@ class ConfigManager:
                 f'Incompatible backup schema; this server requires schema revision {TARGET_REVISION}. '
                 'Use a matching server and independent full backup'
             )
+        if 'planner_database' in data:
+            self._required_planner_database().validate_backup(data['planner_database'])
         config = data.get('config', {})
         if not isinstance(config, dict) or set(config) - set(self.CONFIG_KEYS):
             raise ValueError('Logical backup contains unsupported configuration keys')
@@ -582,6 +596,10 @@ class ConfigManager:
             for key in list(self._storage.list_keys(namespace)):
                 if self._storage.exists(namespace, key):
                     self._storage.delete(namespace, key)
+
+        # Last, so a rejected SQLite payload rolls back the enclosing DiskCache transaction.
+        if 'planner_database' in data:
+            self._required_planner_database().replace_rows(data['planner_database'])
 
         result = {"ok": True, "message": "Restore completed successfully."}
         if 'accounts' in data:

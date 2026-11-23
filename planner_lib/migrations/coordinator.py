@@ -15,9 +15,10 @@ import yaml
 
 from diskcache import Disk
 
+from planner_lib.database import DATABASE_NAME, SCHEMA_TARGET as DATABASE_SCHEMA_TARGET, PlannerDatabase, database_path
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 from .contracts import (
-    BASELINE_REVISION, MIGRATION_IDS, SchemaError, TARGET_REVISION,
+    BASELINE_REVISION, MIGRATION_IDS, PLANNER_DATABASE_REVISION, SchemaError, TARGET_REVISION,
     schema_state, validate_registry, validate_schema_state,
 )
 from .revisions import (
@@ -67,6 +68,7 @@ def build_identity():
     digest = hashlib.sha256()
     package = Path(__file__).parent
     inputs = sorted(package.glob('*.py')) + sorted(package.glob('*.json'))
+    inputs += sorted((package.parent / 'database').glob('*.py'))
     inputs += [package.parent / 'admin' / 'plugin_runtime_config.py',
                package.parent / 'admin' / 'config_manager.py',
                package.parent / 'accounts' / 'config.py',
@@ -190,9 +192,10 @@ class Lease:
 
 
 class DatabaseHandle:
-    def __init__(self, storage, lease):
+    def __init__(self, storage, lease, planner_database):
         self.storage = storage
         self.lease = lease
+        self.planner_database = planner_database
         self.closed = False
 
     def close(self):
@@ -306,6 +309,7 @@ class Database:
                     raise SchemaError('Schema metadata must never expire')
                 revision = validate_schema_state(storage.load('system', 'schema_state'))
                 validate_records(storage, revision, server_config=server_config)
+                self._planner_version(source, revision)
                 return revision
             if source.parent.parent.name == 'generations':
                 raise SchemaError('Selected generation has no schema metadata')
@@ -314,7 +318,26 @@ class Database:
         finally:
             storage.close()
 
-    def _copy(self, source, destination, *, checkpoint=True):
+    @staticmethod
+    def _source_database(source):
+        path = database_path(source)
+        return PlannerDatabase(path, root=path.parent)
+
+    def _planner_version(self, source, revision):
+        """Validate the source's planner.sqlite when its revision requires one."""
+        if revision < PLANNER_DATABASE_REVISION:
+            return None
+        database = self._source_database(source)
+        if not database.exists():
+            raise SchemaError('Generation claims a planner database but planner.sqlite is missing')
+        return database.validate(require_current=False)
+
+    def _current(self, source):
+        revision = self._revision(source)
+        return (revision == TARGET_REVISION
+                and self._source_database(source).schema_version() == DATABASE_SCHEMA_TARGET)
+
+    def _copy(self, source, destination, *, checkpoint=True, database_root=None):
         check_tree(source)
         if checkpoint:
             storage = DiskCacheStorage(source)
@@ -332,6 +355,14 @@ class Database:
         shutil.copytree(source, destination, copy_function=copy_file)
         for path in (destination, *destination.rglob('*')):
             os.chmod(path, path.stat().st_mode & (0o700 if path.is_dir() else 0o600))
+        planner = self._source_database(source)
+        if planner.exists():
+            planner.validate(require_current=False)
+            if checkpoint:
+                planner.checkpoint()
+            # The backup API copies a consistent snapshot, never live WAL files.
+            planner.copy_to(database_path(destination),
+                            root=self.root if database_root is None else database_root)
         self._boundary('copy-complete')
 
     def _flush(self, candidate):
@@ -393,6 +424,13 @@ class Database:
             raise SchemaError('Cleanup journal does not identify the active database')
         if journal['source'] == 'legacy':
             self._remove(self.root / 'cache')
+            for suffix in ('', '-wal', '-shm'):
+                legacy_database = self.root / (DATABASE_NAME + suffix)
+                if legacy_database.is_symlink():
+                    raise SchemaError('Refusing to remove a symlinked legacy planner database')
+                if legacy_database.exists():
+                    legacy_database.unlink()
+                    flush_directory(self.root)
             if journal['legacy_server_config']:
                 path = self.root / 'config' / 'server_config.yml'
                 if path.exists():
@@ -416,16 +454,21 @@ class Database:
         journal['error'] = None
         self._record(journal, 'complete')
 
+    def _validate_generation(self, generation):
+        cache = self._generation(generation) / 'cache'
+        storage = InspectionStorage(cache)
+        try:
+            revision = validate_schema_state(storage.load('system', 'schema_state'))
+            validate_records(storage, revision)
+        finally:
+            storage.close()
+        self._planner_version(cache, revision)
+
     def _reconcile(self, pointer, journal):
         if journal is None or journal['phase'] == 'complete':
             return
         if pointer == journal['candidate']:
-            storage = InspectionStorage(self._generation(pointer) / 'cache')
-            try:
-                revision = validate_schema_state(storage.load('system', 'schema_state'))
-                validate_records(storage, revision)
-            finally:
-                storage.close()
+            self._validate_generation(pointer)
             flush_directory(self.root)
             self._record(journal, 'activated')
             self._cleanup(journal)
@@ -441,12 +484,7 @@ class Database:
         write_json(self.root / 'active-generation.json', {'generation': journal['candidate']})
         self._boundary('pointer-published')
         self._record(journal, 'published')
-        storage = InspectionStorage(self._generation(journal['candidate']) / 'cache')
-        try:
-            revision = validate_schema_state(storage.load('system', 'schema_state'))
-            validate_records(storage, revision)
-        finally:
-            storage.close()
+        self._validate_generation(journal['candidate'])
         self._record(journal, 'activated')
         self._cleanup(journal)
 
@@ -485,6 +523,14 @@ class Database:
             if not restoring:
                 journal['failed_migration'] = 'candidate-validation'
                 validate_candidate(storage)
+                journal['failed_migration'] = 'planner-database'
+                planner = PlannerDatabase(candidate / DATABASE_NAME, root=self.root)
+                if planner.exists():
+                    planner.migrate()
+                else:
+                    planner = PlannerDatabase.create(planner.path, root=self.root)
+                planner.validate()
+                planner.checkpoint()
             journal['failed_migration'] = None
             storage._cache._sql('PRAGMA wal_checkpoint(TRUNCATE)').fetchall()
             storage._cache.close()
@@ -505,6 +551,10 @@ class Database:
         self._publish(journal)
         return generation
 
+    def _handle(self, source, lease):
+        return DatabaseHandle(DiskCacheStorage(source), lease,
+                              PlannerDatabase(database_path(source), root=self.root))
+
     def prepare(self):
         validate_registry(REGISTRY)
         lease = Lease(self.root, False, self.lock_timeout)
@@ -512,22 +562,23 @@ class Database:
             pointer, journal = self._pointer(), self._journal()
             if pointer is not None and (journal is None or journal['phase'] == 'complete'):
                 source = self._source(pointer)
-                if self._revision(source) == TARGET_REVISION:
-                    return DatabaseHandle(DiskCacheStorage(source), lease)
+                if self._current(source):
+                    return self._handle(source, lease)
             lease.close()
             lease = Lease(self.root, True, self.lock_timeout, decide=self._needs_exclusive)
             if not lease.exclusive:
-                return DatabaseHandle(DiskCacheStorage(self._source(self._pointer())), lease)
+                return self._handle(self._source(self._pointer()), lease)
             pointer, journal = self._pointer(), self._journal()
             self._reconcile(pointer, journal)
             pointer = self._pointer()
             source = self._source(pointer)
-            revision = self._revision(source) if source is not None else None
-            if pointer is None or revision != TARGET_REVISION:
+            current = self._current(source) if source is not None else False
+            if pointer is None or not current:
+                revision = self._revision(source) if source is not None else None
                 pointer = self._stage(source, revision, pointer,
                                       server_config=self._legacy_config(source) if source is not None else None)
             lease.shared()
-            return DatabaseHandle(DiskCacheStorage(self._generation(pointer) / 'cache'), lease)
+            return self._handle(self._generation(pointer) / 'cache', lease)
         except BaseException:
             lease.close()
             raise
@@ -535,7 +586,7 @@ class Database:
     def _needs_exclusive(self):
         pointer, journal = self._pointer(), self._journal()
         return not (pointer is not None and (journal is None or journal['phase'] == 'complete')
-                    and self._revision(self._source(pointer)) == TARGET_REVISION)
+                    and self._current(self._source(pointer)))
 
     def status(self):
         if not self.root.exists():
@@ -661,7 +712,7 @@ class Database:
             server_config = self._legacy_config(source)
             with tempfile.TemporaryDirectory(prefix='.planner-export-', dir=destination.parent) as temporary:
                 staged = Path(temporary)
-                self._copy(source, staged / 'cache')
+                self._copy(source, staged / 'cache', database_root=staged)
                 if revision == 24:
                     storage = DiskCacheStorage(staged / 'cache')
                     try:

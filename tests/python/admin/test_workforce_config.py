@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.admin import api as admin_api
 from planner_lib.admin.config_manager import ConfigManager
+from planner_lib.database import PlannerDatabase
 from planner_lib.admin.service import AdminService
 from planner_lib.admin.workforce_service import WorkforceAdminService
 from planner_lib.admin.workforce_graphs import retained_allocation_graphs
@@ -1048,7 +1049,7 @@ def test_logical_backup_includes_canonical_workforce(manager: WorkforceConfigMan
     manager._storage.save('system', 'schema_state', {'schema_revision': TARGET_REVISION})
     from planner_lib.session.policy import initial_authentication
     manager._storage.save('config', 'authentication', initial_authentication())
-    backup = ConfigManager(manager._storage).get_backup()
+    backup = ConfigManager(manager._storage, planner_database=PlannerDatabase.in_memory()).get_backup()
     assert backup['config']['workforce'] == manager.read_snapshot()['workforce']
 
 
@@ -1278,7 +1279,7 @@ def test_logical_backup_restore_round_trips_canonical_workforce_and_ids(
     manager._storage.save('system', 'schema_state', {'schema_revision': TARGET_REVISION})
     from planner_lib.session.policy import initial_authentication
     manager._storage.save('config', 'authentication', initial_authentication())
-    backup = ConfigManager(manager._storage).get_backup()
+    backup = ConfigManager(manager._storage, planner_database=PlannerDatabase.in_memory()).get_backup()
     original = manager.read_snapshot()
     changed = deepcopy(original)
     changed['teams']['teams'][0]['name'] = 'Changed after backup'
@@ -1288,6 +1289,7 @@ def test_logical_backup_restore_round_trips_canonical_workforce_and_ids(
     accounts.get_all_with_permission.return_value = []
     service = WorkforceAdminService(
         manager._storage, None, accounts, None, task_storage=manager._storage,
+        planner_database=PlannerDatabase.in_memory(),
     )
     result = service.restore_backup(backup)
 

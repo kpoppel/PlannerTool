@@ -45,11 +45,12 @@ class AdminService:
         azure_client: Any,
         reloadable_services: Optional[list] = None,
         *, task_storage: StorageBackend | None = None,
+        planner_database=None,
     ) -> None:
         self._project_service = project_repository  # internal alias kept for brevity
         # Composed config manager: owns all config CRUD + backup/restore.
         self._config_manager = ConfigManager(
-            storage=storage,
+            storage=storage, planner_database=planner_database,
         )
         self._process_catalogue = ProcessCatalogueManager(storage, self._config_manager)
         self._workforce_config = WorkforceConfigManager(storage, task_storage=task_storage)

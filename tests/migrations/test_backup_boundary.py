@@ -1,6 +1,7 @@
 import pytest
 
 from planner_lib.admin.config_manager import ConfigManager
+from planner_lib.database import SCHEMA_TARGET, PlannerDatabase
 from planner_lib.migrations.contracts import TARGET_REVISION
 from planner_lib.migrations.revisions import initialize
 from planner_lib.storage.memory_backend import MemoryStorage
@@ -10,7 +11,53 @@ from planner_lib.storage.memory_backend import MemoryStorage
 def manager():
     storage = MemoryStorage()
     initialize(storage)
-    return ConfigManager(storage)
+    database = PlannerDatabase.in_memory()
+    yield ConfigManager(storage, planner_database=database)
+    database.close()
+
+
+def _kinds(manager):
+    with manager._planner_database.connect() as connection:
+        return [row[0] for row in connection.execute('SELECT kind FROM plan_kind_definitions')]
+
+
+def test_logical_backup_includes_versioned_planner_database_rows(manager):
+    with manager._planner_database.write() as connection:
+        connection.execute("INSERT INTO plan_kind_definitions VALUES ('project', 0)")
+    backup = manager.get_backup()
+    section = backup['planner_database']
+    assert section['version'] == 1
+    assert section['schema_version'] == SCHEMA_TARGET
+    assert section['tables']['plan_kind_definitions'] == [{'kind': 'project', 'display_order': 0}]
+    assert 'schema_migrations' not in section['tables']
+
+
+def test_logical_restore_replaces_planner_database_rows_atomically(manager):
+    with manager._planner_database.write() as connection:
+        connection.execute("INSERT INTO plan_kind_definitions VALUES ('restored', 0)")
+    backup = manager.get_backup()
+    with manager._planner_database.write() as connection:
+        connection.execute("UPDATE plan_kind_definitions SET kind = 'current'")
+    manager.restore_backup({'schema_revision': TARGET_REVISION,
+                            'planner_database': backup['planner_database']})
+    assert _kinds(manager) == ['restored']
+
+
+@pytest.mark.parametrize('section', [
+    {'version': 2, 'schema_version': SCHEMA_TARGET, 'tables': {}},
+    {'version': 1, 'schema_version': SCHEMA_TARGET + 1, 'tables': {}},
+    {'version': 1, 'schema_version': SCHEMA_TARGET, 'tables': {'tasks': []}},
+])
+def test_invalid_planner_database_section_is_rejected_before_mutation(manager, section):
+    with manager._planner_database.write() as connection:
+        connection.execute("INSERT INTO plan_kind_definitions VALUES ('current', 0)")
+    original = manager._storage.load('config', 'server_config')
+    with pytest.raises(ValueError):
+        manager.restore_backup({'schema_revision': TARGET_REVISION,
+                                'config': {'server_config': {**original, 'server_name': 'changed'}},
+                                'planner_database': section})
+    assert manager._storage.load('config', 'server_config') == original
+    assert _kinds(manager) == ['current']
 
 
 def test_logical_backup_exports_revision_without_recovery_metadata(manager):

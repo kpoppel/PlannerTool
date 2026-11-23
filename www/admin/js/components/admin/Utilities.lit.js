@@ -198,6 +198,7 @@ export class AdminUtilities extends LitElement {
 
   static restoreCategories = {
     config: 'Config', accounts: 'User accounts', views: 'Views', scenarios: 'Scenarios',
+    planner_database: 'Planner database (local tasks and catalogue)',
   };
 
   static accountRestoreWarning = 'Account restore excludes credentials and ends active sessions. Restored accounts cannot use old PATs, account keys or browser devices. Fresh keys require Users > Reset access or the offline operator reset procedure before anyone can sign in again. Entra account replacement is not supported. Confirm an operator recovery path before continuing.';
@@ -224,6 +225,7 @@ export class AdminUtilities extends LitElement {
       accounts: true,
       views: true,
       scenarios: true,
+      planner_database: true,
     };
     this.restoreData = null;
     this.workforceStatus = '';

@@ -93,7 +93,7 @@ def test_startup_upgrades_selector_flags_from_revision_45(tmp_path):
     try:
         assert upgraded.storage.load('config', 'server_config')['task_backend_id'] == 'ado'
         assert upgraded.storage.load('config', 'ado_config')['transport'] == 'mock_fixture'
-        assert upgraded.storage.load('system', 'schema_state')['schema_revision'] == 46
+        assert upgraded.storage.load('system', 'schema_state')['schema_revision'] >= 46
     finally:
         upgraded.close()
 

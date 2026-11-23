@@ -220,9 +220,23 @@ data/
   generations/<id>/
     generation.json             server ownership marker
     cache/                      complete authoritative DiskCache
+    planner.sqlite              relational tasks/catalogue (revision 47+)
   remote_cache/                 disposable; excluded from recovery
   config/                       external/static inputs plus legacy owned YAML
 ```
+
+From schema revision 47 every generation owns a `planner.sqlite` beside its
+`cache/`; a generation at that revision without a valid database fails startup
+and is never recreated silently. The database has its own append-only ledger
+(`schema_migrations`, mirrored by `PRAGMA user_version`) in
+`planner_lib/database/schema.py`. A pending DiskCache revision or a pending
+database migration stages a new generation: the database is integrity-checked,
+checkpointed and copied with the SQLite backup API (never as live WAL files),
+migrated and validated before the pointer moves. Offline restore and legacy
+export carry the database with the cache. Logical admin backups include a
+versioned `planner_database` section of table rows; an online restore validates
+it and replaces all rows in one transaction, last within the DiskCache restore
+transaction, so a rejected payload writes nothing.
 
 `cache/` includes SQLite files, required sidecars, and external DiskCache value
 files. All namespaces in it are copied: configuration and its snapshots, accounts,

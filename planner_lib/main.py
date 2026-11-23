@@ -77,6 +77,7 @@ def _build_services(
     server_cfg: Dict[str, Any],
     feature_flags: Dict[str, Any],
     logger,
+    planner_database,
 ) -> "ServiceContainer":  # type: ignore[name-defined]
     """Compose all application services and return a populated ServiceContainer.
 
@@ -99,6 +100,7 @@ def _build_services(
 
     # --- Storage (eager, no inter-service deps) — single instance for all namespaces ---
     container.register_singleton("storage", storage_diskcache)
+    container.register_singleton('planner_database', planner_database)
 
     # --- Remote-backend cache storage (lazy, separate diskcache directory) ---
     # Isolated from `storage` so the volatile, TTL-governed ADO/static/mock
@@ -460,6 +462,7 @@ def _build_app(
                 if 'remote_cache_storage' in container._singletons:
                     container._singletons['remote_cache_storage'].close()
             finally:
+                container.get('planner_database').close()
                 if app.state.database_handle is not None:
                     app.state.database_handle.close()
 
@@ -591,12 +594,15 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.migrations.revisions import initialize, validate_records
 
     handle = None
+    planner_database = None
     if config.raw_serializer != 'raw':
         raise SchemaError('Server-owned database preparation requires raw authoritative storage')
     if config.storage_backend == 'diskcache':
         handle = Database(config.data_dir).prepare()
         storage = handle.storage
+        planner_database = handle.planner_database
     elif config.storage_backend == 'memory':
+        from planner_lib.database import PlannerDatabase
         storage = _build_storages(config)
         if not storage.exists('system', 'schema_state'):
             initialize(storage)
@@ -604,19 +610,21 @@ def create_app(config: Config) -> FastAPI:
         if revision != TARGET_REVISION:
             raise SchemaError('In-memory application fixtures must use the current schema')
         validate_records(storage, revision)
+        planner_database = PlannerDatabase.in_memory()
     else:
         raise SchemaError('Application storage must be diskcache or isolated current-schema memory')
     try:
-        app = _create_prepared_app(config, storage)
+        app = _create_prepared_app(config, storage, planner_database)
         app.state.database_handle = handle
         return app
     except BaseException:
         if handle is not None:
             handle.close()
+        planner_database.close()
         raise
 
 
-def _create_prepared_app(config: Config, storage_diskcache: StorageBackend) -> FastAPI:
+def _create_prepared_app(config: Config, storage_diskcache: StorageBackend, planner_database) -> FastAPI:
     """Create and return a configured FastAPI application.
 
     Delegates to three focused helpers:
@@ -629,7 +637,8 @@ def _create_prepared_app(config: Config, storage_diskcache: StorageBackend) -> F
     server_cfg = storage_diskcache.load('config', 'server_config')
     feature_flags = server_cfg.get('feature_flags', {})
 
-    container = _build_services(config, storage_diskcache, server_cfg, feature_flags, logger)
+    container = _build_services(config, storage_diskcache, server_cfg, feature_flags, logger,
+                                planner_database)
 
     active_flags = [k for k, v in feature_flags.items() if v is True]
     logger.info(

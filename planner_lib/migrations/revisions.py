@@ -632,6 +632,13 @@ def upgrade_46(storage):
         storage.save('config', 'ado_config', {**ado, 'feature_flags': ado_flags, 'transport': transport})
 
 
+def upgrade_47(storage):
+    """Retire stand-alone mode; the coordinator creates planner.sqlite for this revision."""
+    server = storage.load('config', 'server_config')
+    flags = {key: value for key, value in server['feature_flags'].items() if key != 'stand_alone_mode'}
+    storage.save('config', 'server_config', {**server, 'feature_flags': flags})
+
+
 def _validate_backend_selection(server, ado):
     from planner_lib.backend.selection import validate_selection
 
@@ -651,7 +658,7 @@ REGISTRY = tuple(
         (38, 37, upgrade_38), (39, 38, upgrade_39), (40, 39, upgrade_40),
         (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
         (44, 43, upgrade_44),
-        (45, 44, upgrade_45), (46, 45, upgrade_46),
+        (45, 44, upgrade_45), (46, 45, upgrade_46), (47, 46, upgrade_47),
     )
 )
 
@@ -793,6 +800,8 @@ def validate_records(storage, revision, *, server_config=None):
             validate_authentication(storage.load('config', 'authentication'))
         if revision >= 46:
             _validate_backend_selection(server, storage.load('config', 'ado_config'))
+        if revision >= 47 and 'stand_alone_mode' in server['feature_flags']:
+            raise SchemaError('Stand-alone mode was retired in revision 47')
         account_ids = set()
         for email in storage.list_keys('accounts'):
             account = storage.load('accounts', email)

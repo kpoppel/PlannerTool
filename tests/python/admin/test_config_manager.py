@@ -11,6 +11,7 @@ Covers:
 import pytest
 from unittest.mock import MagicMock
 from planner_lib.middleware.session import SessionManager
+from planner_lib.database import PlannerDatabase
 from planner_lib.migrations.contracts import TARGET_REVISION, schema_state
 from planner_lib.migrations.revisions import initialize
 
@@ -274,7 +275,7 @@ def test_get_backup_includes_config_keys():
         'schema_version': 1,
         'plugins': [{'id': 'portfolio', 'enabled': True, 'activated': True, 'order': 0, 'custom_config': {}}],
     })
-    cm = ConfigManager(storage=store)
+    cm = ConfigManager(storage=store, planner_database=PlannerDatabase.in_memory())
     bk = cm.get_backup()
     assert bk['config']['projects'] == [{'id': 'p1'}]
     assert bk['config']['teams'] == [{'id': 't1'}]
@@ -333,7 +334,7 @@ def test_get_backup_includes_accounts():
     acct = _Store()
     # Admin account: has 'admin' in permissions (no separate accounts_admin namespace)
     acct.save('accounts', 'a@b.com', {'account_id': ACCOUNT_ID, 'email': 'a@b.com', 'permissions': ['admin']})
-    cm = ConfigManager(storage=acct)
+    cm = ConfigManager(storage=acct, planner_database=PlannerDatabase.in_memory())
     bk = cm.get_backup()
     assert 'a@b.com' in bk['accounts']['users']
     # Permissions should be preserved in the backup record
@@ -407,7 +408,8 @@ def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path
         source_auth = AuthManager(source, source_accounts, SessionManager(source_accounts, source))
         device, recovery, _ = source_auth.enroll('admin@example.com', 'Administrator')
         source_accounts.update_credentials(AccountCredentialsPayload(email='admin@example.com', pat='azure-pat'))
-        backup = json.loads(json.dumps(ConfigManager(source).get_backup()))
+        backup = json.loads(json.dumps(ConfigManager(
+            source, planner_database=PlannerDatabase.in_memory()).get_backup()))
 
         assert set(backup['authentication']) == {'account_auth', 'auth_control'}
         assert 'auth_sessions' not in backup['authentication']
@@ -423,7 +425,7 @@ def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path
                 obsolete_id + '_old': {'user': obsolete_id, 'id': 'old'},
             })
         monkeypatch.setenv('PLANNER_SECRET_KEY', 'different-restore-key')
-        ConfigManager(target).restore_backup(
+        ConfigManager(target, planner_database=PlannerDatabase.in_memory()).restore_backup(
             backup, current_admins=['admin@example.com'], current_user_email='admin@example.com',
             sync_accounts_fn=target_accounts.sync_accounts_full,
         )
@@ -466,7 +468,7 @@ def test_account_restore_rejects_all_old_keys_and_admin_reset_recovers_access(tm
         auth = AuthManager(storage, accounts, SessionManager(accounts, storage))
         auth.enroll('admin@example.com', 'Admin')
         snapshot_device, snapshot_key, _ = auth.enroll('owner@example.com', 'Owner')
-        manager = ConfigManager(storage)
+        manager = ConfigManager(storage, planner_database=PlannerDatabase.in_memory())
         backup = manager.get_backup()
         newer_device, newer_key, _ = auth.enroll('owner@example.com', account_key=snapshot_key)
         result = manager.restore_backup(
@@ -566,7 +568,7 @@ def test_auth_restore_rolls_back_failed_account_sync(tmp_path):
         store.save('config', 'server_config', _server(version='current'))
         store.save('auth_control', 'bootstrap_claimed', True)
         store.save('auth_sessions', 'active-session', {'email': 'admin@example.com'})
-        backup = ConfigManager(store).get_backup()
+        backup = ConfigManager(store, planner_database=PlannerDatabase.in_memory()).get_backup()
         backup['config']['server_config'] = _server(version='restored')
 
         def failing_sync(users, admins):
@@ -574,7 +576,8 @@ def test_auth_restore_rolls_back_failed_account_sync(tmp_path):
             raise ValueError('Account sync failed')
 
         with pytest.raises(ValueError, match='Account sync failed'):
-            ConfigManager(store).restore_backup(backup, sync_accounts_fn=failing_sync)
+            ConfigManager(store, planner_database=PlannerDatabase.in_memory()).restore_backup(
+                backup, sync_accounts_fn=failing_sync)
         assert store.load('config', 'server_config') == _server(version='current')
         assert not store.exists('accounts', 'partial@example.com')
         assert store.exists('auth_sessions', 'active-session')
@@ -629,7 +632,7 @@ def test_get_backup_excludes_pats(monkeypatch):
         AccountCredentialsPayload(email='user@example.com', pat='my-azure-pat-abc123')
     )
 
-    cm = ConfigManager(storage=acct)
+    cm = ConfigManager(storage=acct, planner_database=PlannerDatabase.in_memory())
     bk = cm.get_backup()
 
     assert '_meta' not in bk, 'Backup should not include redundant metadata for PAT format'
@@ -700,7 +703,7 @@ def test_get_backup_corrupt_pat_becomes_none(monkeypatch):
     # Inject a corrupt ciphertext directly into storage
     acct.save('accounts', 'bad@example.com', {'account_id': ACCOUNT_ID, 'email': 'bad@example.com', 'pat': 'not-a-fernet-token'})
 
-    cm = ConfigManager(storage=acct)
+    cm = ConfigManager(storage=acct, planner_database=PlannerDatabase.in_memory())
     bk = cm.get_backup()
 
     user_record = bk['accounts']['users'].get('bad@example.com', {})
