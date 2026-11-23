@@ -75,6 +75,13 @@ _SCHEMAS: dict[str, Any] = {
                 'enum': ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                 'default': 'INFO',
             },
+            'task_backend_id': {
+                'type': 'string',
+                'title': 'Task Backend',
+                'description': 'The one active task backend. Selected in Data Sources.',
+                'enum': ['ado', 'local'],
+                'readOnly': True,
+            },
             'feature_flags': {
                 'type': 'object',
                 'title': 'Feature Flags',

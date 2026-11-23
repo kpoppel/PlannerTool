@@ -38,7 +38,7 @@ def test_startup_upgrades_saved_compact_view_from_revision_44(tmp_path):
     upgraded = Database(tmp_path).prepare()
     try:
         assert upgraded.storage.load('views', owner + '_view')['viewOptions']['displayMode'] == 'normal'
-        assert upgraded.storage.load('system', 'schema_state')['schema_revision'] == 45
+        assert upgraded.storage.load('system', 'schema_state')['schema_revision'] >= 45
     finally:
         upgraded.close()
 

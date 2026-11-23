@@ -120,6 +120,8 @@ def _review_generated_catalogue(storage):
     projects = {plan['area_path'].split('\\')[0]
                 for plan in storage.load('config', 'projects')['project_map']}
     stored = task_catalogue(projects)
+    storage.save('config', 'server_config', {
+        'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'ado'})
     storage.save('config', 'ado_processes', stored)
     storage.save('config', 'global_settings', sync_display(stored, {
         'schema_version': 2, 'process_order': [], 'type_tiers': {},
@@ -689,8 +691,8 @@ class TestAzureMockGeneratorClientIntegration:
         svc = AzureService(
             organization_url="anonymous-org",
             storage=storage,
+            transport='mock_generator',
             feature_flags={
-                "use_azure_mock_generator": True,
                 "data_dir": "data",
                 "generator_config": _MULTI_CONFIG_DICT,
             },
@@ -893,8 +895,8 @@ class TestAzureMockGeneratorPersistence:
         svc = AzureService(
             organization_url="anonymous-org",
             storage=storage,
+            transport='mock_generator',
             feature_flags={
-                "use_azure_mock_generator": True,
                 "data_dir": "data",
                 "generator_config": self._CFG,
                 "generator_persist_dir": pdir,
@@ -955,31 +957,29 @@ class TestGeneratorPersistEnabled:
         # Always populate mock config so the generator has data to work with
         _populate_mock_config(storage)
         flags = {
-            "use_azure_mock_generator": True,
             "data_dir": "data",
             "generator_config": self._CFG,
         }
         flags.update(extra_flags)
-        return AzureService(organization_url="anonymous-org", storage=storage, feature_flags=flags)
+        return AzureService(organization_url="anonymous-org", storage=storage,
+                            feature_flags=flags, transport='mock_generator')
 
     def test_persist_enabled_in_schema(self):
         from planner_lib.admin.schema import get_schema
-        # generator_persist_enabled is an ADO backend flag — lives in ado schema
+        # generator_persist_enabled is an ADO transport setting — lives in ado schema
         schema = get_schema('ado')
         ff = schema['properties']['feature_flags']['properties']
         assert 'generator_persist_enabled' in ff
         flag = ff['generator_persist_enabled']
         assert flag['type'] == 'boolean'
         assert flag.get('default') is False
-        assert flag.get('x-showWhen') == 'use_azure_mock_generator'
+        assert flag.get('x-transport') == 'mock_generator'
 
-    def test_persist_dir_shown_when_enabled(self):
-        """generator_persist_dir should only show when generator_persist_enabled is on."""
+    def test_persist_dir_belongs_to_generator_transport(self):
         from planner_lib.admin.schema import get_schema
-        # generator_persist_dir is an ADO backend flag — lives in ado schema
         schema = get_schema('ado')
         ff = schema['properties']['feature_flags']['properties']
-        assert ff['generator_persist_dir'].get('x-showWhen') == 'generator_persist_enabled'
+        assert ff['generator_persist_dir'].get('x-transport') == 'mock_generator'
 
     def test_persist_enabled_false_no_persist_dir(self):
         """With generator_persist_enabled=False and no explicit dir, persist_dir is None."""

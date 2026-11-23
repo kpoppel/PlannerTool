@@ -57,6 +57,15 @@ async def api_health(request: Request):
     return get_health(health_config)
 
 
+@router.get('/task-backend')
+@require_session
+async def api_task_backend(request: Request):
+    """Return the active task backend identity and its declared capabilities."""
+    from planner_lib.backend.registry import active_backend_info
+    config = resolve_service(request, 'config_backend')
+    return active_backend_info(config.fetch_server_config(), config.fetch_ado_config())
+
+
 @router.get('/plugins/config')
 @require_session
 async def api_plugins_config(request: Request):

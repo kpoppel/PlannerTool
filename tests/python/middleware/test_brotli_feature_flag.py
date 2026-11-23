@@ -10,6 +10,7 @@ def _make_app_with_brotli_flag(enabled: bool):
     initialize(shared)
     shared.save('config', 'server_config', {
         'schema_version': 2,
+        'task_backend_id': 'ado',
         'feature_flags': {
             'enable_brotli_middleware': enabled,
         }

@@ -16,7 +16,7 @@ class FakeDiskCache:
     def __init__(self):
         self._store = {}
         defaults = catalogue_storage(['MyADO'])
-        for key in ('ado_processes', 'global_settings'):
+        for key in ('server_config', 'ado_processes', 'global_settings'):
             self.save('config', key, defaults.load('config', key))
 
     def _key(self, ns, key):

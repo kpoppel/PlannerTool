@@ -2,15 +2,25 @@
 
 from unittest.mock import MagicMock
 
+
+def _config_storage(log_level=None):
+    server = {'feature_flags': {}, 'task_backend_id': 'ado'}
+    if log_level is not None:
+        server['log_level'] = log_level
+    configs = {
+        ('config', 'server_config'): server,
+        ('config', 'ado_config'): {'organization_url': '', 'feature_flags': {}, 'transport': 'live'},
+    }
+    storage = MagicMock()
+    storage.load.side_effect = lambda namespace, key: configs[(namespace, key)]
+    return storage
+
+
 def _make_admin_service(config_data=None):
     """Return an AdminService backed by simple in-memory mocks."""
     from planner_lib.admin.service import AdminService
 
-    storage = MagicMock()
-    storage.load.side_effect = KeyError("not found")
-    storage.load.return_value = config_data or {}
-    # Make load raise KeyError for all calls (no server_config present)
-    storage.load.side_effect = KeyError("not found")
+    storage = _config_storage()
 
     azure_client = MagicMock()
     azure_client.organization_url = None
@@ -43,8 +53,7 @@ def test_admin_reload_config_calls_reload_on_reloadable_services():
             self.reloaded = True
 
     people = FakeReloadable()
-    storage = MagicMock()
-    storage.load.side_effect = KeyError("not found")
+    storage = _config_storage()
     azure_client = MagicMock()
     azure_client.organization_url = None
     azure_client.feature_flags = None
@@ -71,8 +80,7 @@ def test_admin_reload_config_calls_invalidate_on_invalidatable_cost():
             self.invalidated = True
 
     cost = FakeInvalidatable()
-    storage = MagicMock()
-    storage.load.side_effect = KeyError("not found")
+    storage = _config_storage()
     azure_client = MagicMock()
     azure_client.organization_url = None
     azure_client.feature_flags = None
@@ -94,11 +102,7 @@ def test_admin_reload_config_applies_server_log_level(monkeypatch):
     import logging
     from planner_lib.admin.service import AdminService
 
-    storage = MagicMock()
-    storage.load.side_effect = lambda namespace, key: {
-        ('config', 'server_config'): {'log_level': 'DEBUG'},
-        ('config', 'ado_config'): {},
-    }[(namespace, key)]
+    storage = _config_storage('DEBUG')
     azure_client = MagicMock()
     azure_client.organization_url = None
     azure_client.feature_flags = None

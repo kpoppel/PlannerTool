@@ -250,11 +250,18 @@ class TestPatEncryption:
 class TestPatValidation:
     """AccountManager must reject malformed PATs on save and survive corrupt PATs on load."""
 
+    @staticmethod
+    def _select_live_ado(storage):
+        storage.save('config', 'server_config', {
+            'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'ado'})
+        storage.save('config', 'ado_config', {
+            'organization_url': 'example', 'feature_flags': {}, 'transport': 'live'})
+
     @pytest.mark.parametrize('pat', [None, ''])
     def test_live_ado_requires_pat(self, pat):
         from planner_lib.accounts.config import AccountCredentialsPayload
         storage = self._make_storage()
-        storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+        self._select_live_ado(storage)
         manager = self._make_manager(storage)
 
         result = manager.create_account(AccountCredentialsPayload(email='user@example.com', pat=pat))
@@ -266,7 +273,7 @@ class TestPatValidation:
         from planner_lib.accounts.config import AccountCredentialsPayload
         from planner_lib.azure.AzureClient import AzureClient
         storage = self._make_storage()
-        storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+        self._select_live_ado(storage)
         calls = []
 
         def reject_pat(client):

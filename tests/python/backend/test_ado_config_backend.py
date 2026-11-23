@@ -10,7 +10,7 @@ class _MemStore(StorageBackend):
     def __init__(self):
         defaults = catalogue_storage(['Org'])
         self._data = {'config': {key: defaults.load('config', key)
-                                for key in ('ado_processes', 'global_settings')}}
+                                for key in ('server_config', 'ado_processes', 'global_settings')}}
 
     def save(self, namespace, key, value, ttl_seconds=None):
         if namespace == 'config' and key == 'projects':
@@ -52,11 +52,11 @@ def test_fetch_ado_config_returns_stored():
     """fetch_ado_config returns the stored ado_config dict."""
     storage = _MemStore()
     cb = ConfigBackend(storage=storage)
-    cfg = {'organization_url': 'MyOrg', 'feature_flags': {'use_azure_mock': True}}
+    cfg = {'organization_url': 'MyOrg', 'feature_flags': {}, 'transport': 'mock_fixture'}
     cb.save_ado_config(cfg)
     result = cb.fetch_ado_config()
     assert result['organization_url'] == 'MyOrg'
-    assert result['feature_flags']['use_azure_mock'] is True
+    assert result['transport'] == 'mock_fixture'
 
 
 def test_save_ado_config_overwrites():

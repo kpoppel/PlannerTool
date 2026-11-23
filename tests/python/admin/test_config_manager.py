@@ -15,6 +15,11 @@ from planner_lib.migrations.contracts import TARGET_REVISION, schema_state
 from planner_lib.migrations.revisions import initialize
 
 ACCOUNT_ID = '11111111-1111-4111-8111-111111111111'
+ADO_CONFIG = {'organization_url': '', 'feature_flags': {}, 'transport': 'mock_generator'}
+
+
+def _server(**extra):
+    return {'feature_flags': {}, 'task_backend_id': 'ado', **extra}
 
 
 # ---------------------------------------------------------------------------
@@ -64,10 +69,9 @@ def test_fresh_install_uses_generator_and_first_admin_needs_no_pat():
     config = storage.load('config', 'ado_config')
 
     assert config == {
-        'organization_url': '',
-        'feature_flags': {'use_azure_mock_generator': True},
+        'organization_url': '', 'feature_flags': {}, 'transport': 'mock_generator',
     }
-    assert get_active_class(config['feature_flags']) is MockGeneratorBackend
+    assert get_active_class(storage.load('config', 'server_config'), config) is MockGeneratorBackend
     accounts = AccountManager(storage)
     sessions = SessionManager(accounts, storage)
     auth = AuthManager(storage, accounts, sessions)
@@ -88,10 +92,11 @@ def test_disabled_ado_policy_cannot_enable_ado_or_wiki(monkeypatch):
     monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', 'disabled')
     manager = ConfigManager(storage)
     with pytest.raises(ValueError, match='live ADO'):
-        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
+        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {},
+                                           'transport': 'live'})
     with pytest.raises(ValueError, match='wiki'):
         manager.save_config('events_config', {'event_backend': 'ado_wiki'})
-    assert storage.load('config', 'ado_config')['feature_flags'] == {'use_azure_mock_generator': True}
+    assert storage.load('config', 'ado_config')['transport'] == 'mock_generator'
 
 
 def test_disabled_ado_policy_validates_restore_flags_before_writing(monkeypatch):
@@ -100,18 +105,15 @@ def test_disabled_ado_policy_validates_restore_flags_before_writing(monkeypatch)
 
     storage = MemoryStorage()
     initialize(storage)
-    storage.save('config', 'server_config', {
-        'schema_version': 2, 'feature_flags': {'use_azure_mock_generator': True}})
     storage.save('config', 'ado_config', {
-        'organization_url': 'example', 'feature_flags': {'use_static_backend': True}})
+        'organization_url': 'example', 'feature_flags': {}, 'transport': 'static'})
     monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', 'disabled')
     with pytest.raises(ValueError, match='live ADO'):
         ConfigManager(storage).restore_backup({'schema_revision': TARGET_REVISION, 'config': {
-            'server_config': {'schema_version': 2, 'feature_flags': {}},
-            'ado_config': {'organization_url': 'example', 'feature_flags': {}},
+            'server_config': {'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'ado'},
+            'ado_config': {'organization_url': 'example', 'feature_flags': {}, 'transport': 'live'},
         }})
-    assert storage.load('config', 'ado_config')['feature_flags'] == {'use_static_backend': True}
-    assert storage.load('config', 'server_config')['feature_flags'] == {'use_azure_mock_generator': True}
+    assert storage.load('config', 'ado_config')['transport'] == 'static'
 
 
 @pytest.mark.parametrize('provider,mode', [('enrollment', 'pat'), ('entra', 'entra')])
@@ -125,10 +127,32 @@ def test_admin_owns_backend_selection_without_changing_authentication(monkeypatc
     monkeypatch.setenv('PLANNER_AUTH_PROVIDER', provider)
     manager = ConfigManager(storage)
     authentication = storage.load('config', 'authentication')
-    for flags in ({}, {'use_azure_mock_generator': True}, {'use_static_backend': True}):
-        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': flags})
-        assert storage.load('config', 'ado_config')['feature_flags'] == flags
+    for transport in ('live', 'mock_generator', 'static'):
+        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {},
+                                           'transport': transport})
+        assert storage.load('config', 'ado_config')['transport'] == transport
         assert storage.load('config', 'authentication') == authentication
+
+
+@pytest.mark.parametrize('key, content', [
+    ('ado_config', {'organization_url': 'x', 'feature_flags': {'use_azure_mock': True},
+                    'transport': 'live'}),
+    ('ado_config', {'organization_url': 'x', 'feature_flags': {}, 'transport': 'mock'}),
+    ('ado_config', {'organization_url': 'x', 'feature_flags': {}}),
+    ('server_config', {'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'jira'}),
+    ('server_config', {'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'local'}),
+    ('server_config', {'schema_version': 2, 'feature_flags': {}}),
+])
+def test_backend_selection_rejects_unknown_or_unavailable_values(key, content):
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    storage = MemoryStorage()
+    initialize(storage)
+    previous = storage.load('config', key)
+    with pytest.raises((ValueError, KeyError)):
+        ConfigManager(storage).save_config(key, content)
+    assert storage.load('config', key) == previous
 
 
 def test_delegated_ado_selection_requires_auth_wiring_not_a_backend_manifest_field(monkeypatch):
@@ -141,16 +165,17 @@ def test_delegated_ado_selection_requires_auth_wiring_not_a_backend_manifest_fie
     monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'enrollment')
     manager = ConfigManager(storage)
     with pytest.raises(ValueError, match='connected Entra auth service'):
-        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {}})
-    assert storage.load('config', 'ado_config')['feature_flags'] == {'use_azure_mock_generator': True}
+        manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {},
+                                           'transport': 'live'})
+    assert storage.load('config', 'ado_config')['transport'] == 'mock_generator'
 
 
-@pytest.mark.parametrize('flags', [{}, {'use_static_backend': True}, {'use_azure_mock': True}])
-def test_initialization_preserves_existing_backend_selection(flags):
+@pytest.mark.parametrize('transport', ['live', 'static', 'mock_fixture'])
+def test_initialization_preserves_existing_backend_selection(transport):
     from planner_lib.storage.memory_backend import MemoryStorage
 
     storage = MemoryStorage()
-    existing = {'organization_url': 'existing-org', 'feature_flags': flags}
+    existing = {'organization_url': 'existing-org', 'feature_flags': {}, 'transport': transport}
     storage.save('config', 'ado_config', existing)
 
     initialize(storage)
@@ -184,9 +209,10 @@ def test_get_config_decodes_bytes():
 def test_save_config_creates_backup_then_saves():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
-    store.save('config', 'server_config', {'version': 1, 'feature_flags': {'manage_backup_snapshots': True}})
+    store.save('config', 'ado_config', dict(ADO_CONFIG))
+    store.save('config', 'server_config', _server(version=1, feature_flags={'manage_backup_snapshots': True}))
     cm = ConfigManager(storage=store)
-    cm.save_config('server_config', {'version': 2})
+    cm.save_config('server_config', {'version': 2, 'task_backend_id': 'ado'})
 
     # New value persisted (feature_flags preserved from prior server_config)
     saved = store.load('config', 'server_config')
@@ -196,7 +222,8 @@ def test_save_config_creates_backup_then_saves():
     backup_keys = [k for k in store.list_keys('config') if 'backup' in k]
     assert len(backup_keys) == 1
     assert 'server_config' in backup_keys[0]
-    assert store.load('config', backup_keys[0]) == {'version': 1, 'feature_flags': {'manage_backup_snapshots': True}}
+    assert store.load('config', backup_keys[0]) == _server(
+        version=1, feature_flags={'manage_backup_snapshots': True})
 
 
 def test_save_config_no_backup_when_key_absent():
@@ -318,11 +345,12 @@ def test_get_backup_includes_accounts():
 def test_restore_backup_writes_config():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
+    store.save('config', 'ado_config', dict(ADO_CONFIG))
     cm = ConfigManager(storage=store)
-    data = {'schema_revision': TARGET_REVISION, 'config': {'server_config': {'org': 'restored-org'}}}
+    data = {'schema_revision': TARGET_REVISION, 'config': {'server_config': _server(org='restored-org')}}
     result = cm.restore_backup(data)
     assert result['ok'] is True
-    assert store.load('config', 'server_config') == {'org': 'restored-org'}
+    assert store.load('config', 'server_config') == _server(org='restored-org')
 
 
 def test_restore_backup_calls_sync_accounts_fn():
@@ -535,11 +563,11 @@ def test_auth_restore_rolls_back_failed_account_sync(tmp_path):
     store = DiskCacheStorage(tmp_path)
     initialize(store)
     try:
-        store.save('config', 'server_config', {'version': 'current'})
+        store.save('config', 'server_config', _server(version='current'))
         store.save('auth_control', 'bootstrap_claimed', True)
         store.save('auth_sessions', 'active-session', {'email': 'admin@example.com'})
         backup = ConfigManager(store).get_backup()
-        backup['config']['server_config'] = {'version': 'restored'}
+        backup['config']['server_config'] = _server(version='restored')
 
         def failing_sync(users, admins):
             store.save('accounts', 'partial@example.com', {'account_id': ACCOUNT_ID})
@@ -547,7 +575,7 @@ def test_auth_restore_rolls_back_failed_account_sync(tmp_path):
 
         with pytest.raises(ValueError, match='Account sync failed'):
             ConfigManager(store).restore_backup(backup, sync_accounts_fn=failing_sync)
-        assert store.load('config', 'server_config') == {'version': 'current'}
+        assert store.load('config', 'server_config') == _server(version='current')
         assert not store.exists('accounts', 'partial@example.com')
         assert store.exists('auth_sessions', 'active-session')
         assert store.load('auth_control', 'bootstrap_claimed') is True
@@ -569,9 +597,10 @@ def test_selective_restore_without_accounts_preserves_current_credentials(tmp_pa
         accounts.update_credentials(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
         account_id = accounts.get_account_id('owner@example.com')
         original = storage.load('account_auth', account_id)
+        storage.save('config', 'ado_config', dict(ADO_CONFIG))
         ConfigManager(storage).restore_backup({
             'schema_revision': TARGET_REVISION,
-            'config': {'server_config': {'version': 'restored'}},
+            'config': {'server_config': _server(version='restored')},
         })
         assert storage.load('account_auth', account_id) == original
         assert accounts.load('owner@example.com')['pat'] == 'azure-pat'

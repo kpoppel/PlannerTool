@@ -20,17 +20,12 @@ class PatCredentialPolicy:
 
     @staticmethod
     def requires_credential(storage) -> bool:
-        from planner_lib.backend.azure import AzureDevOpsBackend
-        from planner_lib.backend.registry import get_active_class
+        from planner_lib.backend.selection import uses_live_ado
 
         if not storage.exists('config', 'ado_config'):
             return False
-        ado = storage.load('config', 'ado_config')
-        flags = {}
-        if storage.exists('config', 'server_config'):
-            flags.update(storage.load('config', 'server_config')['feature_flags'])
-        flags.update(ado['feature_flags'])
-        return get_active_class(flags) is AzureDevOpsBackend
+        return uses_live_ado(storage.load('config', 'server_config'),
+                             storage.load('config', 'ado_config'))
 
     def credential_error(self, user_id: str) -> str | None:
         email = self._account_manager.get_account_by_id(user_id)['email']

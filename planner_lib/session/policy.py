@@ -9,8 +9,7 @@ def initial_authentication():
 
 def validate_backend_policy(storage, key=None, content=None, *, overrides=None):
     import os
-    from planner_lib.backend.azure import AzureDevOpsBackend
-    from planner_lib.backend.registry import get_active_class
+    from planner_lib.backend.selection import uses_live_ado
 
     mode = os.environ.get('PLANNER_ADO_AUTHENTICATION')
     if mode is None:
@@ -21,14 +20,13 @@ def validate_backend_policy(storage, key=None, content=None, *, overrides=None):
         return
     reason = ('Deployment ADO policy disables' if mode == 'disabled'
               else 'Deployment ADO policy requires a connected Entra auth service for')
-    flags = {}
+    configs = {}
     for name in ('server_config', 'ado_config'):
         if overrides is not None and name in overrides:
-            value = overrides[name]
+            configs[name] = overrides[name]
         else:
-            value = content if key == name else storage.load('config', name)
-        flags.update(value['feature_flags'])
-    if get_active_class(flags) is AzureDevOpsBackend:
+            configs[name] = content if key == name else storage.load('config', name)
+    if uses_live_ado(configs['server_config'], configs['ado_config']):
         raise ValueError(reason + ' live ADO transport')
     if overrides is not None and 'events_config' in overrides:
         events = overrides['events_config']

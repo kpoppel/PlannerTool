@@ -607,6 +607,40 @@ def upgrade_45(storage):
         }})
 
 
+def upgrade_46(storage):
+    """Replace feature-flag backend priority with an explicit backend and ADO transport."""
+    from planner_lib.backend.selection import LEGACY_TRANSPORT_FLAGS
+
+    with storage.transaction():
+        server = storage.load('config', 'server_config')
+        ado = (storage.load('config', 'ado_config') if storage.exists('config', 'ado_config')
+               else {'organization_url': '', 'feature_flags': {}})
+        server_flags = dict(server['feature_flags'])
+        ado_flags = dict(ado.get('feature_flags', {}))
+        merged = {**server_flags, **ado_flags}
+        transport = ado.get('transport', 'live')
+        if 'transport' not in ado:
+            transport = next((value for flag, value in LEGACY_TRANSPORT_FLAGS
+                              if bool(merged.get(flag, False))), 'live')
+        for flag, _ in LEGACY_TRANSPORT_FLAGS:
+            server_flags.pop(flag, None)
+            ado_flags.pop(flag, None)
+        storage.save('config', 'server_config', {
+            **server, 'feature_flags': server_flags,
+            'task_backend_id': server.get('task_backend_id', 'ado'),
+        })
+        storage.save('config', 'ado_config', {**ado, 'feature_flags': ado_flags, 'transport': transport})
+
+
+def _validate_backend_selection(server, ado):
+    from planner_lib.backend.selection import validate_selection
+
+    try:
+        validate_selection(server, ado)
+    except (KeyError, ValueError):
+        raise SchemaError('Invalid task backend selection') from None
+
+
 REGISTRY = tuple(
     Migration(revision, predecessor, MIGRATION_IDS[revision], upgrade)
     for revision, predecessor, upgrade in (
@@ -617,7 +651,7 @@ REGISTRY = tuple(
         (38, 37, upgrade_38), (39, 38, upgrade_39), (40, 39, upgrade_40),
         (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
         (44, 43, upgrade_44),
-        (45, 44, upgrade_45),
+        (45, 44, upgrade_45), (46, 45, upgrade_46),
     )
 )
 
@@ -626,13 +660,13 @@ def initialize(storage):
     from planner_lib.session.policy import initial_authentication
     defaults = {
         'authentication': initial_authentication(),
-        'server_config': {'schema_version': 2, 'log_level': 'INFO', 'feature_flags': {}},
+        'server_config': {'schema_version': 2, 'log_level': 'INFO', 'feature_flags': {},
+                          'task_backend_id': 'ado'},
         'projects': {'schema_version': 4, 'project_map': [], 'container_types': ['project', 'team'],
                  'allocation_defaults': {'project': [], 'team': []}},
         'teams': {'schema_version': 3, 'teams': [], 'groups': []},
         'workforce': {'schema_version': 2, 'suppliers': [], 'staffing': []},
-        'ado_config': {'organization_url': '',
-                   'feature_flags': {'use_azure_mock_generator': True}},
+        'ado_config': {'organization_url': '', 'feature_flags': {}, 'transport': 'mock_generator'},
         'ado_processes': {'schema_version': 1, 'processes': []},
         'global_settings': {'schema_version': 2, 'process_order': [], 'type_tiers': {}},
         'plugin_runtime_config': {'schema_version': 2, 'plugins': []},
@@ -757,6 +791,8 @@ def validate_records(storage, revision, *, server_config=None):
         if revision >= 44:
             from planner_lib.session.policy import validate_authentication
             validate_authentication(storage.load('config', 'authentication'))
+        if revision >= 46:
+            _validate_backend_selection(server, storage.load('config', 'ado_config'))
         account_ids = set()
         for email in storage.list_keys('accounts'):
             account = storage.load('accounts', email)

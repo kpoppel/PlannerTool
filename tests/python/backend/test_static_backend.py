@@ -208,7 +208,7 @@ def test_build_from_flags_uses_static_data_path(tmp_path):
     p.write_text(yaml.safe_dump({AREA: _TASKS}))
 
     b = StaticBackend.build_from_flags(
-        {'use_static_backend': True, 'static_data_path': str(p)},
+        {'static_data_path': str(p)},
         storage=catalogue_storage(['MyOrg']),
     )
     assert isinstance(b, StaticBackend)

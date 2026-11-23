@@ -86,14 +86,12 @@ def test_connect_rejects_malformed_or_unsupported_credentials(credential, messag
     assert 'secret' not in str(raised.value)
 
 
-@pytest.mark.parametrize('flags', [
-    {'use_azure_mock': True}, {'use_azure_mock_generator': True},
-])
-def test_mock_service_uses_shared_client_connection_with_synthetic_credential(flags):
+@pytest.mark.parametrize('transport', ['mock_fixture', 'mock_generator'])
+def test_mock_service_uses_shared_client_connection_with_synthetic_credential(transport):
     from planner_lib.azure import AzureService
     from planner_lib.azure.AzureMockClient import _MOCK_CREDENTIAL
 
-    service = AzureService('example', MemoryStorage(), feature_flags=flags)
+    service = AzureService('example', MemoryStorage(), transport=transport)
     assert type(service._client).connect is AzureClient.connect
 
     with patch.object(AzureClient, 'connect', autospec=True) as connect:
@@ -215,7 +213,9 @@ def test_live_sdk_refuses_sandbox_credentials_before_connection():
 def test_backend_composition_and_reload_keep_delegated_provider():
     provider = MagicMock()
     config = MagicMock()
-    config.fetch_ado_config.return_value = {'organization_url': 'example', 'feature_flags': {}}
+    config.fetch_ado_config.return_value = {'organization_url': 'example', 'feature_flags': {},
+                                            'transport': 'live'}
+    config.fetch_server_config.return_value = {'feature_flags': {}, 'task_backend_id': 'ado'}
     backend = AzureDevOpsBackend.build_from_flags({}, org_url='example', storage=MemoryStorage(),
         config_backend=config, credential_provider=provider)
     assert backend._conn._credential_provider is provider
@@ -1304,13 +1304,12 @@ class TestAzureMockClientPersistence:
         assert flag['type'] == 'boolean'
         assert flag.get('default') is False
 
-    def test_azure_mock_persist_enabled_showwhen(self):
-        """Flag should only be visible when use_azure_mock is on."""
+    def test_azure_mock_persist_enabled_transport(self):
+        """The setting belongs to the fixture transport."""
         from planner_lib.admin.schema import get_schema
-        # azure_mock_persist_enabled moved from 'system' to 'ado' (BackendRegistry-built)
         schema = get_schema('ado')
         ff = schema['properties']['feature_flags']['properties']
-        assert ff['azure_mock_persist_enabled'].get('x-showWhen') == 'use_azure_mock'
+        assert ff['azure_mock_persist_enabled'].get('x-transport') == 'mock_fixture'
 
     # ------------------------------------------------------------------
     # Client construction
@@ -1342,8 +1341,8 @@ class TestAzureMockClientPersistence:
         svc = AzureService(
             organization_url="anonymous-org",
             storage=create_storage(backend='memory', serializer='json'),
+            transport='mock_fixture',
             feature_flags={
-                "use_azure_mock": True,
                 "azure_mock_persist_enabled": True,
                 "azure_mock_data_dir": FIXTURE_DIR,
             },
@@ -1358,8 +1357,8 @@ class TestAzureMockClientPersistence:
         svc = AzureService(
             organization_url="anonymous-org",
             storage=create_storage(backend='memory', serializer='json'),
+            transport='mock_fixture',
             feature_flags={
-                "use_azure_mock": True,
                 "azure_mock_persist_enabled": False,
                 "azure_mock_data_dir": FIXTURE_DIR,
             },

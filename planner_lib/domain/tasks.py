@@ -11,7 +11,7 @@ any changes.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from typing_extensions import Literal, TypedDict, NotRequired
 
 
@@ -73,6 +73,9 @@ class DomainTask(TypedDict):
     # Keys are ADO field reference names (e.g. 'Microsoft.VSTS.Common.Priority').
     # Only present when extra_fields are configured and the work item has values.
     fields: NotRequired[Optional[Dict[str, Any]]]
+    # Backend-neutral values of the task type's attached field schema, keyed by
+    # stable field-definition key. Values are typed scalars, ISO dates or enum names.
+    customFields: NotRequired[Dict[str, Union[str, int, float, bool, None]]]
     # Set when start/end were inferred from iteration dates rather than
     # explicit ADO field values.
     _inferred_start: NotRequired[bool]
@@ -90,3 +93,25 @@ class WriteResult(TypedDict):
     ok: bool
     updated: int
     errors: List[str]
+
+
+class UpdateBase(TypedDict):
+    """Reviewed baseline of a published update: task revision and each field's before value."""
+    revision: int
+    fields: Dict[str, Any]
+
+
+class FieldConflict(TypedDict):
+    """A published field changed concurrently since the reviewed base."""
+    taskId: str
+    field: str
+    base: Any
+    current: Any
+    proposed: Any
+
+
+class BatchWriteResult(TypedDict):
+    """Atomic batch outcome: either every update commits or conflicts/errors commit nothing."""
+    updated: int
+    errors: List[str]
+    conflicts: List[FieldConflict]

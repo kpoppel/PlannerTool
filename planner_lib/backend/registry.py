@@ -1,156 +1,137 @@
-"""BackendRegistry: the single source of truth for all BackendPort implementations.
+"""BackendRegistry: the single source of truth for task-backend implementations.
 
-Responsibilities
+Selection
+---------
+``server_config.task_backend_id`` selects exactly one task backend. The ADO
+backend family additionally selects a class by ``ado_config.transport``
+(live service, synthetic generator, fixture replay or static file). Settings of
+an inactive backend remain persisted and are never reinterpreted.
+
+Adding a backend
 ----------------
-* Maintain the ordered list of backend classes.  The first class whose
-  ``FEATURE_FLAG`` feature-flag is True in ``feature_flags`` is selected;
-  ``AzureDevOpsBackend`` (``FEATURE_FLAG = None``) is the implicit default.
-* Provide ``get_active_class(feature_flags)`` — selects the active backend class.
-* Provide ``build_active_backend(feature_flags, **services)`` — constructs the
-  active backend instance via each class's ``build_from_flags()`` classmethod.
-* Provide ``get_merged_schema()`` — merges each class's ``config_schema()``
-  return value into a single dict that the admin ``schema.py`` injects into the
-  system-config feature_flags properties.
-
-Lifecycle for adding or removing a backend
--------------------------------------------
-* **Add**: implement the class with ``FEATURE_FLAG``, ``config_schema()``, and
-  ``build_from_flags()``; then insert it in ``_PRIORITY_ORDER`` below at the
-  correct priority position.
-* **Remove**: delete the entry from ``_PRIORITY_ORDER`` and remove the class.
-  No other file needs to change.
-
-Priority order
---------------
-Listed in descending priority — first match wins.  ``AzureDevOpsBackend``
-must always be last (its ``FEATURE_FLAG`` is ``None`` so it is the fallback
-when no flag is set).
+Implement a class with ``BACKEND_ID``, ``config_schema()`` and
+``build_from_flags()``, list it in ``_backend_classes()`` and describe it in
+``describe_backends()``.
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List, Type
 
+from planner_lib.backend.selection import (
+    ADO_BACKEND_ID, ADO_TRANSPORTS, ado_transport, task_backend_id,
+)
 
-# ---------------------------------------------------------------------------
-# Priority-ordered list of (feature_flag, class_path) tuples.
-# Use lazy import to avoid loading unused backend modules at startup.
-# ---------------------------------------------------------------------------
 
-def _priority_backends() -> List[Type]:
-    """Return backend classes in feature-flag priority order (first match wins).
-
-    This is the ONLY place that needs to change when adding or removing a backend.
-    """
-    # Import here (not at module level) to keep startup import cost minimal
-    # and avoid circular-import issues with modules that import registry.
+def _ado_transport_classes() -> Dict[str, Type]:
+    # Import lazily to keep startup cost minimal and avoid circular imports.
     from planner_lib.backend.static import StaticBackend
     from planner_lib.backend.mock import MockGeneratorBackend, MockFixtureBackend
     from planner_lib.backend.azure import AzureDevOpsBackend
 
-    return [
-        StaticBackend,         # use_static_backend
-        MockGeneratorBackend,  # use_azure_mock_generator
-        MockFixtureBackend,    # use_azure_mock
-        AzureDevOpsBackend,    # default (FEATURE_FLAG = None)
-    ]
+    return {
+        'live': AzureDevOpsBackend,
+        'mock_generator': MockGeneratorBackend,
+        'mock_fixture': MockFixtureBackend,
+        'static': StaticBackend,
+    }
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-def get_active_class(feature_flags: Dict[str, Any]) -> Type:
-    """Return the backend class to instantiate for the given ``feature_flags``.
-
-    Iterates ``_priority_backends()`` and returns the first class whose
-    ``FEATURE_FLAG`` key is truthy in ``feature_flags``.  Falls back to
-    ``AzureDevOpsBackend`` (the last entry, ``FEATURE_FLAG = None``) when no
-    flag matches.
-    """
-    backends = _priority_backends()
-    for cls in backends:
-        flag = getattr(cls, 'FEATURE_FLAG', None)
-        if flag is not None and bool(feature_flags.get(flag, False)):
-            return cls
-    # Fallback: the last registered class (AzureDevOpsBackend, FEATURE_FLAG=None)
-    return backends[-1]
+def available_backend_ids() -> tuple:
+    """Task backends this build can activate."""
+    return (ADO_BACKEND_ID,)
 
 
-def build_active_backend(feature_flags: Dict[str, Any], **services: Any) -> Any:
-    """Construct and return the active BackendPort instance.
-
-    Parameters
-    ----------
-    feature_flags:
-        The ``feature_flags`` dict from server_config.
-    **services:
-        Injected runtime services forwarded to ``build_from_flags()``:
-        ``org_url``, ``storage``, ``team_repository``, ``capacity_service``.
-
-    Returns the constructed backend instance (not wrapped in CachingBackend —
-    that is the caller's responsibility).
-    """
-    cls = get_active_class(feature_flags)
-    return cls.build_from_flags(feature_flags, **services)
+def get_active_class(server_config: Dict[str, Any], ado_config: Dict[str, Any]) -> Type:
+    """Return the backend class selected by persisted backend id and ADO transport."""
+    backend_id = task_backend_id(server_config)
+    if backend_id not in available_backend_ids():
+        raise ValueError(f'Task backend {backend_id!r} is not available in this build')
+    return _ado_transport_classes()[ado_transport(ado_config)]
 
 
-def rebuild_backend_instance(instance: Any, feature_flags: Dict[str, Any], **services: Any) -> Any:
-    """Rebuild *instance* in place for the backend selected by *feature_flags*."""
-    replacement = build_active_backend(feature_flags, **services)
+def backend_settings(server_config: Dict[str, Any], ado_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge generic server flags with backend settings; backend keys win."""
+    return {**server_config['feature_flags'], **ado_config['feature_flags']}
+
+
+def build_active_backend(
+    server_config: Dict[str, Any], ado_config: Dict[str, Any], **services: Any,
+) -> Any:
+    """Construct the active backend (not wrapped in CachingBackend)."""
+    cls = get_active_class(server_config, ado_config)
+    return cls.build_from_flags(backend_settings(server_config, ado_config), **services)
+
+
+def rebuild_backend_instance(
+    instance: Any, server_config: Dict[str, Any], ado_config: Dict[str, Any], **services: Any,
+) -> Any:
+    """Rebuild *instance* in place for the currently selected backend."""
+    replacement = build_active_backend(server_config, ado_config, **services)
     instance.__class__ = replacement.__class__
     instance.__dict__ = replacement.__dict__
     return instance
 
 
+def describe_backends() -> List[Dict[str, Any]]:
+    """Backend identity and display metadata for administration."""
+    classes = _ado_transport_classes()
+    return [{
+        'id': ADO_BACKEND_ID,
+        'label': 'Azure DevOps',
+        'transports': list(ADO_TRANSPORTS),
+        'capabilities': sorted(classes['live'].CAPABILITIES),
+    }]
+
+
+def active_backend_info(server_config: Dict[str, Any], ado_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Backend-neutral identity and capabilities of the selected backend."""
+    cls = get_active_class(server_config, ado_config)
+    return {'id': cls.BACKEND_ID, 'capabilities': sorted(cls.CAPABILITIES)}
+
+
+def active_backend_info(server_config: Dict[str, Any], ado_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Backend-neutral identity and capabilities of the selected backend."""
+    cls = get_active_class(server_config, ado_config)
+    return {'id': cls.BACKEND_ID, 'capabilities': sorted(cls.CAPABILITIES)}
+
+
 def get_merged_schema() -> Dict[str, Any]:
-    """Return merged ``config_schema()`` properties from all registered backends.
+    """Return merged ADO transport settings from every transport class.
 
-    The result is a flat dict of ADO feature_flags property entries (one per
-    backend-specific flag).  Used by ``get_ado_schema()`` to build the
-    ``ado_config.feature_flags`` sub-schema.
-
-    Generic feature flags (``enable_cache``, ``enable_memory_cache``,
-    ``enable_brotli_middleware``) are **not** included — they live in the
-    static portion of the system schema (``server_config``).
+    Generic server flags (``enable_cache``, ``enable_brotli_middleware``) live
+    in the ``server_config`` schema instead.
     """
     merged: Dict[str, Any] = {}
-    for cls in _priority_backends():
-        schema_fragment = getattr(cls, 'config_schema', None)
-        if callable(schema_fragment):
-            merged.update(schema_fragment())
+    for cls in _ado_transport_classes().values():
+        merged.update(cls.config_schema())
     return merged
 
 
 def get_ado_schema() -> Dict[str, Any]:
-    """Return the JSON Schema for the ``ado_config`` diskcache object.
-
-    ``organization_url`` is a fixed top-level property.  ADO backend
-    feature-flag sub-properties are collected from every registered
-    backend's ``config_schema()`` and nested under ``feature_flags``.
-
-    When a new backend (e.g. Jira) is registered via ``_priority_backends()``,
-    its ``config_schema()`` properties automatically appear here.
-    """
-    feature_flag_props = get_merged_schema()
+    """Return the JSON Schema for the ``ado_config`` object."""
     return {
         'type': 'object',
         'title': 'Azure DevOps Configuration',
-        'description': (
-            'Settings specific to Azure DevOps connectivity and backend selection. '
-            'Stored in diskcache and updated via the admin interface.'
-        ),
+        'description': 'Settings specific to Azure DevOps connectivity and transport.',
         'properties': {
             'organization_url': {
                 'type': 'string',
                 'title': 'Azure DevOps Organization',
                 'description': 'Organization name (slug) in Azure DevOps (e.g. "MyCompany")',
             },
+            'transport': {
+                'type': 'string',
+                'title': 'Transport',
+                'enum': list(ADO_TRANSPORTS),
+                'default': 'live',
+            },
             'feature_flags': {
                 'type': 'object',
-                'title': 'Backend Feature Flags',
-                'description': 'Backend selection and ADO-specific options.',
-                'properties': feature_flag_props,
+                'title': 'Transport Settings',
+                'description': 'ADO transport-specific options.',
+                'properties': get_merged_schema(),
                 'additionalProperties': True,
             },
         },
+        'required': ['organization_url', 'transport', 'feature_flags'],
     }

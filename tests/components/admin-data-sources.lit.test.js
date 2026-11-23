@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 import { createMockAuth } from '../helpers/mockAuth.js';
 import '../../www/admin/js/components/admin/DataSources.lit.js';
-async function mount(authentication = null) {
+async function mount(authentication = null, ado = {}) {
   vi.spyOn(adminProvider, 'getEventsConfig').mockResolvedValue({ ok: true, data: { event_backend: 'local' } });
   vi.spyOn(adminProvider, 'getAdo').mockResolvedValue({ ok: true,
-    data: { organization_url: 'example', feature_flags: {} } });
-  vi.spyOn(adminProvider, 'getSystem').mockResolvedValue({ ok: true, data: {} });
+    data: { organization_url: 'example', feature_flags: {}, transport: 'live', ...ado } });
+  vi.spyOn(adminProvider, 'getSystem').mockResolvedValue({ ok: true,
+    data: { task_backend_id: 'ado', feature_flags: {} } });
   vi.spyOn(adminProvider, 'getGroupsConfig').mockResolvedValue({ ok: true, data: { groups_backend: 'local' } });
   for (const method of ['saveEventsConfig', 'saveAdo', 'saveSystem', 'saveGroupsConfig']) {
     vi.spyOn(adminProvider, method).mockResolvedValue({ ok: true });
@@ -71,5 +72,21 @@ describe('Data Sources authentication policy', () => {
     expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim())
       .toBe('Personal Access Token');
     expect(element._statusMsg).toBe('Saved.');
+  });
+});
+
+describe('Data Sources ADO transport', () => {
+  it('loads the persisted transport and saves it without selector flags', async () => {
+    const element = await mount(null, { transport: 'mock_fixture' });
+    expect(element.shadowRoot.querySelector('.backend-select').value).toBe('ado_mock_fixture');
+    await select(element, '.backend-select', 'ado_static');
+    element._staticDataPath = 'data/static.yml';
+    await element._save();
+    const payload = adminProvider.saveAdo.mock.calls[0][0];
+    expect(payload.transport).toBe('static');
+    for (const flag of ['use_static_backend', 'use_azure_mock', 'use_azure_mock_generator']) {
+      expect(payload.feature_flags).not.toHaveProperty(flag);
+    }
+    expect(adminProvider.saveSystem.mock.calls[0][0].task_backend_id).toBe('ado');
   });
 });

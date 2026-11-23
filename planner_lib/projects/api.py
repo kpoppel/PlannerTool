@@ -157,6 +157,9 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
         raise HTTPException(status_code=500, detail={'error': 'backend_misconfigured', 'message': 'Task source configuration is invalid'}) from exc
     if not result.get('ok', True) and result.get('errors'):
         logger.warning("Task update completed with errors: %s", result['errors'])
+    if result.get('conflicts'):
+        raise HTTPException(status_code=409, detail={
+            'error': 'task_conflict', 'conflicts': result['conflicts']})
 
     # The CachingBackend.write_task implementation already patches the in-memory
     # and disk cache in-place for the affected tasks, so no full invalidation is

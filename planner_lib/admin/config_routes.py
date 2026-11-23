@@ -686,6 +686,15 @@ async def admin_save_system(request: Request):
 # Azure DevOps configuration (ado_config in diskcache)
 # ---------------------------------------------------------------------------
 
+@router.get('/admin/v1/task-backends')
+@require_admin_session
+async def admin_get_task_backends(request: Request):
+    """Return registered task backends and the active selection."""
+    from planner_lib.backend.registry import describe_backends
+    config = resolve_service(request, 'config_backend')
+    return {'active': config.fetch_server_config()['task_backend_id'],
+            'backends': describe_backends()}
+
 @router.get('/admin/v1/browse-config')
 @require_permission(AccountPermissions.MANAGE_PROJECTS, AccountPermissions.MANAGE_ITERATIONS)
 async def admin_get_browse_config(request: Request):

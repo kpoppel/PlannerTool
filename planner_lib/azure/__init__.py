@@ -21,10 +21,10 @@ class AzureService:
     requests. Use ``with service.connect(credential) as client:`` to obtain a
     connected client for the duration of a request.
 
-    Client selection (first match wins):
-    - ``use_azure_mock_generator``  → AzureMockGeneratorClient (synthetic data)
-    - ``use_azure_mock``            → AzureMockClient (fixture replay)
-    - (default)                     → AzureClient (live Azure DevOps)
+    Client selection by ``transport``:
+    - ``mock_generator`` → AzureMockGeneratorClient (synthetic data)
+    - ``mock_fixture``   → AzureMockClient (fixture replay)
+    - otherwise        → AzureClient (live Azure DevOps)
 
     Caching of domain objects is the responsibility of CachingBackend. The
     concrete client may keep process-local Azure discovery data, which this
@@ -32,17 +32,18 @@ class AzureService:
     """
 
     def __init__(self, organization_url: str, storage: StorageBackend, feature_flags: dict | None = None,
-                 *, credential_provider=None):
+                 *, transport: str = 'live', credential_provider=None):
         self.organization_url = organization_url
         self.storage = storage
         self.feature_flags = feature_flags or {}
+        self.transport = transport
         self._credential_provider = credential_provider
         self._client = self._build_client()
 
     def _build_client(self):
         """Construct the concrete client based on current feature flags."""
         # Generator mock: builds a coherent synthetic dataset from config files.
-        if self.feature_flags.get("use_azure_mock_generator", False):
+        if self.transport == 'mock_generator':
             from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
             data_dir = self.feature_flags.get("data_dir", "data")
             cfg = dict(self.feature_flags.get("generator_config") or {})
@@ -59,7 +60,7 @@ class AzureService:
             )
 
         # Fixture mock: replays pre-recorded SDK responses from disk.
-        if self.feature_flags.get("use_azure_mock", False):
+        if self.transport == 'mock_fixture':
             from planner_lib.azure.AzureMockClient import AzureMockClient
             fixture_dir = self.feature_flags.get("azure_mock_data_dir", "data/azure_mock")
             persist_enabled = bool(self.feature_flags.get("azure_mock_persist_enabled", False))

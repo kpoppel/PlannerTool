@@ -121,7 +121,10 @@ def test_previous_target_journal_allows_status_and_next_upgrade(tmp_path, phase)
         assert handle.storage.data_dir.parent.name != previous_generation
         assert handle.storage.load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
         assert handle.storage.load('views', view_key) == {
-            'name': 'Preserved', 'viewOptions': {'packedModeUnplannedPreference': True},
+            'name': 'Preserved', 'viewOptions': {
+                'packedModeUnplannedPreference': True, 'displayMode': 'normal',
+                'condensedCards': True, 'packedMode': False,
+            },
         }
     finally:
         handle.close()
@@ -406,7 +409,7 @@ def test_v421_adopts_authoritative_server_yaml_and_unversioned_people(tmp_path):
     assert database.status()['active_revision'] == 24
     handle = database.prepare()
     try:
-        assert handle.storage.load('config', 'server_config') == server
+        assert handle.storage.load('config', 'server_config') == {**server, 'task_backend_id': 'ado'}
         assert not handle.storage.exists('config', 'people')
         assert handle.storage.load('config', 'workforce') == {
             'schema_version': 2, 'suppliers': [], 'staffing': [],

@@ -29,7 +29,7 @@ from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.errors import BackendAuthError
-from planner_lib.backend.port import TaskBackend, TaskSnapshotBackend, BackendCredential
+from planner_lib.backend.port import BatchTaskBackend, TaskBackend, TaskSnapshotBackend, BackendCredential
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.domain.allocation_availability import project_allocation_availability, validate_allocation_change
@@ -203,6 +203,11 @@ class TaskRepository:
         if self._backend.is_remote and credential is None:
             return {'updated': 0, 'errors': ['No credential available for user']}
 
+        if isinstance(self._backend, BatchTaskBackend):
+            if any('backendData' in update for update in updates):
+                raise ValueError('backendData is private to the backend')
+            return self._backend.write_tasks(updates, credential, actor_id=user_id)
+
         total_updated = 0
         all_errors: List[str] = []
 
@@ -295,6 +300,8 @@ class WorkforceTaskRepository(TaskRepository):
             candidate = {identity: dict(task) for identity, task in originals.items()}
             seen: set[str] = set()
             editable = {'id', 'capacity', 'start', 'end', 'state', 'iterationPath', 'tags', 'relations'}
+            if isinstance(self._backend, BatchTaskBackend):
+                editable.add('base')
             for update in updates:
                 identity = str(update['id'])
                 if identity in seen or identity not in originals:
@@ -306,7 +313,7 @@ class WorkforceTaskRepository(TaskRepository):
                 if 'capacity' in update:
                     availability = project_allocation_availability(original, projects, definitions, defaults)
                     validate_allocation_change(availability, update['capacity'])
-                candidate[identity].update(update)
+                candidate[identity].update({key: value for key, value in update.items() if key != 'base'})
                 if 'state' in update:
                     display = projects[0]['work_item_display']
                     categories = {

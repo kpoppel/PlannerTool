@@ -146,6 +146,8 @@ def import_selected_types(catalogue: dict, selections: dict) -> dict:
 
 
 def validate_plans(content: dict, catalogue: dict) -> dict:
+    from planner_lib.domain.plans import validate_plan_common
+
     allowed = {'id', 'name', 'type', 'area_path', 'task_types', 'closed_history_days',
                'iteration_uuid', 'allocatable_ids', 'archived'}
     result = deepcopy(content)
@@ -153,10 +155,10 @@ def validate_plans(content: dict, catalogue: dict) -> dict:
     for plan in result['project_map']:
         if set(plan) - allowed:
             raise CatalogueError('invalid_plan', 'Unknown plan fields: ' + ', '.join(sorted(set(plan) - allowed)))
-        if not isinstance(plan.get('name'), str) or not plan['name'].strip():
-            raise CatalogueError('invalid_plan', 'Plan name must not be empty')
-        if plan.get('type') not in result['container_types']:
-            raise CatalogueError('invalid_plan', f"Unknown plan level for {plan['name']}")
+        try:
+            validate_plan_common(plan, result['container_types'])
+        except ValueError as error:
+            raise CatalogueError('invalid_plan', str(error)) from error
         area = plan.get('area_path')
         if not isinstance(area, str) or not area.strip():
             raise CatalogueError('invalid_plan', f"Area path is required for {plan['name']}")
@@ -164,13 +166,7 @@ def validate_plans(content: dict, catalogue: dict) -> dict:
         if area_key in areas:
             raise CatalogueError('invalid_plan', f'Duplicate area path: {area}')
         areas.add(area_key)
-        days = plan.get('closed_history_days')
-        if type(days) is not int or days < 0:
-            raise CatalogueError('invalid_plan', 'closed_history_days must be an integer >= 0')
-        names = plan.get('task_types')
-        if (not isinstance(names, list) or not names
-                or any(not isinstance(name, str) or not name for name in names)):
-            raise CatalogueError('invalid_plan', 'task_types must be a non-empty list of type names')
+        names = plan['task_types']
         process = resolve_plan_process(plan, catalogue)
         canonical = {item['name'].casefold(): item['name']
                      for item in process['types'] if item['imported']}

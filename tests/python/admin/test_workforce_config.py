@@ -380,7 +380,10 @@ def test_system_restore_compatibility_preflight_is_read_only(
 
     before = manager.read_snapshot()
     response = workforce_client.post('/admin/v1/restore/validate', json={
-        'schema_revision': TARGET_REVISION, 'config': {'server_config': {'server_name': 'Preview'}},
+        'schema_revision': TARGET_REVISION, 'config': {
+            'server_config': {'server_name': 'Preview', 'feature_flags': {}, 'task_backend_id': 'ado'},
+            'ado_config': {'organization_url': '', 'feature_flags': {}, 'transport': 'mock_generator'},
+        },
     })
     assert response.status_code == 200
     assert response.json() == {'ok': True, 'schema_revision': TARGET_REVISION}

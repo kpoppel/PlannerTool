@@ -95,8 +95,8 @@ async function seedDocsData(page, dataDir) {
     await post('/admin/v1/ado', {
       content: {
         organization_url: 'contoso',
+        transport: 'mock_generator',
         feature_flags: {
-          use_azure_mock_generator: true,
           data_dir: dir,
           generator_persist_enabled: false,
           generator_config: {

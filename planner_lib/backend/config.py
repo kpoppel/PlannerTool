@@ -37,7 +37,7 @@ from planner_lib.backend.port import (
 )
 from planner_lib.domain.allocation_availability import validate_project_availability
 from planner_lib.domain.projects import DomainProject
-from planner_lib.azure.catalogue import work_item_display
+from planner_lib.backend.catalogue import active_catalogue
 from planner_lib.domain.teams import DomainTeam, TeamCatalogue
 from planner_lib.storage.base import StorageBackend
 
@@ -116,10 +116,7 @@ class ConfigBackend(
             type_name: index for index, type_name in enumerate(cfg['container_types'])
         }
 
-        display = work_item_display(
-            self._storage.load('config', 'ado_processes'),
-            self._storage.load('config', 'global_settings'),
-        )
+        display = active_catalogue(self._storage).work_item_display()
 
         return [
             DomainProject(
@@ -181,6 +178,10 @@ class ConfigBackend(
     # ------------------------------------------------------------------
     # AdoConfigBackend
     # ------------------------------------------------------------------
+
+    def fetch_server_config(self) -> dict:
+        """Return generic server settings, including ``task_backend_id``."""
+        return self._storage.load("config", "server_config")
 
     def fetch_ado_config(self) -> dict:
         """Return the ADO-specific config dict (organization_url + feature flags).

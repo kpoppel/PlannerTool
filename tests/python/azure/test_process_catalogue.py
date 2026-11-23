@@ -30,6 +30,8 @@ def catalogue_storage(projects):
     from planner_lib.storage.memory_backend import MemoryStorage
     storage = MemoryStorage()
     stored = task_catalogue(projects)
+    storage.save('config', 'server_config', {
+        'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'ado'})
     storage.save('config', 'ado_processes', stored)
     storage.save('config', 'global_settings', sync_display(stored, {
         'schema_version': 2, 'process_order': [], 'type_tiers': {},
@@ -64,6 +66,8 @@ def test_projects_payload_uses_catalogue_display_tiers_and_state_order():
 
     storage = MemoryStorage()
     stored = catalogue()
+    storage.save('config', 'server_config', {
+        'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'ado'})
     stored['processes'][0]['types'][1]['states'] = [
         {'name': 'Done', 'category': 'Completed', 'order': 4},
         {'name': 'New', 'category': 'Proposed', 'order': 1},

@@ -75,10 +75,6 @@ class ConfigManager:
         """
         if key == 'authentication':
             self._validate_auth_policy_change(content)
-        self._validate_backend_config(key, content)
-        if self._should_backup():
-            self._backup_config(key)
-
         # Preserve existing feature_flags when saving server_config so that
         # enabling manage_backup_snapshots persists across saves.
         if key == 'server_config' and isinstance(content, dict):
@@ -89,6 +85,9 @@ class ConfigManager:
                     content = {**content, 'feature_flags': existing_flags}
             except Exception:
                 pass
+        self._validate_backend_config(key, content)
+        if self._should_backup():
+            self._backup_config(key)
 
         self._storage.save('config', key, content)
 
@@ -115,6 +114,18 @@ class ConfigManager:
 
     def _validate_backend_config(self, key, content, *, overrides=None):
         from planner_lib.session.policy import validate_backend_policy
+        names = ('server_config', 'ado_config')
+        if key in names or (overrides is not None and any(name in overrides for name in names)):
+            from planner_lib.backend.registry import available_backend_ids
+            from planner_lib.backend.selection import validate_selection
+            configs = {
+                name: overrides[name] if overrides is not None and name in overrides
+                else content if key == name else self._storage.load('config', name)
+                for name in names
+            }
+            validate_selection(configs['server_config'], configs['ado_config'])
+            if configs['server_config']['task_backend_id'] not in available_backend_ids():
+                raise ValueError('Selected task backend is not available in this build')
         validate_backend_policy(self._storage, key, content, overrides=overrides)
 
     def _validate_auth_policy_change(self, content):
@@ -360,11 +371,10 @@ class ConfigManager:
             if any(record != {'enrolled': False}
                    for record in data['authentication']['account_auth'].values()):
                 raise ValueError('Logical restore cannot import enrollment authority; enroll afresh')
-        for key, value in config.items():
-            if value is not None:
-                self._validate_backend_config(key, value)
-        self._validate_backend_config(None, None,
-            overrides={key: value for key, value in config.items() if value is not None})
+        restored = {key: value for key, value in config.items() if value is not None}
+        for key, value in restored.items():
+            self._validate_backend_config(key, value, overrides=restored)
+        self._validate_backend_config(None, None, overrides=restored)
         projects = config.get('projects')
         if projects is not None and (
             not isinstance(projects, dict) or 'container_types' not in projects

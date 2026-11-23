@@ -56,24 +56,15 @@ class StaticBackend(BackendPort):
         Path to the YAML or JSON data file (absolute or relative to cwd).
     """
 
-    # Feature flag key in server_config feature_flags that activates this backend.
-    FEATURE_FLAG: str = 'use_static_backend'
+    BACKEND_ID = 'ado'
+    TRANSPORT = 'static'
+    CAPABILITIES = frozenset({'task_read', 'markers'})
     is_remote = False
 
     @classmethod
     def config_schema(cls) -> Dict[str, Any]:
-        """JSON Schema properties for this backend's feature_flags entries."""
+        """JSON Schema properties for this transport's settings."""
         return {
-            'use_static_backend': {
-                'type': 'boolean',
-                'title': 'Use Static File Backend',
-                'description': (
-                    'Load pre-translated DomainTask data from a YAML or JSON file. '
-                    'Read-only; no Azure DevOps connection required. '
-                    'Useful for fully offline demos or static exports.'
-                ),
-                'default': False,
-            },
             'static_data_path': {
                 'type': 'string',
                 'title': 'Static Data File Path',
@@ -82,7 +73,7 @@ class StaticBackend(BackendPort):
                     'May be absolute or relative to the server working directory.'
                 ),
                 'default': 'data/static_tasks.yml',
-                'x-showWhen': 'use_static_backend',
+                'x-transport': 'static',
             },
         }
 

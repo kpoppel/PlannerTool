@@ -194,6 +194,7 @@ def _build_services(
             ado_cfg.get('organization_url', ''),
             storage_diskcache,
             feature_flags={**feature_flags, **ado_cfg.get('feature_flags', {})},
+            transport=ado_cfg['transport'],
             credential_provider=container.get('credential_provider') if provider == 'entra' else None,
         )
 
@@ -203,10 +204,10 @@ def _build_services(
     def _make_backend():
         from planner_lib.backend.registry import build_active_backend
         ado_cfg = container.get("config_backend").fetch_ado_config()
-        ado_flags = ado_cfg.get('feature_flags', {})
         inner = build_active_backend(
-            {**feature_flags, **ado_flags},
-            org_url=ado_cfg.get('organization_url', ''),
+            server_cfg,
+            ado_cfg,
+            org_url=ado_cfg['organization_url'],
             storage=storage_diskcache,
             config_backend=container.get("config_backend"),
             team_repository=container.get("team_repository"),
@@ -644,7 +645,8 @@ def _create_prepared_app(config: Config, storage_diskcache: StorageBackend) -> F
     # its own __init__ log only appears on the first request.  main.py owns the
     # flag-based decision, so it is the right place for this summary.
     from planner_lib.backend.registry import get_active_class
-    _active_backend_cls = get_active_class(feature_flags)
+    _active_backend_cls = get_active_class(
+        server_cfg, storage_diskcache.load('config', 'ado_config'))
     _cache_on = feature_flags.get('enable_cache', False)
     if _cache_on:
         logger.info(

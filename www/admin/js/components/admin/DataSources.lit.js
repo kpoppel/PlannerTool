@@ -47,38 +47,22 @@ const TTL_DEFAULTS = {
   fetch_teams:      240,
 };
 
-/**
- * Derive a friendly backend-type key from ado_config feature_flags.
- * Priority matches BackendRegistry._priority_backends() order.
- * @param {object} flags
- * @returns {'ado_static'|'ado_mock_generator'|'ado_mock_fixture'|'ado_live'}
- */
-function backendTypeFromFlags(flags = {}) {
-  if (flags.use_static_backend)        return 'ado_static';
-  if (flags.use_azure_mock_generator)  return 'ado_mock_generator';
-  if (flags.use_azure_mock)            return 'ado_mock_fixture';
-  return 'ado_live';
-}
+// UI option values mapped to the persisted ado_config.transport.
+const TRANSPORT_BY_TYPE = {
+  ado_live: 'live',
+  ado_mock_fixture: 'mock_fixture',
+  ado_mock_generator: 'mock_generator',
+  ado_static: 'static',
+};
 
 /**
- * Build a new feature_flags object for the given backend type.
- * All type-selection booleans are cleared; only the selected one is set true.
- * All other (non-type) flags and sub-configs are preserved from existingFlags.
- * @param {'ado_live'|'ado_mock_fixture'|'ado_mock_generator'|'ado_static'} type
- * @param {object} existingFlags
- * @returns {object}
+ * @param {string} transport persisted ado_config.transport
+ * @returns {'ado_static'|'ado_mock_generator'|'ado_mock_fixture'|'ado_live'}
  */
-function buildFlagsForType(type, existingFlags = {}) {
-  const next = { ...existingFlags };
-  // Clear all type selectors
-  delete next.use_static_backend;
-  delete next.use_azure_mock_generator;
-  delete next.use_azure_mock;
-  // Set the chosen one (ado_live leaves no flag set — default fallback in registry)
-  if (type === 'ado_static')         next.use_static_backend = true;
-  if (type === 'ado_mock_generator') next.use_azure_mock_generator = true;
-  if (type === 'ado_mock_fixture')   next.use_azure_mock = true;
-  return next;
+function backendTypeFromTransport(transport) {
+  const type = Object.keys(TRANSPORT_BY_TYPE).find(key => TRANSPORT_BY_TYPE[key] === transport);
+  if (type === undefined) throw new Error(`Unknown ADO transport: ${transport}`);
+  return type;
 }
 
 function resultErrorMessage(result, fallback = 'Request failed') {
@@ -369,7 +353,7 @@ export class DataSources extends LitElement {
         const flags          = adoCfg.feature_flags || {};
         this._adoFlags       = flags;
         this._orgUrl         = adoCfg.organization_url || '';
-        this._adoBackendType = backendTypeFromFlags(flags);
+        this._adoBackendType = backendTypeFromTransport(adoCfg.transport);
 
         // Fixture mock sub-config
         this._fixtureDir     = flags.azure_mock_data_dir      || 'data/azure_mock';
@@ -487,7 +471,7 @@ export class DataSources extends LitElement {
       // 2. Save ADO config — backend selection + org URL + all sub-configs.
       // Sub-config values are always persisted (not just for the active backend)
       // so switching back retains the last-entered values.
-      const newFlags = buildFlagsForType(this._adoBackendType, { ...this._adoFlags });
+      const newFlags = { ...this._adoFlags };
       newFlags.azure_mock_data_dir        = this._fixtureDir;
       newFlags.azure_mock_persist_enabled = this._fixturePersist;
       newFlags.generator_persist_enabled  = this._genPersistEnabled;
@@ -508,6 +492,7 @@ export class DataSources extends LitElement {
       const adoPayload = {
         ...this._adoContent,
         organization_url: this._orgUrl.trim(),
+        transport: TRANSPORT_BY_TYPE[this._adoBackendType],
         feature_flags: newFlags,
       };
       const adoSaveResult = await adminProvider.saveAdo(adoPayload);

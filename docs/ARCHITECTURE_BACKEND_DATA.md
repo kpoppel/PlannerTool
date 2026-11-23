@@ -83,7 +83,7 @@ planner_lib/
 | `TaskBackend`, `HistoryBackend`, `TeamsBackend`, `PlansBackend`, `IterationsBackend` | Focused remote-data ports. `BackendPort` composes these remote contracts. |
 | `ConfigBackend` | Reads and writes configuration keys in authoritative diskcache storage. |
 | `UserDataBackend` | Reads and writes scenarios, views, events, and groups in authoritative storage. |
-| `BackendRegistry` | Selects one remote provider from ordered feature flags. |
+| `BackendRegistry` | Selects one task backend by `task_backend_id` and, for ADO, its transport. |
 | `CachingBackend` | Transparently caches `fetch_*` calls, tracks soft freshness, and patches cached task lists after writes. |
 | `AzureAdapter` | Converts raw Azure-shaped work items into canonical `DomainTask` values. |
 | `DiskCacheStorage` | Implements the `StorageBackend` abstraction over diskcache/SQLite. |
@@ -343,15 +343,23 @@ particular, `ConfigBackend` and `UserDataBackend` do not pass through
 
 ### Provider Selection
 
-`BackendRegistry` evaluates feature flags in this order; the first enabled
-flag wins. `AzureDevOpsBackend` is the default when no mock/static flag is set.
+`server_config.task_backend_id` selects exactly one task backend (`ado` in this
+build; `local` is reserved for the SQLite backend). For `ado`,
+`ado_config.transport` selects the provider class. Settings of an inactive
+backend or transport are retained unchanged. Schema revision 46 replaced the
+retired `use_*` selector flags, preserving their former priority.
 
-| Priority | Provider | Flag | Data representation |
-|---|---|---|---|
-| 1 | `StaticBackend` | `use_static_backend` | Domain data loaded from YAML or JSON. |
-| 2 | `MockGeneratorBackend` | `use_azure_mock_generator` | ADO-shaped/generated data translated by `AzureAdapter`. |
-| 3 | `MockFixtureBackend` | `use_azure_mock` | ADO-shaped fixture data translated by `AzureAdapter`. |
-| 4 | `AzureDevOpsBackend` | none | Live Azure DevOps data translated by `AzureAdapter`. |
+| Transport | Provider | Data representation |
+|---|---|---|
+| `static` | `StaticBackend` | Domain data loaded from YAML or JSON. |
+| `mock_generator` | `MockGeneratorBackend` | ADO-shaped/generated data translated by `AzureAdapter`. |
+| `mock_fixture` | `MockFixtureBackend` | ADO-shaped fixture data translated by `AzureAdapter`. |
+| `live` | `AzureDevOpsBackend` | Live Azure DevOps data translated by `AzureAdapter`. |
+
+Each backend class declares `BACKEND_ID` and `CAPABILITIES` (see
+`TASK_CAPABILITIES` in `planner_lib/backend/port.py`). `GET /api/task-backend`
+returns the active id and capabilities; `GET /admin/v1/task-backends` lists
+registered backends.
 
 ### Cache Read Path
 
@@ -645,7 +653,7 @@ single source of truth when fields change.
 
 ### Static Backend File Format
 
-For `use_static_backend: true`, the YAML/JSON file maps `area_path` to a list of
+For `ado_config.transport: static`, the YAML/JSON file maps `area_path` to a list of
 canonical `DomainTask` values. Optional top-level keys provide `_teams`,
 `_plans`, `_markers`, `_iterations`, and `_history`. Static files are
 served as-is, so malformed or provider-shaped records are a data/configuration

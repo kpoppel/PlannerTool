@@ -58,22 +58,16 @@ class ReloadOrchestrator:
         # detect a backend-type switch and invalidate stale cached data.
         old_backend_class = type(self._azure_client._client) if self._azure_client is not None else None
 
-        # Update azure_client runtime settings from ado_config (diskcache).
-        try:
-            ado_cfg = self._storage.load('config', 'ado_config') or {}
-        except KeyError:
-            ado_cfg = {}
-        self._azure_client.organization_url = ado_cfg.get('organization_url') or ''
-        # Merge generic feature_flags (server_config) + ADO-specific flags (ado_config).
-        try:
-            server_cfg = self._storage.load('config', 'server_config') or {}
-        except KeyError:
-            server_cfg = {}
+        # Both records exist from schema revision 46 onward.
+        ado_cfg = self._storage.load('config', 'ado_config')
+        server_cfg = self._storage.load('config', 'server_config')
+        self._azure_client.organization_url = ado_cfg['organization_url']
         log_level = server_cfg.get('log_level')
         if log_level:
             logging.getLogger().setLevel(getattr(logging, str(log_level).upper()))
-        merged_flags = {**(server_cfg.get('feature_flags') or {}), **(ado_cfg.get('feature_flags') or {})}
-        self._azure_client.feature_flags = merged_flags
+        # Merge generic feature_flags (server_config) + ADO transport settings (ado_config).
+        self._azure_client.feature_flags = {**server_cfg['feature_flags'], **ado_cfg['feature_flags']}
+        self._azure_client.transport = ado_cfg['transport']
         # Rebuild the concrete client so feature-flag changes take effect.
         self._azure_client.rebuild_client()
 

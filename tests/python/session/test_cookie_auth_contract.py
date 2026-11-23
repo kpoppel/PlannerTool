@@ -31,7 +31,7 @@ def test_delegated_admin_access_is_scoped(client, permission, allowed):
         storage = client.app.state.container.get('storage')
         storage.save('config', 'ado_config', {
             'organization_url': 'ExampleOrg', 'private_setting': 'not-for-delegates',
-            'feature_flags': {'use_azure_mock_generator': True},
+            'feature_flags': {}, 'transport': 'mock_generator',
         })
         browse = client.get('/admin/v1/browse-config')
         assert browse.status_code == 200
@@ -239,7 +239,8 @@ def test_live_ado_profile_does_not_load_pat(client, monkeypatch, stored_pat, rej
         **record, 'pat': stored_pat, 'pat_invalid': rejected,
     })
     storage.save(
-        'config', 'ado_config', {'organization_url': 'ExampleOrg', 'feature_flags': {}},
+        'config', 'ado_config', {'organization_url': 'ExampleOrg', 'feature_flags': {},
+                                 'transport': 'live'},
     )
     load_account = Mock(wraps=accounts.load)
     monkeypatch.setattr(accounts, 'load', load_account)

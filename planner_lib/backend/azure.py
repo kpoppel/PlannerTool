@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 
 from planner_lib.azure.authentication import token_from_credential
 from planner_lib.azure.catalogue import imported_type_index, resolve_plan_process
-from planner_lib.backend.port import BackendCredential, BackendPort
+from planner_lib.backend.port import ADO_CAPABILITIES, BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
 from planner_lib.backend.errors import (
     BackendAuthError,
@@ -75,8 +75,9 @@ class AzureDevOpsBackend(BackendPort):
         descriptions.
     """
 
-    # AzureDevOpsBackend is the default; it has no dedicated feature flag.
-    FEATURE_FLAG = None
+    BACKEND_ID = 'ado'
+    TRANSPORT = 'live'
+    CAPABILITIES = ADO_CAPABILITIES
 
     # Live ADO is the only backend subject to transient API outages and PAT
     # expiry.  CachingBackend reads this flag to scope its stale-on-failure
@@ -86,11 +87,7 @@ class AzureDevOpsBackend(BackendPort):
 
     @classmethod
     def config_schema(cls) -> Dict[str, Any]:
-        """Return empty dict — AzureDevOpsBackend is the implicit default backend.
-
-    # All other feature_flags properties (enable_cache, etc.) live in the
-        non-backend portion of the system schema.
-        """
+        """Return transport settings — the live transport has none."""
         return {}
 
     @classmethod
@@ -134,16 +131,14 @@ class AzureDevOpsBackend(BackendPort):
         )
 
     def reload(self) -> None:
-        """Rebuild the backend in place from the current ADO config."""
-        try:
-            ado_cfg = self._config.fetch_ado_config() if self._config is not None else {}
-        except Exception:
-            ado_cfg = {}
+        """Rebuild the backend in place from the current backend selection."""
         from planner_lib.backend.registry import rebuild_backend_instance
+        ado_cfg = self._config.fetch_ado_config()
         rebuild_backend_instance(
             self,
-            ado_cfg.get('feature_flags') or {},
-            org_url=ado_cfg.get('organization_url') or self._organization_url,
+            self._config.fetch_server_config(),
+            ado_cfg,
+            org_url=ado_cfg['organization_url'],
             storage=self._storage,
             config_backend=self._config,
             team_repository=self._team_repository,

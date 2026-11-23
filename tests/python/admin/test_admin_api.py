@@ -264,7 +264,7 @@ def test_admin_restore_backup_reloads_config_after_restore():
                 'ado_config',
                 {
                     'organization_url': 'https://example.visualstudio.com',
-                    'feature_flags': {'use_azure_mock_generator': True},
+                    'transport': 'mock_generator', 'feature_flags': {},
                 },
             )
             return {'ok': True, 'message': 'Restore completed successfully.'}
@@ -303,7 +303,7 @@ def test_admin_restore_backup_reloads_config_after_restore():
     assert res.status_code == 200
     assert called['restore_args'][1] == 'admin1@admin'
     assert called['reloaded'] is True
-    assert storage.data['config']['ado_config']['feature_flags']['use_azure_mock_generator'] is True
+    assert storage.data['config']['ado_config']['transport'] == 'mock_generator'
 
 
 @pytest.mark.parametrize('azure_fails', [False, True])

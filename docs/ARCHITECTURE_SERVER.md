@@ -378,8 +378,8 @@ mounts the built frontend at `/static`.
 
 - **Ports and adapters:** focused protocols isolate repositories from Azure SDK
   details and allow live, mock, fixture, and static implementations.
-- **Strategy and registry:** feature flags select one backend from a priority-
-  ordered registry without changing repository code.
+- **Strategy and registry:** the persisted `task_backend_id` (and, for ADO, the
+  transport) selects one backend from the registry without changing repository code.
 - **Decorator/proxy:** `CachingBackend` adds read caching around a compatible
   backend while preserving its capability surface.
 - **Dependency injection:** lazy factories avoid import-time application state
@@ -404,13 +404,13 @@ mounts the built frontend at `/static`.
 
 ### Extension Points
 
-To add a remote backend:
+To add a task backend:
 
 1. Implement the required focused protocols in `planner_lib/backend/port.py`.
-2. Add `FEATURE_FLAG`, `config_schema()`, and `build_from_flags()` to the
-   backend class.
-3. Register it in `_priority_backends()` in
-   `planner_lib/backend/registry.py` at the intended priority.
+2. Add `BACKEND_ID`, `CAPABILITIES`, `config_schema()`, and `build_from_flags()`
+   to the backend class.
+3. Register it in `planner_lib/backend/registry.py` and allow its id in
+   `planner_lib/backend/selection.py`.
 4. Add backend and repository tests using a non-network fixture.
 
 To add a local domain, add a focused protocol and implementation to

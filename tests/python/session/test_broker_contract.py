@@ -75,7 +75,7 @@ def sandbox(monkeypatch, tmp_path, request):
             'name': name, 'email': email,
         })
     storage.save('config', 'ado_config', {
-        'organization_url': 'example', 'feature_flags': {'use_azure_mock': True}})
+        'organization_url': 'example', 'feature_flags': {}, 'transport': 'mock_fixture'})
     requests = []
 
     def transport(request):
@@ -335,7 +335,7 @@ def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, 
     sessions = container.get('session_manager')
     session_id = sessions.create('existing@example.test')
     assert sessions.is_valid(session_id)
-    ado_config = {'organization_url': 'copied-projects', 'feature_flags': {}}
+    ado_config = {'organization_url': 'copied-projects', 'feature_flags': {}, 'transport': 'live'}
     storage.save('config', 'ado_config', ado_config)
     namespaces = ('accounts', 'account_auth', 'config', 'views', 'scenarios', 'external_identities')
     before = {namespace: {key: storage.load(namespace, key) for key in storage.list_keys(namespace)}
@@ -374,7 +374,7 @@ def test_new_entra_identity_can_sign_in_with_live_ado_without_pat(sandbox, monke
     storage.delete('external_identities', identity_key(
         BROKER_ISSUER, '33333333-3333-3333-3333-333333333333'))
     storage.save('config', 'ado_config', {
-        'organization_url': 'https://dev.azure.com/example', 'feature_flags': {}})
+        'organization_url': 'https://dev.azure.com/example', 'feature_flags': {}, 'transport': 'live'})
     monkeypatch.setattr(accounts, 'validate_pat', lambda value: pytest.fail('Login required a PAT'))
 
     state = client.post('/api/auth/login/begin', headers={
@@ -399,12 +399,12 @@ def test_mock_auth_preserves_admin_backend_choice_and_authentication(sandbox):
     storage = container.get('storage')
     authentication = dict(storage.load('config', 'authentication'))
     manager = ConfigManager(storage)
-    local_config = {'organization_url': 'example', 'feature_flags': {'use_azure_mock_generator': True}}
+    local_config = {'organization_url': 'example', 'feature_flags': {}, 'transport': 'mock_generator'}
     manager.save_config('ado_config', local_config)
     assert storage.load('config', 'ado_config') == local_config
     assert storage.load('config', 'authentication') == authentication
     assert client.get('/api/auth/config').json()['mode'] == 'broker'
-    copied_config = {'organization_url': 'copied-projects', 'feature_flags': {}}
+    copied_config = {'organization_url': 'copied-projects', 'feature_flags': {}, 'transport': 'live'}
     manager.save_config('ado_config', copied_config)
     assert storage.load('config', 'ado_config') == copied_config
     assert requests == []
@@ -657,7 +657,8 @@ def test_config_save_and_restore_cannot_activate_a_source(sandbox):
         manager.save_config('authentication', incompatible)
     with pytest.raises(ValueError, match='deployment-controlled'):
         manager.restore_backup({'schema_revision': TARGET_REVISION, 'config': {'authentication': incompatible}})
-    manager.save_config('ado_config', {'organization_url': 'copied-projects', 'feature_flags': {}})
+    manager.save_config('ado_config', {'organization_url': 'copied-projects', 'feature_flags': {},
+                                       'transport': 'live'})
 
 
 def test_entra_denies_pat_and_enrollment_mutations(sandbox):

@@ -6,6 +6,8 @@ from planner_lib.middleware.session import SessionManager
 from planner_lib.session.auth import AuthManager
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
+LIVE_ADO = {'organization_url': 'example', 'feature_flags': {}, 'transport': 'live'}
+
 
 
 
@@ -14,7 +16,7 @@ def test_live_ado_enrollment_requires_pat_without_creating_account(client, app):
     first = client.post('/api/auth/enroll', json={
         'email': 'existing@example.com', 'name': 'Existing',
     }).json()
-    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    storage.save('config', 'ado_config', LIVE_ADO)
 
     status = client.post('/api/auth/enrollment-status', json={
         'email': 'existing@example.com',
@@ -41,7 +43,7 @@ def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monke
     response = client.post('/api/auth/enroll', json={'email': 'admin@example.com', 'name': 'Admin'})
     assert response.status_code == 200
     storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    storage.save('config', 'ado_config', LIVE_ADO)
 
     for path in ('/api/azure/area-paths?project=Example',):
         response = client.get(path)
@@ -54,10 +56,10 @@ def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monke
                  '/admin/v1/groups-config', '/admin/v1/system'):
         assert client.get(path).status_code == 200
     for path, content in (
-        ('/admin/v1/ado', {'organization_url': 'example', 'feature_flags': {}}),
+        ('/admin/v1/ado', LIVE_ADO),
         ('/admin/v1/events-config', {'event_backend': 'local'}),
         ('/admin/v1/groups-config', {'groups_backend': 'local'}),
-        ('/admin/v1/system', {'feature_flags': {}, 'cache': {'ttls': {}}}),
+        ('/admin/v1/system', {'feature_flags': {}, 'task_backend_id': 'ado', 'cache': {'ttls': {}}}),
     ):
         assert client.post(path, json={'content': content}).status_code == 200
 
@@ -97,9 +99,7 @@ def test_local_permission_update_does_not_request_ado_credentials(client, app, m
     container = app.state.container
     accounts = container.get('account_manager')
     account_id = accounts.get_account_id('admin@example.com')
-    container.get('storage').save('config', 'ado_config', {
-        'organization_url': 'example', 'feature_flags': {},
-    })
+    container.get('storage').save('config', 'ado_config', LIVE_ADO)
     if pat_state == 'invalid':
         assert client.post('/api/config', json={
             'email': 'admin@example.com', 'pat': 'revoked-pat',
@@ -135,9 +135,7 @@ def test_admin_reset_without_valid_pat_rotates_key_and_revokes_devices(
     container = app.state.container
     accounts = container.get('account_manager')
     account_id = accounts.get_account_id('admin@example.com')
-    container.get('storage').save('config', 'ado_config', {
-        'organization_url': 'example', 'feature_flags': {},
-    })
+    container.get('storage').save('config', 'ado_config', LIVE_ADO)
     if pat_state == 'invalid':
         assert client.post('/api/config', json={
             'email': 'admin@example.com', 'pat': 'rejected-pat',
@@ -166,7 +164,7 @@ def test_existing_account_enrollment_does_not_revalidate_or_replace_pat(client, 
     from planner_lib.azure.AzureClient import AzureClient
     first = client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'}).json()
     storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    storage.save('config', 'ado_config', LIVE_ADO)
     monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     configured = client.post('/api/config', json={
         'email': 'owner@example.com', 'pat': 'active-pat',
@@ -194,7 +192,7 @@ def test_ado_auth_failure_routes_to_pat_repair_not_enrollment(client, app, monke
     monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
     storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    storage.save('config', 'ado_config', LIVE_ADO)
     client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'valid-pat'})
     repository = app.state.container.get('task_repository')
 
@@ -227,7 +225,7 @@ def test_invalid_pat_keeps_local_admin_and_cached_task_reads_available(
     monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     client.post('/api/auth/enroll', json={'email': 'reader@example.com', 'name': 'Reader'})
     storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    storage.save('config', 'ado_config', LIVE_ADO)
     client.post('/api/config', json={'email': 'reader@example.com', 'pat': 'valid-pat'})
     app.state.container.get('account_manager').reject_pat('reader@example.com', 'valid-pat')
 
@@ -261,9 +259,7 @@ def test_local_record_mutations_do_not_require_pat(client, app, monkeypatch, end
     container = app.state.container
     accounts = container.get('account_manager')
     accounts.set_permissions(accounts.get_account_id('local-writer@example.com'), [])
-    container.get('storage').save('config', 'ado_config', {
-        'organization_url': 'example', 'feature_flags': {},
-    })
+    container.get('storage').save('config', 'ado_config', LIVE_ADO)
     if pat_state == 'invalid':
         assert client.post('/api/config', json={
             'email': 'local-writer@example.com', 'pat': 'rejected-pat',
@@ -328,9 +324,7 @@ def test_wiki_event_mutations_still_require_pat(client, app, endpoint):
         'email': 'wiki-writer@example.com', 'name': 'Wiki Writer',
     }).status_code == 200
     container = app.state.container
-    container.get('storage').save('config', 'ado_config', {
-        'organization_url': 'example', 'feature_flags': {},
-    })
+    container.get('storage').save('config', 'ado_config', LIVE_ADO)
     backend = Mock()
     backend.create_event.side_effect = BackendAuthError('Wiki requires a credential')
     backend.create_category.side_effect = BackendAuthError('Wiki requires a credential')
@@ -364,7 +358,7 @@ def test_auth_rejection_preserves_replacement_pat(
     monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
     storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    storage.save('config', 'ado_config', LIVE_ADO)
     accounts = app.state.container.get('account_manager')
     client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'original-pat'})
     provider = app.state.container.get('credential_provider')
@@ -402,7 +396,7 @@ def test_pat_validation_outage_preserves_credentials_and_returns_503(client, app
     monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
     storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', {'organization_url': 'example', 'feature_flags': {}})
+    storage.save('config', 'ado_config', LIVE_ADO)
     client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'valid-pat'})
 
     def unavailable(client):

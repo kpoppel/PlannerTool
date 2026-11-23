@@ -53,8 +53,8 @@ async function bootstrapTestData(page, testDataDir) {
     await post('/admin/v1/ado', {
       content: {
         organization_url: 'anonymous-org',
+        transport: 'mock_generator',
         feature_flags: {
-          use_azure_mock_generator: true,
           data_dir: dataDir,
           generator_persist_enabled: true,
           generator_persist_dir: `${dataDir}/azure_mock_generated`,

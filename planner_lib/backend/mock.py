@@ -129,16 +129,14 @@ class _MockBackendBase(AzureDevOpsBackend):
         return {'ok': True, 'invalidated': [], 'errors': []}
 
     def reload(self) -> None:
-        """Rebuild the backend in place from the current ADO config."""
-        try:
-            ado_cfg = self._config.fetch_ado_config() if self._config is not None else {}
-        except Exception:
-            ado_cfg = {}
+        """Rebuild the backend in place from the current backend selection."""
         from planner_lib.backend.registry import rebuild_backend_instance
+        ado_cfg = self._config.fetch_ado_config()
         rebuild_backend_instance(
             self,
-            ado_cfg.get('feature_flags') or {},
-            org_url=ado_cfg.get('organization_url') or self._organization_url,
+            self._config.fetch_server_config(),
+            ado_cfg,
+            org_url=ado_cfg['organization_url'],
             storage=self._storage,
             config_backend=self._config,
             team_repository=self._team_repository,
@@ -176,28 +174,18 @@ class MockFixtureBackend(_MockBackendBase):
         fixture JSON files so changes survive across restarts.
     """
 
-    FEATURE_FLAG: str = 'use_azure_mock'
+    TRANSPORT = 'mock_fixture'
 
     @classmethod
     def config_schema(cls) -> Dict[str, Any]:
-        """JSON Schema properties for this backend's feature_flags entries."""
+        """JSON Schema properties for this transport's settings."""
         return {
-            'use_azure_mock': {
-                'type': 'boolean',
-                'title': 'Use Azure Fixture Mock',
-                'description': (
-                    'Replay pre-recorded Azure DevOps SDK responses from disk instead '
-                    'of calling the live API. Record fixture data first with '
-                    'scripts/record_azure_mock.py.'
-                ),
-                'default': False,
-            },
             'azure_mock_data_dir': {
                 'type': 'string',
                 'title': 'Fixture Mock Data Directory',
-                'description': 'Path to the directory containing recorded fixture files (used when use_azure_mock is true)',
+                'description': 'Path to the directory containing recorded fixture files',
                 'default': 'data/azure_mock',
-                'x-showWhen': 'use_azure_mock',
+                'x-transport': 'mock_fixture',
             },
             'azure_mock_persist_enabled': {
                 'type': 'boolean',
@@ -208,7 +196,7 @@ class MockFixtureBackend(_MockBackendBase):
                     'Allows testing write operations against anonymised fixture data.'
                 ),
                 'default': False,
-                'x-showWhen': 'use_azure_mock',
+                'x-transport': 'mock_fixture',
             },
         }
 
@@ -391,21 +379,12 @@ class MockGeneratorBackend(_MockBackendBase):
         Optional path; when set, generated data is persisted as JSON fixture files.
     """
 
-    FEATURE_FLAG: str = 'use_azure_mock_generator'
+    TRANSPORT = 'mock_generator'
 
     @classmethod
     def config_schema(cls) -> Dict[str, Any]:
-        """JSON Schema properties for this backend's feature_flags entries."""
+        """JSON Schema properties for this transport's settings."""
         return {
-            'use_azure_mock_generator': {
-                'type': 'boolean',
-                'title': 'Use Azure Synthetic Data Generator',
-                'description': (
-                    'Generate a coherent synthetic dataset from config files instead of '
-                    'calling the live API (takes priority over use_azure_mock).'
-                ),
-                'default': False,
-            },
             'generator_persist_enabled': {
                 'type': 'boolean',
                 'title': 'Persist Generated Data',
@@ -415,19 +394,19 @@ class MockGeneratorBackend(_MockBackendBase):
                     'Uses generator_persist_dir as the target; defaults to data/azure_mock_generated when not set.'
                 ),
                 'default': False,
-                'x-showWhen': 'use_azure_mock_generator',
+                'x-transport': 'mock_generator',
             },
             'generator_persist_dir': {
                 'type': 'string',
                 'title': 'Generator Persist Directory',
                 'description': 'Directory for persisted fixture files (defaults to data/azure_mock_generated when generator_persist_enabled is true)',
-                'x-showWhen': 'generator_persist_enabled',
+                'x-transport': 'mock_generator',
             },
             'generator_config': {
                 'type': 'object',
                 'title': 'Synthetic Generator Configuration',
-                'description': 'Fine-grained control over the synthetic data generator (used when use_azure_mock_generator is true)',
-                'x-showWhen': 'use_azure_mock_generator',
+                'description': 'Fine-grained control over the synthetic data generator',
+                'x-transport': 'mock_generator',
                 'properties': {
                     'seed': {
                         'type': 'integer',

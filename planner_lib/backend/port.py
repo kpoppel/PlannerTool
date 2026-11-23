@@ -51,13 +51,13 @@ Adding a new domain
 4. Register a new DI key (e.g. ``budget_backend``) and create a
    ``BudgetRepository`` that depends on it.
 
-Adding a new external-data backend (e.g. Jira)
------------------------------------------------
-1. Create a new backend class implementing BackendPort.
-2. Define its config under ``AdoConfigBackend`` by analogy — or add a new
-   protocol (e.g. ``JiraConfigBackend``) and implement it in ConfigBackend.
-3. Return its config schema from ``config_schema()``.
-4. Register in ``BackendRegistry._priority_backends()``.
+Adding a new task backend (e.g. Jira)
+-------------------------------------
+1. Create a backend class with ``BACKEND_ID``, ``CAPABILITIES`` and the
+   focused protocols it owns (never empty stubs for the rest).
+2. Keep its settings in its own config record, keyed by its backend id.
+3. Return its settings schema from ``config_schema()``.
+4. Register it in ``planner_lib.backend.registry``.
 
 Credential handling
 -------------------
@@ -70,12 +70,35 @@ from __future__ import annotations
 from typing import List, Optional, Dict, Any, Literal
 from typing_extensions import TypedDict, Protocol, runtime_checkable, NotRequired
 
-from planner_lib.domain.tasks import BackendTask, WriteResult
+from planner_lib.domain.tasks import BackendTask, BatchWriteResult, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.domain.projects import DomainProject
 from planner_lib.domain.teams import DomainTeam
 from planner_lib.domain.scenarios import DomainScenario
 from planner_lib.domain.views import DomainView
+
+
+# ---------------------------------------------------------------------------
+# Backend capabilities
+# ---------------------------------------------------------------------------
+
+# Optional operations a task backend may declare in ``CAPABILITIES``. Callers
+# check a capability instead of probing for methods or backend classes.
+TASK_CAPABILITIES = frozenset({
+    'task_read',          # canonical task forest reads
+    'task_publish',       # scenario publication of dates/capacity/state/iteration/tags
+    'relations_publish',  # scenario publication of relations
+    'task_create',
+    'task_edit',          # title/description/custom fields outside scenarios
+    'task_delete',
+    'field_merge',        # field-level conflict detection on publish
+    'history',
+    'markers',
+    'catalogue_edit',     # editable processes/types/workflows/field schemas
+    'remote_discovery',   # organization/project/area/iteration browsing
+})
+
+ADO_CAPABILITIES = frozenset({'task_read', 'task_publish', 'history', 'markers', 'remote_discovery'})
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +208,23 @@ class TaskBackend(Protocol):
 
 
 @runtime_checkable
+class BatchTaskBackend(Protocol):
+    """Task backend that commits a whole publication atomically.
+
+    Each update may carry ``base`` (``UpdateBase``); fields changed since that
+    base are returned as ``conflicts`` and nothing is written.
+    """
+
+    def write_tasks(
+        self,
+        updates: List[Dict[str, Any]],
+        credential: Optional[BackendCredential],
+        *,
+        actor_id: str,
+    ) -> BatchWriteResult: ...
+
+
+@runtime_checkable
 class HistoryBackend(Protocol):
     """Backend that can read work-item revision history."""
 
@@ -234,6 +274,20 @@ class IterationsBackend(Protocol):
         root_paths: Optional[List[str]] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
+
+
+@runtime_checkable
+class CatalogueBackend(Protocol):
+    """Backend-owned process/type/state catalogue.
+
+    ``work_item_display`` returns ``[{process_id, tiers: [[{name, states:
+    [{name, category}]}]]}]`` ordered for presentation. ``process_id`` values
+    are unique within ``backend_id``.
+    """
+
+    backend_id: str
+
+    def work_item_display(self) -> List[dict]: ...
 
 
 @runtime_checkable

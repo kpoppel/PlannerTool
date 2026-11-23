@@ -28,6 +28,7 @@ Template - do not change :
 - Add offline credential preflight and actionable setup guidance to the development launcher and broker container, rejecting invalid, expired or mismatched application certificates before startup.
 
 ### Changed
+- Select the task backend explicitly and, for Azure DevOps, its transport (live, synthetic generator, fixture replay or static file) instead of priority-ordered feature flags. Existing selections migrate unchanged, and settings of inactive backends and transports are retained.
 - Show Task Types first and State second in Task Filters, followed by the remaining selectors.
 - Show the active tool's name in the Tools menu button, or the number of active tools when several are selected.
 - Fit a persistent View context overview to the load graph's height, with Plan/Team focus controls, team drill-down, and type/state choices that stay visible when off. Keep advanced-filter indicators and quick cycling visible with detailed choices in the menu. Place task search beside the Tasks heading without an empty strip below the graph or timeline header.
