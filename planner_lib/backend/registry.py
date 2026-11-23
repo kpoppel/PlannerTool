@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Type
 
 from planner_lib.backend.selection import (
-    ADO_BACKEND_ID, ADO_TRANSPORTS, ado_transport, task_backend_id,
+    ADO_BACKEND_ID, ADO_TRANSPORTS, LOCAL_BACKEND_ID, ado_transport, task_backend_id,
 )
 
 
@@ -75,11 +75,19 @@ def rebuild_backend_instance(
 def describe_backends() -> List[Dict[str, Any]]:
     """Backend identity and display metadata for administration."""
     classes = _ado_transport_classes()
+    available = available_backend_ids()
     return [{
         'id': ADO_BACKEND_ID,
         'label': 'Azure DevOps',
+        'available': ADO_BACKEND_ID in available,
         'transports': list(ADO_TRANSPORTS),
         'capabilities': sorted(classes['live'].CAPABILITIES),
+    }, {
+        'id': LOCAL_BACKEND_ID,
+        'label': 'Local (SQLite)',
+        'available': LOCAL_BACKEND_ID in available,
+        'transports': [],
+        'capabilities': [],
     }]
 
 

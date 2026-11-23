@@ -116,7 +116,19 @@ export class AdminProviderREST extends RestProviderBase {
   }
 
   async saveSystem(content) {
-    return this._saveContent('/admin/v1/system', content);
+    return this._configSaveResult(await this._saveContent('/admin/v1/system', content));
+  }
+
+  async getTaskBackends() {
+    return this._requestJson('/admin/v1/task-backends');
+  }
+
+  _configSaveResult(result) {
+    if (!result.ok && result.error.status === 400) {
+      const validation = result.error.detail;
+      return fail({ ...result.error, code: validation.error, message: validation.message });
+    }
+    return result;
   }
 
   async getAdo() {
@@ -128,7 +140,7 @@ export class AdminProviderREST extends RestProviderBase {
   }
 
   async saveAdo(content) {
-    return this._saveContent('/admin/v1/ado', content);
+    return this._configSaveResult(await this._saveContent('/admin/v1/ado', content));
   }
 
   async getEventsConfig() {

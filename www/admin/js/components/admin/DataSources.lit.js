@@ -197,6 +197,11 @@ export class DataSources extends LitElement {
     _pageFilter:          { type: String,  state: true },
     _pageDropdownOpen:    { type: Boolean, state: true },
 
+    // ---- Task backend selection ---------------------------------------
+    _taskBackends:        { type: Array,   state: true },
+    _taskBackendId:       { type: String,  state: true },
+    _savedTaskBackendId:  { type: String,  state: true },
+
     // ---- ADO backend selection -----------------------------------------
     _adoBackendType:      { type: String,  state: true },
     _orgUrl:              { type: String,  state: true },
@@ -259,6 +264,11 @@ export class DataSources extends LitElement {
     this._pageFilter          = '';
     this._pageDropdownOpen    = false;
 
+    // Task backend
+    this._taskBackends        = [];
+    this._taskBackendId       = 'ado';
+    this._savedTaskBackendId  = 'ado';
+
     // ADO backend
     this._adoBackendType      = 'ado_live';
     this._orgUrl              = '';
@@ -306,17 +316,23 @@ export class DataSources extends LitElement {
   async _load() {
     this._loading = true;
     try {
-      const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult] = await Promise.all([
+      const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult, backendsResult] = await Promise.all([
         adminProvider.getEventsConfig(),
         adminProvider.getAdo(),
         adminProvider.getSystem(),
         adminProvider.getGroupsConfig(),
+        adminProvider.getTaskBackends(),
       ]);
 
-      if (!evtCfgResult?.ok) throw new Error(resultErrorMessage(evtCfgResult, 'Failed to load events config'));
-      if (!adoCfgResult?.ok) throw new Error(resultErrorMessage(adoCfgResult, 'Failed to load ADO config'));
-      if (!sysCfgResult?.ok) throw new Error(resultErrorMessage(sysCfgResult, 'Failed to load system config'));
-      if (!grpCfgResult?.ok) throw new Error(resultErrorMessage(grpCfgResult, 'Failed to load groups config'));
+      if (!evtCfgResult.ok) throw new Error(resultErrorMessage(evtCfgResult, 'Failed to load events config'));
+      if (!adoCfgResult.ok) throw new Error(resultErrorMessage(adoCfgResult, 'Failed to load ADO config'));
+      if (!sysCfgResult.ok) throw new Error(resultErrorMessage(sysCfgResult, 'Failed to load system config'));
+      if (!grpCfgResult.ok) throw new Error(resultErrorMessage(grpCfgResult, 'Failed to load groups config'));
+      if (!backendsResult.ok) throw new Error(resultErrorMessage(backendsResult, 'Failed to load task backends'));
+
+      this._taskBackends       = backendsResult.data.backends;
+      this._taskBackendId      = backendsResult.data.active;
+      this._savedTaskBackendId = backendsResult.data.active;
 
       const evtCfg = evtCfgResult.data;
       const adoCfg = adoCfgResult.data;
@@ -408,11 +424,12 @@ export class DataSources extends LitElement {
     const errs = {};
 
     // ADO backend validation
-    if (this._adoBackendType === 'ado_live' && !this._orgUrl.trim())
+    const ado = this._taskBackendId === 'ado';
+    if (ado && this._adoBackendType === 'ado_live' && !this._orgUrl.trim())
       errs.orgUrl = 'Organization Name is required for Live ADO backend';
-    if (this._adoBackendType === 'ado_mock_fixture' && !this._fixtureDir.trim())
+    if (ado && this._adoBackendType === 'ado_mock_fixture' && !this._fixtureDir.trim())
       errs.fixtureDir = 'Fixture data directory is required';
-    if (this._adoBackendType === 'ado_static' && !this._staticDataPath.trim())
+    if (ado && this._adoBackendType === 'ado_static' && !this._staticDataPath.trim())
       errs.staticDataPath = 'Static data file path is required';
 
     // Plan Events validation
@@ -507,6 +524,7 @@ export class DataSources extends LitElement {
 
       const sysPayload = {
         ...this._systemContent,
+        task_backend_id: this._taskBackendId,
         cache: {
           ...(this._systemContent.cache || {}),
           ttls: ttlsToSave,
@@ -518,6 +536,7 @@ export class DataSources extends LitElement {
       }
 
       // Update saved baselines so the restart banner reflects the new state
+      this._savedTaskBackendId  = this._taskBackendId;
       this._savedAdoBackendType = this._adoBackendType;
       this._savedEventsBackend  = this._eventsBackend;
       this._adoContent          = adoPayload;
@@ -571,13 +590,41 @@ export class DataSources extends LitElement {
       </tr>`;
   }
 
+  /** Render the task backend selector; inactive backends keep their settings. */
+  _taskBackendRow() {
+    return html`
+      <tr>
+        <td>
+          <div class="domain-name">Task Backend</div>
+          <div class="domain-desc">The one system that owns work items. Switching keeps the other backend's settings.</div>
+        </td>
+        <td>
+          <select class="task-backend-select"
+            @change=${(e) => {
+              this._taskBackendId    = e.target.value;
+              this._validationErrors = {};
+              this._statusMsg        = '';
+            }}>
+            ${this._taskBackends.map(backend => html`
+              <option value=${backend.id}
+                .selected=${backend.id === this._taskBackendId}
+                ?disabled=${!backend.available}>
+                ${backend.label}${backend.available ? '' : ' (not available yet)'}
+              </option>`)}
+          </select>
+        </td>
+        <td class="ttl-col"><span class="ttl-dash">—</span></td>
+      </tr>`;
+  }
+
   render() {
     if (this._loading) {
       return html`<div class="loading">Loading data sources…</div>`;
     }
 
-    const needsRestart = this._adoBackendType  !== this._savedAdoBackendType ||
-                         this._eventsBackend   !== this._savedEventsBackend;
+    const needsRestart = this._taskBackendId  !== this._savedTaskBackendId ||
+                         this._adoBackendType !== this._savedAdoBackendType ||
+                         this._eventsBackend  !== this._savedEventsBackend;
 
     return html`
       <h2>Data Sources</h2>
@@ -592,7 +639,8 @@ export class DataSources extends LitElement {
             </tr>
           </thead>
           <tbody>
-            ${renderAdoGroup(this)}
+            ${this._taskBackendRow()}
+            ${this._taskBackendId === 'ado' ? renderAdoGroup(this) : ''}
             ${this._lockedRow('Scenarios', 'User-scoped what-if overrides — dates, capacity, state.', 'Local database')}
             ${this._lockedRow('Views', 'Saved timeline view state (zoom, filters, selected projects).', 'Local database')}
             <tr>

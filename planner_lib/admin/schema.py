@@ -75,13 +75,6 @@ _SCHEMAS: dict[str, Any] = {
                 'enum': ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                 'default': 'INFO',
             },
-            'task_backend_id': {
-                'type': 'string',
-                'title': 'Task Backend',
-                'description': 'The one active task backend. Selected in Data Sources.',
-                'enum': ['ado', 'local'],
-                'readOnly': True,
-            },
             'feature_flags': {
                 'type': 'object',
                 'title': 'Feature Flags',
@@ -98,12 +91,6 @@ _SCHEMAS: dict[str, Any] = {
                         'title': 'Enable Brotli Compression',
                         'description': 'Compress HTTP responses with Brotli',
                         'default': True,
-                    },
-                    'stand_alone_mode': {
-                        'type': 'boolean',
-                        'title': 'Stand-alone Mode',
-                        'description': 'Reserved for future use — enables fully offline operation without any backend connectivity',
-                        'default': False,
                     },
                     'manage_backup_snapshots': {
                         'type': 'boolean',

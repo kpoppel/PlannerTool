@@ -677,6 +677,8 @@ async def admin_save_system(request: Request):
         except Exception as e:
             logger.exception('Failed to reload configuration after saving system: %s', e)
         return {'ok': True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_config', 'message': str(e)})
     except Exception as e:
         logger.exception('Failed to save system: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -734,6 +736,8 @@ async def admin_save_ado(request: Request):
         except Exception as e:
             logger.exception('Failed to reload configuration after saving ADO config: %s', e)
         return {'ok': True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_config', 'message': str(e)})
     except Exception as e:
         logger.exception('Failed to save ADO config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')

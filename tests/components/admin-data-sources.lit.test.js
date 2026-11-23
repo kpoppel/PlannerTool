@@ -8,6 +8,13 @@ async function mount(authentication = null, ado = {}) {
     data: { organization_url: 'example', feature_flags: {}, transport: 'live', ...ado } });
   vi.spyOn(adminProvider, 'getSystem').mockResolvedValue({ ok: true,
     data: { task_backend_id: 'ado', feature_flags: {} } });
+  vi.spyOn(adminProvider, 'getTaskBackends').mockResolvedValue({ ok: true, data: {
+    active: 'ado',
+    backends: [
+      { id: 'ado', label: 'Azure DevOps', available: true },
+      { id: 'local', label: 'Local (SQLite)', available: false },
+    ],
+  } });
   vi.spyOn(adminProvider, 'getGroupsConfig').mockResolvedValue({ ok: true, data: { groups_backend: 'local' } });
   for (const method of ['saveEventsConfig', 'saveAdo', 'saveSystem', 'saveGroupsConfig']) {
     vi.spyOn(adminProvider, method).mockResolvedValue({ ok: true });
@@ -30,6 +37,35 @@ async function select(element, selector, value) {
 afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
+});
+
+describe('Data Sources task backend', () => {
+  it('offers registered backends and disables unavailable ones', async () => {
+    const element = await mount();
+    const options = [...element.shadowRoot.querySelectorAll('.task-backend-select option')];
+    expect(options.map(option => [option.value, option.disabled, option.selected]))
+      .toEqual([['ado', false, true], ['local', true, false]]);
+    expect(element.shadowRoot.querySelector('.backend-select')).not.toBeNull();
+  });
+
+  it('hides ADO sources for another backend and saves the selection with retained ADO settings', async () => {
+    const element = await mount();
+    expect(element.shadowRoot.querySelector('option[value="ado_live"]')).not.toBeNull();
+    await select(element, '.task-backend-select', 'local');
+    expect(element.shadowRoot.querySelector('option[value="ado_live"]')).toBeNull();
+    await element._save();
+    expect(adminProvider.saveSystem.mock.calls[0][0].task_backend_id).toBe('local');
+    expect(adminProvider.saveAdo.mock.calls[0][0].transport).toBe('live');
+    expect(adminProvider.saveAdo.mock.calls[0][0].organization_url).toBe('example');
+  });
+
+  it('shows the server validation message when saving fails', async () => {
+    const element = await mount();
+    adminProvider.saveSystem.mockResolvedValue({ ok: false,
+      error: { status: 400, message: 'Selected task backend is not available in this build' } });
+    await element._save();
+    expect(element._statusMsg).toBe('Error saving: Selected task backend is not available in this build');
+  });
 });
 
 describe('Data Sources authentication policy', () => {

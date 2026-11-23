@@ -69,11 +69,14 @@ def test_local_backend_is_not_available_yet():
 
 def test_describe_backends_reports_identity_and_capabilities():
     from planner_lib.backend.port import TASK_CAPABILITIES
-    [ado] = describe_backends()
+    ado, local = describe_backends()
     assert ado['id'] == 'ado'
+    assert ado['available'] is True
     assert ado['transports'] == ['live', 'mock_generator', 'mock_fixture', 'static']
     assert set(ado['capabilities']) <= TASK_CAPABILITIES
     assert 'task_create' not in ado['capabilities']
+    assert local['id'] == 'local'
+    assert local['available'] is False
 
 
 # ---------------------------------------------------------------------------

@@ -908,42 +908,14 @@ class TestAzureMockGeneratorPersistence:
 
 
 # ---------------------------------------------------------------------------
-# New feature flag tests — stand_alone_mode + generator_persist_enabled
+# Feature flag tests — generator_persist_enabled
 # ---------------------------------------------------------------------------
 
-class TestStandAloneMode:
-    """stand_alone_mode is a reserved boolean flag surfaced in the schema."""
-
-    def test_stand_alone_mode_in_schema(self):
-        from planner_lib.admin.schema import get_schema
-        schema = get_schema('system')
-        ff = schema['properties']['feature_flags']['properties']
-        assert 'stand_alone_mode' in ff, "stand_alone_mode must appear in feature_flags schema"
-        flag = ff['stand_alone_mode']
-        assert flag['type'] == 'boolean'
-        assert flag.get('default') is False
-
-    def test_stand_alone_mode_no_showwhen(self):
-        """Flag should always be visible (no conditional display)."""
-        from planner_lib.admin.schema import get_schema
-        schema = get_schema('system')
-        ff = schema['properties']['feature_flags']['properties']
-        assert 'x-showWhen' not in ff['stand_alone_mode']
-
-    def test_stand_alone_mode_does_not_affect_client_build(self):
-        """Setting stand_alone_mode should not change which client is constructed."""
-        from planner_lib.azure import AzureService
-        from planner_lib.storage import create_storage
-        storage = create_storage(backend='memory', serializer='json')
-        # Without the generator flag, setting stand_alone_mode must not raise
-        # and must NOT select the generator client.
-        svc = AzureService(
-            organization_url="anonymous-org",
-            storage=storage,
-            feature_flags={"stand_alone_mode": True},
-        )
-        from planner_lib.azure.AzureClient import AzureClient
-        assert isinstance(svc._client, AzureClient)
+def test_system_schema_has_no_backend_selection_or_stand_alone_mode():
+    from planner_lib.admin.schema import get_schema
+    schema = get_schema('system')
+    assert 'task_backend_id' not in schema['properties']
+    assert 'stand_alone_mode' not in schema['properties']['feature_flags']['properties']
 
 
 class TestGeneratorPersistEnabled:
