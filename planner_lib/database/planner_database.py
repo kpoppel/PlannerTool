@@ -145,13 +145,18 @@ class PlannerDatabase:
         with self.connect() as connection:
             applied = self._applied(connection)
             self._check_ledger(applied)
+            # SQLite's table-rebuild procedure: keys off, verified before commit.
+            connection.execute('PRAGMA foreign_keys=OFF')
             for version, migration_id, script in MIGRATIONS[len(applied):]:
                 timestamp = datetime.now(timezone.utc).isoformat()
                 try:
                     connection.executescript(
                         'BEGIN IMMEDIATE;\n' + script
                         + f"\nINSERT INTO schema_migrations VALUES ({version}, '{migration_id}', '{timestamp}');"
-                        + f'\nPRAGMA user_version = {version};\nCOMMIT;')
+                        + f'\nPRAGMA user_version = {version};')
+                    if connection.execute('PRAGMA foreign_key_check').fetchone() is not None:
+                        raise sqlite3.IntegrityError('dangling references')
+                    connection.execute('COMMIT')
                 except sqlite3.Error:
                     if connection.in_transaction:
                         connection.execute('ROLLBACK')

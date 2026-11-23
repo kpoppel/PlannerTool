@@ -18,26 +18,26 @@ def manager():
 
 def _kinds(manager):
     with manager._planner_database.connect() as connection:
-        return [row[0] for row in connection.execute('SELECT kind FROM plan_kind_definitions')]
+        return [row[0] for row in connection.execute('SELECT flag_name FROM server_feature_flags')]
 
 
 def test_logical_backup_includes_versioned_planner_database_rows(manager):
     with manager._planner_database.write() as connection:
-        connection.execute("INSERT INTO plan_kind_definitions VALUES ('project', 0)")
+        connection.execute("INSERT INTO server_feature_flags VALUES ('project', 1)")
     backup = manager.get_backup()
     section = backup['planner_database']
     assert section['version'] == 1
     assert section['schema_version'] == SCHEMA_TARGET
-    assert section['tables']['plan_kind_definitions'] == [{'kind': 'project', 'display_order': 0}]
+    assert section['tables']['server_feature_flags'] == [{'flag_name': 'project', 'enabled': 1}]
     assert 'schema_migrations' not in section['tables']
 
 
 def test_logical_restore_replaces_planner_database_rows_atomically(manager):
     with manager._planner_database.write() as connection:
-        connection.execute("INSERT INTO plan_kind_definitions VALUES ('restored', 0)")
+        connection.execute("INSERT INTO server_feature_flags VALUES ('restored', 1)")
     backup = manager.get_backup()
     with manager._planner_database.write() as connection:
-        connection.execute("UPDATE plan_kind_definitions SET kind = 'current'")
+        connection.execute("UPDATE server_feature_flags SET flag_name = 'current'")
     manager.restore_backup({'schema_revision': TARGET_REVISION,
                             'planner_database': backup['planner_database']})
     assert _kinds(manager) == ['restored']
@@ -50,7 +50,7 @@ def test_logical_restore_replaces_planner_database_rows_atomically(manager):
 ])
 def test_invalid_planner_database_section_is_rejected_before_mutation(manager, section):
     with manager._planner_database.write() as connection:
-        connection.execute("INSERT INTO plan_kind_definitions VALUES ('current', 0)")
+        connection.execute("INSERT INTO server_feature_flags VALUES ('current', 1)")
     original = manager._storage.load('config', 'server_config')
     with pytest.raises(ValueError):
         manager.restore_backup({'schema_revision': TARGET_REVISION,

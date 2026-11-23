@@ -282,7 +282,60 @@ CREATE INDEX task_history_task ON task_history(task_id, revision);
 INSERT INTO backend_definitions (backend_id, provider) VALUES ('ado', 'azure-devops'), ('local', 'sqlite');
 """
 
+# Plan kinds and iteration sets stay in the configuration store, so their links
+# become application-checked; local plans gain allocation overrides; workflows
+# gain explicit "from any state" transitions; documents gain revisions.
+LOCAL_CATALOGUE_AND_PLANS = """
+CREATE TABLE plan_definitions_rebuilt (
+    plan_id TEXT PRIMARY KEY,
+    backend_id TEXT NOT NULL REFERENCES backend_definitions(backend_id),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    kind TEXT NOT NULL CHECK (length(trim(kind)) > 0),
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    display_order INTEGER NOT NULL,
+    closed_history_days INTEGER NOT NULL DEFAULT 0 CHECK (closed_history_days >= 0),
+    area_path TEXT CHECK (area_path IS NULL OR (backend_id = 'ado' AND length(trim(area_path)) > 0)),
+    allocation_override INTEGER NOT NULL DEFAULT 0 CHECK (allocation_override IN (0, 1)),
+    UNIQUE (backend_id, display_order)
+);
+INSERT INTO plan_definitions_rebuilt
+    (plan_id, backend_id, name, kind, archived, display_order, closed_history_days, area_path)
+    SELECT plan_id, backend_id, name, kind, archived, display_order, closed_history_days, area_path
+    FROM plan_definitions;
+DROP TABLE plan_definitions;
+ALTER TABLE plan_definitions_rebuilt RENAME TO plan_definitions;
+DROP TABLE plan_kind_definitions;
+
+CREATE TABLE plan_iteration_sets_rebuilt (
+    plan_id TEXT PRIMARY KEY REFERENCES plan_definitions(plan_id) ON DELETE CASCADE,
+    iteration_set_id TEXT NOT NULL CHECK (length(iteration_set_id) > 0)
+);
+INSERT INTO plan_iteration_sets_rebuilt SELECT plan_id, iteration_set_id FROM plan_iteration_sets;
+DROP TABLE plan_iteration_sets;
+ALTER TABLE plan_iteration_sets_rebuilt RENAME TO plan_iteration_sets;
+
+CREATE TABLE plan_allocatable_teams (
+    plan_id TEXT NOT NULL REFERENCES plan_definitions(plan_id) ON DELETE CASCADE,
+    team_id TEXT NOT NULL CHECK (length(team_id) > 0),
+    position INTEGER NOT NULL CHECK (position >= 0),
+    PRIMARY KEY (plan_id, team_id),
+    UNIQUE (plan_id, position)
+);
+CREATE TABLE workflow_any_transitions (
+    workflow_id TEXT NOT NULL,
+    to_state_id TEXT NOT NULL,
+    PRIMARY KEY (workflow_id, to_state_id),
+    FOREIGN KEY (workflow_id, to_state_id) REFERENCES workflow_states(workflow_id, state_id) ON DELETE CASCADE
+);
+CREATE TABLE document_revisions (
+    document TEXT PRIMARY KEY CHECK (document IN ('local_catalogue', 'local_plans')),
+    revision INTEGER NOT NULL CHECK (revision >= 0)
+);
+INSERT INTO document_revisions VALUES ('local_catalogue', 0), ('local_plans', 0);
+"""
+
 MIGRATIONS = (
     (1, '0001.initial-relational-schema', INITIAL_SCHEMA),
+    (2, '0002.local-catalogue-and-plans', LOCAL_CATALOGUE_AND_PLANS),
 )
 SCHEMA_TARGET = MIGRATIONS[-1][0]

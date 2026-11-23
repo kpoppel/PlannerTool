@@ -18,12 +18,12 @@ def _generation(handle):
 
 def _seed_kind(database, kind='project'):
     with database.write() as connection:
-        connection.execute('INSERT INTO plan_kind_definitions VALUES (?, 0)', (kind,))
+        connection.execute('INSERT INTO server_feature_flags VALUES (?, 1)', (kind,))
 
 
 def _kinds(database):
     with database.connect() as connection:
-        return [row[0] for row in connection.execute('SELECT kind FROM plan_kind_definitions')]
+        return [row[0] for row in connection.execute('SELECT flag_name FROM server_feature_flags')]
 
 
 def _downgrade(root, revision):
@@ -75,7 +75,7 @@ def test_current_generation_missing_database_fails_without_recreating(tmp_path):
 def test_invalid_database_in_current_generation_fails(tmp_path):
     handle = Database(tmp_path).prepare()
     with handle.planner_database.write() as connection:
-        connection.execute("UPDATE schema_migrations SET migration_id = 'tampered'")
+        connection.execute("UPDATE schema_migrations SET migration_id = 'tampered' WHERE version = 1")
     handle.close()
     with pytest.raises(SchemaError, match='ledger'):
         Database(tmp_path).prepare()
