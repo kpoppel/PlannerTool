@@ -16,6 +16,7 @@ Template - do not change :
 ## [v5.2.0] - unreleased
 ### Added
 - Read and create local tasks from configured projects, workflows and field schemas, including scheduling presets, plan markers and task history.
+- Edit and soft-delete local tasks, and publish scenario changes and relationships atomically. Independent edits merge; overlapping changes are shown for review before retrying.
 - Restart the managed server from Data Sources after saving a switch between Azure DevOps and local tasks.
 - Add whole-hour allocation entry alongside Percent and Man-days, using each team or group's workforce project-hour budget in task details and the portfolio table, with effort preserved when scheduling changes.
 - Add a read-only Cone of Uncertainty tool with three configurable forecast scopes, browser-saved duration uncertainty preferences, and shaded task finish ranges for communicating long-range planning assumptions. Compact rows use task-board type icons and follow the task sort setting, ordering by rank or latest forecast finish. Show global and selected-plan events from the configured local or ADO/wiki source as labeled date lines and range bands.

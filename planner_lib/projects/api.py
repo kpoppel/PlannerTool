@@ -8,8 +8,9 @@ from planner_lib.middleware.session import (
     get_session_credential_from_request,
 )
 from planner_lib.services.resolver import resolve_service
-from planner_lib.backend.port import DiagnosticBackend, TaskCreationBackend
+from planner_lib.backend.port import BatchTaskBackend, DiagnosticBackend, TaskCreationBackend, TaskDeletionBackend
 from planner_lib.backend.errors import BackendConfigError, BackendDecisionError, BackendUnavailableError
+from planner_lib.domain.tasks import TaskConflictError
 import logging
 
 router = APIRouter()
@@ -156,14 +157,20 @@ async def api_task_create(request: Request, payload: dict = Body(...)):
 @router.post('/tasks')
 @require_session
 async def api_tasks_update(request: Request, payload: list[dict] = Body(default=[])):
-    logger.debug("Updating tasks: %d items", len(payload or []))
+    return await _write_task_updates(request, payload)
+
+
+async def _write_task_updates(request: Request, updates: list[dict]):
+    logger.debug("Updating tasks: %d items", len(updates))
 
     task_repo = resolve_service(request, 'task_repository')
     account_id = get_session_context_from_request(request)['account_id']
     try:
-        result = await asyncio.to_thread(task_repo.write, payload or [], user_id=account_id)
+        result = await asyncio.to_thread(task_repo.write, updates, user_id=account_id)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail={'error': 'invalid_allocation', 'message': str(exc)}) from exc
+        backend = resolve_service(request, 'backend')
+        code = 'invalid_task' if isinstance(backend, BatchTaskBackend) else 'invalid_allocation'
+        raise HTTPException(status_code=422, detail={'error': code, 'message': str(exc)}) from exc
     except BackendUnavailableError as exc:
         raise HTTPException(status_code=503, detail={'error': 'backend_unavailable', 'message': 'Publication requires the complete task forest'}) from exc
     except BackendConfigError as exc:
@@ -172,7 +179,8 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
         logger.warning("Task update completed with errors: %s", result['errors'])
     if result.get('conflicts'):
         raise HTTPException(status_code=409, detail={
-            'error': 'task_conflict', 'conflicts': result['conflicts']})
+            'error': 'task_conflict', 'message': 'Tasks changed since the reviewed revision',
+            'conflicts': result['conflicts']})
 
     # The CachingBackend.write_task implementation already patches the in-memory
     # and disk cache in-place for the affected tasks, so no full invalidation is
@@ -182,6 +190,37 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
         logger.debug("Write-through cache patch applied for %d task update(s)", result['updated'])
 
     return result
+
+
+@router.put('/tasks/{task_id}/capacity')
+@require_session
+async def api_task_capacity(request: Request, task_id: str, payload: list[dict] = Body(...)):
+    backend = resolve_service(request, 'backend')
+    update = {'id': task_id, 'capacity': payload}
+    if isinstance(backend, BatchTaskBackend):
+        task_repo = resolve_service(request, 'task_repository')
+        tasks = await asyncio.to_thread(task_repo.read)
+        task = next((entry for entry in tasks if entry['id'] == task_id), None)
+        if task is None:
+            raise HTTPException(404, detail={'error': 'task_not_found'})
+        update['base'] = {'revision': task['revision'], 'fields': {'capacity': task['capacity']}}
+    return await _write_task_updates(request, [update])
+
+
+@router.delete('/tasks/{task_id}', status_code=204)
+@require_session
+async def api_task_delete(request: Request, task_id: str, revision: int):
+    backend = resolve_service(request, 'backend')
+    if not isinstance(backend, TaskDeletionBackend):
+        raise HTTPException(405, detail={'error': 'task_deletion_not_supported'})
+    account_id = get_session_context_from_request(request)['account_id']
+    try:
+        await asyncio.to_thread(backend.delete_task, task_id, revision, account_id)
+    except TaskConflictError as exc:
+        raise HTTPException(409, detail={'error': 'task_conflict', 'conflicts': exc.conflicts}) from exc
+    except ValueError as exc:
+        raise HTTPException(422, detail={'error': 'invalid_task', 'message': str(exc)}) from exc
+    return Response(status_code=204)
 
 
 @router.get('/iterations')

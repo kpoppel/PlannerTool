@@ -8,6 +8,21 @@ def make_app():
     return create_app(Config(data_dir=os.environ['PLANNER_E2E_TEST_DATA_DIR']))
 
 
+def make_local_task_app():
+    from planner_lib.migrations.coordinator import Database
+
+    data_dir = os.environ['PLANNER_E2E_TEST_DATA_DIR']
+    handle = Database(data_dir).prepare()
+    try:
+        config = handle.storage.load('config', 'server_config')
+        config['task_backend_id'] = 'local'
+        config['feature_flags']['enable_cache'] = True
+        handle.storage.save('config', 'server_config', config)
+    finally:
+        handle.close()
+    return create_app(Config(data_dir=data_dir))
+
+
 def make_auth_app():
     from unittest.mock import patch
     from planner_lib.azure.AzureClient import AzureClient

@@ -53,6 +53,19 @@ describe('Scenario publication projection', () => {
       .toThrow('Source task missing is unavailable');
   });
 
+  it('reviews local relation changes with the original revision and reciprocal hierarchy', () => {
+    const source = [task('a', 'own', { revision: 4 }), task('b', 'other', { revision: 2 })];
+    const review = projectPublication({ ...context, source, referencePlanIds: ['own'], localRelations: true,
+      overrides: { a: { relations: [{ type: 'Child', id: 'b' }] } },
+      selected: new Set(['a:relations']), includeReconciliation: false });
+    expect(review.writes[0]).toMatchObject({ id: 'a', revision: 4,
+      fields: [{ field: 'relations', before: [], after: [{ type: 'Child', id: 'b' }] }] });
+    expect(review.localOnly).toEqual([]);
+    expect(review.resulting[1]).toMatchObject({ parentId: 'a', relations: [{ type: 'Parent', id: 'a' }] });
+    expect(review.crossPlan).toContainEqual(expect.objectContaining({ id: 'b', written: false }));
+    expect(review.findings).toEqual([]);
+  });
+
   it('omits reconciliation assessment and impact when disabled without changing task writes', () => {
     const review = projectPublication({ ...context, source: [task('b', 'other')],
       referencePlanIds: ['own'], overrides: { b: { state: 'Done', note: 'Local draft' } },

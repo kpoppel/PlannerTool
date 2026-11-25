@@ -46,6 +46,7 @@ const {
 
 vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: {
+    getTaskBackend: vi.fn(),
     publishBaseline: mockPublishBaseline,
     createGroup: mockCreateGroup,
     updateGroup: vi.fn().mockResolvedValue({ ok: true, data: {} }),
@@ -185,6 +186,7 @@ describe('ScenarioMenu._onPublishScenario', () => {
     mockRefreshBaseline.mockResolvedValue(undefined);
     mockBaselineFeatures.mockReturnValue([]);
     mockInvalidateAndRefreshBaseline.mockImplementation(async () => {});
+    dataService.getTaskBackend.mockResolvedValue({ ok: true, data: { capabilities: [] } });
   });
 
   it('menu refresh queues background work without publication invalidation or hydration', async () => {
@@ -223,6 +225,58 @@ describe('ScenarioMenu._onPublishScenario', () => {
     expect(mockPublishBaseline).not.toHaveBeenCalled();
     expect(mockSaveScenario).not.toHaveBeenCalled();
     expect(scenario.overrides).toEqual({ '42': { state: 'Done' } });
+  });
+
+  it('keeps the original Local field and revision after an unrelated refresh', async () => {
+    const scenario = { id: 'sc-1', name: 'Local review', overrides: { '42': { tags: 'Proposed' } } };
+    const menu = makeMenu({ scenarios: [scenario] });
+    dataService.getTaskBackend.mockResolvedValue({ ok: true, data: { capabilities: ['field_merge'] } });
+    const task = { id: '42', project: 'p1', title: 'Original', revision: 1, tags: null,
+      start: null, end: null, parentId: null, relations: [] };
+    mockBaselineFeatures.mockReturnValue([task]);
+    mockOpenPublishScenarioModal.mockResolvedValue({ features: [{ id: '42', tags: 'Proposed' }] });
+    mockInvalidateAndRefreshBaseline.mockImplementation(async () => {
+      mockBaselineFeatures.mockReturnValue([{ ...task, revision: 2, description: 'Unrelated edit' }]);
+    });
+    expect(await menu._onPublishScenario(makeEvent(), scenario)).toMatchObject({ ok: true });
+    expect(mockPublishBaseline).toHaveBeenCalledWith([{ id: '42', tags: 'Proposed',
+      base: { revision: 1, fields: { tags: null } } }]);
+  });
+
+  it('requires a new Local review and selection before retrying a conflicting field', async () => {
+    const scenario = { id: 'sc-1', name: 'Local review', overrides: { '42': { tags: 'Proposed' } } };
+    const menu = makeMenu({ scenarios: [scenario] });
+    dataService.getTaskBackend.mockResolvedValue({ ok: true, data: { capabilities: ['field_merge'] } });
+    const task = { id: '42', project: 'p1', title: 'Original', revision: 1, tags: null,
+      start: null, end: null, parentId: null, relations: [] };
+    const conflicts = [{ taskId: '42', field: 'tags', reason: 'overlap',
+      base: null, current: 'Concurrent', proposed: 'Proposed', revision: 2 }];
+    mockBaselineFeatures.mockReturnValue([task]);
+    mockOpenPublishScenarioModal.mockResolvedValue({ features: [{ id: '42', tags: 'Proposed' }] });
+    mockPublishBaseline.mockResolvedValueOnce({ ok: false, error: { code: 'task_conflict', detail: { conflicts } } });
+    mockInvalidateAndRefreshBaseline.mockImplementation(async () => {
+      mockBaselineFeatures.mockReturnValue([{ ...task, revision: 2, tags: 'Concurrent' }]);
+    });
+    expect(await menu._onPublishScenario(makeEvent(), scenario)).toMatchObject({ ok: true });
+    expect(mockOpenPublishScenarioModal).toHaveBeenNthCalledWith(2, expect.objectContaining({ conflicts }));
+    expect(mockPublishBaseline).toHaveBeenNthCalledWith(2, [{ id: '42', tags: 'Proposed',
+      base: { revision: 2, fields: { tags: 'Concurrent' } } }]);
+  });
+
+  it('requires Local review again if refreshing changes the owning plan', async () => {
+    const scenario = { id: 'sc-1', name: 'Local review', overrides: { '42': { tags: 'Proposed' } } };
+    const menu = makeMenu({ scenarios: [scenario] });
+    dataService.getTaskBackend.mockResolvedValue({ ok: true, data: { capabilities: ['field_merge'] } });
+    const task = { id: '42', project: 'p1', title: 'Original', revision: 1, tags: null,
+      start: null, end: null, parentId: null, relations: [] };
+    mockBaselineFeatures.mockReturnValue([task]);
+    mockOpenPublishScenarioModal.mockResolvedValue({ features: [{ id: '42', tags: 'Proposed' }] });
+    mockInvalidateAndRefreshBaseline.mockImplementation(async () => {
+      mockBaselineFeatures.mockReturnValue([{ ...task, revision: 2, project: 'p2' }]);
+    });
+    const result = await menu._onPublishScenario(makeEvent(), scenario);
+    expect(result).toMatchObject({ ok: false, error: { message: expect.stringContaining('impact changed') } });
+    expect(mockPublishBaseline).not.toHaveBeenCalled();
   });
 
   it('accepts the actual server task-write envelope without an inner ok flag', async () => {

@@ -336,15 +336,36 @@ particular, `ConfigBackend` and `UserDataBackend` do not pass through
 | Data | Write path | Consistency behavior |
 |---|---|---|
 | Azure work items | `TaskRepository` -> `TaskBackend.write_task()` -> provider | `CachingBackend` delegates the write, then patches matching task entries in every cached task list. |
+| Local tasks | `TaskRepository` -> `BatchTaskBackend.write_tasks()` -> active generation's `planner.sqlite` | One transaction validates and commits the batch and audit rows; subsequent task reads query SQLite directly. |
 | Configuration | Admin route/service -> `ConfigBackend` | Diskcache is authoritative; reads observe the saved value immediately. |
 | ADO configuration | Admin ADO save -> `ConfigBackend` -> `ReloadOrchestrator` | The orchestrator rebuilds the Azure service/provider and invalidates affected remote cache entries. |
 | Generic server configuration | Admin system save -> authoritative `config::server_config` key -> reload | The saved diskcache value is the source for subsequent service construction. |
 | Scenarios and views | Repository -> `UserDataBackend` | Direct durable reads and writes; no stale cache layer is inserted. |
 
+#### Local Task Writes
+
+Each Local item in `POST /api/tasks` carries its proposed field values, its task
+`id`, and `base: { revision, fields }`, where `fields` maps each edited field to
+its reviewed value. The server verifies the base against task history and
+merges edits to fields that are still unchanged, including individual custom
+fields. A `409 task_conflict` returns the conflicting task, field, reason, and
+base/current/proposed values. No task in the batch is modified on conflict or
+validation failure. The browser refreshes and requires a new selection before
+retrying a conflicting field. The ADO publication payload is unchanged.
+
+`PUT /api/tasks/{id}/capacity` accepts a list of Workforce allocations and
+uses the task values read for that request as its base. `DELETE /api/tasks/{id}`
+requires a `revision` query parameter in Local mode. Deletion retains a
+tombstone and audit history while removing the task and its links from active
+reads. Task ownership and type are not editable. Local iteration paths are
+restricted to the owning plan's configured presets. A path change does not
+implicitly overwrite task dates; a scheduling write can include both boundaries
+in the same batch.
+
 ### Provider Selection
 
-`server_config.task_backend_id` selects exactly one task backend (`ado` in this
-build; `local` is reserved for the SQLite backend). For `ado`,
+`server_config.task_backend_id` selects exactly one task backend (`ado` or
+`local`, the SQLite backend). For `ado`,
 `ado_config.transport` selects the provider class. Settings of an inactive
 backend or transport are retained unchanged. Schema revision 46 replaced the
 retired `use_*` selector flags, preserving their former priority.

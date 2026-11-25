@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildChildrenByParentMap,
+  computeDirtyFields,
   deriveEffectiveFeatures,
 } from '../../../www/js/application/shared/featureProjection.js';
 
 describe('application/shared/featureProjection', () => {
+  it('handles the canonical null value when tags are added or cleared', () => {
+    expect(computeDirtyFields({ tags: null }, { tags: 'Planning' })).toEqual(['tags']);
+    expect(computeDirtyFields({ tags: 'Planning' }, { tags: null })).toEqual(['tags']);
+    expect(computeDirtyFields({ tags: null }, { tags: '' })).toEqual([]);
+  });
+
   it('derives effective features from active scenario overrides', () => {
     const state = {
       baseline: {

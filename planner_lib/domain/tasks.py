@@ -104,10 +104,20 @@ class UpdateBase(TypedDict):
 class FieldConflict(TypedDict):
     """A published field changed concurrently since the reviewed base."""
     taskId: str
-    field: str
+    field: Optional[str]
+    reason: str
+    revision: Optional[int]
     base: Any
     current: Any
     proposed: Any
+
+
+class TaskConflictError(Exception):
+    """An atomic task mutation cannot be applied to the reviewed revision."""
+
+    def __init__(self, conflicts: list[FieldConflict]):
+        super().__init__('Tasks changed since the reviewed revision')
+        self.conflicts = conflicts
 
 
 class BatchWriteResult(TypedDict):

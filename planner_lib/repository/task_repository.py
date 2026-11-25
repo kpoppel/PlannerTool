@@ -301,6 +301,8 @@ class WorkforceTaskRepository(TaskRepository):
         if self._backend.is_remote and credential is None:
             raise BackendAuthError('No credential available for publication')
         with self._storage.transaction(), self._task_storage.transaction():
+            if not self._backend.is_remote and isinstance(self._backend, BatchTaskBackend):
+                return super().write(updates, user_id)
             catalogue = TeamCatalogue(self._storage.load('config', 'teams'))
             definitions = catalogue.definitions()
             projects = self._project_service.list_projects()

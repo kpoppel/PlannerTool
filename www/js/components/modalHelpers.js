@@ -100,6 +100,7 @@ export const openPublishScenarioModal = async ({
   overrides = {},
   pendingGroupChanges = [],
   decisions = [],
+  conflicts = [],
   publicationContext,
   state = null,
   parent = document.body,
@@ -109,7 +110,7 @@ export const openPublishScenarioModal = async ({
     'publish-scenario-modal',
     {
       parent,
-      attrs: { overrides, pendingGroupChanges, decisions, state,
+      attrs: { overrides, pendingGroupChanges, decisions, conflicts, state,
         ...(publicationContext === undefined ? {} : { publicationContext }) },
     }
   );

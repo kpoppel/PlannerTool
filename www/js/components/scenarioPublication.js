@@ -7,38 +7,73 @@ import { canonicalEvidence } from '../plugins/reconciliation/exceptions.js';
 import { reconciliation } from '../plugins/reconciliation/runtime.js';
 
 export const PUBLISH_FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath', 'tags'];
+const REVERSE_RELATION = { Parent: 'Child', Child: 'Parent', Related: 'Related',
+  Predecessor: 'Successor', Successor: 'Predecessor' };
+
+export function publishableFields(localRelations) {
+  return localRelations ? [...PUBLISH_FIELDS, 'relations'] : PUBLISH_FIELDS;
+}
 
 export function projectPublication({ source, overrides, selected, referencePlanIds,
-  projects, hierarchy, today, includeReconciliation = true }) {
+  projects, hierarchy, today, includeReconciliation = true, localRelations = false }) {
   const sourceById = new Map(source.map((task) => [String(task.id), task]));
   const referencePlans = new Set(referencePlanIds.map(String));
   const writes = [];
   const localOnly = [];
+  const publishFields = publishableFields(localRelations);
   for (const [id, override] of Object.entries(overrides)) {
-    const localFields = Object.keys(override).filter((field) => !PUBLISH_FIELDS.includes(field));
+    const localFields = Object.keys(override).filter((field) => !publishFields.includes(field));
     if (localFields.length > 0) localOnly.push({ id, fields: localFields });
-    const fields = PUBLISH_FIELDS.filter((field) => field in override && selected.has(`${id}:${field}`));
+    const fields = publishFields.filter((field) => field in override && selected.has(`${id}:${field}`));
     if (fields.length === 0) continue;
     const task = sourceById.get(id);
     if (task === undefined) throw new Error(`Source task ${id} is unavailable`);
-    writes.push({ id, project: String(task.project), title: task.title,
+    writes.push({ id, project: String(task.project), title: task.title, revision: task.revision,
       classification: referencePlans.has(String(task.project)) ? 'reference-plan' : 'foreign-plan',
       fields: fields.map((field) => ({ field, before: task[field], after: override[field] })) });
   }
   const writesById = new Map(writes.map((write) => [write.id, write]));
-  const resulting = source.map((task) => {
+  const resultingById = new Map(source.map((task) => {
     const write = writesById.get(String(task.id));
-    return write === undefined ? task : { ...task,
-      ...Object.fromEntries(write.fields.map((entry) => [entry.field, entry.after])) };
+    return [String(task.id), write === undefined ? task : { ...task,
+      ...Object.fromEntries(write.fields.map((entry) => [entry.field, entry.after])) }];
+  }));
+  const relationWrites = writes.filter((write) => write.fields.some((entry) => entry.field === 'relations'));
+  const relationOwners = new Set(relationWrites.map((write) => write.id));
+  const relationImpact = new Set();
+  const foreignRelations = new Set();
+  for (const write of relationWrites) {
+    const { before, after } = write.fields.find((entry) => entry.field === 'relations');
+    for (const link of [...before, ...after]) {
+      const targetId = String(link.id);
+      const target = resultingById.get(targetId);
+      if (target === undefined) continue;
+      if (String(target.project) !== write.project) foreignRelations.add(targetId);
+      if (relationOwners.has(targetId)) continue;
+      const reverse = REVERSE_RELATION[link.type];
+      const relations = target.relations.filter((edge) => edge.type !== reverse || String(edge.id) !== write.id);
+      if (after.some((edge) => edge.type === link.type && String(edge.id) === targetId)) {
+        relations.push({ type: reverse, id: write.id });
+      }
+      resultingById.set(targetId, { ...target, relations });
+      relationImpact.add(targetId);
+    }
+  }
+  const resulting = [...resultingById.values()].map((task) => {
+    const identity = String(task.id);
+    if (!relationOwners.has(identity) && !relationImpact.has(identity)) return task;
+    const parent = task.relations.find((link) => link.type === 'Parent');
+    return { ...task, parentId: parent === undefined ? null : parent.id };
   });
-  if (!includeReconciliation) {
+  if (!includeReconciliation && !localRelations) {
     return { writes, localOnly, crossPlan: [], findings: [], resulting };
   }
-  const findings = assessReconciliation({ features: resulting, sourceFeatures: source,
+  const findings = includeReconciliation ? assessReconciliation({ features: resulting, sourceFeatures: source,
     scopeIds: new Set(sourceById.keys()), projects, hierarchy, today })
-    .filter((finding) => finding.path.some((id) => writesById.has(id)));
+    .filter((finding) => finding.path.some((id) => writesById.has(id) || relationImpact.has(id))) : [];
   const affectedIds = new Set(writes.filter((write) => write.classification === 'foreign-plan')
     .map((write) => write.id));
+  for (const id of foreignRelations) affectedIds.add(id);
   for (const finding of findings) {
     const loadedIds = finding.path.filter((id) => sourceById.has(id));
     const planIds = new Set(loadedIds.map((id) => String(sourceById.get(id).project)));
@@ -84,6 +119,30 @@ function publicationContext() {
     today: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}` };
 }
 
+function reviewLocalWrites(context, features) {
+  const overrides = Object.fromEntries(features.map(({ id, ...fields }) => [id, fields]));
+  const selected = new Set(features.flatMap(({ id, ...fields }) =>
+    Object.keys(fields).map((field) => `${id}:${field}`)));
+  return projectPublication({ ...context, overrides, selected,
+    includeReconciliation: reconciliation.snapshot.status !== 'inactive' });
+}
+
+function reviewImpact(review) {
+  return canonicalEvidence({ findings: review.findings,
+    writes: review.writes.map(({ id, project, classification }) => ({ id, project, classification })),
+    crossPlan: review.crossPlan.map(({ id, project }) => ({ id, project })) });
+}
+
+function localWritePayload(writes) {
+  return writes.map(({ id, revision, fields }) => {
+    if (!Number.isInteger(revision) || revision < 1 || fields.some(({ before }) => before === undefined)) {
+      throw new Error(`The reviewed revision or field values are unavailable for task ${id}`);
+    }
+    return { id, ...Object.fromEntries(fields.map(({ field, after }) => [field, after])),
+      base: { revision, fields: Object.fromEntries(fields.map(({ field, before }) => [field, before])) } };
+  });
+}
+
 
 export async function publishScenario(scenario) {
   if (!sel.scenario.getScenarioAccess(scenario.id).canEdit) {
@@ -109,34 +168,61 @@ export async function publishScenario(scenario) {
     const hasFeatureChanges = Object.keys(overrides).length > 0;
     const hasGroupChanges = pendingGroupChanges.length > 0;
     const decisions = reconciliation.decisionSummary(fullScenario);
-    const context = publicationContext();
-    const reviewedSource = canonicalEvidence(context);
-
     if (!hasFeatureChanges && !hasGroupChanges && decisions.length === 0) {
       console.log('[ScenarioMenu] No changes to save');
       return { ok: true, data: { cancelled: true } };
     }
 
+    const backend = await dataService.getTaskBackend();
+    assertCurrent();
+    if (!backend.ok) throw new Error(backend.error.message);
+    const { capabilities } = backend.data;
+    const fieldMerge = capabilities.includes('field_merge');
+    const getContext = () => ({ ...publicationContext(), localRelations: capabilities.includes('relations_publish') });
+    let context = getContext();
+    let conflicts = [];
+    let features, groupChanges;
     const { openPublishScenarioModal } = await import('./modalHelpers.js');
-    assertCurrent();
-    const result = await openPublishScenarioModal({
-      overrides,
-      pendingGroupChanges,
-      state: buildPublishModalStateAdapter(),
-      decisions,
-      publicationContext: context,
-    });
-    assertCurrent();
-    if (result === null) return { ok: true, data: { cancelled: true } };
-
-    const { features = [], groupChanges = [] } = result;
-    if (features.length === 0 && groupChanges.length === 0) {
-      return { ok: true, data: { cancelled: true } };
-    }
-    await cmd.scenario.invalidateAndRefreshBaseline();
-    assertCurrent();
-    if (canonicalEvidence(publicationContext()) !== reviewedSource) {
-      throw new Error('Source data changed since review. Review the scenario again before publishing.');
+    for (;;) {
+      assertCurrent();
+      const result = await openPublishScenarioModal({ overrides, pendingGroupChanges,
+        state: buildPublishModalStateAdapter(), decisions, publicationContext: context, conflicts });
+      assertCurrent();
+      if (result === null) return { ok: true, data: { cancelled: true } };
+      ({ features = [], groupChanges = [] } = result);
+      if (features.length === 0 && groupChanges.length === 0) {
+        return { ok: true, data: { cancelled: true } };
+      }
+      const reviewed = fieldMerge ? reviewLocalWrites(context, features) : canonicalEvidence(context);
+      await cmd.scenario.invalidateAndRefreshBaseline();
+      assertCurrent();
+      const current = getContext();
+      if (!fieldMerge) {
+        if (canonicalEvidence(current) !== reviewed) {
+          throw new Error('Source data changed since review. Review the scenario again before publishing.');
+        }
+        break;
+      }
+      const currentIds = new Set(current.source.map((task) => String(task.id)));
+      const available = features.filter(({ id }) => currentIds.has(String(id)));
+      if (reviewImpact(reviewLocalWrites(current, available)) !== reviewImpact(reviewed)) {
+        throw new Error('Publication impact changed since review. Review the scenario again before publishing.');
+      }
+      if (features.length === 0) break;
+      const published = await dataService.publishBaseline(localWritePayload(reviewed.writes));
+      assertCurrent();
+      if (!published.ok && published.error.code === 'task_conflict') {
+        conflicts = published.error.detail.conflicts;
+        await cmd.scenario.refreshBaseline();
+        assertCurrent();
+        context = getContext();
+        continue;
+      }
+      if (!published.ok) throw new Error(published.error.message);
+      if (published.data.errors.length > 0) {
+        throw new Error(`Feature publishing failed: ${published.data.errors.join('; ')}`);
+      }
+      break;
     }
 
     // 1. Persist accepted group changes.
@@ -225,7 +311,7 @@ export async function publishScenario(scenario) {
     }
 
     // 2. Persist accepted feature overrides.
-    if (features.length > 0) {
+    if (!fieldMerge && features.length > 0) {
       assertCurrent();
       const published = await dataService.publishBaseline(features);
       assertCurrent();

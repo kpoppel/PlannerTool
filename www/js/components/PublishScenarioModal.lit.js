@@ -1,12 +1,9 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { cmd, sel } from '../application/imports.js';
-import { projectPublication } from './scenarioPublication.js';
+import { projectPublication, publishableFields } from './scenarioPublication.js';
 import { store } from '../application/store.js';
 import { reconciliation } from '../plugins/reconciliation/runtime.js';
-
-/** Field names supported in feature-override rows, in display order. */
-const FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath', 'tags'];
 
 /** Maps a field name to the boolean changed-flag property on a computed row. */
 const CHANGED_KEY = {
@@ -16,6 +13,7 @@ const CHANGED_KEY = {
   state: 'stateChanged',
   iterationPath: 'iterationChanged',
   tags: 'tagsChanged',
+  relations: 'relationsChanged',
 };
 
 /** Human-readable column label for each field. */
@@ -26,6 +24,7 @@ const FIELD_LABEL = {
   state: 'State',
   iterationPath: 'Iteration',
   tags: 'Tags',
+  relations: 'Relations',
 };
 
 /**
@@ -44,6 +43,7 @@ export class PublishScenarioModal extends LitElement {
     /** Array<{ type:'create'|'update'|'delete', group?, groupId?, groupName?, fields? }> */
     pendingGroupChanges: { type: Array },
     decisions: { type: Array },
+    conflicts: { type: Array },
     publicationContext: { type: Object },
   };
 
@@ -53,6 +53,7 @@ export class PublishScenarioModal extends LitElement {
     this.state = null;
     this.pendingGroupChanges = [];
     this.decisions = [];
+    this.conflicts = [];
     this.publicationContext = { source: [], referencePlanIds: [], projects: [], hierarchy: [],
       today: new Date().toISOString().slice(0, 10) };
     this._selected = new Set();
@@ -136,7 +137,7 @@ export class PublishScenarioModal extends LitElement {
   }
 
   _getFeatureRowKeys(r) {
-    const keys = FIELDS
+    const keys = publishableFields(this.publicationContext.localRelations)
       .filter((f) => r[CHANGED_KEY[f]])
       .map((f) => `${r.id}:${f}`);
     if (r.groupDelta) keys.push(r.groupDelta.key);
@@ -159,7 +160,8 @@ export class PublishScenarioModal extends LitElement {
     const allKeys = [
       // Feature field cells
       ...enrichedRows.flatMap((r) =>
-        FIELDS.filter((f) => r[CHANGED_KEY[f]]).map((f) => `${r.id}:${f}`)
+        publishableFields(this.publicationContext.localRelations)
+          .filter((f) => r[CHANGED_KEY[f]]).map((f) => `${r.id}:${f}`)
       ),
       // Inline group-change cells on feature rows
       ...enrichedRows.filter((r) => r.groupDelta).map((r) => r.groupDelta.key),
@@ -337,7 +339,7 @@ export class PublishScenarioModal extends LitElement {
     const featuresOut = [];
     for (const [id, ov] of Object.entries(this.overrides)) {
       const out = { id };
-      for (const field of FIELDS) {
+      for (const field of publishableFields(this.publicationContext.localRelations)) {
         if (this._selected.has(`${id}:${field}`) && field in ov) {
           out[field] = ov[field];
         }
@@ -412,6 +414,15 @@ export class PublishScenarioModal extends LitElement {
       return plan === undefined ? id : plan.name;
     };
     return html`
+      ${this.conflicts.length > 0 ? html`<section aria-label="Task conflicts" role="alert">
+        <h4>Task conflicts</h4>
+        ${this.conflicts.map(({ taskId, field, reason, base, current, proposed }) => html`
+          <p><strong>${this.state.getFeatureTitleById(taskId)}</strong>:
+            ${reason === 'missing_task' ? 'Task is no longer available.' : html`
+              ${FIELD_LABEL[field]}: reviewed ${this._formatConflictValue(field, base)},
+              current ${this._formatConflictValue(field, current)},
+              proposed ${this._formatConflictValue(field, proposed)}.`}</p>`)}
+      </section>` : ''}
       ${impact.localOnly.length > 0 ? html`<section aria-label="Local-only changes">
         <h4>Local-only changes</h4>
         ${impact.localOnly.map((entry) => html`<p>${entry.id}: ${entry.fields.join(', ')}</p>`)}
@@ -434,6 +445,21 @@ export class PublishScenarioModal extends LitElement {
             ? 'Saved in this scenario; not published' : 'Acceptance not saved; not published'}.
           ${decision.reason}</p>`)}
       </section>` : ''}`;
+  }
+
+  _formatConflictValue(field, value) {
+    if (value === null) return '\u2014';
+    if (field === 'relations') {
+      return value.length === 0 ? '\u2014' : value.map((link) =>
+        `${link.type}: ${this.state.getFeatureTitleById(link.id)}`).join(', ');
+    }
+    if (field === 'capacity') {
+      return value.length === 0 ? '\u2014' : value.map((entry) => {
+        const team = this.state.teams.find((item) => item.id === entry.team);
+        return `${team === undefined ? entry.team : team.name}: ${entry.capacity}%`;
+      }).join(', ');
+    }
+    return value;
   }
 
   // ---------------------------------------------------------------------------
@@ -472,6 +498,9 @@ export class PublishScenarioModal extends LitElement {
         const iterationChanged =
           'iterationPath' in ov && normDate(ov.iterationPath) !== normDate(origIterationPath);
         const tagsChanged = 'tags' in ov && this._tagsChanged(origTags, ov.tags);
+        const relationKeys = (links) => links.map(({ type, id }) => `${type}:${id}`).sort().join('\n');
+        const relationsChanged = this.publicationContext.localRelations && 'relations' in ov
+          && relationKeys(ov.relations) !== relationKeys(base.relations);
 
         // Format capacity diff for display
         let capacityContent = '';
@@ -499,8 +528,8 @@ export class PublishScenarioModal extends LitElement {
 
         return {
           id, ov,
-          origStart, origEnd, origState, origIterationPath, origTags,
-          startChanged, endChanged, capacityChanged, stateChanged, iterationChanged, tagsChanged,
+          origStart, origEnd, origState, origIterationPath, origTags, origRelations: base.relations,
+          startChanged, endChanged, capacityChanged, stateChanged, iterationChanged, tagsChanged, relationsChanged,
           capacityContent,
         };
       });
@@ -513,7 +542,7 @@ export class PublishScenarioModal extends LitElement {
    * @param {object} showCols
    */
   _renderTable(enrichedRows, groupOps, orphanDeltaRows, showCols) {
-    const { showStart, showEnd, showCapacity, showState, showIteration, showTags, showGroup } = showCols;
+    const { showStart, showEnd, showCapacity, showState, showIteration, showTags, showRelations, showGroup } = showCols;
 
     // Clickable changed cell for feature fields.
     const tdFeature = (changed, featureId, field, content) => {
@@ -545,6 +574,7 @@ export class PublishScenarioModal extends LitElement {
       ${showState     ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
       ${showIteration ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
       ${showTags      ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
+      ${showRelations ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
     `;
 
     // Shared helper: render a group-assignment cell (feature rows and orphan rows).
@@ -573,6 +603,7 @@ export class PublishScenarioModal extends LitElement {
             ${colHeader('state', showState)}
             ${colHeader('iterationPath', showIteration)}
             ${colHeader('tags', showTags)}
+            ${colHeader('relations', showRelations)}
             ${showGroup ? html`<th class="col-header"
               @click=${() => this._onColumnHeaderClick('groupId', enrichedRows, groupOps, orphanDeltaRows)}
               title="Click to toggle Group column">Group</th>` : ''}
@@ -624,6 +655,9 @@ export class PublishScenarioModal extends LitElement {
                     : html`<span style="font-size:0.9em;">${this._formatRange(r.origIterationPath, undefined)}</span>`) : ''}
               ${showTags ? tdFeature(r.tagsChanged, r.id, 'tags',
                   html`<span style="font-size:0.9em;line-height:1.4;">${this._formatTagsRange(r.origTags, r.ov.tags)}</span>`) : ''}
+                ${showRelations ? tdFeature(r.relationsChanged, r.id, 'relations', this._formatRange(
+                  this._formatConflictValue('relations', r.origRelations),
+                  r.relationsChanged ? this._formatConflictValue('relations', r.ov.relations) : undefined)) : ''}
               ${showGroup
                 ? (r.groupDelta
                     ? tdGroupDelta(r.groupDelta.key, r.groupDelta.change, r.groupDelta.groupName)
@@ -713,7 +747,8 @@ export class PublishScenarioModal extends LitElement {
     const allRows = this._computeRows(Object.entries(this.overrides));
     const unavailableRows = allRows.filter((row) => row.unavailable);
     const featureRows = allRows.filter((r) =>
-      r.startChanged || r.endChanged || r.capacityChanged || r.stateChanged || r.iterationChanged || r.tagsChanged
+      r.startChanged || r.endChanged || r.capacityChanged || r.stateChanged || r.iterationChanged
+        || r.tagsChanged || r.relationsChanged
     );
     const featureSet = new Set(featureRows.map((r) => r.id));
 
@@ -728,8 +763,9 @@ export class PublishScenarioModal extends LitElement {
     const showState     = enrichedRows.some((r) => r.stateChanged);
     const showIteration = enrichedRows.some((r) => r.iterationChanged);
     const showTags      = enrichedRows.some((r) => r.tagsChanged);
+    const showRelations = enrichedRows.some((r) => r.relationsChanged);
     const showGroup     = groupOps.length > 0;
-    const showCols = { showStart, showEnd, showCapacity, showState, showIteration, showTags, showGroup };
+    const showCols = { showStart, showEnd, showCapacity, showState, showIteration, showTags, showRelations, showGroup };
 
     const hasAny = enrichedRows.length > 0 || groupOps.length > 0;
 

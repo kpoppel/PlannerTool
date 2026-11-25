@@ -186,3 +186,80 @@ def test_local_backend_reads_cross_plan_context_and_markers(setup):
     markers = PlanRepository(backend, projects, None, None).list_markers()
     assert markers[0]['marker']['label'] == 'Release'
     assert markers[0]['project'] == PLAN_ID
+
+
+def test_local_updates_merge_by_verified_field_and_rollback_on_conflict(setup):
+    from planner_lib.domain.tasks import TaskConflictError
+    from planner_lib.local.tasks import LocalTasks
+
+    plans, catalogue, database = setup
+    plans.save({'revision': 0, 'plans': [_plan(catalogue)]})
+    tasks = LocalTasks(database, plans._storage)
+    payload = {'project': PLAN_ID, 'typeId': catalogue['processes'][0]['types'][0]['id']}
+    first = tasks.create({**payload, 'title': 'First'}, 'creator')
+    second = tasks.create({**payload, 'title': 'Second'}, 'creator')
+
+    def edit(task, field, before, value):
+        return {'id': task['id'], 'revision': task['revision'], 'before': {field: before},
+                'fields': {field: value}}
+
+    tasks.update_batch([edit(first, 'title', 'First', 'Renamed')], 'alice')
+    tasks.update_batch([edit(first, 'start', None, '2026-12-01')], 'bob')
+    with pytest.raises(TaskConflictError) as failed:
+        tasks.update_batch([edit(second, 'title', 'Second', 'Not committed'),
+                            edit(first, 'title', 'First', 'Overlapping')], 'bob')
+    assert failed.value.conflicts == [{'taskId': first['id'], 'field': 'title', 'reason': 'overlap',
+                                       'base': 'First', 'current': 'Renamed', 'proposed': 'Overlapping',
+                                       'revision': 3}]
+    with pytest.raises(TaskConflictError) as unverified:
+        tasks.update_batch([edit(first, 'end', '2026-12-04', '2026-12-05')], 'bob')
+    assert unverified.value.conflicts[0]['reason'] == 'unverified_base'
+    with pytest.raises(ValueError, match='Invalid workflow transition'):
+        tasks.update_batch([edit(second, 'title', 'Second', 'Not committed'),
+                            edit(first, 'state', 'Open', 'Review')], 'bob')
+    actual = {task['id']: task for task in tasks.read()}
+    assert (actual[first['id']]['title'], actual[first['id']]['start'], actual[first['id']]['revision']) == (
+        'Renamed', '2026-12-01', 3)
+    assert actual[second['id']] == second
+    assert [(entry['value'], entry['changed_by']) for entry in tasks.fetch_history(first['id'])] == [
+        ('2026-12-01', 'bob')]
+
+
+def test_local_custom_fields_merge_independently_and_validate_required_values(setup):
+    from uuid import uuid4
+
+    from planner_lib.domain.tasks import TaskConflictError
+    from planner_lib.local.tasks import LocalTasks
+
+    plans, catalogue, database = setup
+    for key in ('estimate', 'effort'):
+        field_id = str(uuid4())
+        catalogue['fields'].append({'id': field_id, 'key': key, 'label': key, 'type': 'integer', 'options': []})
+        catalogue['field_schemas'][0]['fields'].append({
+            'field_id': field_id, 'required': True, 'default': None, 'min': 1, 'max': 10, 'max_length': None,
+        })
+    LocalCatalogue(database).save(catalogue)
+    plans.save({'revision': 0, 'plans': [_plan(catalogue)]})
+    tasks = LocalTasks(database, plans._storage)
+    task = tasks.create({'project': PLAN_ID, 'typeId': catalogue['processes'][0]['types'][0]['id'],
+                         'title': 'Task', 'customFields': {'estimate': 2, 'effort': 4}}, 'creator')
+
+    def edit(source, proposed):
+        return tasks.update_batch([{'id': task['id'], 'revision': source['revision'],
+                                    'before': {'customFields': source['customFields']},
+                                    'fields': {'customFields': proposed}}], 'editor')[0]
+
+    edit(task, {'estimate': 5, 'effort': 4})
+    merged = edit(task, {'estimate': 2, 'effort': 6})
+    assert merged['customFields'] == {'estimate': 5, 'effort': 6}
+    with pytest.raises(TaskConflictError) as failed:
+        edit(task, {'estimate': 7, 'effort': 4})
+    assert failed.value.conflicts[0]['field'] == 'customFields.estimate'
+    with pytest.raises(ValueError, match='estimate is required'):
+        edit(merged, {'effort': 6})
+    with database.connect() as connection:
+        history = connection.execute('''
+            SELECT revision, field_key, old_value, new_value FROM task_history WHERE task_id = ? AND revision > 1
+            ORDER BY revision
+        ''', (task['id'],)).fetchall()
+    assert list(map(tuple, history)) == [(2, 'customFields.estimate', '2', '5'), (3, 'customFields.effort', '4', '6')]

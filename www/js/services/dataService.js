@@ -20,6 +20,9 @@ class DataService {
   async checkHealth() {
     return this.providers['rest'].checkHealth();
   }
+  async getTaskBackend() {
+    return this.providers['rest'].getTaskBackend();
+  }
   async getCapabilities() {
     return this.providers['mock'].getCapabilities();
   }

@@ -2,6 +2,7 @@
 from collections import defaultdict, deque
 
 from planner_lib.backend.selection import LOCAL_BACKEND_ID
+from planner_lib.domain.tasks import TaskConflictError
 from planner_lib.local.catalogue import LocalCatalogue
 from planner_lib.local.plans import LocalPlans
 from planner_lib.local.tasks import LocalTasks
@@ -9,7 +10,8 @@ from planner_lib.local.tasks import LocalTasks
 
 class LocalTaskBackend:
     BACKEND_ID = LOCAL_BACKEND_ID
-    CAPABILITIES = frozenset({'task_read', 'task_create', 'history', 'markers', 'catalogue_edit'})
+    CAPABILITIES = frozenset({'task_read', 'task_create', 'task_publish', 'task_edit', 'task_delete',
+                              'field_merge', 'relations_publish', 'history', 'markers', 'catalogue_edit'})
     is_remote = False
 
     @classmethod
@@ -24,6 +26,23 @@ class LocalTaskBackend:
 
     def create_task(self, payload, actor_id):
         return self._tasks.create(payload, actor_id)
+
+    def write_tasks(self, updates, credential, *, actor_id):
+        edits = []
+        for update in updates:
+            base = update.get('base')
+            if not isinstance(base, dict) or set(base) != {'revision', 'fields'}:
+                raise ValueError('Local task writes require a reviewed revision and field baselines')
+            edits.append({'id': update.get('id'), 'revision': base['revision'], 'before': base['fields'],
+                          'fields': {field: value for field, value in update.items() if field not in {'id', 'base'}}})
+        try:
+            tasks = self._tasks.update_batch(edits, actor_id)
+        except TaskConflictError as exc:
+            return {'ok': False, 'updated': 0, 'errors': [], 'conflicts': exc.conflicts}
+        return {'ok': True, 'updated': len(tasks), 'errors': [], 'conflicts': []}
+
+    def delete_task(self, task_id, revision, actor_id):
+        self._tasks.delete(task_id, revision, actor_id)
 
     def fetch_history(self, work_item_id, credential=None):
         return self._tasks.fetch_history(work_item_id)

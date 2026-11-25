@@ -294,6 +294,10 @@ export class ProviderREST extends RestProviderBase {
     });
   }
 
+  async getTaskBackend() {
+    return this._requestJson('/api/task-backend');
+  }
+
   async updateTasksWithCapacity(updates) {
     // Send task updates with optional capacity data to /api/tasks
     // Expected format: [{ id, start?, end?, capacity?: [{team, capacity}] }]

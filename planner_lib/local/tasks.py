@@ -1,10 +1,14 @@
-"""Transactional local task creation and canonical task projection."""
+"""Transactional local task persistence, history and canonical projection."""
 import json
 import math
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from planner_lib.cost.allocation_rule import allocation_conflicts
+from planner_lib.domain.allocation_availability import project_allocation_availability, validate_allocation_change
 from planner_lib.domain.iteration_sets import iteration_preset_id
+from planner_lib.domain.tasks import TaskConflictError
+from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.local.catalogue import _default_columns, _default_value, _is_date, _typed_default
 
 
@@ -12,6 +16,9 @@ CREATE_FIELDS = {'project', 'typeId', 'title', 'description', 'assignee', 'start
                  'customFields', 'tags', 'iterationPresetId'}
 RELATION_TYPES = {'parent': ('Child', 'Parent'), 'dependency': ('Successor', 'Predecessor'),
                   'related': ('Related', 'Related')}
+EDIT_COLUMNS = {'title': 'title', 'description': 'description', 'assignee': 'assignee',
+                'start': 'start_date', 'end': 'end_date'}
+EDIT_FIELDS = set(EDIT_COLUMNS) | {'state', 'tags', 'customFields', 'iterationPath', 'capacity', 'relations'}
 
 
 class LocalTasks:
@@ -79,8 +86,309 @@ class LocalTasks:
                       'tags', 'iterationPath')
             changes = {field: task[field] for field in fields if task[field] is not None}
             changes.update({f'customFields.{key}': value for key, value in task['customFields'].items()})
-            self._record_history(connection, task_id, 1, actor, timestamp, changes)
+            self._record_history(connection, task_id, 1, actor, timestamp, str(uuid4()), {}, changes)
             return task
+
+    def update_batch(self, edits, actor):
+        timestamp, batch_id = datetime.now(timezone.utc).isoformat(), str(uuid4())
+        if not isinstance(edits, list):
+            raise ValueError('Local task updates must be a list')
+        with self._database.write() as connection:
+            originals = {task['id']: task for task in self._read(connection)}
+            edits_by_id = {}
+            conflicts = []
+            for edit in edits:
+                if not isinstance(edit, dict) or set(edit) != {'id', 'revision', 'before', 'fields'}:
+                    raise ValueError('Local task updates require id, revision, before and fields')
+                identity, revision, before, fields = (edit[key] for key in ('id', 'revision', 'before', 'fields'))
+                if not isinstance(identity, str) or not identity or identity in edits_by_id:
+                    raise ValueError('Each local task update requires a unique task ID')
+                if (type(revision) is not int or revision < 1 or not isinstance(fields, dict)
+                        or not isinstance(before, dict) or fields.keys() != before.keys()
+                        or not fields or fields.keys() - EDIT_FIELDS):
+                    raise ValueError('Local task updates require a revision and a baseline for every editable field')
+                edits_by_id[identity] = fields
+                if identity not in originals:
+                    conflicts.append({'taskId': identity, 'field': None, 'reason': 'missing_task',
+                                      'base': before, 'current': None, 'proposed': fields, 'revision': None})
+                    continue
+                original = originals[identity]
+                if 'customFields' in fields:
+                    previous, proposed = before['customFields'], fields['customFields']
+                    if not isinstance(previous, dict) or not isinstance(proposed, dict):
+                        raise ValueError('customFields and its baseline must be objects')
+                    changes = self._custom_changes(previous, proposed)
+                    reviewed = {f'customFields.{key}': previous.get(key) for key in sorted(previous.keys() | changes.keys())}
+                    proposed_values = {f'customFields.{key}': proposed.get(key) for key in previous.keys() | changes.keys()}
+                    if not reviewed:
+                        reviewed, proposed_values = {'customFields': {}}, {'customFields': {}}
+                    conflicts.extend(self._base_conflicts(connection, original, revision,
+                        self._scalar_fields(before) | reviewed, self._scalar_fields(fields) | proposed_values,
+                        self._scalar_fields(fields).keys() | {f'customFields.{key}' for key in changes}))
+                    merged = dict(original['customFields'])
+                    for key, value in changes.items():
+                        if value is None:
+                            merged.pop(key, None)
+                        else:
+                            merged[key] = value
+                    edits_by_id[identity] = {**fields, 'customFields': merged}
+                else:
+                    conflicts.extend(self._base_conflicts(connection, original, revision, before, fields))
+            if conflicts:
+                raise TaskConflictError(conflicts)
+            for identity, fields in edits_by_id.items():
+                self._apply_fields(connection, originals[identity], fields)
+            relations = {identity: fields['relations'] for identity, fields in edits_by_id.items()
+                         if 'relations' in fields}
+            if relations:
+                self._replace_relations(connection, relations)
+            resulting = self._read(connection)
+            if any(fields.keys() & {'capacity', 'start', 'end', 'relations', 'iterationPath', 'state'}
+                   for fields in edits_by_id.values()):
+                definitions = TeamCatalogue(self._storage.load('config', 'teams')).definitions()
+                memberships = {entry['id']: entry['group_id'] for entry in definitions
+                               if entry['kind'] == 'team' and entry['group_id'] is not None}
+                conflicts = allocation_conflicts(resulting, memberships)
+                if conflicts:
+                    raise ValueError(f'Allocation conflict: {conflicts}')
+            for current in resulting:
+                original = originals[current['id']]
+                changes = {field: current[field] for field in sorted(EDIT_FIELDS - {'customFields'})
+                           if current[field] != original[field]}
+                changes.update({f'customFields.{key}': value for key, value in
+                                self._custom_changes(original['customFields'], current['customFields']).items()})
+                if changes:
+                    self._commit_revision(connection, original, actor, timestamp, batch_id, changes)
+                    current['revision'] = original['revision'] + 1
+            by_id = {task['id']: task for task in resulting}
+            return [by_id[identity] for identity in edits_by_id]
+
+    def delete(self, identity, revision, actor):
+        if type(revision) is not int or revision < 1:
+            raise ValueError('Deleting a local task requires its revision')
+        timestamp, batch_id = datetime.now(timezone.utc).isoformat(), str(uuid4())
+        with self._database.write() as connection:
+            originals = {task['id']: task for task in self._read(connection)}
+            current = originals.get(identity)
+            if current is None or current['revision'] != revision:
+                raise TaskConflictError([{'taskId': identity, 'field': 'deletedAt', 'base': revision,
+                                          'current': None, 'proposed': None,
+                                          'reason': 'missing_task' if current is None else 'overlap',
+                                          'revision': current['revision'] if current is not None else None}])
+            connection.execute('UPDATE tasks SET deleted_at = ? WHERE task_id = ?', (timestamp, identity))
+            connection.execute('DELETE FROM task_relations WHERE source_task_id = ? OR target_task_id = ?',
+                               (identity, identity))
+            changes = {'deletedAt': timestamp}
+            if current['relations']:
+                changes['relations'] = []
+            self._commit_revision(connection, current, actor, timestamp, batch_id, changes)
+            for task in self._read(connection):
+                original = originals[task['id']]
+                if task['relations'] != original['relations']:
+                    self._commit_revision(connection, original, actor, timestamp, batch_id,
+                                          {'relations': task['relations']})
+
+    @staticmethod
+    def _base_conflicts(connection, current, revision, before, fields, edited=None):
+        identity = current['id']
+        history = {}
+        for row in connection.execute('''
+            SELECT field_key, new_value FROM task_history WHERE task_id = ? AND revision <= ?
+            ORDER BY revision, history_id
+        ''', (identity, revision)):
+            history[row['field_key']] = json.loads(row['new_value']) if row['new_value'] is not None else None
+        conflicts = []
+        initial = {'customFields': {}, 'capacity': [], 'relations': []}
+        for field, base in before.items():
+            historical = history.get(field, initial.get(field))
+            value = LocalTasks._field_value(current, field)
+            if field == 'relations' and isinstance(base, list) and all(
+                    isinstance(link, dict) and isinstance(link.get('type'), str) and isinstance(link.get('id'), str)
+                    for link in base):
+                base = sorted(base, key=lambda link: (link['type'], link['id']))
+            if revision > current['revision'] or not history or not LocalTasks._same_value(historical, base):
+                reason = 'unverified_base'
+            elif (edited is None or field in edited) and not LocalTasks._same_value(value, base):
+                reason = 'overlap'
+            else:
+                continue
+            conflicts.append({'taskId': identity, 'field': field, 'reason': reason, 'base': base,
+                              'current': value, 'proposed': fields[field], 'revision': current['revision']})
+        return conflicts
+
+    @staticmethod
+    def _field_value(task, field):
+        if field.startswith('customFields.'):
+            return task.get('customFields', {}).get(field.removeprefix('customFields.'))
+        return task.get(field)
+
+    @staticmethod
+    def _scalar_fields(fields):
+        return {key: value for key, value in fields.items() if key != 'customFields'}
+
+    @staticmethod
+    def _custom_changes(before, proposed):
+        keys = sorted(set(before) | set(proposed))
+        return {key: proposed.get(key) for key in keys
+                if not LocalTasks._same_value(before.get(key), proposed.get(key))}
+
+    @staticmethod
+    def _same_value(first, second):
+        if type(first) is bool or type(second) is bool:
+            return first is second
+        if isinstance(first, dict) and isinstance(second, dict):
+            return first.keys() == second.keys() and all(
+                LocalTasks._same_value(value, second[key]) for key, value in first.items())
+        if isinstance(first, list) and isinstance(second, list):
+            return len(first) == len(second) and all(map(LocalTasks._same_value, first, second))
+        return first == second
+
+    @staticmethod
+    def _commit_revision(connection, current, actor, timestamp, batch_id, changes):
+        revision = current['revision'] + 1
+        connection.execute('UPDATE tasks SET revision = ?, updated_at = ?, updated_by = ? WHERE task_id = ?',
+                           (revision, timestamp, actor, current['id']))
+        LocalTasks._record_history(connection, current['id'], revision, actor, timestamp, batch_id, current, changes)
+
+    def _apply_fields(self, connection, current, fields):
+        identity = current['id']
+        row = connection.execute('''
+            SELECT tasks.*, schemas.schema_id, workflows.workflow_id, presets.iteration_set_id
+            FROM tasks JOIN task_type_field_schemas AS schemas USING (type_id)
+            JOIN task_type_workflows AS workflows USING (type_id)
+            LEFT JOIN plan_iteration_sets AS presets USING (plan_id)
+            WHERE task_id = ?
+        ''', (identity,)).fetchone()
+        columns = {}
+        for field, value in fields.items():
+            if field not in EDIT_COLUMNS:
+                continue
+            if field in ('start', 'end') and value == '':
+                value = None
+            if field == 'title' and (not isinstance(value, str) or not value.strip()):
+                raise ValueError('title is required')
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f'{field} must be text')
+            if field in ('start', 'end') and value is not None and not _is_date(value):
+                raise ValueError(f'{field} must be YYYY-MM-DD')
+            columns[EDIT_COLUMNS[field]] = value.strip() if field == 'title' else value
+        if 'iterationPath' in fields and fields['iterationPath'] != current['iterationPath']:
+            path = fields['iterationPath']
+            columns['iteration_id'] = None
+            if path is not None and path != '':
+                if not isinstance(path, str) or row['iteration_set_id'] is None:
+                    raise ValueError('Iteration path is not available in the owning plan')
+                preset = iteration_preset_id(row['iteration_set_id'], path)
+                sets = self._storage.load('config', 'iterations')['iteration_sets']
+                self._assign_preset(connection, row['iteration_set_id'], sets, preset)
+                columns['iteration_id'] = preset
+        start, end = (columns.get(key, row[key]) for key in ('start_date', 'end_date'))
+        if start is not None and end is not None and start > end:
+            raise ValueError('start must not follow end')
+        if 'state' in fields and fields['state'] != current['state']:
+            state = fields['state']
+            if not isinstance(state, str):
+                raise ValueError('state must be text')
+            target = connection.execute('''
+                SELECT states.state_id FROM workflow_states JOIN states USING (state_id)
+                WHERE workflow_id = ? AND states.name = ? AND (
+                    EXISTS (SELECT 1 FROM workflow_transitions WHERE workflow_id = workflow_states.workflow_id
+                        AND from_state_id = ? AND to_state_id = states.state_id)
+                    OR EXISTS (SELECT 1 FROM workflow_any_transitions WHERE workflow_id = workflow_states.workflow_id
+                        AND to_state_id = states.state_id))
+            ''', (row['workflow_id'], state, row['state_id'])).fetchone()
+            if target is None:
+                raise ValueError(f'Invalid workflow transition from {current["state"]} to {state}')
+            columns['state_id'] = target['state_id']
+        if columns:
+            assignments = ', '.join(f'{column} = ?' for column in columns)
+            connection.execute(f'UPDATE tasks SET {assignments} WHERE task_id = ?', (*columns.values(), identity))
+        if 'tags' in fields:
+            tags = fields['tags']
+            if tags is not None and not isinstance(tags, str):
+                raise ValueError('tags must be text')
+            values = sorted({tag.strip() for tag in (tags or '').split(';') if tag.strip()})
+            connection.execute('DELETE FROM task_tags WHERE task_id = ?', (identity,))
+            connection.executemany('INSERT INTO task_tags VALUES (?, ?)', [(identity, tag) for tag in values])
+        if 'customFields' in fields:
+            custom = fields['customFields']
+            if not isinstance(custom, dict):
+                raise ValueError('customFields must be an object')
+            values = self._custom_values(connection, row['schema_id'], custom, use_defaults=False)
+            connection.execute('DELETE FROM task_custom_values WHERE task_id = ?', (identity,))
+            connection.executemany('INSERT INTO task_custom_values VALUES (?, ?, ?, ?, ?)',
+                                   [(identity, *value) for value in values])
+        if 'capacity' in fields:
+            definitions = TeamCatalogue(self._storage.load('config', 'teams')).definitions()
+            plan = connection.execute('SELECT kind, allocation_override, archived FROM plan_definitions WHERE plan_id = ?',
+                                      (row['plan_id'],)).fetchone()
+            owner = {'id': row['plan_id'], 'type': plan['kind']}
+            if plan['allocation_override']:
+                owner['allocatable_ids'] = [entry[0] for entry in connection.execute(
+                    'SELECT team_id FROM plan_allocatable_teams WHERE plan_id = ? ORDER BY position', (row['plan_id'],))]
+            defaults = self._storage.load('config', 'projects')['allocation_defaults']
+            availability = project_allocation_availability(current, [] if plan['archived'] else [owner],
+                                                           definitions, defaults)
+            capacity = fields['capacity']
+            validate_allocation_change(availability, capacity)
+            connection.execute('DELETE FROM task_allocations WHERE task_id = ?', (identity,))
+            connection.executemany('INSERT INTO task_allocations VALUES (?, ?, ?)',
+                                   [(identity, entry['team'], entry['capacity']) for entry in capacity])
+
+    @staticmethod
+    def _replace_relations(connection, updates):
+        active = dict(connection.execute('SELECT task_id, type_id FROM tasks WHERE deleted_at IS NULL'))
+        existing = {tuple(row) for row in connection.execute('SELECT * FROM task_relations')}
+        edges = {}
+        for identity, links in updates.items():
+            if not isinstance(links, list):
+                raise ValueError('relations must be a list')
+            authored = set()
+            for link in links:
+                if (not isinstance(link, dict) or set(link) != {'type', 'id'}
+                        or not isinstance(link['id'], str) or link['id'] not in active or link['id'] == identity):
+                    raise ValueError('Relations require a different active local target task')
+                target = link['id']
+                direction = link['type']
+                for kind, (forward, reverse) in RELATION_TYPES.items():
+                    if direction in (forward, reverse):
+                        if kind == 'related':
+                            source, destination = sorted((identity, target))
+                        else:
+                            source, destination = (identity, target) if direction == forward else (target, identity)
+                        authored.add((source, destination, kind))
+                        break
+                else:
+                    raise ValueError('Unknown local relation type')
+            edges[identity] = authored
+        desired = set().union(*edges.values())
+        for source, target, kind in desired:
+            if any(endpoint in edges and (source, target, kind) not in edges[endpoint]
+                   for endpoint in (source, target)):
+                raise ValueError('Conflicting reciprocal relation selections')
+        removed = {edge for edge in existing if (edge[0] in edges or edge[1] in edges) and edge not in desired}
+        parents = {}
+        rules = {tuple(row) for row in connection.execute('SELECT * FROM task_type_parent_rules')}
+        for source, target, kind in (existing - removed) | desired:
+            if kind != 'parent' or source not in active or target not in active:
+                continue
+            if target in parents:
+                raise ValueError('A task can have only one parent')
+            if (active[source], active[target]) not in rules:
+                raise ValueError('Task types do not allow this parent/child relation')
+            parents[target] = source
+        visited = set()
+        for target in parents:
+            path = set()
+            while target in parents and target not in visited:
+                if target in path:
+                    raise ValueError('Parent relations must not form a cycle')
+                path.add(target)
+                target = parents[target]
+            visited.update(path)
+        connection.executemany('DELETE FROM task_relations WHERE source_task_id = ? AND target_task_id = ? AND kind = ?',
+                               sorted(removed))
+        connection.executemany('INSERT INTO task_relations VALUES (?, ?, ?)', sorted(desired - existing))
 
     @staticmethod
     def _assign_preset(connection, set_id, iteration_sets, preset_id):
@@ -96,22 +404,23 @@ class LocalTasks:
                     INSERT INTO iteration_sets VALUES (?, 'local', ?) ON CONFLICT(iteration_set_id) DO NOTHING
                 ''', (set_id, set_id))
                 connection.execute('''
-                    INSERT INTO iterations VALUES (?, ?, ?, ?, ?) ON CONFLICT(iteration_id) DO NOTHING
+                    INSERT INTO iterations VALUES (?, ?, ?, ?, ?) ON CONFLICT(iteration_id) DO UPDATE SET
+                    start_date = excluded.start_date, finish_date = excluded.finish_date
                 ''', (preset_id, set_id, path, start, end))
                 return start, end
         raise ValueError('Iteration preset is not available in the owning plan')
 
     @staticmethod
-    def _record_history(connection, task_id, revision, actor, timestamp, changes):
-        batch_id = str(uuid4())
+    def _record_history(connection, task_id, revision, actor, timestamp, batch_id, before, changes):
         connection.executemany('''
-            INSERT INTO task_history (task_id, revision, field_key, new_value, actor_id, changed_at, batch_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', [(task_id, revision, field, json.dumps(value, allow_nan=False), actor, timestamp, batch_id)
+            INSERT INTO task_history (task_id, revision, field_key, old_value, new_value, actor_id, changed_at, batch_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', [(task_id, revision, field, json.dumps(LocalTasks._field_value(before, field), allow_nan=False),
+               json.dumps(value, allow_nan=False), actor, timestamp, batch_id)
               for field, value in changes.items()])
 
     @staticmethod
-    def _custom_values(connection, schema_id, supplied):
+    def _custom_values(connection, schema_id, supplied, *, use_defaults=True):
         rows = list(connection.execute('''
             SELECT schema.*, fields.field_key, fields.value_type
             FROM field_schema_fields AS schema JOIN field_definitions AS fields USING (field_id)
@@ -123,7 +432,7 @@ class LocalTasks:
         values = []
         for row in rows:
             key, kind = row['field_key'], row['value_type']
-            value = supplied.get(key, _default_value(row, kind))
+            value = supplied.get(key, _default_value(row, kind) if use_defaults else None)
             if value is None:
                 if row['required']:
                     raise ValueError(f'{key} is required')
@@ -168,8 +477,7 @@ class LocalTasks:
         params = (task_id,) if task_id is not None else ()
         rows = connection.execute('''
             SELECT tasks.*, plans.name AS plan_name, types.name AS type_name, types.process_id,
-                   states.name AS state_name, states.category, iterations.name AS iteration_name,
-                   iterations.start_date AS iteration_start, iterations.finish_date AS iteration_end
+                   states.name AS state_name, states.category, iterations.name AS iteration_name
             FROM tasks JOIN plan_definitions AS plans USING (plan_id)
             JOIN task_types AS types USING (type_id) JOIN states USING (state_id)
             LEFT JOIN iterations USING (iteration_id)
@@ -182,7 +490,7 @@ class LocalTasks:
                 'id': identity, 'project': owner, 'title': row['title'], 'type': row['type_name'],
                 'process_id': row['process_id'], 'state': row['state_name'], 'stateCategory': row['category'],
                 'revision': row['revision'], 'description': row['description'], 'assignee': row['assignee'],
-                'start': row['start_date'] or row['iteration_start'], 'end': row['end_date'] or row['iteration_end'],
+                'start': row['start_date'], 'end': row['end_date'],
                 'iterationPath': row['iteration_name'], 'parentId': None, 'relations': [], 'childrenComplete': True,
                 'customFields': {}, 'capacity': [], 'tags': None, 'url': f'#task={identity}',
                 'sourcePlanIds': [owner], 'sourcePlanName': row['plan_name'], 'presentationPlanIds': [owner],
@@ -220,6 +528,8 @@ class LocalTasks:
                 target['relations'].append({'type': reverse, 'id': source['id']})
                 if row['kind'] == 'parent':
                     target['parentId'] = source['id']
+            for task in tasks.values():
+                task['relations'].sort(key=lambda link: (link['type'], link['id']))
         return list(tasks.values())
 
     def fetch_history(self, work_item_id, credential=None):

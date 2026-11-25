@@ -33,7 +33,7 @@ export function computeDirtyFields(base, override) {
   const fields = [];
   const normDate = (value) => value;
   const normTags = (value) =>
-    value.split(';').map((tag) => tag.trim().toLowerCase()).filter(Boolean);
+    value === null ? [] : value.split(';').map((tag) => tag.trim().toLowerCase()).filter(Boolean);
 
   if ('start' in override && normDate(override.start) !== normDate(base.start)) fields.push('start');
   if ('end' in override && normDate(override.end) !== normDate(base.end)) fields.push('end');

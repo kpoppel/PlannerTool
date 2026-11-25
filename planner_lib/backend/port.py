@@ -220,6 +220,11 @@ class TaskCreationBackend(Protocol):
 
 
 @runtime_checkable
+class TaskDeletionBackend(Protocol):
+    def delete_task(self, task_id: str, revision: int, actor_id: str) -> None: ...
+
+
+@runtime_checkable
 class PlanMarkerBackend(Protocol):
     """Backend that owns configured plan markers directly."""
 

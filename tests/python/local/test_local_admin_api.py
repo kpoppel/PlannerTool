@@ -65,16 +65,24 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
         raise AssertionError('Local startup must not construct the ADO task backend')
 
     monkeypatch.setattr(AzureDevOpsBackend, 'build_from_flags', reject_ado)
+    team_id = 'abcdefghijklmnopqrstuvwxyz'
     handle = Database(tmp_path).prepare()
     try:
         config = handle.storage.load('config', 'server_config')
         config['task_backend_id'] = 'local'
         config['feature_flags']['enable_cache'] = True
         handle.storage.save('config', 'server_config', config)
+        handle.storage.save('config', 'teams', {'schema_version': 3, 'groups': [], 'teams': [{
+            'id': team_id, 'allocation_token': 'local-team', 'name': 'Local Team',
+            'short_name': 'Local', 'archived': False, 'group_id': None,
+        }]})
         handle.storage.save('config', 'iterations', validate_iteration_sets({'iteration_sets': [{
             'id': 'manual-set', 'name': 'Manual', 'source_type': 'manual', 'values': [{
                 'path': 'sprint-1', 'name': 'Sprint 1',
                 'startDate': '2026-12-01', 'finishDate': '2026-12-05',
+            }, {
+                'path': 'sprint-2', 'name': 'Sprint 2',
+                'startDate': '2026-12-07', 'finishDate': '2026-12-11',
             }],
         }]}))
     finally:
@@ -91,7 +99,8 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
         type_id = catalogue.json()['content']['processes'][0]['types'][0]['id']
         plan_id = '11111111-1111-4111-8111-111111111111'
         plan = {'id': plan_id, 'name': 'Local plan', 'type': 'project', 'archived': False,
-                'task_types': [type_id], 'closed_history_days': 0, 'iteration_uuid': 'manual-set', 'markers': []}
+            'task_types': [type_id], 'closed_history_days': 0, 'iteration_uuid': 'manual-set', 'markers': [],
+                'allocatable_ids': [team_id]}
         plans = client.put('/admin/v1/local/plans', json={'content': {'revision': 0, 'plans': [plan]}})
         assert plans.status_code == 200, plans.text
         assert client.get('/api/tasks').json() == []
@@ -108,3 +117,48 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
         assert {entry['field']: entry['value'] for entry in history.json()['tasks'][0]['history']} == {
             'start': '2026-12-01', 'end': '2026-12-05', 'iteration': 'sprint-1',
         }
+        other_response = client.post('/api/tasks/create', json={
+            'project': plan_id, 'typeId': type_id, 'title': 'Second task',
+        })
+        assert other_response.status_code == 201
+        other = other_response.json()
+
+        def publish(source, **fields):
+            return client.post('/api/tasks', json=[{'id': source['id'], **fields, 'base': {
+                'revision': source['revision'], 'fields': {field: source[field] for field in fields},
+            }}])
+
+        updated = publish(task, start='2026-12-02', end='2026-12-06', tags='test; urgent')
+        assert updated.status_code == 200 and updated.json()['updated'] == 1, updated.text
+        linked = publish(task, relations=[{'type': 'Related', 'id': other['id']}])
+        assert linked.status_code == 200 and linked.json()['updated'] == 1, linked.text
+        conflict = publish(task, start='2026-12-03')
+        assert conflict.status_code == 409, conflict.text
+        assert conflict.json()['conflicts'][0]['current'] == '2026-12-02'
+        rows = {item['id']: item for item in client.get('/api/tasks').json()}
+        assert rows[task['id']]['end'] == '2026-12-06'
+        assert rows[other['id']]['relations'] == [{'type': 'Related', 'id': task['id']}]
+        rejected = publish(rows[task['id']], state='not a workflow state', tags='not committed')
+        assert rejected.status_code == 422, rejected.text
+        assert publish(rows[task['id']], relations=[{'type': 'Child', 'id': other['id']}]).status_code == 422
+        assert next(row for row in client.get('/api/tasks').json() if row['id'] == task['id'])['tags'] == 'test; urgent'
+        advanced = publish(rows[task['id']], state='Refine')
+        assert advanced.status_code == 200 and advanced.json()['updated'] == 1, advanced.text
+        allocation = [{'team': team_id, 'capacity': 50}]
+        capacity = client.put(f"/api/tasks/{task['id']}/capacity", json=allocation)
+        assert capacity.status_code == 200 and capacity.json()['updated'] == 1, capacity.text
+        unavailable_team = client.put(f"/api/tasks/{task['id']}/capacity", json=[{'team': 'unknown', 'capacity': 50}])
+        assert unavailable_team.status_code == 422
+        assert client.delete(f"/api/tasks/{other['id']}", params={'revision': 1}).status_code == 409
+        assert client.delete(f"/api/tasks/{other['id']}", params={'revision': 2}).status_code == 204
+        remaining = client.get('/api/tasks').json()
+        assert len(remaining) == 1 and remaining[0]['relations'] == [] and remaining[0]['state'] == 'Refine'
+        assert remaining[0]['capacity'] == allocation
+        moved = publish(remaining[0], iterationPath='sprint-2', start='2026-12-07', end='2026-12-11')
+        assert moved.status_code == 200, moved.text
+        current, = client.get('/api/tasks').json()
+        assert (current['iterationPath'], current['start'], current['end']) == ('sprint-2', '2026-12-07', '2026-12-11')
+        cleared = publish(current, iterationPath='')
+        assert cleared.status_code == 200, cleared.text
+        current, = client.get('/api/tasks').json()
+        assert current['iterationPath'] is None and current['start'] == '2026-12-07'
