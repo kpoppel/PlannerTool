@@ -128,7 +128,7 @@ BASE_PATH=./etc
 AUTH_DIR="$BASE_PATH/auth"
 mkdir -p "$(dirname "$AUTH_DIR")"
 mkdir -m 700 "$AUTH_DIR" && \
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 \
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 \
    -out "$AUTH_DIR/entra-private-key.pem"
 ```
 
