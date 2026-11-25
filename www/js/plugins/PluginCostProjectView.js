@@ -10,13 +10,8 @@ import {
   computeEffectiveDataMaps,
 } from './PluginCostCalculator.js';
 import { getIconTemplate } from '../services/IconService.js';
-import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
+import { getTeamLabel, renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
 import { renderEstimateComparison } from './PluginCostTaskView.js';
-
-function getTeamLabel(component, teamKey) {
-  const definition = component.costTeams.catalogue.find((entry) => entry.id === teamKey);
-  return definition === undefined ? `Unknown allocation: ${teamKey}` : definition.name;
-}
 
 function formatPlainNumber(component, val) {
   const n = typeof val === 'number' ? val : Number(val || 0);
@@ -477,7 +472,7 @@ function renderFeatureList(component, features, monthKeys) {
               })}
               <td class="numeric sum-column">${formatValue(total)}</td>
               <td class="numeric">${formatValue(component.viewMode === 'cost' ? row.ownCost : row.ownHours)}</td>
-              <td>${renderEstimateComparison(row)}</td>
+              <td>${renderEstimateComparison(component, row)}</td>
             </tr>
           `;
         })}

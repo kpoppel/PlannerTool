@@ -48,6 +48,58 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('task-list [data-task-id="task-0"]')).toBeVisible();
 });
 
+test('closing a fullscreen plugin restores the virtualized viewport without scrolling', async ({ page }) => {
+  const counts = await page.evaluate(async () => {
+    const { FullscreenPlugin } = await import('/js/plugins/FullscreenPlugin.js');
+    const timeline = document.querySelector('timeline-board');
+    const board = timeline.shadowRoot.querySelector('feature-board');
+    board.constructor.LARGE_RENDER_THRESHOLD = 30;
+    await board.renderFeatures();
+    const visible = board.features.length;
+    const plugin = new FullscreenPlugin('viewport-test');
+    plugin._hideTimelineBoard();
+    await board.renderFeatures();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const hidden = board.features.length;
+    await plugin.deactivate();
+    return { visible, hidden };
+  });
+
+  expect(counts.visible).toBeGreaterThan(counts.hidden);
+  await expect.poll(() => page.locator('feature-board').evaluate((board) => board.features.length))
+    .toBe(counts.visible);
+});
+
+test('successive assignments update the same group without duplicating tasks', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { GroupContextMenu } = await import('/js/components/GroupContextMenu.lit.js');
+    const { sel } = await import('/js/application/imports.js');
+    const store = window.taskBoardStore;
+    store.setState((state) => ({
+      ...state,
+      scenarios: { ...state.scenarios, activeId: 'group-draft', items: [...state.scenarios.items,
+        { id: 'group-draft', name: 'Group draft', readonly: false, overrides: {},
+          groupOverrides: {}, scenarioGroups: [], pluginData: {} }] },
+    }));
+    const board = document.querySelector('timeline-board').shadowRoot.querySelector('feature-board');
+    const group = window.taskBoardCommands.group.createGroupInScenario('plan', 'Delivery group', '#347ab3', null, 1024);
+    const menu = new GroupContextMenu();
+    const tasks = sel.feature.getEffectiveFeatures().slice(10, 30);
+    for (const feature of tasks) {
+      menu._config = { feature };
+      menu._assignToGroup(group.id);
+      await board.updateComplete;
+    }
+    const groupRow = board.features.find((item) => item.isGroup && item.id === group.id);
+    const grouped = board.features.filter((item) => item.slotParentId === group.id)
+      .map((item) => item.feature.id);
+    return { count: groupRow.featureCount, grouped, expected: tasks.map((feature) => feature.id) };
+  });
+
+  expect(result.count).toBe(20);
+  expect(result.grouped.sort()).toEqual(result.expected.sort());
+});
+
 async function alignment(page, id = 'task-0') {
   return page.evaluate((id) => {
     const shell = document.querySelector('timeline-board').shadowRoot;

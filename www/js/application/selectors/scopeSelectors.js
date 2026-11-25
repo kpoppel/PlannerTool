@@ -10,6 +10,7 @@ import { expandAllocationFocusIds, hasFeatureTeamAllocation } from '../shared/te
 import { hasTimelinePlacement } from '../shared/featurePresentation.js';
 import { featureTypeKey } from '../shared/workItemDisplay.js';
 import { projectVirtualAllocations } from '../shared/virtualAllocations.js';
+import { getActiveScenario } from '../shared/scenarioMutations.js';
 
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 
@@ -74,6 +75,8 @@ export function createScopeSelectors(store) {
   let contextCacheKey;
   let visibleCache;
   let visibleCacheKey;
+  let presentationCache;
+  let presentationCacheKey;
   let graphCache;
   let membershipCache;
   let membershipCacheKey;
@@ -82,7 +85,7 @@ export function createScopeSelectors(store) {
 
   function getResolvedFeatures() {
     const state = store.getState();
-    const key = [state.baseline.features, state.baseline.teams, state.scenarios.items, state.scenarios.activeId];
+    const key = [state.baseline.features, state.baseline.teams, getActiveScenario(state).overrides];
     if (resolvedCache && key.every((value, index) => value === resolvedCacheKey[index])) return resolvedCache;
     const organizationTeamIds = new Set(state.baseline.teams.map((team) => String(team.id)));
     resolvedCacheKey = key;
@@ -208,10 +211,17 @@ export function createScopeSelectors(store) {
     const state = store.getState();
     const selectedPlans = toIdSet(state.selection.projectIds);
     if (selectedPlans.size === 0) return [];
+    const features = getResolvedFeatures();
+    const visibleFeatures = getVisibleFeatures();
+    const key = [features, visibleFeatures, state.selection.projectIds.join(','),
+      state.selection.teamIds.join(',')];
+    if (presentationCache && key.every((value, index) => value === presentationCacheKey[index])) {
+      return presentationCache;
+    }
     const excludeExternal = createCardExclusionFilter(state.view.context, false);
-    return projectVirtualAllocations({
-      features: getResolvedFeatures(),
-      visibleFeatures: getVisibleFeatures(),
+    presentationCache = projectVirtualAllocations({
+      features,
+      visibleFeatures,
       teams: state.baseline.teams,
       selectedTeamIds: toIdSet(state.selection.teamIds),
       isEligible(feature) {
@@ -219,6 +229,8 @@ export function createScopeSelectors(store) {
         return external && excludeExternal(feature) === null;
       },
     });
+    presentationCacheKey = key;
+    return presentationCache;
   }
 
   function getBoardFeatures(contextFeatures, selectedTeamIds, teamFocus, context = store.getState().view.context) {

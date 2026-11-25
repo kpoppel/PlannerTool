@@ -33,6 +33,34 @@ function applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op) {
   };
 }
 
+function applyGroupMembershipsToScenario(scenario, changesByGroup) {
+  const localIds = new Set(scenario.scenarioGroups.map((group) => String(group.id)));
+  const groupOverrides = { ...scenario.groupOverrides };
+  for (const [groupId, changes] of changesByGroup) {
+    if (localIds.has(groupId)) continue;
+    const current = groupOverrides[groupId] === undefined ? {} : groupOverrides[groupId];
+    const deltas = current.memberDeltas === undefined ? [] : current.memberDeltas;
+    groupOverrides[groupId] = {
+      ...current,
+      memberDeltas: [
+        ...deltas.filter((delta) => !changes.has(String(delta.taskId))),
+        ...Array.from(changes, ([taskId, op]) => ({ taskId, op })),
+      ],
+    };
+  }
+  const scenarioGroups = scenario.scenarioGroups.map((group) => {
+    const changes = changesByGroup.get(String(group.id));
+    if (changes === undefined) return group;
+    const members = new Set(group.members.map(String));
+    for (const [taskId, op] of changes) {
+      if (op === 'add') members.add(taskId);
+      else members.delete(taskId);
+    }
+    return { ...group, members: [...members] };
+  });
+  return { ...scenario, groupOverrides, scenarioGroups };
+}
+
 /** Mark the active (non-baseline) scenario as having unsaved changes. */
 function addActiveScenarioToChangedIds(state) {
   const activeId = getActiveScenarioId(state);
@@ -388,6 +416,32 @@ export function createGroupCommands(store, bus) {
       );
 
       emitGroupMutation(bus, store, { op: 'deleted', groupId: String(groupId) });
+      return true;
+    },
+
+    updateGroupMemberships(changes) {
+      if (changes.length === 0) return false;
+      const changesByGroup = new Map();
+      for (const { groupId, taskId, op } of changes) {
+        if (!groupId || !taskId || (op !== 'add' && op !== 'remove')) return false;
+        const key = String(groupId);
+        if (!changesByGroup.has(key)) changesByGroup.set(key, new Map());
+        changesByGroup.get(key).set(String(taskId), op);
+      }
+
+      const mutation = withActiveScenario(store.getState(),
+        (scenario) => applyGroupMembershipsToScenario(scenario, changesByGroup));
+      if (!mutation) return false;
+
+      store.setState((state) => ({
+        ...state,
+        scenarios: {
+          ...state.scenarios,
+          changedIds: addActiveScenarioToChangedIds(state),
+          items: mutation.items,
+        },
+      }), false, 'group.updateGroupMemberships');
+      emitGroupMutation(bus, store, { op: 'membersUpdated' });
       return true;
     },
 

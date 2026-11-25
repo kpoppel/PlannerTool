@@ -652,8 +652,12 @@ export class PluginCostComponent extends LitElement {
         .map((feature) => String(feature.id)));
 
       // Fetch cost data
-      const costResult = await dataService.getCost({ features: featuresPayload });
+      const [costResult, teamsResult] = await Promise.all([
+        dataService.getCost({ features: featuresPayload }),
+        dataService.getCostTeams(),
+      ]);
       if (!costResult.ok) throw new Error(costResult.error.message, { cause: costResult.error });
+      if (!teamsResult.ok) throw new Error(teamsResult.error.message, { cause: teamsResult.error });
       const json = costResult.data;
 
       const payloadById = new Map(featuresPayload.map((feature) => [String(feature.id), feature]));
@@ -672,10 +676,6 @@ export class PluginCostComponent extends LitElement {
       json.projects = projectsById;
 
       this.data = json;
-
-      // Fetch cost teams metadata (members + sites) to enable per-site breakdowns
-      const teamsResult = await dataService.getCostTeams();
-      if (!teamsResult.ok) throw new Error(teamsResult.error.message, { cause: teamsResult.error });
       this.costTeams = teamsResult.data;
 
       this.expandedProjects = new Set(sel.selection.getSelectedProjectIds());

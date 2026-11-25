@@ -2,6 +2,7 @@ import { render } from '../../www/js/vendor/lit.js';
 import { expect, vi } from 'vitest';
 import { pluginManager } from '../../www/js/core/PluginManager.js';
 import { renderTaskView } from '../../www/js/plugins/PluginCostTaskView.js';
+import { renderProjectView } from '../../www/js/plugins/PluginCostProjectView.js';
 import { renderTeamView } from '../../www/js/plugins/PluginCostTeamView.js';
 import { renderTeamMembersView } from '../../www/js/plugins/PluginCostTeamMembersView.js';
 import '../../www/js/plugins/PluginCostComponent.js';
@@ -145,15 +146,18 @@ describe('PluginCost view rendering', () => {
   it('renders context allocations, empty selected tasks and per-team estimation flags', () => {
     mockSelectionState.projects = [{ id: 'p1', name: 'P1' }];
     mockFeatureState.childrenByParent = new Map([['root', ['leaf', 'empty', 'noise']]]);
-    const team = (cost) => ({ cost: { internal: { '2026-01': cost }, external: {} },
+    const team = (cost) => ({ profiles: [], cost: { internal: { '2026-01': cost }, external: {} },
       hours: { internal: { '2026-01': cost / 50 }, external: {} } });
-    const component = { months: [new Date('2026-01-01')], costTeams: { catalogue: [] },
+      const component = { months: [new Date('2026-01-01')], costTeams: { catalogue: [
+        { id: 'A', name: 'Alpha', kind: 'team' },
+        { id: 'B', name: 'Bravo', kind: 'team' },
+      ], suppliers: [] }, expandedProjects: new Set(['p1']), projectViewSelection: { p1: 'features' },
       startDate: '2026-01-01', endDate: '2026-01-31',
       data: { projects: { p1: { features: [
         { id: 'root', title: 'Epic', project: 'p1', displayMode: 'normal',
-          metrics: { teams: {} }, estimateTeams: { A: team(1000) } },
+            metrics: { teams: {} }, estimateTeams: { A: team(1000), B: team(100) } },
         { id: 'leaf', title: 'Hidden allocation', project: 'p1', displayMode: 'context',
-          metrics: { teams: { A: team(400) } }, estimateTeams: { A: team(400) } },
+            metrics: { teams: { A: team(400), B: team(200) } }, estimateTeams: { A: team(400), B: team(200) } },
         { id: 'empty', title: 'Selected empty Feature', project: 'p1', displayMode: 'normal',
           metrics: { teams: {} }, estimateTeams: {} },
         { id: 'noise', title: 'Hidden empty task', project: 'p1', displayMode: 'context',
@@ -168,6 +172,12 @@ describe('PluginCost view rendering', () => {
     expect(container.textContent).to.include('60');
     expect(container.querySelector('tr.context-row').textContent).to.include('Context');
     expect(container.textContent).not.to.include('Hidden empty task');
+      for (const renderView of [renderTaskView, renderProjectView]) {
+        render(renderView(component), container);
+        const warnings = [...container.querySelectorAll('.estimate-deviation')]
+          .map((warning) => warning.textContent.trim());
+        expect(warnings).to.deep.equal(['Alpha: Underrun 60.0%', 'Bravo: Overrun 100.0%']);
+      }
   });
 
   it('renderTeamView shows team table and totals when team selected', () => {

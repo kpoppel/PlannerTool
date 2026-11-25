@@ -61,6 +61,29 @@ describe('application/commands/groupCommands', () => {
     expect(store.getState().scenarios.changedIds).toContain('s1');
   });
 
+  it('moves a subtree with one store write and one group invalidation', () => {
+    const bus = { emit: vi.fn() };
+    const commands = createGroupCommands(store, bus);
+    const target = commands.createGroupInScenario('p1', 'Target', '#123', null, 1024);
+    const write = vi.spyOn(store, 'setState');
+    bus.emit.mockClear();
+    const taskIds = ['f1', ...Array.from({ length: 20 }, (_, index) => `child-${index}`)];
+
+    try {
+      expect(commands.updateGroupMemberships([
+        { groupId: 'g1', taskId: 'f1', op: 'remove' },
+        ...taskIds.map((taskId) => ({ groupId: target.id, taskId, op: 'add' })),
+      ])).toBe(true);
+      expect(write).toHaveBeenCalledOnce();
+      expect(bus.emit.mock.calls.filter(([event]) => event === GroupEvents.CHANGED)).toHaveLength(1);
+      const scenario = store.getState().scenarios.items[0];
+      expect(scenario.scenarioGroups[0].members).toEqual(taskIds);
+      expect(scenario.groupOverrides.g1.memberDeltas).toEqual([{ taskId: 'f1', op: 'remove' }]);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it('does not expose legacy compatibility adapters', async () => {
     const mod = await import('../../../www/js/application/commands/groupCommands.js');
     expect(mod.createLegacyGroupCommands).toBeUndefined();

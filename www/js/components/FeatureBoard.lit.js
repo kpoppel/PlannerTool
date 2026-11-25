@@ -121,6 +121,8 @@ class FeatureBoard extends LitElement {
       this.setAttribute('role', 'list');
     }
     window.addEventListener('resize', this._handleViewportResize);
+    this._viewportResizeObserver = new ResizeObserver(this._handleViewportResize);
+    this._viewportResizeObserver.observe(this);
     this._updateSwimlaneLabelStickyTop();
     this._onOverlayOffsetChanged = ({ offset }) => {
       if (offset !== this._overlayOffset) {
@@ -591,6 +593,7 @@ class FeatureBoard extends LitElement {
     super.disconnectedCallback();
     this._renderGeneration += 1;
     window.removeEventListener('resize', this._handleViewportResize);
+    this._viewportResizeObserver.disconnect();
     if (this._onOverlayOffsetChanged) {
       bus.off(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
     }

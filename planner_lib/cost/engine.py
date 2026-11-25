@@ -1,7 +1,8 @@
 from datetime import datetime
+from functools import partial
 from typing import Optional, Dict, Any
 from planner_lib.domain.teams import TeamCatalogue
-from planner_lib.domain.workforce import WorkforceCatalogue
+from planner_lib.domain.workforce import TeamBasis, WorkforceCatalogue
 from .allocation_rule import expand_group_allocations, has_valid_allocation_span
 
 
@@ -10,19 +11,32 @@ def calculate_workforce_detailed(
     start: str | None, end: str | None, capacity: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Price resolved anonymous reservations without people, sites or a combined charged total."""
+    return prepare_workforce_pricing(teams, workforce)(start, end, capacity)
+
+
+def prepare_workforce_pricing(teams: TeamCatalogue, workforce: WorkforceCatalogue):
     definitions = teams.definitions()
     memberships = {
         item['id']: item['group_id'] for item in definitions
         if item['kind'] == 'team' and item['group_id'] is not None
     }
     group_ids = [item['id'] for item in definitions if item['kind'] == 'group']
-    expanded = expand_group_allocations({'item': capacity}, memberships, group_ids)['item']
-    bases = workforce.team_bases()
+    return partial(_price_allocations, memberships=memberships, group_ids=group_ids,
+                   bases=workforce.team_bases())
+
+
+def _price_allocations(
+    start: str | None, end: str | None, capacity: list[dict[str, Any]], *,
+    memberships: dict[str, str], group_ids: list[str], bases: dict[str, TeamBasis],
+) -> dict[str, Any]:
     result: dict[str, Any] = {
         'internal_cost': 0.0, 'external_cost': 0.0,
         'internal_hours': 0.0, 'external_hours': 0.0,
         'teams': {}, 'missing_basis': [], 'complete': True,
     }
+    if not capacity:
+        return result
+    expanded = expand_group_allocations({'item': capacity}, memberships, group_ids)['item']
     dated = has_valid_allocation_span({'start': start, 'end': end})
     for allocation in expanded:
         identity = allocation['team']

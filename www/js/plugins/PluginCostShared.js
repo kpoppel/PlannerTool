@@ -9,6 +9,11 @@
 import { html } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
 
+export function getTeamLabel(component, teamKey) {
+  const definition = component.costTeams.catalogue.find((entry) => entry.id === teamKey);
+  return definition === undefined ? `Unknown allocation: ${teamKey}` : definition.name;
+}
+
 /**
  * Yellow banner describing allocation scope and child-team precedence.
  *

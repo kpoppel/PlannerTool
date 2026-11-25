@@ -306,9 +306,9 @@ class GroupContextMenu extends LitElement {
     const result = [feature];
     const queue = [feature];
     const visited = new Set([String(feature.id)]);
-    while (queue.length > 0) {
-      const current = queue.shift();
-      const children = childrenByParent.get(String(current.id)) || [];
+    for (const current of queue) {
+      const children = childrenByParent.get(String(current.id));
+      if (children === undefined) continue;
       for (const child of children) {
         if (visited.has(String(child.id))) continue;
         visited.add(String(child.id));
@@ -323,18 +323,23 @@ class GroupContextMenu extends LitElement {
     const feature = this._config?.feature;
     if (!feature) return;
     this._close();
-    // Remove from current group first so the card doesn't appear in both groups.
     const planGroups = this._getFeaturePlanGroups(feature);
-    for (const task of this._getFeatureAndDescendants(feature)) {
-      for (const g of planGroups) {
-        if (String(g.id) === String(groupId)) continue; // skip the target
-        if ((g.members || []).includes(String(task.id))) {
-          cmd.group.removeMemberFromGroup(g.id, task.id);
-          break;
-        }
-      }
-      cmd.group.addMemberToGroup(groupId, task.id);
+    const groupByTask = new Map();
+    for (const group of planGroups) {
+      for (const memberId of group.members) groupByTask.set(String(memberId), String(group.id));
     }
+    const targetId = String(groupId);
+    const changes = [];
+    for (const task of this._getFeatureAndDescendants(feature)) {
+      const taskId = String(task.id);
+      const currentId = groupByTask.get(taskId);
+      if (currentId === targetId) continue;
+      if (currentId !== undefined) {
+        changes.push({ groupId: currentId, taskId, op: 'remove' });
+      }
+      changes.push({ groupId: targetId, taskId, op: 'add' });
+    }
+    cmd.group.updateGroupMemberships(changes);
   }
 
   _removeFromGroup() {

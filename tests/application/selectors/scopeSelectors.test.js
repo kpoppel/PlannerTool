@@ -74,6 +74,26 @@ describe('application/selectors/scopeSelectors', () => {
     return state;
   }
 
+  it('reuses allocation projections after grouping but not after a task override', () => {
+    const state = virtualState();
+    state.scenarios = { activeId: 'draft', items: [{ id: 'draft', overrides: {} }] };
+    const selectors = createScopeSelectors(createStore(state));
+    const resolved = selectors.getResolvedFeatures();
+    const presentation = selectors.getBoardPresentation();
+    state.scenarios.items = [{ ...state.scenarios.items[0], scenarioGroups: [{ id: 'group' }] }];
+
+    expect(selectors.getResolvedFeatures()).toBe(resolved);
+    expect(selectors.getBoardPresentation()).toBe(presentation);
+
+    state.scenarios.items = [{ ...state.scenarios.items[0], overrides: {
+      peer: { capacity: [{ team: 'team-a', capacity: 45 }] },
+    } }];
+    const updated = selectors.getBoardPresentation();
+    expect(updated).not.toBe(presentation);
+    expect(updated.find((entry) => entry.sourceId === 'peer').allocations)
+      .toEqual([{ team: 'team-a', capacity: 45 }]);
+  });
+
   it('hides deselected types and only projects eligible other-plan demand', () => {
     const state = virtualState();
     const selectors = createScopeSelectors(createStore(state));

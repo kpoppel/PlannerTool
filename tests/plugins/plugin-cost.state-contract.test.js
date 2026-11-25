@@ -101,10 +101,13 @@ describe('plugin cost pluginState seam', () => {
     );
     const querySelector = vi.spyOn(document, 'querySelector');
     const getCost = vi.spyOn(dataService, 'getCost').mockResolvedValue({ ok: true, data: { projects: [] } });
-    vi.spyOn(dataService, 'getCostTeams').mockResolvedValue({ ok: true, data: { teams: [] } });
+    const getCostTeams = vi.spyOn(dataService, 'getCostTeams')
+      .mockResolvedValue({ ok: true, data: { teams: [] } });
 
     const plugin = new PluginCostComponent();
-    await plugin.loadData();
+    const loading = plugin.loadData();
+    expect(getCostTeams).toHaveBeenCalledOnce();
+    await loading;
 
     expect(getCost).toHaveBeenCalledOnce();
     expect(getCost.mock.calls[0][0].features.map((feature) => feature.id)).toEqual([

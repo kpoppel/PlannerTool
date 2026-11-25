@@ -60,6 +60,7 @@ class WorkforceCostService:
         known = {item['id'] for item in definitions}
         unknown = []
         projects: dict[str, Any] = {}
+        price = _engine.prepare_workforce_pricing(teams, workforce)
         for feature in features:
             if feature.get('stateCategory') == 'Removed' or feature.get('ancestorOnly', False):
                 continue
@@ -80,15 +81,14 @@ class WorkforceCostService:
                 target_ids.update(current.get('sourcePlanIds', []))
                 pending.extend(parents[current_id])
             target_ids.intersection_update(plan_ids)
-            cost = _engine.calculate_workforce_detailed(
-                teams, workforce, feature.get('start'), feature.get('end'), allocations[feature_id],
-            )
+            if not target_ids:
+                continue
+            start, end = feature.get('start'), feature.get('end')
+            resolved = allocations[feature_id]
+            cost = price(start, end, resolved)
             original = feature.get('capacity', []) if has_valid_allocation_span(feature) else []
-            estimate = _engine.calculate_workforce_detailed(
-                teams, workforce, feature.get('start'), feature.get('end'), original,
-            )
-            cost['estimate_teams'] = estimate['teams']
-            cost['effective_capacity'] = allocations[feature_id]
+            cost['estimate_teams'] = cost['teams'] if original == resolved else price(start, end, original)['teams']
+            cost['effective_capacity'] = resolved
             cost['has_project_parent'] = bool(parents[feature_id])
             for project_id in sorted(target_ids):
                 project = projects.setdefault(project_id, {'totals': {

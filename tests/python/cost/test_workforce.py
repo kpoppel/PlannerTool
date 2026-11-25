@@ -177,7 +177,7 @@ def test_fractional_monthly_hours_are_not_truncated_in_canonical_pricing(
 
 
 def test_canonical_cost_service_resolves_groups_and_reports_incomplete_totals(
-    teams: TeamCatalogue, workforce_config: dict, tmp_path: Path,
+    teams: TeamCatalogue, workforce_config: dict, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Runtime pricing resolves the full graph before plan projection and preserves missing basis."""
     definitions = teams.definitions()
@@ -203,11 +203,24 @@ def test_canonical_cost_service_resolves_groups_and_reports_incomplete_totals(
         leaf = {'id': 'leaf', 'project': 'context', 'sourcePlanIds': ['plan'], 'parentId': 'root',
                 'start': '2025-01-06', 'end': '2025-01-10',
                 'capacity': [{'team': 'team-one', 'capacity': 100}, {'team': 'deleted', 'capacity': 20}]}
-        result = service.estimate_costs({'features': [root, leaf]})
+        build_bases = WorkforceCatalogue.team_bases
+        basis_calls = []
+
+        def count_bases(catalogue):
+            basis_calls.append(catalogue)
+            return build_bases(catalogue)
+
+        monkeypatch.setattr(WorkforceCatalogue, 'team_bases', count_bases)
+        unallocated = [{'id': f'empty-{index}', 'project': 'plan', 'capacity': []}
+                       for index in range(20)]
+        features = [root, leaf, *unallocated]
+        result = service.estimate_costs({'features': features})
+        assert len(basis_calls) == 1
         assert result['project_names'] == {'plan': 'Configured Plan'}
         project = result['projects']['plan']
         assert project['root']['effective_capacity'] == []
         assert project['root']['internal_cost'] == 0
+        assert project['empty-19']['teams'] == {}
         assert set(project['leaf']['teams']) == {'team-one'}
         assert project['leaf']['complete'] is False
         assert project['totals']['complete'] is False
@@ -216,7 +229,8 @@ def test_canonical_cost_service_resolves_groups_and_reports_incomplete_totals(
         assert result['complete'] is False
         storage.save('config', 'people', {'invalid': 'must never be read'})
         storage.save('config', 'cost_config', {'invalid': 'must never supply workforce rates'})
-        assert service.estimate_costs({'features': [root, leaf]}) == result
+        assert service.estimate_costs({'features': features}) == result
+        assert len(basis_calls) == 2
     finally:
         storage.close()
 

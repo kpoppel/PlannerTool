@@ -51,6 +51,9 @@ Template - do not change :
 - Keep type-filtered tasks hidden instead of turning selected-plan work into virtual context; deselecting all task types clears task rows and cards without changing calculated team demand.
 - Render the task list when restored views include context-only tasks without a configured owning plan.
 - Nest and fold tasks by their actual parent links, including same-type parents, while retaining hierarchy-type warnings in health reports.
+- Keep task grouping responsive by applying subtree assignments together and reusing allocation calculations when only membership changes.
+- Restore visible task cards immediately after closing a fullscreen plugin.
+- Show team names in Cost estimate warnings and speed up Cost loading for plans with many tasks.
 - Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
 - Load Help documents and images correctly when the development server runs under an instance sub-path.
 - Clear old sessions atomically when authentication policy changes so later restarts do not reject stale source-bound sessions.

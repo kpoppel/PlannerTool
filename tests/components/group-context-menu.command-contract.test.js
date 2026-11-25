@@ -5,7 +5,7 @@ const {
   mockUpdateGroup,
   mockDeleteGroup,
   mockMoveGroup,
-  mockAddMember,
+  mockUpdateMemberships,
   mockRemoveMember,
   mockDisplayGroups,
   mockEffectiveFeatures,
@@ -15,7 +15,7 @@ const {
   mockUpdateGroup: vi.fn(),
   mockDeleteGroup: vi.fn(),
   mockMoveGroup: vi.fn(),
-  mockAddMember: vi.fn(),
+  mockUpdateMemberships: vi.fn(),
   mockRemoveMember: vi.fn(),
   mockDisplayGroups: vi.fn(() => []),
   mockEffectiveFeatures: vi.fn(() => []),
@@ -29,7 +29,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
       updateGroupInScenario: mockUpdateGroup,
       deleteGroupInScenario: mockDeleteGroup,
       moveGroupInScenario: mockMoveGroup,
-      addMemberToGroup: mockAddMember,
+      updateGroupMemberships: mockUpdateMemberships,
       removeMemberFromGroup: mockRemoveMember,
     },
   },
@@ -112,8 +112,10 @@ describe('GroupContextMenu application contract', () => {
     menu._assignToGroup('g2');
 
     expect(mockDisplayGroups).toHaveBeenCalledWith(['p1'], [{ id: 'f1', project: 'p1' }]);
-    expect(mockRemoveMember).toHaveBeenCalledWith('g1', 'f1');
-    expect(mockAddMember).toHaveBeenCalledWith('g2', 'f1');
+    expect(mockUpdateMemberships).toHaveBeenCalledExactlyOnceWith([
+      { groupId: 'g1', taskId: 'f1', op: 'remove' },
+      { groupId: 'g2', taskId: 'f1', op: 'add' },
+    ]);
   });
 
   it('finds ancestor-plan groups for a Child Context task', () => {
@@ -144,10 +146,10 @@ describe('GroupContextMenu application contract', () => {
 
     menu._assignToGroup('g1');
 
-    expect(mockAddMember.mock.calls).toEqual([
-      ['g1', 'parent'],
-      ['g1', 'child'],
-      ['g1', 'grandchild'],
+    expect(mockUpdateMemberships).toHaveBeenCalledExactlyOnceWith([
+      { groupId: 'g1', taskId: 'parent', op: 'add' },
+      { groupId: 'g1', taskId: 'child', op: 'add' },
+      { groupId: 'g1', taskId: 'grandchild', op: 'add' },
     ]);
   });
 

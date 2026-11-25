@@ -6,9 +6,9 @@ import {
 } from './PluginCostCalculator.js';
 import { sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
-import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
+import { getTeamLabel, renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
 
-export function renderEstimateComparison(row) {
+export function renderEstimateComparison(component, row) {
   if (!row.hasOwnAllocation) return row.feature.capacity.length > 0 ? 'No dated allocation' : 'No own allocation';
   if (!row.hasOwnEstimate) return 'Unpriced allocation';
   if (row.comparisons.length === 0) return '';
@@ -20,7 +20,7 @@ export function renderEstimateComparison(row) {
       : `${direction} ${Math.abs(percent).toFixed(1)}%`;
     const title = `Own cost: ${comparison.estimate.cost.toFixed(2)}; breakdown cost: ${comparison.breakdown.cost.toFixed(2)}; own hours: ${comparison.estimate.hours.toFixed(2)}; breakdown hours: ${comparison.breakdown.hours.toFixed(2)}`;
     return html`<div class="estimate-comparison ${matched ? '' : 'estimate-deviation'}" title="${title}">
-      ${comparison.team}: ${label}
+      ${getTeamLabel(component, comparison.team)}: ${label}
     </div>`;
   })}`;
 }
@@ -204,7 +204,7 @@ function renderTasksInProjectTable(component, features) {
               <td class="numeric">${formatValue(totalHours)}</td>
               <td class="numeric">${formatValue(row.ownCost)}</td>
               <td class="numeric">${formatValue(row.ownHours)}</td>
-              <td>${renderEstimateComparison(row)}</td>
+              <td>${renderEstimateComparison(component, row)}</td>
             </tr>
           `;
         })}
