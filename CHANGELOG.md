@@ -34,6 +34,7 @@ Template - do not change :
 ### Changed
 - Select the task backend explicitly and, for Azure DevOps, its transport (live, synthetic generator, fixture replay or static file) instead of priority-ordered feature flags. Existing selections migrate unchanged, and settings of inactive backends and transports are retained.
 - Keep a relational planner database with each data generation, validated, upgraded, backed up and restored together with the existing configuration store. Remove the unused Stand-alone Mode flag.
+- Store backend selection, ADO settings and plans, catalogue display settings, and iteration presets in the relational database without changing their API formats. Logical restore validates a complete generation before activation and requires a server restart.
 - Show Task Types first and State second in Task Filters, followed by the remaining selectors.
 - Show the active tool's name in the Tools menu button, or the number of active tools when several are selected.
 - Fit a persistent View context overview to the load graph's height, with Plan/Team focus controls, team drill-down, and type/state choices that stay visible when off. Keep advanced-filter indicators and quick cycling visible with detailed choices in the menu. Place task search beside the Tasks heading without an empty strip below the graph or timeline header.

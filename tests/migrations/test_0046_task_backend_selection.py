@@ -1,7 +1,7 @@
 import pytest
 
 from planner_lib.migrations import revisions
-from planner_lib.migrations.contracts import SchemaError, schema_state
+from planner_lib.migrations.contracts import SchemaError
 from planner_lib.migrations.coordinator import Database
 from planner_lib.storage.memory_backend import MemoryStorage
 
@@ -78,16 +78,16 @@ def test_revision_46_validation_rejects_noncanonical_selection(mutate):
         _validate_selection(storage)
 
 
-def test_startup_upgrades_selector_flags_from_revision_45(tmp_path):
+def test_startup_upgrades_selector_flags_from_revision_45(tmp_path, pre_normalization_storage):
     handle = Database(tmp_path).prepare()
     server = handle.storage.load('config', 'server_config')
     ado = handle.storage.load('config', 'ado_config')
     del server['task_backend_id']
     del ado['transport']
     ado['feature_flags'] = {'use_azure_mock': True}
-    handle.storage.save('config', 'server_config', server)
-    handle.storage.save('config', 'ado_config', ado)
-    handle.storage.save('system', 'schema_state', schema_state(45, initialized=True))
+    raw = pre_normalization_storage(handle, 45)
+    raw.save('config', 'server_config', server)
+    raw.save('config', 'ado_config', ado)
     handle.close()
     upgraded = Database(tmp_path).prepare()
     try:

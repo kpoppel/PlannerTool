@@ -541,10 +541,22 @@ async def admin_validate_backup(request: Request):
 @require_admin_session
 async def admin_restore_backup(request: Request):
     """Restore data from a backup payload."""
+    from planner_lib.migrations.contracts import SchemaError
+
     try:
         payload = await request.json()
         admin_svc = resolve_service(request, 'admin_service')
         current_user_email = get_session_context_from_request(request)['email']
+        handle = getattr(request.app.state, 'database_handle', None)
+        if handle is not None:
+            restore = asyncio.create_task(asyncio.to_thread(
+                admin_svc.restore_backup, payload, current_user_email, database_handle=handle))
+            try:
+                result = await asyncio.shield(restore)
+            except asyncio.CancelledError:
+                await restore
+                raise
+            return JSONResponse(content=result)
         result = await asyncio.to_thread(admin_svc.restore_backup, payload, current_user_email)
         try:
             await asyncio.to_thread(admin_svc.reload_config)
@@ -556,6 +568,10 @@ async def admin_restore_backup(request: Request):
     except ValueError as e:
         logger.info('Restore backup rejected: %s', e)
         raise HTTPException(status_code=400, detail={'error': 'restore_rejected', 'message': str(e)})
+    except SchemaError as error:
+        raise HTTPException(status_code=409, detail={
+            'error': 'restore_rejected', 'message': str(error),
+        }) from error
     except Exception as e:
         logger.exception('Failed to restore backup: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')

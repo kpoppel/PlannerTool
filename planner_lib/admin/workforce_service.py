@@ -1,4 +1,5 @@
 """Canonical admin configuration owner selected with the workforce runtime."""
+from contextlib import nullcontext
 from typing import Any
 
 from planner_lib.admin.service import AdminService
@@ -48,9 +49,11 @@ class WorkforceAdminService(AdminService):
 
     def restore_backup(
         self, data: dict[str, Any], current_user_email: str | None = None,
+        *, database_handle=None,
     ) -> dict[str, Any]:
         """Restore compatible user data without bypassing workforce identity and lifecycle checks."""
-        with self._config_manager._storage.transaction():
+        transaction = self._config_manager._storage.transaction if database_handle is None else nullcontext
+        with transaction():
             self._config_manager._validate_compatibility(data)
             config = data.get('config', {})
             canonical_keys = {'teams', 'workforce'} & config.keys()
@@ -66,4 +69,4 @@ class WorkforceAdminService(AdminService):
                 catalogue = TeamCatalogue(self.get_config('teams'))
             if config.get('projects') is not None:
                 validate_project_availability(config['projects'], catalogue.definitions())
-            return super().restore_backup(data, current_user_email)
+            return super().restore_backup(data, current_user_email, database_handle=database_handle)

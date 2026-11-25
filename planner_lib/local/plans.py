@@ -69,6 +69,11 @@ class LocalPlans:
             finally:
                 connection.execute('ROLLBACK')
 
+    def validate_configuration(self):
+        document = self.read()
+        with self._database.connect() as connection:
+            self._validate(document, connection)
+
     def _validate(self, document, connection):
         _require(isinstance(document, dict) and set(document) == {'revision', 'plans'},
                  'Local plans require exactly revision and plans')

@@ -55,15 +55,7 @@ class Config:
 # ---------------------------------------------------------------------------
 
 def _build_storages(config: Config) -> StorageBackend:
-    """Construct and return the diskcache-backed storage for authoritative data.
-
-    Configuration, accounts, sessions, and user data (scenarios/views) all live
-    here permanently — none of it is ever time-expired.  The volatile, TTL'd
-    remote-backend cache (ADO tasks/history/teams/plans/markers/iterations) is
-    built separately (see ``remote_cache_storage`` in ``_build_services``) so
-    that a true cache directory can be deleted/rebuilt without risking loss of
-    authoritative data.
-    """
+    """Construct isolated storage fixtures; deployed storage comes from Database.prepare."""
     storage_diskcache = cast(StorageBackend, create_storage(
         backend=config.storage_backend,
         serializer=config.raw_serializer,
@@ -99,7 +91,7 @@ def _build_services(
 
     container = ServiceContainer()
 
-    # --- Storage (eager, no inter-service deps) — single instance for all namespaces ---
+    # --- Authoritative storage routed to the selected generation's two stores ---
     container.register_singleton("storage", storage_diskcache)
     container.register_singleton('planner_database', planner_database)
 
@@ -109,11 +101,16 @@ def _build_services(
     # can never take config/accounts/sessions/user data down with it. Built
     # lazily so it's never opened when `enable_cache` is off.
     def _make_remote_cache_storage():
-        return create_storage(
+        from planner_lib.backend.caching import prepare_generation_cache
+
+        cache = create_storage(
             backend=config.storage_backend,
             serializer=config.raw_serializer,
             data_dir=config.data_dir + "/remote_cache",
         )
+        if config.storage_backend == 'diskcache':
+            prepare_generation_cache(cache, planner_database.path.parent.name)
+        return cache
 
     container.register_factory("remote_cache_storage", _make_remote_cache_storage)
 
@@ -417,7 +414,6 @@ def _build_app(
     """Construct the FastAPI application: lifespan, middleware, routes."""
     import asyncio
     from planner_lib.middleware import SessionMiddleware, access_denied_response
-    from planner_lib.storage.diskcache_backend import DiskCacheStorage
 
     memory_cache = None  # removed: MemoryCacheManager was eliminated; diskcache handles memory via OS page cache
     storage_diskcache = container.get("storage")  # single instance for all namespaces
@@ -432,7 +428,7 @@ def _build_app(
 
         async def expire_diskcache():
             try:
-                removed = await asyncio.to_thread(storage_diskcache.expire)
+                removed = await asyncio.to_thread(app.state.database_handle.expire)
                 if removed:
                     logger.debug('Removed %s expired DiskCache entries', removed)
             except Exception:
@@ -448,7 +444,7 @@ def _build_app(
                     await expire_diskcache()
 
         try:
-            if isinstance(storage_diskcache, DiskCacheStorage):
+            if app.state.database_handle is not None:
                 await expire_diskcache()
                 cleanup_task = asyncio.create_task(expire_diskcache_periodically())
             yield
@@ -624,6 +620,9 @@ def create_app(config: Config) -> FastAPI:
     try:
         app = _create_prepared_app(config, storage, planner_database)
         app.state.database_handle = handle
+        if handle is not None:
+            from planner_lib.middleware.generation_restore import GenerationRestoreGuard
+            app.add_middleware(GenerationRestoreGuard, handle=handle)
         return app
     except BaseException:
         if handle is not None:

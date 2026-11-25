@@ -10,15 +10,20 @@ import shutil
 import sqlite3
 import tempfile
 import time
+from contextlib import contextmanager
+from threading import Lock
 from uuid import uuid4
 import yaml
 
 from diskcache import Disk
 
 from planner_lib.database import DATABASE_NAME, SCHEMA_TARGET as DATABASE_SCHEMA_TARGET, PlannerDatabase, database_path
+from planner_lib.database.config_repository import (
+    CORE_CONFIGURATION_SQLITE_VERSION, ConfigStorage, PROJECTIONS, migrate_config,
+)
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
 from .contracts import (
-    BASELINE_REVISION, MIGRATION_IDS, PLANNER_DATABASE_REVISION, SchemaError, TARGET_REVISION,
+    BASELINE_REVISION, CORE_CONFIGURATION_REVISION, MIGRATION_IDS, PLANNER_DATABASE_REVISION, SchemaError, TARGET_REVISION,
     schema_state, validate_registry, validate_schema_state,
 )
 from .revisions import (
@@ -183,6 +188,17 @@ class Lease:
         self.exclusive = False
         fcntl.flock(self.gate, fcntl.LOCK_UN)
 
+    @contextmanager
+    def promoted(self, timeout):
+        # Never wait at the entry gate while holding a shared lifetime lease.
+        self._lock(self.gate, fcntl.LOCK_EX, time.monotonic())
+        try:
+            self._lock(self.main, fcntl.LOCK_EX, time.monotonic() + timeout)
+            self.exclusive = True
+            yield
+        finally:
+            self.shared()
+
     def close(self):
         for name in ('main', 'gate'):
             descriptor = getattr(self, name)
@@ -192,11 +208,18 @@ class Lease:
 
 
 class DatabaseHandle:
-    def __init__(self, storage, lease, planner_database):
+    def __init__(self, storage, lease, planner_database, coordinator):
         self.storage = storage
         self.lease = lease
         self.planner_database = planner_database
         self.closed = False
+        self.restart_required = False
+        self.coordinator = coordinator
+        self.maintenance_lock = Lock()
+
+    def expire(self):
+        with self.maintenance_lock:
+            return 0 if self.restart_required else self.storage.expire()
 
     def close(self):
         if not self.closed:
@@ -308,8 +331,9 @@ class Database:
                 if storage.get_expire_time('system', 'schema_state') is not None:
                     raise SchemaError('Schema metadata must never expire')
                 revision = validate_schema_state(storage.load('system', 'schema_state'))
-                validate_records(storage, revision, server_config=server_config)
                 self._planner_version(source, revision)
+                validate_records(self._config_storage(storage, source, revision), revision,
+                                 server_config=server_config)
                 return revision
             if source.parent.parent.name == 'generations':
                 raise SchemaError('Selected generation has no schema metadata')
@@ -330,7 +354,17 @@ class Database:
         database = self._source_database(source)
         if not database.exists():
             raise SchemaError('Generation claims a planner database but planner.sqlite is missing')
-        return database.validate(require_current=False)
+        version = database.validate(require_current=False)
+        if revision >= CORE_CONFIGURATION_REVISION and version < CORE_CONFIGURATION_SQLITE_VERSION:
+            raise SchemaError('Generation claims normalized configuration but its SQLite schema is too old')
+        return version
+
+    def _config_storage(self, storage, cache, revision):
+        if revision < CORE_CONFIGURATION_REVISION:
+            return storage
+        if any(storage.exists('config', key) for key in PROJECTIONS):
+            raise SchemaError('Normalized configuration still exists in DiskCache')
+        return ConfigStorage(storage, self._source_database(cache))
 
     def _current(self, source):
         revision = self._revision(source)
@@ -459,10 +493,10 @@ class Database:
         storage = InspectionStorage(cache)
         try:
             revision = validate_schema_state(storage.load('system', 'schema_state'))
-            validate_records(storage, revision)
+            self._planner_version(cache, revision)
+            validate_records(self._config_storage(storage, cache, revision), revision)
         finally:
             storage.close()
-        self._planner_version(cache, revision)
 
     def _reconcile(self, pointer, journal):
         if journal is None or journal['phase'] == 'complete':
@@ -476,19 +510,24 @@ class Database:
         expected_source = 'legacy' if pointer is None and (self.root / 'cache').exists() else pointer
         if journal['source'] != expected_source or journal['phase'] in ('published', 'activated'):
             raise SchemaError('Pointer and operation journal disagree; inspect offline')
-        if journal['phase'] == 'failed' and journal['build'] == self.build:
+        if (journal['phase'] == 'failed' and journal['build'] == self.build
+                and journal.get('operation') != 'logical-restore'):
             raise SchemaError('This build previously failed. Use database retry or deploy a changed build.')
         self._remove(self._generation(journal['candidate']), recorded=True)
+        if journal.get('operation') == 'logical-restore':
+            (self.root / 'upgrade-state.json').unlink()
+            flush_directory(self.root)
 
-    def _publish(self, journal):
+    def _publish(self, journal, *, defer_cleanup=False):
         write_json(self.root / 'active-generation.json', {'generation': journal['candidate']})
         self._boundary('pointer-published')
         self._record(journal, 'published')
         self._validate_generation(journal['candidate'])
         self._record(journal, 'activated')
-        self._cleanup(journal)
+        if not defer_cleanup:
+            self._cleanup(journal)
 
-    def _stage(self, source, revision, pointer, *, restoring=False, server_config=None):
+    def _stage(self, source, revision, pointer, *, restoring=False, server_config=None, logical_restore=None):
         generation = uuid4().hex
         source_id = 'legacy' if pointer is None and (self.root / 'cache').exists() else pointer
         journal = {'source': source_id, 'candidate': generation, 'target_revision': TARGET_REVISION,
@@ -496,33 +535,48 @@ class Database:
                    'legacy_server_config': source_id == 'legacy' and (
                        self._legacy_config(self.root / 'cache') is not None
                        if restoring else server_config is not None),
-                   'operation': 'restore' if restoring else 'upgrade'}
+                   'operation': 'logical-restore' if logical_restore is not None else 'restore' if restoring else 'upgrade'}
         self._record(journal, 'preparing')
         candidate = self._generation(generation)
         candidate.parent.mkdir(mode=0o700, exist_ok=True)
         candidate.mkdir(mode=0o700)
         write_json(candidate / 'generation.json', {'generation': generation, 'owner': 'planner-server'})
         storage = None
+        result = None
         try:
             if source is not None:
                 self._copy(source, candidate / 'cache', checkpoint=not restoring)
             storage = DiskCacheStorage(candidate / 'cache')
             if server_config is not None:
                 storage.save('config', 'server_config', server_config)
-            if restoring:
+            if logical_restore is not None:
+                from planner_lib.session.policy import validate_backend_policy
+
+                planner = PlannerDatabase(candidate / DATABASE_NAME, root=self.root)
+                config = self._config_storage(storage, candidate / 'cache', revision)
+                result = logical_restore(config, planner)
+                validate_candidate(storage, config_storage=config)
+                validate_backend_policy(config)
+                planner.validate()
+                planner.checkpoint()
+            elif restoring:
                 if not storage.exists('system', 'schema_state'):
                     storage.save('system', 'schema_state', schema_state(revision))
                 validate_schema_state(storage.load('system', 'schema_state'))
-                validate_records(storage, revision)
+                validate_records(self._config_storage(storage, candidate / 'cache', revision), revision)
                 if storage._cache.check():
                     raise SchemaError('Restored database integrity check failed')
             elif source is None:
                 initialize(storage)
             else:
                 self._upgrade(storage, revision, journal)
-            if not restoring:
+            if not restoring and logical_restore is None:
                 journal['failed_migration'] = 'candidate-validation'
-                validate_candidate(storage)
+                if revision is not None and revision >= CORE_CONFIGURATION_REVISION:
+                    validate_candidate(storage, config_storage=self._config_storage(
+                        storage, candidate / 'cache', revision))
+                else:
+                    validate_candidate(storage)
                 journal['failed_migration'] = 'planner-database'
                 planner = PlannerDatabase(candidate / DATABASE_NAME, root=self.root)
                 if planner.exists():
@@ -530,7 +584,20 @@ class Database:
                 else:
                     planner = PlannerDatabase.create(planner.path, root=self.root)
                 planner.validate()
+                journal['failed_migration'] = MIGRATION_IDS[CORE_CONFIGURATION_REVISION]
+                if revision is None or revision < CORE_CONFIGURATION_REVISION:
+                    migrate_config(storage, planner)
+                validate_records(self._config_storage(storage, candidate / 'cache', TARGET_REVISION),
+                                 TARGET_REVISION)
                 planner.checkpoint()
+            staged_revision = revision if restoring else TARGET_REVISION
+            if staged_revision >= CORE_CONFIGURATION_REVISION:
+                from planner_lib.local.catalogue import LocalCatalogue, validate_catalogue
+                from planner_lib.local.plans import LocalPlans
+
+                config = self._config_storage(storage, candidate / 'cache', staged_revision)
+                validate_catalogue(LocalCatalogue(config.database).read())
+                LocalPlans(config.database, config).validate_configuration()
             journal['failed_migration'] = None
             storage._cache._sql('PRAGMA wal_checkpoint(TRUNCATE)').fetchall()
             storage._cache.close()
@@ -548,12 +615,24 @@ class Database:
                 raise SchemaError('Failure could not be recorded durably; source remains selected. '
                                   'Repair storage and inspect offline status before retrying.') from None
             raise SchemaError('Database preparation failed; source unchanged. Inspect status and use database retry.') from None
-        self._publish(journal)
-        return generation
+        self._publish(journal, defer_cleanup=logical_restore is not None)
+        return result if logical_restore is not None else generation
 
     def _handle(self, source, lease):
-        return DatabaseHandle(DiskCacheStorage(source), lease,
-                              PlannerDatabase(database_path(source), root=self.root))
+        planner = PlannerDatabase(database_path(source), root=self.root)
+        return DatabaseHandle(ConfigStorage(DiskCacheStorage(source), planner), lease, planner, self)
+
+    def restore_logical(self, handle, apply):
+        with handle.maintenance_lock, handle.lease.promoted(self.lock_timeout):
+            pointer = self._pointer()
+            if handle.closed or handle.restart_required or handle.storage.data_dir != self._source(pointer):
+                raise SchemaError('The selected generation changed; restart before restoring')
+            self._reconcile(pointer, self._journal())
+            try:
+                return self._stage(handle.storage.data_dir, TARGET_REVISION, pointer, logical_restore=apply)
+            finally:
+                # If publication succeeded, no live request may use the previous generation.
+                handle.restart_required = self._pointer() != pointer
 
     def prepare(self):
         validate_registry(REGISTRY)
@@ -605,6 +684,7 @@ class Database:
         pointer, journal = self._pointer(), self._journal()
         source = self._source(pointer)
         revision = None
+        planner_version = None
         compatibility_error = None
         if source is not None:
             server_config = self._legacy_config(source)
@@ -615,6 +695,7 @@ class Database:
                     revision = state.get('schema_revision') if isinstance(state, dict) else None
                     try:
                         validate_schema_state(state)
+                        planner_version = self._planner_version(source, revision)
                     except SchemaError as error:
                         compatibility_error = str(error)
                 else:
@@ -626,6 +707,9 @@ class Database:
             finally:
                 storage.close()
         return {'active_generation': pointer, 'active_revision': revision,
+                'planner_database_version': planner_version,
+                'core_configuration_storage': ('sqlite' if revision is not None
+                    and revision >= CORE_CONFIGURATION_REVISION else 'diskcache' if revision else None),
                 'compatibility_error': compatibility_error,
             'failed_migration': journal['failed_migration'] if journal else None,
             'failed_build': journal['build'] if journal and journal['error'] else None,
@@ -679,11 +763,6 @@ class Database:
             raise SchemaError('Backup contains no authoritative database')
         revision = backup_database._revision(source)
         server_config = backup_database._legacy_config(source)
-        inspection = InspectionStorage(source)
-        try:
-            validate_records(inspection, revision, server_config=server_config)
-        finally:
-            inspection.close()
         lease = Lease(self.root, True, self.lock_timeout)
         try:
             pointer, journal = self._pointer(), self._journal()
@@ -726,7 +805,8 @@ class Database:
                         yaml.safe_dump(server_config, output)
                 storage = InspectionStorage(staged / 'cache')
                 try:
-                    validate_records(storage, revision, server_config=server_config)
+                    validate_records(self._config_storage(storage, staged / 'cache', revision),
+                                     revision, server_config=server_config)
                     if not storage.exists('system', 'schema_state'):
                         write_json(staged / 'migrations.json', read_json(self.root / 'migrations.json'))
                 finally:

@@ -1,11 +1,33 @@
 """Tests for AdoConfigBackend: fetch_ado_config and save_ado_config on ConfigBackend."""
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, closing, nullcontext
+
 import pytest
+
 from planner_lib.backend.config import ConfigBackend, WorkforceConfigBackend
+from planner_lib.migrations.coordinator import Database
 from planner_lib.storage.base import StorageBackend
 from tests.python.azure.test_process_catalogue import catalogue_storage
 
 
+def test_normalized_ado_config_preserves_transport_specific_settings(tmp_path):
+    flags = {
+        'generator_persist_enabled': True,
+        'data_dir': str(tmp_path),
+        'generator_persist_dir': str(tmp_path / 'generated'),
+        'azure_mock_data_dir': str(tmp_path / 'fixture'),
+        'static_data_path': str(tmp_path / 'static.yml'),
+        'generator_config': {
+            'seed': None, 'n_plans': 2, 'n_pis': 3, 'revisions_min': 4, 'revisions_max': 6,
+            'items_per_area': {'Project\\Team': 8},
+            'state_weights': {'Feature': [35, 20.5, 24.5, 12, 8]},
+        },
+    }
+    config = {'organization_url': 'MyOrg', 'transport': 'static', 'feature_flags': flags}
+    with closing(Database(tmp_path).prepare()) as handle:
+        backend = ConfigBackend(storage=handle.storage)
+        backend.save_ado_config(config)
+        assert backend.fetch_ado_config() == config
+        assert not handle.storage.retained.exists('config', 'ado_config')
 class _MemStore(StorageBackend):
     def __init__(self):
         defaults = catalogue_storage(['Org'])

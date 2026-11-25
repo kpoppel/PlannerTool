@@ -28,7 +28,7 @@ def test_lifespan_periodically_removes_expired_diskcache_rows(tmp_path, monkeypa
     static.mkdir()
     (static / 'index.html').write_text('<html><head></head></html>')
     app = create_app(Config(data_dir=str(tmp_path / 'installation'), static_dir=str(static)))
-    storage = app.state.container.get('storage')
+    storage = app.state.container.get('storage').retained
 
     def save_expired_session(key):
         storage.save('auth_sessions', key, {'expired': True}, ttl_seconds=60)
@@ -75,7 +75,8 @@ def test_construction_failure_releases_database_lease(tmp_path):
 def test_current_generation_missing_config_is_not_repaired(tmp_path, monkeypatch):
     from planner_lib import main
     handle = Database(tmp_path).prepare()
-    handle.storage.delete('config', 'server_config')
+    with handle.planner_database.write() as connection:
+        connection.execute('DELETE FROM server_settings')
     handle.close()
     monkeypatch.setattr(main, 'configure_logging', lambda *args: pytest.fail('logging ran before validation'))
     with pytest.raises(SchemaError):

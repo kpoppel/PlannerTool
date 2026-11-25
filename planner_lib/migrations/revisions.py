@@ -639,6 +639,10 @@ def upgrade_47(storage):
     storage.save('config', 'server_config', {**server, 'feature_flags': flags})
 
 
+def upgrade_48(storage):
+    """The coordinator moves configuration after migrating the candidate SQLite schema."""
+
+
 def _validate_backend_selection(server, ado):
     from planner_lib.backend.selection import validate_selection
 
@@ -659,6 +663,7 @@ REGISTRY = tuple(
         (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
         (44, 43, upgrade_44),
         (45, 44, upgrade_45), (46, 45, upgrade_46), (47, 46, upgrade_47),
+        (48, 47, upgrade_48),
     )
 )
 
@@ -912,7 +917,7 @@ def validate_records(storage, revision, *, server_config=None):
                           + type(error).__name__ + ')') from None
 
 
-def validate_candidate(storage):
+def validate_candidate(storage, *, config_storage=None):
     validate_registry(REGISTRY)
     revision = validate_schema_state(storage.load('system', 'schema_state'))
     if revision != TARGET_REVISION:
@@ -921,4 +926,4 @@ def validate_candidate(storage):
         raise SchemaError('Schema metadata must not expire')
     if storage._cache.check():
         raise SchemaError('Candidate DiskCache integrity check failed')
-    validate_records(storage, revision)
+    validate_records(storage if config_storage is None else config_storage, revision)

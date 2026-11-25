@@ -401,10 +401,10 @@ class LocalTasks:
                     continue
                 start, end = value['startDate'], value['finishDate']
                 connection.execute('''
-                    INSERT INTO iteration_sets VALUES (?, 'local', ?) ON CONFLICT(iteration_set_id) DO NOTHING
+                    INSERT INTO task_iteration_sets VALUES (?, 'local', ?) ON CONFLICT(iteration_set_id) DO NOTHING
                 ''', (set_id, set_id))
                 connection.execute('''
-                    INSERT INTO iterations VALUES (?, ?, ?, ?, ?) ON CONFLICT(iteration_id) DO UPDATE SET
+                    INSERT INTO task_iteration_refs VALUES (?, ?, ?, ?, ?) ON CONFLICT(iteration_id) DO UPDATE SET
                     start_date = excluded.start_date, finish_date = excluded.finish_date
                 ''', (preset_id, set_id, path, start, end))
                 return start, end
@@ -480,7 +480,7 @@ class LocalTasks:
                    states.name AS state_name, states.category, iterations.name AS iteration_name
             FROM tasks JOIN plan_definitions AS plans USING (plan_id)
             JOIN task_types AS types USING (type_id) JOIN states USING (state_id)
-            LEFT JOIN iterations USING (iteration_id)
+            LEFT JOIN task_iteration_refs AS iterations USING (iteration_id)
             WHERE tasks.deleted_at IS NULL AND plans.backend_id = 'local'
         ''' + filter_sql + ' ORDER BY tasks.created_at, tasks.task_id', params)
         tasks = {}

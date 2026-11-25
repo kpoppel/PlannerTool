@@ -4,10 +4,8 @@ Extracted from AdminService to honour the Single Responsibility Principle.
 AdminService composes a ConfigManager instance and delegates all config
 operations to it; callers that hold an AdminService reference are unaffected.
 
-Storage routing
----------------
-All config keys (including server_config) are stored in the diskcache-backed
-``_config_storage``.
+Core configuration uses typed planner database projections; the other keys
+remain in their existing authoritative storage namespaces.
 """
 from __future__ import annotations
 
@@ -18,6 +16,7 @@ from contextlib import nullcontext
 from typing import Any, Optional
 from uuid import UUID
 
+from planner_lib.database.config_repository import ConfigStorage, PROJECTIONS
 from planner_lib.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
@@ -261,6 +260,8 @@ class ConfigManager:
     # ------------------------------------------------------------------
 
     def _transaction(self):
+        if isinstance(self._storage, ConfigStorage):
+            return self._storage.transaction()
         cache = getattr(self._storage, '_cache', None)
         return cache.transact() if cache is not None else nullcontext()
 
@@ -283,7 +284,7 @@ class ConfigManager:
 
         # Configuration files (all keys go to storage under 'config' namespace)
         for key in self.CONFIG_KEYS:
-            if key == 'authentication':
+            if key == 'authentication' or (isinstance(self._storage, ConfigStorage) and key in PROJECTIONS):
                 continue
             try:
                 backup_data["config"][key] = self._storage.load('config', key)
@@ -340,9 +341,27 @@ class ConfigManager:
         current_admins: Optional[list] = None,
         current_user_email: Optional[str] = None,
         sync_accounts_fn=None,
+        database_handle=None,
     ) -> dict:
-        """Restore accounts and auth state atomically on diskcache storage."""
+        """Restore into a candidate generation for a disk-backed installation."""
         self._validate_compatibility(data)
+        if isinstance(self._storage, ConfigStorage) and database_handle is None:
+            raise ValueError('Logical restore requires an active generation handle')
+        if database_handle is not None:
+            from planner_lib.accounts.config import AccountManager
+
+            def apply(storage, database):
+                candidate = ConfigManager(storage, planner_database=database)
+                return candidate._restore_backup(
+                    data, current_admins=current_admins, current_user_email=current_user_email,
+                    sync_accounts_fn=AccountManager(storage).sync_accounts_full,
+                )
+
+            result = database_handle.coordinator.restore_logical(database_handle, apply)
+            notice = 'Restart the server to use the restored generation.'
+            result['warning'] = ' '.join(filter(None, (result.get('warning'), notice)))
+            result['restart_required'] = True
+            return result
         with self._transaction():
             return self._restore_backup(
                 data, current_admins=current_admins, current_user_email=current_user_email,
@@ -375,6 +394,8 @@ class ConfigManager:
             raise ValueError('Logical backup contains unsupported configuration keys')
         if 'authentication' in config:
             raise ValueError('Authentication policy is deployment-controlled; no logical import')
+        if isinstance(self._storage, ConfigStorage) and config.keys() & PROJECTIONS.keys():
+            raise ValueError('Core configuration belongs only in the planner_database backup section')
         if 'accounts' in data:
             if (self._storage.exists('config', 'authentication')
                     and self._storage.load('config', 'authentication')['active'] == 'entra'):

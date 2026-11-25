@@ -64,6 +64,17 @@ logger = logging.getLogger(__name__)
 
 _NAMESPACE = 'backend_domain'
 
+
+def prepare_generation_cache(storage, generation):
+    with storage.transaction():
+        if (storage.exists('system', 'generation')
+                and storage.load('system', 'generation') == generation):
+            return
+        for key in list(storage.list_keys(_NAMESPACE)):
+            if storage.exists(_NAMESPACE, key):
+                storage.delete(_NAMESPACE, key)
+        storage.save('system', 'generation', generation)
+
 # Sentinel marking "no freshness sidecar present" (distinct from a stored
 # ``fresh_until`` of ``None``, which means the entry never soft-expires).
 _MISSING = object()

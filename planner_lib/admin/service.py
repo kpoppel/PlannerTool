@@ -192,13 +192,14 @@ class AdminService:
         self._config_manager._validate_compatibility(data)
         return {'ok': True, 'schema_revision': data['schema_revision']}
 
-    def restore_backup(self, data, current_user_email=None) -> dict:
+    def restore_backup(self, data, current_user_email=None, *, database_handle=None) -> dict:
         """Restore config and data from a backup.  Delegates to ConfigManager."""
         return self._config_manager.restore_backup(
             data,
             current_admins=self._account_manager.get_all_with_permission(AccountPermissions.ADMIN),
             current_user_email=current_user_email,
             sync_accounts_fn=self._account_manager.sync_accounts_full,
+            database_handle=database_handle,
         )
 
     def reload_config(self) -> dict:

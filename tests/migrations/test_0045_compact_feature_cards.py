@@ -1,7 +1,6 @@
 import pytest
 
 from planner_lib.migrations import revisions
-from planner_lib.migrations.contracts import schema_state
 from planner_lib.migrations.coordinator import Database
 from planner_lib.storage.memory_backend import MemoryStorage
 from planner_lib.views.view_store import save_user_view
@@ -26,14 +25,14 @@ def test_upgrade_replaces_legacy_card_sizes_and_preserves_view_data(mode):
     assert storage.load('views', 'owner_view') == saved
 
 
-def test_startup_upgrades_saved_compact_view_from_revision_44(tmp_path):
+def test_startup_upgrades_saved_compact_view_from_revision_44(tmp_path, pre_normalization_storage):
     owner = '11111111-1111-4111-8111-111111111111'
     handle = Database(tmp_path).prepare()
     handle.storage.save('views', owner + '_view', {'viewOptions': {
         'displayMode': 'compact', 'condensedCards': True, 'packedMode': False,
         'packedModeUnplannedPreference': True,
     }})
-    handle.storage.save('system', 'schema_state', schema_state(44, initialized=True))
+    pre_normalization_storage(handle, 44)
     handle.close()
     upgraded = Database(tmp_path).prepare()
     try:

@@ -334,8 +334,228 @@ CREATE TABLE document_revisions (
 INSERT INTO document_revisions VALUES ('local_catalogue', 0), ('local_plans', 0);
 """
 
+CORE_CONFIGURATION = """
+ALTER TABLE server_settings ADD COLUMN log_level_present INTEGER NOT NULL DEFAULT 1
+    CHECK (log_level_present IN (0, 1));
+ALTER TABLE server_settings ADD COLUMN cache_shape INTEGER NOT NULL DEFAULT 0
+    CHECK (cache_shape IN (0, 1, 2));
+DROP TABLE cache_policies;
+CREATE TABLE cache_policies (
+    cache_domain TEXT PRIMARY KEY CHECK (length(cache_domain) > 0),
+    ttl_seconds INTEGER NOT NULL CHECK (ttl_seconds >= 0 AND ttl_seconds % 60 = 0)
+);
+ALTER TABLE ado_settings ADD COLUMN transport TEXT NOT NULL DEFAULT 'live'
+    CHECK (transport IN ('live', 'mock_generator', 'mock_fixture', 'static'));
+ALTER TABLE ado_settings ADD COLUMN url_present INTEGER NOT NULL DEFAULT 1
+    CHECK (url_present IN (0, 1));
+ALTER TABLE ado_settings ADD COLUMN flags_present INTEGER NOT NULL DEFAULT 1
+    CHECK (flags_present IN (0, 1));
+
+CREATE TABLE ado_transport_paths (
+    scope TEXT PRIMARY KEY NOT NULL CHECK (scope IN ('server', 'ado')),
+    data_dir TEXT,
+    generator_persist_dir TEXT,
+    azure_mock_data_dir TEXT,
+    static_data_path TEXT
+);
+CREATE TABLE ado_generator_settings (
+    scope TEXT PRIMARY KEY NOT NULL CHECK (scope IN ('server', 'ado')),
+    seed INTEGER,
+    n_plans INTEGER CHECK (n_plans > 0),
+    default_items_per_area INTEGER CHECK (default_items_per_area > 0),
+    n_pis INTEGER CHECK (n_pis > 0),
+    sprints_per_pi INTEGER CHECK (sprints_per_pi > 0),
+    revisions_min INTEGER CHECK (revisions_min > 0),
+    revisions_max INTEGER CHECK (revisions_max >= revisions_min AND revisions_max > 0),
+    people_per_team INTEGER CHECK (people_per_team > 0),
+    persist_dir TEXT,
+    seed_present INTEGER NOT NULL CHECK (seed_present IN (0, 1)),
+    items_present INTEGER NOT NULL CHECK (items_present IN (0, 1)),
+    weights_present INTEGER NOT NULL CHECK (weights_present IN (0, 1))
+);
+CREATE TABLE ado_generator_items_by_area (
+    scope TEXT NOT NULL REFERENCES ado_generator_settings ON DELETE CASCADE,
+    area_path TEXT NOT NULL,
+    item_count INTEGER NOT NULL CHECK (item_count >= 0),
+    PRIMARY KEY (scope, area_path)
+);
+CREATE TABLE ado_generator_state_weights (
+    scope TEXT NOT NULL REFERENCES ado_generator_settings ON DELETE CASCADE,
+    type_name TEXT NOT NULL,
+    new_weight REAL NOT NULL CHECK (new_weight >= 0),
+    defined_weight REAL NOT NULL CHECK (defined_weight >= 0),
+    active_weight REAL NOT NULL CHECK (active_weight >= 0),
+    resolved_weight REAL NOT NULL CHECK (resolved_weight >= 0),
+    closed_weight REAL NOT NULL CHECK (closed_weight >= 0),
+    PRIMARY KEY (scope, type_name)
+);
+
+-- Historical task bindings retain their preset IDs; current presets are editable separately.
+ALTER TABLE iteration_sets RENAME TO task_iteration_sets;
+ALTER TABLE iterations RENAME TO task_iteration_refs;
+CREATE TABLE iteration_sets (
+    iteration_set_id TEXT PRIMARY KEY NOT NULL CHECK (length(trim(iteration_set_id)) > 0),
+    backend_id TEXT NOT NULL REFERENCES backend_definitions(backend_id),
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    source_type TEXT NOT NULL CHECK (source_type IN ('ado', 'manual', 'generated')),
+    source_project TEXT,
+    root_path TEXT,
+    cached_at TEXT,
+    CHECK ((source_type = 'ado' AND backend_id = 'ado' AND source_project IS NOT NULL)
+        OR (source_type <> 'ado' AND backend_id = 'local' AND source_project IS NULL))
+);
+CREATE TABLE ado_plan_kinds (
+    kind TEXT PRIMARY KEY NOT NULL CHECK (length(trim(kind)) > 0),
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0)
+);
+CREATE TABLE allocation_defaults (
+    kind TEXT NOT NULL REFERENCES ado_plan_kinds ON DELETE CASCADE,
+    team_id TEXT NOT NULL CHECK (length(team_id) > 0),
+    position INTEGER NOT NULL CHECK (position >= 0),
+    PRIMARY KEY (kind, team_id),
+    UNIQUE (kind, position)
+);
+CREATE TABLE ado_projects (
+    project_id TEXT PRIMARY KEY NOT NULL,
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    kind TEXT NOT NULL REFERENCES ado_plan_kinds,
+    area_path TEXT NOT NULL CHECK (length(trim(area_path)) > 0),
+    closed_history_days INTEGER NOT NULL CHECK (closed_history_days >= 0),
+    archived INTEGER CHECK (archived IN (0, 1)),
+    iteration_present INTEGER NOT NULL CHECK (iteration_present IN (0, 1)),
+    iteration_id TEXT REFERENCES iteration_sets(iteration_set_id),
+    allocation_override INTEGER NOT NULL CHECK (allocation_override IN (0, 1))
+);
+CREATE TABLE ado_project_task_types (
+    project_id TEXT NOT NULL REFERENCES ado_projects ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    PRIMARY KEY (project_id, position)
+);
+CREATE TABLE ado_project_allocation (
+    project_id TEXT NOT NULL REFERENCES ado_projects ON DELETE CASCADE,
+    team_id TEXT NOT NULL CHECK (length(team_id) > 0),
+    position INTEGER NOT NULL CHECK (position >= 0),
+    PRIMARY KEY (project_id, team_id),
+    UNIQUE (project_id, position)
+);
+CREATE TABLE ado_processes (
+    process_id TEXT PRIMARY KEY NOT NULL CHECK (length(trim(process_id)) > 0),
+    backend_id TEXT NOT NULL DEFAULT 'ado' REFERENCES backend_definitions CHECK (backend_id = 'ado'),
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    parent_name TEXT,
+    loaded_at TEXT NOT NULL
+);
+CREATE TABLE ado_process_projects (
+    process_id TEXT NOT NULL REFERENCES ado_processes ON DELETE CASCADE,
+    project_name TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK (length(trim(project_name)) > 0),
+    position INTEGER NOT NULL CHECK (position >= 0),
+    PRIMARY KEY (process_id, position)
+);
+CREATE TABLE ado_task_types (
+    process_id TEXT NOT NULL REFERENCES ado_processes ON DELETE CASCADE,
+    reference_name TEXT NOT NULL CHECK (length(trim(reference_name)) > 0),
+    position INTEGER NOT NULL CHECK (position >= 0),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    backlog_level TEXT NOT NULL CHECK (backlog_level IN ('portfolio', 'requirement', 'task', 'none')),
+    backlog TEXT,
+    imported INTEGER NOT NULL CHECK (imported IN (0, 1)),
+    missing INTEGER NOT NULL CHECK (missing IN (0, 1)),
+    PRIMARY KEY (process_id, reference_name),
+    UNIQUE (process_id, name),
+    UNIQUE (process_id, position)
+);
+CREATE TABLE ado_task_type_states (
+    process_id TEXT NOT NULL,
+    reference_name TEXT NOT NULL,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    category TEXT NOT NULL CHECK (category IN ('Proposed', 'InProgress', 'Resolved', 'Completed', 'Removed')),
+    display_order INTEGER NOT NULL,
+    FOREIGN KEY (process_id, reference_name) REFERENCES ado_task_types ON DELETE CASCADE,
+    PRIMARY KEY (process_id, reference_name, name),
+    UNIQUE (process_id, reference_name, position)
+);
+CREATE TABLE ado_process_display_order (
+    process_id TEXT PRIMARY KEY NOT NULL REFERENCES ado_processes DEFERRABLE INITIALLY DEFERRED,
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0)
+);
+CREATE TABLE ado_type_display_tiers (
+    process_id TEXT NOT NULL REFERENCES ado_process_display_order ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    tier INTEGER NOT NULL CHECK (tier >= 0),
+    position INTEGER NOT NULL CHECK (position >= 0),
+    FOREIGN KEY (process_id, name) REFERENCES ado_task_types(process_id, name) DEFERRABLE INITIALLY DEFERRED,
+    PRIMARY KEY (process_id, name),
+    UNIQUE (process_id, tier, position)
+);
+CREATE TABLE area_mapping_settings (
+    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    last_update TEXT
+);
+CREATE TABLE area_mapping_projects (
+    project_id TEXT PRIMARY KEY NOT NULL,
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0),
+    last_update TEXT,
+    areas_present INTEGER NOT NULL CHECK (areas_present IN (0, 1))
+);
+CREATE TABLE area_mappings (
+    project_id TEXT NOT NULL REFERENCES area_mapping_projects ON DELETE CASCADE,
+    area_path TEXT NOT NULL CHECK (length(trim(area_path)) > 0),
+    position INTEGER NOT NULL CHECK (position >= 0),
+    last_update TEXT,
+    plans_shape INTEGER NOT NULL CHECK (plans_shape IN (0, 1, 2)),
+    PRIMARY KEY (project_id, area_path),
+    UNIQUE (project_id, position)
+);
+CREATE TABLE area_delivery_plans (
+    project_id TEXT NOT NULL,
+    area_path TEXT NOT NULL,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    delivery_plan_id TEXT NOT NULL,
+    name TEXT,
+    enabled INTEGER CHECK (enabled IN (0, 1)),
+    FOREIGN KEY (project_id, area_path) REFERENCES area_mappings ON DELETE CASCADE,
+    PRIMARY KEY (project_id, area_path, position)
+);
+CREATE TABLE iteration_selections (
+    iteration_set_id TEXT NOT NULL REFERENCES iteration_sets ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    path TEXT NOT NULL,
+    PRIMARY KEY (iteration_set_id, position)
+);
+CREATE TABLE iteration_generators (
+    iteration_set_id TEXT PRIMARY KEY NOT NULL REFERENCES iteration_sets ON DELETE CASCADE,
+    start_date TEXT NOT NULL,
+    length INTEGER NOT NULL CHECK (length BETWEEN 1 AND 366),
+    unit TEXT NOT NULL CHECK (unit IN ('days', 'weeks')),
+    first_number INTEGER NOT NULL CHECK (first_number BETWEEN 1 AND 99999),
+    prefix TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('count', 'until')),
+    count INTEGER,
+    end_date TEXT,
+    CHECK ((mode = 'count' AND count IS NOT NULL) OR (mode = 'until' AND end_date IS NOT NULL))
+);
+CREATE TABLE iterations (
+    iteration_id TEXT PRIMARY KEY NOT NULL,
+    iteration_set_id TEXT NOT NULL REFERENCES iteration_sets ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    path TEXT NOT NULL CHECK (length(trim(path)) > 0),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    start_date TEXT NOT NULL CHECK (date(start_date) IS start_date),
+    finish_date TEXT NOT NULL CHECK (date(finish_date) IS finish_date),
+    CHECK (start_date <= finish_date),
+    UNIQUE (iteration_set_id, path),
+    UNIQUE (iteration_set_id, position)
+);
+"""
+
 MIGRATIONS = (
     (1, '0001.initial-relational-schema', INITIAL_SCHEMA),
     (2, '0002.local-catalogue-and-plans', LOCAL_CATALOGUE_AND_PLANS),
+    (3, '0003.core-configuration', CORE_CONFIGURATION),
 )
 SCHEMA_TARGET = MIGRATIONS[-1][0]

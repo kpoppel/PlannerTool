@@ -286,7 +286,8 @@ do not interpret ADO paths, type references or backlog definitions.
 | `backend` | Selected provider, optionally wrapped by `CachingBackend` | Remote work-item, history, team, plan, and iteration data |
 | `config_backend` | `ConfigBackend` | Durable local configuration |
 | `user_data_backend` | `UserDataBackend` | Durable scenarios, views, events, and groups |
-| `storage` | `DiskCacheStorage` | Authoritative diskcache instance |
+| `storage` | `ConfigStorage` | Routes core config documents to typed SQLite projections and retained namespaces to DiskCache |
+| `planner_database` | `PlannerDatabase` | Active generation's relational core configuration, Local catalogue, plans, tasks, and history |
 | `remote_cache_storage` | Lazily-created `DiskCacheStorage` | Disposable cache, created only when caching is enabled |
 
 ### Layer Map

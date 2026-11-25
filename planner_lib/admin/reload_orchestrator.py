@@ -7,8 +7,7 @@ account management) and makes the reload logic independently testable.
 
 Storage
 -------
-All config keys (including server_config) are stored in the diskcache-backed
-``_config_storage``.
+Read configuration through the generation's authoritative storage interface.
 """
 import logging
 from typing import Any
@@ -40,7 +39,7 @@ class ReloadOrchestrator:
     ) -> None:
         """
         Args:
-            storage: diskcache-backed storage holding all config keys.
+            storage: authoritative storage interface for both config stores.
             azure_client: The AzureService instance whose settings are refreshed.
             reloadable_services: List of service instances to reload/invalidate.
                 Each service is tested for Reloadable / Invalidatable protocols.

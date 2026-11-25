@@ -7,7 +7,7 @@ from planner_lib.database import DATABASE_NAME, SCHEMA_TARGET, PlannerDatabase
 from planner_lib.database import planner_database as owner
 from planner_lib.database import schema as database_schema
 from planner_lib.migrations import revisions
-from planner_lib.migrations.contracts import SchemaError, TARGET_REVISION, schema_state
+from planner_lib.migrations.contracts import SchemaError, TARGET_REVISION
 from planner_lib.migrations.coordinator import Database
 from planner_lib.storage.memory_backend import MemoryStorage
 
@@ -18,18 +18,18 @@ def _generation(handle):
 
 def _seed_kind(database, kind='project'):
     with database.write() as connection:
-        connection.execute('INSERT INTO server_feature_flags VALUES (?, 1)', (kind,))
+        connection.execute("INSERT INTO processes VALUES (?, 'local', ?)", (kind, kind))
 
 
 def _kinds(database):
     with database.connect() as connection:
-        return [row[0] for row in connection.execute('SELECT flag_name FROM server_feature_flags')]
+        return [row[0] for row in connection.execute("SELECT process_id FROM processes WHERE backend_id = 'local'")]
 
 
-def _downgrade(root, revision):
+def _downgrade(root, revision, pre_normalization_storage):
     """Mark the active generation as an older DiskCache revision."""
     handle = Database(root).prepare()
-    handle.storage.save('system', 'schema_state', schema_state(revision, initialized=True))
+    pre_normalization_storage(handle, revision)
     generation = _generation(handle)
     handle.close()
     return generation
@@ -81,8 +81,8 @@ def test_invalid_database_in_current_generation_fails(tmp_path):
         Database(tmp_path).prepare()
 
 
-def test_pre_database_generation_gains_database_in_new_candidate(tmp_path):
-    previous = _downgrade(tmp_path, 46)
+def test_pre_database_generation_gains_database_in_new_candidate(tmp_path, pre_normalization_storage):
+    previous = _downgrade(tmp_path, 46, pre_normalization_storage)
     (previous / DATABASE_NAME).unlink()
     handle = Database(tmp_path).prepare()
     try:
@@ -94,11 +94,11 @@ def test_pre_database_generation_gains_database_in_new_candidate(tmp_path):
     assert not previous.exists()
 
 
-def test_generation_switch_copies_database_rows(tmp_path):
+def test_generation_switch_copies_database_rows(tmp_path, pre_normalization_storage):
     handle = Database(tmp_path).prepare()
     _seed_kind(handle.planner_database)
     handle.close()
-    previous = _downgrade(tmp_path, 46)
+    previous = _downgrade(tmp_path, 46, pre_normalization_storage)
     handle = Database(tmp_path).prepare()
     try:
         assert _generation(handle) != previous
@@ -107,11 +107,11 @@ def test_generation_switch_copies_database_rows(tmp_path):
         handle.close()
 
 
-def test_failed_staging_leaves_previous_generation_and_database_selected(tmp_path):
+def test_failed_staging_leaves_previous_generation_and_database_selected(tmp_path, pre_normalization_storage):
     handle = Database(tmp_path).prepare()
     _seed_kind(handle.planner_database)
     handle.close()
-    previous = _downgrade(tmp_path, 46)
+    previous = _downgrade(tmp_path, 46, pre_normalization_storage)
 
     def fault(name):
         if name == 'migration-47':

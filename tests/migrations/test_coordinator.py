@@ -94,14 +94,14 @@ def test_invalid_pointer_fails_without_opening_storage(tmp_path):
 
 
 @pytest.mark.parametrize('phase', ['complete', 'activated'])
-def test_previous_target_journal_allows_status_and_next_upgrade(tmp_path, phase):
+def test_previous_target_journal_allows_status_and_next_upgrade(tmp_path, phase, pre_normalization_storage):
     database = Database(tmp_path)
     handle = database.prepare()
     previous_generation = handle.storage.data_dir.parent.name
     view_key = '11111111-1111-4111-8111-111111111111_saved'
-    handle.storage.save('system', 'schema_state', schema_state(33, initialized=True))
-    handle.storage.save('config', 'projects', {'schema_version': 3, 'project_map': [],
-                                             'container_types': ['project', 'team']})
+    raw = pre_normalization_storage(handle, 33)
+    raw.save('config', 'projects', {'schema_version': 3, 'project_map': [],
+                                    'container_types': ['project', 'team']})
     handle.storage.save('config', 'teams', {'schema_version': 2, 'teams': []})
     handle.storage.save('config', 'people', {'schema_version': 1, 'database': {'people': []}})
     handle.storage.delete('config', 'workforce')

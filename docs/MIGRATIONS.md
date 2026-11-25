@@ -219,8 +219,8 @@ data/
   upgrade-state.json            durable operation/failure journal
   generations/<id>/
     generation.json             server ownership marker
-    cache/                      complete authoritative DiskCache
-    planner.sqlite              relational tasks/catalogue (revision 47+)
+    cache/                      retained authoritative DiskCache namespaces
+    planner.sqlite              tasks/catalogue (47+) and core configuration (48+)
   remote_cache/                 disposable; excluded from recovery
   config/                       external/static inputs plus legacy owned YAML
 ```
@@ -233,13 +233,38 @@ and is never recreated silently. The database has its own append-only ledger
 database migration stages a new generation: the database is integrity-checked,
 checkpointed and copied with the SQLite backup API (never as live WAL files),
 migrated and validated before the pointer moves. Offline restore and legacy
-export carry the database with the cache. Logical admin backups include a
-versioned `planner_database` section of table rows; an online restore validates
-it and replaces all rows in one transaction, last within the DiskCache restore
-transaction, so a rejected payload writes nothing.
+export carry the database with the cache.
+
+## Revision 48: Core configuration
+
+Revision 48 (SQLite schema 3) migrates `server_config`, `ado_config`, `projects`,
+`ado_processes`, `global_settings`, `iterations`, and `area_plan_map` into typed
+tables. Candidate projections must equal the previous API documents before the
+candidate's DiskCache keys are deleted. The running server has no DiskCache
+read or write path for those keys. Local plans, catalogue and tasks already live
+in SQLite; previous task preset references are retained independently of the
+editable iteration sets. Neither backend's records are reinterpreted when the
+active backend changes.
+
+DiskCache retains `authentication`, `teams`, `workforce`, `plugin_runtime_config`,
+event and group settings (`events_config`, `event_config`, `groups_config`),
+configuration snapshots, and serialized mock-provider fixtures. Accounts, login
+authority, scenarios, views, groups and events remain in their own namespaces.
+Disposable ADO results stay in `remote_cache/` and are invalidated when the
+selected generation changes.
+
+Logical backups include core configuration and Local task data only in the
+versioned `planner_database` section. The separate `config` section holds
+retained, exportable settings. Logical restores stage both stores, validate the
+candidate and then publish its pointer. A rejected restore leaves the previous
+generation selected. Stop other workers before submitting a logical restore.
+After success, restart the server; the old worker returns HTTP 503 rather than
+serving the previous generation. Authentication policy, credentials and login
+authority are not imported from logical backups. Use offline full restore for
+generation-level recovery, including credentials.
 
 `cache/` includes SQLite files, required sidecars, and external DiskCache value
-files. All namespaces in it are copied: configuration and its snapshots, accounts,
+files. All namespaces in it are copied: retained configuration and snapshots, accounts,
 authentication, sessions, scenarios, views/registers, groups, events, and other
 persisted records. Do not export only `cache.db`. The legacy admission ledger is
 read from the root and removed with the superseded legacy cache after activation.
