@@ -4,6 +4,8 @@ Deployment selects enrollment/PAT or external broker login/delegated ADO credent
 PlannerTool owns accounts, permissions and sessions; the broker owns upstream identity
 verification and token renewal. Backend selection remains in **Admin > Data Sources**.
 See [deployment](DEPLOYMENT.md) for manifest and local development configuration.
+See the [Entra sign-in sequence](diagrams/entra-session-sequence.mmd) for the
+browser-to-session flow.
 
 Revision 44 is the single upgrade from dev: it initializes policy and identity metadata
 and expires pre-policy sessions. Accounts, permissions, PATs, enrollment and user data

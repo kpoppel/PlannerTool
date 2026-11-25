@@ -81,36 +81,6 @@ Otherwise just follow the UI setup.
 
 Then go break something. Nothing is written back to Azure unless a user decides to explicitly do so.
 
-# Advanced configuration
-
-If you are also using the SuccessFactors chrome addon and server backend, this tool can use data from that tool for calculating cost.
-
-## Configuring `database.yaml` location
-
-You can override where the server loads the `database.yaml` file by adding
-one of the following keys to your diskcache `server_config`:
-
-- `database_path`: path to the YAML file (absolute or relative to `data/config`)
-
-Examples:
-
-Absolute path:
-
-```
-database_path: /etc/plannertool/teamdb/database.yaml
-```
-
-Relative to `data/config`:
-
-```
-database_path: ../shared-configs/database.yaml
-```
-
-If neither key is present the server will fall back to `data/config/database.yaml`.
-
-Fresh installations initialize automatically. Do not delete database files while
-the server is running; use the documented offline recovery operations instead.
-
 # Testing
 
 See `docs/TESTING.md` for details.

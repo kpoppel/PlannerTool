@@ -1,0 +1,39 @@
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Edge as Caddy
+    participant App as PlannerTool instance
+    participant Broker as Shared broker
+    participant Entra as Microsoft Entra ID
+
+    User->>Browser: Open instance page
+    Browser->>Edge: Request page
+    Edge->>App: Forward page request
+    App-->>Browser: Return page and assets
+    Browser->>App: GET auth config
+    App-->>Browser: Broker mode
+    Browser->>App: GET current profile
+    App-->>Browser: Signed out
+
+    User->>Browser: Select Sign in
+    Browser->>App: POST login begin
+    App->>Broker: Begin transaction with state and PKCE challenge
+    Broker-->>App: Transaction and authorization URL
+    App-->>Browser: Return transaction and binding cookie
+    Browser->>Broker: Open sign-in popup
+    Broker-->>Browser: Redirect popup to Entra
+    Browser->>Entra: Authenticate user
+    Entra-->>Broker: POST authorization response to registered callback
+    Broker->>Entra: Exchange authorization code
+    Entra-->>Broker: Token response
+    Broker->>Broker: Validate identity and store encrypted token cache
+    Broker-->>Browser: Redirect to instance callback with handoff code
+
+    Browser->>App: Complete instance callback with state and handoff code
+    App->>Broker: Redeem handoff with PKCE verifier
+    Broker-->>App: Verified identity and delegated grant
+    App->>App: Resolve local account and create session
+    App-->>Browser: Set session cookie and notify popup opener
+    Browser->>App: GET current profile with session cookie
+    App-->>Browser: Signed-in profile and permissions
+    Browser-->>User: Active PlannerTool session

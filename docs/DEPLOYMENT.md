@@ -698,6 +698,46 @@ For example, `docker compose --project-directory deployment restart caddy`; pres
 your usual project-name and environment-file options. Switching from internal to
 provided TLS does not require changing the hostname or auth service public URL.
 
+#### Generating a Certificate Signing Request
+
+Create a `csr.conf` for the hostname and organization used by your deployment:
+
+```ini
+[req]
+default_bits = 3072
+prompt = no
+default_md = sha256
+distinguished_name = dn
+req_extensions = req_ext
+
+[dn]
+C = DK
+O = Example Company
+OU = IT
+CN = planner.example.test
+
+[req_ext]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = planner.example.test
+```
+
+Replace the example subject and DNS name with values accepted by your certificate
+authority. Generate a private key, protect it, and create the CSR:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out server.key
+chmod 600 server.key
+openssl req -new -key server.key -out server.csr -config csr.conf
+openssl req -in server.csr -noout -text
+```
+
+Submit only `server.csr` to your certificate authority and request a TLS server
+certificate for the listed hostname. Confirm the issued certificate includes the
+hostname as a subject alternative name; configure its leaf certificate and matching
+`server.key` using `mode: provided` above. Keep the private key outside the repository.
+
 For public ACME issuance (`https_tls: {mode: acme}`), Caddy obtains and renews
 certificates automatically. The hostname must resolve to this server and inbound
 TCP ports 80 and 443 must be available to Caddy, with no other service occupying
