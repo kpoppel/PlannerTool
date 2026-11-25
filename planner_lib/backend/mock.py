@@ -294,13 +294,13 @@ class MockFixtureBackend(_MockBackendBase):
 
     def fetch_history(
         self,
-        work_item_id: int,
+        work_item_id: str,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainHistoryEntry]:
         try:
             with self._client.connect(_MOCK_CREDENTIAL) as client:
                 revisions = client.get_task_revision_history(
-                    work_item_id=work_item_id,
+                    work_item_id=int(work_item_id),
                     start_field='Microsoft.VSTS.Scheduling.StartDate',
                     end_field='Microsoft.VSTS.Scheduling.TargetDate',
                     iteration_field='System.IterationPath',
@@ -557,13 +557,13 @@ class MockGeneratorBackend(_MockBackendBase):
 
     def fetch_history(
         self,
-        work_item_id: int,
+        work_item_id: str,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainHistoryEntry]:
         try:
             with self._client.connect(_MOCK_CREDENTIAL) as client:
                 revisions = client.get_task_revision_history(
-                    work_item_id=work_item_id,
+                    work_item_id=int(work_item_id),
                     start_field='Microsoft.VSTS.Scheduling.StartDate',
                     end_field='Microsoft.VSTS.Scheduling.TargetDate',
                     iteration_field='System.IterationPath',

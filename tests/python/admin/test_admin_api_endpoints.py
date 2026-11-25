@@ -1,7 +1,6 @@
 """System configuration handlers honor the admin-service boundary."""
 
 import asyncio
-import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -19,7 +18,8 @@ def test_configuration_handlers_forward_content(get_handler, save_handler, confi
         reload_config=Mock(), invalidate_cache=Mock(),
     )
     container = SimpleNamespace(get=lambda name: service)
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(container=container)))
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+        container=container, task_backend={'id': 'ado'})))
 
     missing = asyncio.run(get_handler.__wrapped__(request))
     assert missing['content'] == ''
@@ -29,10 +29,12 @@ def test_configuration_handlers_forward_content(get_handler, save_handler, confi
     configured = asyncio.run(get_handler.__wrapped__(request))
     assert configured['content'] == 'configured-text'
 
+    content = {'task_backend_id': 'ado', 'server_name': 'Test'}
+
     async def read_payload():
-        return {'content': json.dumps({'configured': True})}
+        return {'content': content}
 
     request.json = read_payload
     saved = asyncio.run(save_handler.__wrapped__(request))
     assert saved['ok'] is True
-    service.save_config.assert_called_once_with(config_key, json.dumps({'configured': True}))
+    service.save_config.assert_called_once_with(config_key, content)

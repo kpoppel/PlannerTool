@@ -8,7 +8,7 @@ from planner_lib.middleware.session import (
     get_session_credential_from_request,
 )
 from planner_lib.services.resolver import resolve_service
-from planner_lib.backend.port import DiagnosticBackend
+from planner_lib.backend.port import DiagnosticBackend, TaskCreationBackend
 from planner_lib.backend.errors import BackendConfigError, BackendDecisionError, BackendUnavailableError
 import logging
 
@@ -138,6 +138,19 @@ async def api_markers(request: Request):
     return await asyncio.to_thread(
         plan_repo.list_markers, project_id=project_id or None, user_id=account_id
     )
+
+
+@router.post('/tasks/create', status_code=201)
+@require_session
+async def api_task_create(request: Request, payload: dict = Body(...)):
+    backend = resolve_service(request, 'backend')
+    if not isinstance(backend, TaskCreationBackend):
+        raise HTTPException(405, detail={'error': 'task_creation_not_supported'})
+    account_id = get_session_context_from_request(request)['account_id']
+    try:
+        return await asyncio.to_thread(backend.create_task, payload, account_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={'error': 'invalid_task', 'message': str(exc)}) from exc
 
 
 @router.post('/tasks')

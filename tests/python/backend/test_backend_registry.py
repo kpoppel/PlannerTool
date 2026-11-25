@@ -61,10 +61,11 @@ def test_unknown_selection_is_rejected(server, ado):
         get_active_class(server, ado)
 
 
-def test_local_backend_is_not_available_yet():
-    assert available_backend_ids() == ('ado',)
-    with pytest.raises(ValueError, match='not available'):
-        get_active_class(_server('local'), _ado())
+def test_local_backend_does_not_require_ado_transport():
+    from planner_lib.backend.local import LocalTaskBackend
+
+    assert available_backend_ids() == ('ado', 'local')
+    assert get_active_class(_server('local'), {}) is LocalTaskBackend
 
 
 def test_describe_backends_reports_identity_and_capabilities():
@@ -76,7 +77,9 @@ def test_describe_backends_reports_identity_and_capabilities():
     assert set(ado['capabilities']) <= TASK_CAPABILITIES
     assert 'task_create' not in ado['capabilities']
     assert local['id'] == 'local'
-    assert local['available'] is False
+    assert local['available'] is True
+    assert set(local['capabilities']) <= TASK_CAPABILITIES
+    assert 'task_create' in local['capabilities']
 
 
 # ---------------------------------------------------------------------------

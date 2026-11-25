@@ -123,6 +123,10 @@ export class AdminProviderREST extends RestProviderBase {
     return this._requestJson('/admin/v1/task-backends');
   }
 
+  async restartServer() {
+    return this._requestJson('/admin/v1/restart', { method: 'POST' });
+  }
+
   _configSaveResult(result) {
     if (!result.ok && result.error.status === 400) {
       const validation = result.error.detail;

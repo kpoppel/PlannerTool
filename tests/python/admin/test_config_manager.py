@@ -141,10 +141,9 @@ def test_admin_owns_backend_selection_without_changing_authentication(monkeypatc
     ('ado_config', {'organization_url': 'x', 'feature_flags': {}, 'transport': 'mock'}),
     ('ado_config', {'organization_url': 'x', 'feature_flags': {}}),
     ('server_config', {'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'jira'}),
-    ('server_config', {'schema_version': 2, 'feature_flags': {}, 'task_backend_id': 'local'}),
     ('server_config', {'schema_version': 2, 'feature_flags': {}}),
 ])
-def test_backend_selection_rejects_unknown_or_unavailable_values(key, content):
+def test_backend_selection_rejects_invalid_values(key, content):
     from planner_lib.admin.config_manager import ConfigManager
     from planner_lib.storage.memory_backend import MemoryStorage
 

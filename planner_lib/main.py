@@ -15,6 +15,7 @@ Note: we intentionally do not create a global `app` at import time.
 from dataclasses import dataclass, field
 import os
 from typing import Any, Dict, Tuple, cast
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -211,13 +212,14 @@ def _build_services(
             ado_cfg,
             org_url=ado_cfg['organization_url'],
             storage=storage_diskcache,
+            planner_database=planner_database,
             config_backend=container.get("config_backend"),
             team_repository=container.get("team_repository"),
             capacity_service=container.get("capacity_service"),
             credential_provider=container.get('credential_provider') if provider == 'entra' else None,
         )
 
-        if feature_flags.get('enable_cache', False):
+        if inner.BACKEND_ID == 'ado' and feature_flags.get('enable_cache', False):
             from planner_lib.backend.caching import CachingBackend, CacheTTLConfig
             ttl_config = CacheTTLConfig.from_config(
                 server_cfg.get('cache', {}).get('ttls', {})
@@ -656,7 +658,7 @@ def _create_prepared_app(config: Config, storage_diskcache: StorageBackend, plan
     from planner_lib.backend.registry import get_active_class
     _active_backend_cls = get_active_class(
         server_cfg, storage_diskcache.load('config', 'ado_config'))
-    _cache_on = feature_flags.get('enable_cache', False)
+    _cache_on = _active_backend_cls.BACKEND_ID == 'ado' and feature_flags.get('enable_cache', False)
     if _cache_on:
         logger.info(
             "Startup: cache=ON (disk), inner backend=%s",
@@ -668,4 +670,8 @@ def _create_prepared_app(config: Config, storage_diskcache: StorageBackend, plan
             _active_backend_cls.__name__,
         )
 
-    return _build_app(config, container, feature_flags, logger)
+    app = _build_app(config, container, feature_flags, logger)
+    app.state.task_backend = {'id': _active_backend_cls.BACKEND_ID,
+                              'capabilities': sorted(_active_backend_cls.CAPABILITIES)}
+    app.state.instance_id = str(uuid4())
+    return app

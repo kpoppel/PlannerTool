@@ -38,14 +38,16 @@ def _ado_transport_classes() -> Dict[str, Type]:
 
 def available_backend_ids() -> tuple:
     """Task backends this build can activate."""
-    return (ADO_BACKEND_ID,)
+    return (ADO_BACKEND_ID, LOCAL_BACKEND_ID)
 
 
 def get_active_class(server_config: Dict[str, Any], ado_config: Dict[str, Any]) -> Type:
     """Return the backend class selected by persisted backend id and ADO transport."""
     backend_id = task_backend_id(server_config)
-    if backend_id not in available_backend_ids():
-        raise ValueError(f'Task backend {backend_id!r} is not available in this build')
+    if backend_id == LOCAL_BACKEND_ID:
+        from planner_lib.backend.local import LocalTaskBackend
+
+        return LocalTaskBackend
     return _ado_transport_classes()[ado_transport(ado_config)]
 
 
@@ -66,6 +68,8 @@ def rebuild_backend_instance(
     instance: Any, server_config: Dict[str, Any], ado_config: Dict[str, Any], **services: Any,
 ) -> Any:
     """Rebuild *instance* in place for the currently selected backend."""
+    if instance.BACKEND_ID != task_backend_id(server_config):
+        raise ValueError('Changing task backend requires an application restart')
     replacement = build_active_backend(server_config, ado_config, **services)
     instance.__class__ = replacement.__class__
     instance.__dict__ = replacement.__dict__
@@ -87,7 +91,7 @@ def describe_backends() -> List[Dict[str, Any]]:
         'label': 'Local (SQLite)',
         'available': LOCAL_BACKEND_ID in available,
         'transports': [],
-        'capabilities': [],
+        'capabilities': sorted(get_active_class({'task_backend_id': LOCAL_BACKEND_ID}, {}).CAPABILITIES),
     }]
 
 

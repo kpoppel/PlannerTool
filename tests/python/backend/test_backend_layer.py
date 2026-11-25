@@ -769,7 +769,7 @@ def test_history_repository_read_returns_paginated_results():
         'changed_at': '2026-01-01T09:00:00Z', 'changed_by': 'alice'
     }
     backend = FakeBackend()
-    backend.set_history(42, [entry])
+    backend.set_history('42', [entry])
     cred_provider = FakeCredentialProvider()
 
     tasks = [{'id': '42', 'title': 'Feature 42', 'plan_id': 'plan_1',
@@ -785,7 +785,7 @@ def test_history_repository_read_returns_paginated_results():
     assert result['total'] == 1
     assert result['page'] == 1
     assert len(result['tasks']) == 1
-    assert result['tasks'][0]['task_id'] == 42
+    assert result['tasks'][0]['task_id'] == '42'
     assert len(result['tasks'][0]['history']) == 1
     assert len(backend.fetch_history_calls) == 1
 

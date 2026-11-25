@@ -59,9 +59,23 @@ def main(argv=None):
     if arguments and arguments[0] == 'database':
         return database_command(arguments[1:])
     import uvicorn
-    uvicorn.run('planner:make_app', factory=True, host=os.environ.get('HOST', '0.0.0.0'),
-                port=int(os.environ.get('PORT', '8000')), root_path=os.environ.get('ROOT_PATH', ''))
-    return 0
+    while True:
+        restart_requested = False
+        app = make_app()
+        server = uvicorn.Server(uvicorn.Config(
+            app, host=os.environ.get('HOST', '0.0.0.0'),
+            port=int(os.environ.get('PORT', '8000')), root_path=os.environ.get('ROOT_PATH', ''),
+        ))
+
+        def request_restart():
+            nonlocal restart_requested
+            restart_requested = True
+            server.should_exit = True
+
+        app.state.request_restart = request_restart
+        server.run()
+        if not server.started or not restart_requested:
+            return 0 if server.started else 1
 
 
 if __name__ == '__main__':

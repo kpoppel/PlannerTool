@@ -250,6 +250,22 @@ def test_history_api_no_pat(authenticated_client, remote):
     assert r.status_code == (401 if remote else 200)
 
 
+def test_history_repository_preserves_opaque_task_id():
+    from unittest.mock import Mock
+
+    from planner_lib.repository.history_repository import HistoryRepository
+
+    backend = Mock(is_remote=False)
+    backend.fetch_history.return_value = []
+    task_id = '817a64e5-4754-4aeb-821d-9f98b2549822'
+    repository = HistoryRepository(backend, Mock())
+
+    result = repository.read([{'id': task_id, 'title': 'Local task'}], user_id='actor')
+
+    backend.fetch_history.assert_called_once_with(work_item_id=task_id, credential=None)
+    assert result['tasks'][0]['task_id'] == task_id
+
+
 def test_history_service_deduplication():
     """Test that history repository deduplicates consecutive identical values."""
     from planner_lib.repository.history_repository import HistoryRepository

@@ -21,7 +21,7 @@ class DomainHistoryEntry(TypedDict):
 
 class DomainTaskHistory(TypedDict):
     """A work item with its relevant change history."""
-    task_id: int
+    task_id: str
     title: str
     plan_id: str
     history: List[DomainHistoryEntry]

@@ -14,6 +14,59 @@ def _assert_isolated_data_mount(path):
     assert mount_path not in live_data.parents
 
 
+def test_managed_launcher_restarts_after_admin_backend_change(tmp_path):
+    import socket
+    import threading
+    import time
+
+    import httpx
+
+    _assert_isolated_data_mount(tmp_path)
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        port = listener.getsockname()[1]
+    log = tmp_path / 'launcher.log'
+    env = {**os.environ, 'DATA_DIR': str(tmp_path), 'HOST': '127.0.0.1', 'PORT': str(port),
+           'ROOT_PATH': '', 'PLANNER_AUTH_PROVIDER': 'enrollment'}
+    with log.open('w') as output, httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=2) as client:
+        process = subprocess.Popen([sys.executable, '-m', 'planner'], env=env, stdout=output, stderr=output)
+
+        def wait_for(path, predicate):
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                assert process.poll() is None, log.read_text()
+                try:
+                    response = client.get(path)
+                    if response.is_success and predicate(response.json()):
+                        return
+                except httpx.TransportError:
+                    pass
+                threading.Event().wait(0.05)
+            pytest.fail(log.read_text())
+
+        try:
+            wait_for('/api/health', lambda health: True)
+            pointer = (tmp_path / 'active-generation.json').read_bytes()
+            enrollment = client.post('/api/auth/enroll', json={
+                'email': 'managed-restart@example.com', 'name': 'Managed Restart',
+            }, headers={'Accept': 'application/json'})
+            assert enrollment.status_code == 200, enrollment.text
+            instance_id = client.get('/admin/v1/task-backends').json()['instance_id']
+            config = client.get('/admin/v1/system').json()['content']
+            config['task_backend_id'] = 'local'
+            saved = client.post('/admin/v1/system', json={'content': config})
+            assert saved.json() == {'ok': True, 'restart_required': True}
+            assert client.get('/api/task-backend').json()['id'] == 'ado'
+            assert client.post('/admin/v1/restart').status_code == 202
+            wait_for('/api/task-backend', lambda backend: backend['id'] == 'local')
+            assert client.get('/admin/v1/task-backends').json()['instance_id'] != instance_id
+            assert client.get('/api/tasks').json() == []
+            assert (tmp_path / 'active-generation.json').read_bytes() == pointer
+        finally:
+            process.terminate()
+            process.wait(timeout=15)
+
+
 def test_offline_status_creates_no_database(tmp_path):
     root = tmp_path / 'missing'
     process = subprocess.run([

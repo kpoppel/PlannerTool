@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from planner_lib.backend.port import PlansBackend, PlanConfigBackend, BackendCredential
+from planner_lib.backend.port import PlansBackend, PlanConfigBackend, BackendCredential, PlanMarkerBackend
 from planner_lib.domain.plans import DomainMarker
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,8 @@ class PlanRepository:
         user_id:
             Session user id for optional credential lookup on a cache miss.
         """
+        if isinstance(self._backend, PlanMarkerBackend):
+            return self._backend.list_plan_markers(project_id)
         project_map = self._project_service.get_project_map()
         area_plan_map = self._plan_config.fetch_area_plan_map()
         credential = self._get_optional_credential(user_id)

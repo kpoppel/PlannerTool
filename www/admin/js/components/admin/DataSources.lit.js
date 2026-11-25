@@ -201,6 +201,9 @@ export class DataSources extends LitElement {
     _taskBackends:        { type: Array,   state: true },
     _taskBackendId:       { type: String,  state: true },
     _savedTaskBackendId:  { type: String,  state: true },
+    _activeTaskBackendId: { type: String,  state: true },
+    _restartAvailable:   { type: Boolean, state: true },
+    _restarting:         { type: Boolean, state: true },
 
     // ---- ADO backend selection -----------------------------------------
     _adoBackendType:      { type: String,  state: true },
@@ -268,6 +271,10 @@ export class DataSources extends LitElement {
     this._taskBackends        = [];
     this._taskBackendId       = 'ado';
     this._savedTaskBackendId  = 'ado';
+    this._activeTaskBackendId = 'ado';
+    this._restartAvailable   = false;
+    this._restarting         = false;
+    this._serverInstanceId   = '';
 
     // ADO backend
     this._adoBackendType      = 'ado_live';
@@ -331,8 +338,11 @@ export class DataSources extends LitElement {
       if (!backendsResult.ok) throw new Error(resultErrorMessage(backendsResult, 'Failed to load task backends'));
 
       this._taskBackends       = backendsResult.data.backends;
-      this._taskBackendId      = backendsResult.data.active;
-      this._savedTaskBackendId = backendsResult.data.active;
+      this._taskBackendId      = backendsResult.data.configured;
+      this._savedTaskBackendId = backendsResult.data.configured;
+      this._activeTaskBackendId = backendsResult.data.active;
+      this._restartAvailable = backendsResult.data.restart_available;
+      this._serverInstanceId = backendsResult.data.instance_id;
 
       const evtCfg = evtCfgResult.data;
       const adoCfg = adoCfgResult.data;
@@ -617,6 +627,32 @@ export class DataSources extends LitElement {
       </tr>`;
   }
 
+  async _restartServer() {
+    this._restarting = true;
+    this._statusMsg = 'Restarting server…';
+    this._statusType = '';
+    try {
+      const result = await adminProvider.restartServer();
+      if (!result.ok) throw new Error(resultErrorMessage(result, 'Restart failed'));
+      const target = this._savedTaskBackendId;
+      const previousInstance = this._serverInstanceId;
+      for (let attempt = 0; attempt < 30 && this.isConnected; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const status = await adminProvider.getTaskBackends();
+        if (status.ok && status.data.instance_id !== previousInstance && status.data.active === target) {
+          window.location.reload();
+          return;
+        }
+      }
+      throw new Error('The server has not confirmed the restart. Check Data Sources again shortly.');
+    } catch (error) {
+      this._statusMsg = error.message;
+      this._statusType = 'error';
+    } finally {
+      this._restarting = false;
+    }
+  }
+
   render() {
     if (this._loading) {
       return html`<div class="loading">Loading data sources…</div>`;
@@ -625,6 +661,7 @@ export class DataSources extends LitElement {
     const needsRestart = this._taskBackendId  !== this._savedTaskBackendId ||
                          this._adoBackendType !== this._savedAdoBackendType ||
                          this._eventsBackend  !== this._savedEventsBackend;
+              const pendingRestart = this._savedTaskBackendId !== this._activeTaskBackendId;
 
     return html`
       <h2>Data Sources</h2>
@@ -664,19 +701,23 @@ export class DataSources extends LitElement {
           </tbody>
         </table>
 
-        ${needsRestart ? html`
+        ${needsRestart || pendingRestart ? html`
           <div class="restart-notice">
             <span class="icon">⚠</span>
             <div>
               <strong>Server restart required.</strong>
-              Backend selections are read once at startup.
-              After saving, restart the server process for changes to take effect.
+              ${needsRestart ? 'Save your changes first.' : (this._restartAvailable
+                ? 'Restart the server to activate the saved backend.' : 'Restart is unavailable with this launcher.')}
             </div>
           </div>` : ''}
 
         <div class="actions">
-          <button class="primary" @click=${this._save}>Save</button>
-          <button @click=${this._load}>Cancel</button>
+          <button class="primary" ?disabled=${this._restarting} @click=${this._save}>Save</button>
+          <button ?disabled=${this._restarting} @click=${this._load}>Cancel</button>
+          ${this._restartAvailable ? html`
+            <button data-restart-server ?disabled=${this._restarting || needsRestart} @click=${this._restartServer}>
+              Restart server
+            </button>` : ''}
           <span class="status ${this._statusType}">${this._statusMsg}</span>
         </div>
 

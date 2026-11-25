@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime, timezone
 from planner_lib.backend.errors import AreaNotReadableError, BackendAuthError, BackendUnavailableError
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse
 import logging
 
@@ -671,7 +671,14 @@ async def admin_save_system(request: Request):
         raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
     try:
         admin_svc = resolve_service(request, 'admin_service')
+        if not isinstance(content, dict) or 'task_backend_id' not in content:
+            raise ValueError('Server configuration requires task_backend_id')
+        pending_restart = request.app.state.task_backend['id'] != content['task_backend_id']
+        if pending_restart and not callable(getattr(request.app.state, 'request_restart', None)):
+            raise ValueError('Changing the task backend requires the managed server launcher')
         admin_svc.save_config('server_config', content)
+        if pending_restart:
+            return {'ok': True, 'restart_required': True}
         try:
             admin_svc.reload_config()
         except Exception as e:
@@ -694,8 +701,22 @@ async def admin_get_task_backends(request: Request):
     """Return registered task backends and the active selection."""
     from planner_lib.backend.registry import describe_backends
     config = resolve_service(request, 'config_backend')
-    return {'active': config.fetch_server_config()['task_backend_id'],
+    return {'active': request.app.state.task_backend['id'],
+            'configured': config.fetch_server_config()['task_backend_id'],
+            'instance_id': request.app.state.instance_id,
+            'restart_available': callable(getattr(request.app.state, 'request_restart', None)),
             'backends': describe_backends()}
+
+
+@router.post('/admin/v1/restart', status_code=202)
+@require_admin_session
+async def admin_restart(request: Request, background_tasks: BackgroundTasks):
+    restart = getattr(request.app.state, 'request_restart', None)
+    if restart is None:
+        raise HTTPException(503, detail={'error': 'restart_unavailable',
+                                        'message': 'This server was not started with the managed launcher.'})
+    background_tasks.add_task(restart)
+    return {'ok': True}
 
 @router.get('/admin/v1/browse-config')
 @require_permission(AccountPermissions.MANAGE_PROJECTS, AccountPermissions.MANAGE_ITERATIONS)

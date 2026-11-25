@@ -5,12 +5,12 @@ Provides the single authoritative source for iteration data.
 from __future__ import annotations
 
 import logging
-import hashlib
 from datetime import date as _date
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import IterationsBackend, IterationConfigBackend, BackendCredential
 from planner_lib.domain.iterations import DomainIteration, DomainIterationGroup, DomainIterationsByProject
+from planner_lib.domain.iteration_sets import iteration_preset_id
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ class IterationRepository:
                 if start > end:
                     raise ValueError(f'Invalid date preset range in set {set_id}: {iteration["name"]}')
                 presets.append({
-                    'id': hashlib.sha256(f'{set_id}\0{iteration["path"]}'.encode()).hexdigest(),
+                    'id': iteration_preset_id(set_id, iteration['path']),
                     'label': iteration['name'], 'start': start, 'end': end,
                 })
             out[set_id] = {

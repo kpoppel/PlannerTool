@@ -1,0 +1,81 @@
+"""PlannerTool's SQLite task backend; no remote transport or credentials."""
+from collections import defaultdict, deque
+
+from planner_lib.backend.selection import LOCAL_BACKEND_ID
+from planner_lib.local.catalogue import LocalCatalogue
+from planner_lib.local.plans import LocalPlans
+from planner_lib.local.tasks import LocalTasks
+
+
+class LocalTaskBackend:
+    BACKEND_ID = LOCAL_BACKEND_ID
+    CAPABILITIES = frozenset({'task_read', 'task_create', 'history', 'markers', 'catalogue_edit'})
+    is_remote = False
+
+    @classmethod
+    def build_from_flags(cls, flags, *, planner_database, storage, **services):
+        return cls(planner_database, storage)
+
+    def __init__(self, database, storage):
+        self._storage = storage
+        self._catalogue = LocalCatalogue(database)
+        self._plans = LocalPlans(database, storage)
+        self._tasks = LocalTasks(database, storage)
+
+    def create_task(self, payload, actor_id):
+        return self._tasks.create(payload, actor_id)
+
+    def fetch_history(self, work_item_id, credential=None):
+        return self._tasks.fetch_history(work_item_id)
+
+    def work_item_display(self):
+        return self._catalogue.work_item_display()
+
+    def fetch_project_map(self, credential=None):
+        return [plan for plan in self._plans.read()['plans'] if not plan['archived']]
+
+    def fetch_projects(self, credential=None):
+        config = self._storage.load('config', 'projects')
+        levels = config['container_types']
+        catalogue = self._catalogue.read()
+        type_names = {entry['id']: entry['name']
+                      for process in catalogue['processes'] for entry in process['types']}
+        display = self.work_item_display()
+        projects = []
+        for plan in self.fetch_project_map():
+            project = {key: value for key, value in plan.items() if key not in ('archived', 'markers')}
+            project.update(container_order=levels.index(plan['type']), container_types=levels,
+                           area_path=None, task_types=[type_names[identity] for identity in plan['task_types']],
+                           work_item_display=display, allocation_defaults=config['allocation_defaults'])
+            projects.append(project)
+        return projects
+
+    def fetch_task_collection(self):
+        collection, selected_by_plan = self._tasks.read_collection()
+        tasks = {task['id']: task for task in collection}
+        by_plan = defaultdict(list)
+        for task in tasks.values():
+            by_plan[task['project']].append(task['id'])
+            task['sourcePlanIds'] = []
+            task['presentationPlanIds'] = []
+        for plan_id, selected in selected_by_plan.items():
+            pending = deque(by_plan[plan_id])
+            visited = set(pending)
+            while pending:
+                identity = pending.popleft()
+                task = tasks[identity]
+                task['sourcePlanIds'].append(plan_id)
+                if (task['process_id'], task['type']) in selected:
+                    task['presentationPlanIds'].append(plan_id)
+                for relation in task['relations']:
+                    target = relation['id']
+                    if target not in visited:
+                        visited.add(target)
+                        pending.append(target)
+        return [task for task in tasks.values() if task['sourcePlanIds']]
+
+    def list_plan_markers(self, project_id=None):
+        return [{'plan_id': plan['id'], 'plan_name': plan['name'], 'project': plan['id'],
+                 'team_id': None, 'team_name': None, 'marker': marker}
+                for plan in self.fetch_project_map() if project_id is None or plan['id'] == project_id
+                for marker in plan['markers']]

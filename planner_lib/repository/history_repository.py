@@ -89,7 +89,8 @@ class HistoryRepository:
         # Apply filters
         filtered = list(tasks)
         if plan_id:
-            filtered = [t for t in filtered if t.get('plan_id') == plan_id]
+            filtered = [t for t in filtered if t.get('project') == plan_id
+                        or t.get('plan_id') == plan_id or plan_id in t.get('sourcePlanIds', [])]
 
         # team_id filter: tasks don't carry team_id directly in DomainTask; skip for now
         # (same as the original HistoryService behaviour)
@@ -100,7 +101,7 @@ class HistoryRepository:
 
         result_tasks: List[dict] = []
         for task in page_tasks:
-            work_item_id = int(task.get('id', 0))
+            work_item_id = task.get('id')
             if not work_item_id:
                 logger.warning("Skipping task with invalid ID: %s", task)
                 continue
@@ -133,15 +134,15 @@ class HistoryRepository:
                 result_tasks.append({
                     'task_id': work_item_id,
                     'title': task.get('title', ''),
-                    'plan_id': task.get('plan_id', ''),
+                    'plan_id': task.get('plan_id', task.get('project', '')),
                     'history': history_entries,
                 })
             except Exception as exc:
-                logger.warning("Failed to process history for task %d: %s", work_item_id, exc)
+                logger.warning("Failed to process history for task %s: %s", work_item_id, exc)
                 result_tasks.append({
                     'task_id': work_item_id,
                     'title': task.get('title', ''),
-                    'plan_id': task.get('plan_id', ''),
+                    'plan_id': task.get('plan_id', task.get('project', '')),
                     'history': [],
                 })
 

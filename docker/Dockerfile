@@ -93,5 +93,5 @@ EXPOSE $PORT
 
 ENTRYPOINT ["entrypoint.sh"]
 
-# Run the production app using uvicorn factory via the entrypoint.
-CMD ["sh", "-c", "exec uvicorn planner:make_app --factory --host $HOST --port $PORT --root-path \"${ROOT_PATH}\""]
+# Use the managed launcher so administrators can restart the server from the UI.
+CMD ["python", "-m", "planner"]

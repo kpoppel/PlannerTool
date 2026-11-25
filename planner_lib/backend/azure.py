@@ -625,14 +625,14 @@ class AzureDevOpsBackend(BackendPort):
 
     def fetch_history(
         self,
-        work_item_id: int,
+        work_item_id: str,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainHistoryEntry]:
         """Fetch raw revision history for *work_item_id* and return as DomainHistoryEntry list."""
         credential = self._require_credential(credential, 'fetch_history')
         with self._conn.connect(credential) as client:
             revisions = client.get_task_revision_history(
-                work_item_id=work_item_id,
+                work_item_id=int(work_item_id),
                 start_field='Microsoft.VSTS.Scheduling.StartDate',
                 end_field='Microsoft.VSTS.Scheduling.TargetDate',
                 iteration_field='System.IterationPath',

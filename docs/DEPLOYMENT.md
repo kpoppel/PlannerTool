@@ -830,7 +830,22 @@ The Vite server proxies API calls to the backend and provides hot-module reload.
 
 Use the application by browsing to `http://localhost:5173`
 
-# Deploy using uvicorn alone
+# Deploy using the managed launcher
+
+The production image runs `python -m planner`. For a standalone installation,
+use the same launcher to enable **Admin > Data Sources > Restart server** after
+saving a task backend change. The server drains requests and reopens the active
+data generation; the admin session survives. Raw `uvicorn --factory --reload`
+remains useful for development, but cannot apply a backend-family change from
+Admin.
+
+Local installations start without tasks. After configuring a local catalogue
+and plan, an authenticated client can `POST /api/tasks/create` with `project`
+(owning plan UUID), `typeId` (catalogue type ID) and `title`. Optional fields
+include `description`, `assignee`, `tags`, `customFields` and either `start` and
+`end` dates or an `iterationPresetId` from `/api/iterations`. The response is
+the created task, with a UUID and the workflow's initial state. Creation is
+not available when Azure DevOps is active.
 
 For backend-only work or quick local testing of the production build, build the
 frontend first (uvicorn serves `dist/`):
@@ -841,7 +856,7 @@ npm run build:vendor
 
 # Build and run:
 npm run build
-PLANNER_SECRET_KEY=`cat .encryption_key`  uvicorn planner:make_app --port 8000 --factory --reload 2>&1 |tee logfile.log
+PLANNER_SECRET_KEY="$(cat .encryption_key)" PORT=8000 python -m planner 2>&1 |tee logfile.log
 ```
 
 Use the application by browsing to `http://localhost:8000`

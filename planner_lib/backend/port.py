@@ -208,6 +208,25 @@ class TaskBackend(Protocol):
 
 
 @runtime_checkable
+class TaskCollectionBackend(Protocol):
+    """Backend that reads complete task context without per-plan seed queries."""
+
+    def fetch_task_collection(self) -> List[BackendTask]: ...
+
+
+@runtime_checkable
+class TaskCreationBackend(Protocol):
+    def create_task(self, payload: dict, actor_id: str) -> BackendTask: ...
+
+
+@runtime_checkable
+class PlanMarkerBackend(Protocol):
+    """Backend that owns configured plan markers directly."""
+
+    def list_plan_markers(self, project_id: Optional[str] = None) -> List[dict]: ...
+
+
+@runtime_checkable
 class BatchTaskBackend(Protocol):
     """Task backend that commits a whole publication atomically.
 
@@ -230,7 +249,7 @@ class HistoryBackend(Protocol):
 
     def fetch_history(
         self,
-        work_item_id: int,
+        work_item_id: str,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainHistoryEntry]: ...
 

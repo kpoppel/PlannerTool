@@ -10,6 +10,9 @@ async function mount(authentication = null, ado = {}) {
     data: { task_backend_id: 'ado', feature_flags: {} } });
   vi.spyOn(adminProvider, 'getTaskBackends').mockResolvedValue({ ok: true, data: {
     active: 'ado',
+    configured: 'ado',
+    restart_available: true,
+    instance_id: 'initial-instance',
     backends: [
       { id: 'ado', label: 'Azure DevOps', available: true },
       { id: 'local', label: 'Local (SQLite)', available: false },
@@ -65,6 +68,20 @@ describe('Data Sources task backend', () => {
       error: { status: 400, message: 'Selected task backend is not available in this build' } });
     await element._save();
     expect(element._statusMsg).toBe('Error saving: Selected task backend is not available in this build');
+  });
+
+  it('offers restart after saving a pending backend change and reports restart errors', async () => {
+    const element = await mount();
+    const restart = vi.spyOn(adminProvider, 'restartServer').mockResolvedValue({
+      ok: false, error: { message: 'Restart unavailable' },
+    });
+    await select(element, '.task-backend-select', 'local');
+    expect(element.shadowRoot.querySelector('[data-restart-server]').disabled).toBe(true);
+    await element._save();
+    await element.updateComplete;
+    element.shadowRoot.querySelector('[data-restart-server]').click();
+    await vi.waitFor(() => expect(element._statusMsg).toContain('Restart unavailable'));
+    expect(restart).toHaveBeenCalledOnce();
   });
 });
 

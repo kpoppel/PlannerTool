@@ -1,6 +1,11 @@
 """Source-neutral iteration-set validation and calendar generation."""
+import hashlib
 from datetime import date, timedelta
 from typing import Any
+
+
+def iteration_preset_id(set_id: str, path: str) -> str:
+    return hashlib.sha256(f'{set_id}\0{path}'.encode()).hexdigest()
 
 
 def generate_iterations(settings: dict) -> list[dict]:

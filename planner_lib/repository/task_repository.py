@@ -29,7 +29,9 @@ from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.errors import BackendAuthError
-from planner_lib.backend.port import BatchTaskBackend, TaskBackend, TaskSnapshotBackend, BackendCredential
+from planner_lib.backend.port import (
+    BackendCredential, BatchTaskBackend, TaskBackend, TaskCollectionBackend, TaskSnapshotBackend,
+)
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.domain.allocation_availability import project_allocation_availability, validate_allocation_change
@@ -145,6 +147,8 @@ class TaskRepository:
         return self._build_context(self._backend, credential)
 
     def _build_context(self, backend, credential):
+        if isinstance(backend, TaskCollectionBackend):
+            return backend.fetch_task_collection()
         seeds = self._fetch_seeds(credential, backend=backend)
         return backend.fetch_task_context(seeds, credential=credential)
 
@@ -199,6 +203,7 @@ class TaskRepository:
         if not updates:
             return {'updated': 0, 'errors': []}
 
+
         credential = self._credential_provider.get_credential(user_id) if self._backend.is_remote else None
         if self._backend.is_remote and credential is None:
             return {'updated': 0, 'errors': ['No credential available for user']}
@@ -207,6 +212,10 @@ class TaskRepository:
             if any('backendData' in update for update in updates):
                 raise ValueError('backendData is private to the backend')
             return self._backend.write_tasks(updates, credential, actor_id=user_id)
+
+        write_task = getattr(self._backend, 'write_task', None)
+        if not callable(write_task):
+            return {'updated': 0, 'errors': ['Task updates are not supported by the active backend']}
 
         total_updated = 0
         all_errors: List[str] = []
@@ -220,7 +229,7 @@ class TaskRepository:
                 if task_id is None or task_id == '':
                     all_errors.append(f"Invalid task id: {update!r}")
                     continue
-                result: WriteResult = self._backend.write_task(str(task_id), update, credential)
+                result: WriteResult = write_task(str(task_id), update, credential)
                 total_updated += result.get('updated', 0)
                 all_errors.extend(result.get('errors') or [])
             except Exception as exc:

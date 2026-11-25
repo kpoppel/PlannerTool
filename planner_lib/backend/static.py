@@ -193,7 +193,7 @@ class StaticBackend(BackendPort):
 
     def fetch_history(
         self,
-        work_item_id: int,
+        work_item_id: str,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainHistoryEntry]:
         """Return pre-loaded history entries for *work_item_id* if present."""
