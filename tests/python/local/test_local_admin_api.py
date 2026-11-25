@@ -58,6 +58,7 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
     from fastapi.testclient import TestClient
 
     from planner_lib.backend.azure import AzureDevOpsBackend
+    from planner_lib.database import planner_database
     from planner_lib.domain.iteration_sets import validate_iteration_sets
     from planner_lib import main
     from planner_lib.migrations.coordinator import Database
@@ -69,6 +70,7 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
     team_id = 'abcdefghijklmnopqrstuvwxyz'
     handle = Database(tmp_path).prepare()
     try:
+        database = handle.planner_database
         config = handle.storage.load('config', 'server_config')
         config['task_backend_id'] = 'local'
         config['feature_flags']['enable_cache'] = True
@@ -110,9 +112,17 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
         assert editor.json()['catalogue']['workflows'] == catalogue.json()['content']['workflows']
         assert client.get('/api/tasks').json() == []
         presets = client.get('/api/iterations').json()['iterationSetsById']['manual-set']['presets']
-        created = client.post('/api/tasks/create', json={
+        payload = {
             'project': plan_id, 'typeId': type_id, 'title': 'First local task', 'iterationPresetId': presets[0]['id'],
-        })
+        }
+        with monkeypatch.context() as settings, database.write():
+            settings.setattr(planner_database, 'BUSY_TIMEOUT_MS', 100)
+            busy = client.post('/api/tasks/create', json=payload)
+            assert busy.status_code == 503, busy.text
+            assert busy.json()['error'] == 'planner_database_busy'
+            assert busy.headers['Retry-After'] == '1'
+            assert client.get('/api/tasks').json() == []
+        created = client.post('/api/tasks/create', json=payload)
         assert created.status_code == 201, created.text
         task = created.json()
         assert client.get('/api/tasks').json() == [task]

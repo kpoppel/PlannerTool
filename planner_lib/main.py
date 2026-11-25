@@ -522,6 +522,7 @@ def _build_app(
         return JSONResponse(status_code=403, content={'error': error})
 
     from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError
+    from planner_lib.database.planner_database import PlannerDatabaseBusy
     from planner_lib.session.broker import AuthFailure
 
     @app.exception_handler(AuthFailure)
@@ -536,6 +537,11 @@ def _build_app(
     @app.exception_handler(BackendUnavailableError)
     async def backend_unavailable_exception_handler(request, exc):
         return JSONResponse(status_code=503, content={'error': 'backend_unavailable'})
+
+    @app.exception_handler(PlannerDatabaseBusy)
+    async def planner_database_busy_exception_handler(request, exc):
+        return JSONResponse(status_code=503, headers={'Retry-After': '1'},
+                            content={'error': 'planner_database_busy', 'message': str(exc)})
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):

@@ -53,6 +53,7 @@ Template - do not change :
 - Exclude credentials and broker authority from logical backups. Enrollment account restore needs fresh operator-reset keys; Entra accounts cannot be replaced.
 
 ### Fixed
+- Return a retryable error instead of a server error when concurrent Local writes exceed the database lock timeout.
 - Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
 - Keep type-filtered tasks hidden instead of turning selected-plan work into virtual context; deselecting all task types clears task rows and cards without changing calculated team demand.
 - Render the task list when restored views include context-only tasks without a configured owning plan.

@@ -1,11 +1,14 @@
 """planner.sqlite owner: confinement, ledger, constraints, copy and logical rows."""
 import os
 import sqlite3
+import subprocess
+import sys
 
 import pytest
 
 from planner_lib.database import DATABASE_NAME, SCHEMA_TARGET, PlannerDatabase
 from planner_lib.database import schema as schema_module
+from planner_lib.database.planner_database import BUSY_TIMEOUT_MS
 from planner_lib.migrations.contracts import SchemaError
 
 
@@ -14,9 +17,9 @@ def database(tmp_path):
     return PlannerDatabase.create(tmp_path / DATABASE_NAME, root=tmp_path)
 
 
-def _seed_plan(connection, plan_id='plan-1'):
+def _seed_plan(connection, plan_id='plan-1', display_order=0):
     connection.execute("INSERT INTO plan_definitions (plan_id, backend_id, name, kind, display_order) "
-                       "VALUES (?, 'local', 'Local', 'project', 0)", (plan_id,))
+                       "VALUES (?, 'local', 'Local', 'project', ?)", (plan_id, display_order))
 
 
 def test_create_applies_schema_with_private_permissions_and_wal(database):
@@ -25,7 +28,48 @@ def test_create_applies_schema_with_private_permissions_and_wal(database):
     with database.connect() as connection:
         assert connection.execute('PRAGMA journal_mode').fetchone()[0] == 'wal'
         assert connection.execute('PRAGMA foreign_keys').fetchone()[0] == 1
+        assert connection.execute('PRAGMA busy_timeout').fetchone()[0] == BUSY_TIMEOUT_MS
         assert [row[0] for row in connection.execute('SELECT backend_id FROM backend_definitions')] == ['ado', 'local']
+
+
+def test_wal_reader_and_writer_contention_across_processes(database):
+    child = '''
+import sqlite3
+import sys
+from pathlib import Path
+from planner_lib.database import PlannerDatabase
+from planner_lib.database import planner_database
+from planner_lib.database.planner_database import PlannerDatabaseBusy
+
+path = Path(sys.argv[1])
+planner_database.BUSY_TIMEOUT_MS = 150
+database = PlannerDatabase(path, root=path.parent)
+with database.connect() as connection:
+    print([row[0] for row in connection.execute('SELECT plan_id FROM plan_definitions ORDER BY plan_id')])
+try:
+    with database.write() as connection:
+        connection.execute("INSERT INTO plan_definitions (plan_id, backend_id, name, kind, display_order) "
+                           "VALUES ('child', 'local', 'Child', 'project', 2)")
+except PlannerDatabaseBusy as error:
+    assert error.__cause__.sqlite_errorcode == sqlite3.SQLITE_BUSY, error
+    print('busy')
+else:
+    print('committed')
+'''
+    command = [sys.executable, '-c', child, str(database.path)]
+    with database.write() as connection:
+        _seed_plan(connection, 'committed')
+    with database.write() as connection:
+        _seed_plan(connection, 'pending', 1)
+        blocked = subprocess.run(command, capture_output=True, text=True, timeout=10, check=True)
+        assert blocked.stdout.splitlines() == ["['committed']", 'busy']
+
+    released = subprocess.run(command, capture_output=True, text=True, timeout=10, check=True)
+    assert released.stdout.splitlines() == ["['committed', 'pending']", 'committed']
+    with database.connect() as connection:
+        assert [row[0] for row in connection.execute(
+            'SELECT plan_id FROM plan_definitions ORDER BY plan_id'
+        )] == ['child', 'committed', 'pending']
 
 
 def test_migrate_is_idempotent(database):

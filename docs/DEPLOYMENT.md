@@ -551,6 +551,41 @@ storage sizing, cleanup, and process-crash versus power-loss guarantees.
 Every deployment needs an installation encryption key, regardless of its ADO
 authentication method. This is separate from all Entra, broker and HTTPS keys.
 
+### Local task database operations
+
+Local tasks, catalogue definitions, and task audit history live in
+`generations/<active-generation>/planner.sqlite` beneath `DATA_DIR`. The database
+belongs to the same generation as its sibling `cache/` directory. Do not copy,
+replace, or prune either store independently. Selecting ADO does not remove
+the dormant Local data.
+
+Keep `DATA_DIR` on a local filesystem with working SQLite locks. Workers on the
+same host can share one installation. Do not share that directory across hosts
+or replicas via NFS, SMB, or other network volumes. Use a separate data directory
+per independent installation.
+
+SQLite WAL allows readers to keep a committed snapshot while a writer commits,
+but there is only one writer at a time across all workers. A Local write waits up
+to five seconds for the lock before returning HTTP `503` (`planner_database_busy`,
+`Retry-After: 1`). Retry after that interval. A task conflict (`409`) instead
+requires reviewing the current values before resubmitting. Avoid simultaneous
+large publication batches and long-lived readers; the latter can prevent WAL
+truncation. Do not remove the WAL or its shared-memory file manually.
+
+Use the logical backup for portable task and configuration data without login
+authority or credentials. For full recovery, stop all application workers and
+reload supervisors, then use the offline backup/export and restore procedures in
+[MIGRATIONS.md](MIGRATIONS.md). Keep the installation encryption key separately.
+Full restore replaces the entire generation, including writes made after the backup.
+
+The operational regression exercises a 1,200-task tree, a 60-task atomic publish,
+and an indexed task-history lookup. It bounds SQL statement counts and records
+elapsed times; it is not a production capacity estimate. Measure publish latency
+and lock timeouts under your actual workload before increasing worker counts.
+Revisit a server database only if sustained single-writer contention remains after
+reducing overlapping and oversized batches, or if shared multi-host storage is
+required.
+
 # Generate the Installation Encryption Key
 
 Only for a **new installation**, run from the repository root using the existing

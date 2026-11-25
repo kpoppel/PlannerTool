@@ -24,6 +24,10 @@ BACKUP_FORMAT_VERSION = 1
 _INTERNAL_TABLES = {'schema_migrations', 'sqlite_sequence'}
 
 
+class PlannerDatabaseBusy(RuntimeError):
+    """The planner database could not acquire a lock within the busy timeout."""
+
+
 def database_path(cache_directory: Path) -> Path:
     """The relational database is a sibling of the DiskCache directory it belongs to."""
     return Path(cache_directory).parent / DATABASE_NAME
@@ -108,6 +112,10 @@ class PlannerDatabase:
                 connection.execute('ROLLBACK')
                 raise
             connection.execute('COMMIT')
+        except sqlite3.OperationalError as exc:
+            if getattr(exc, 'sqlite_errorcode', 0) & 0xff == sqlite3.SQLITE_BUSY:
+                raise PlannerDatabaseBusy('Planner database is busy; retry the operation') from exc
+            raise
         finally:
             connection.close()
 

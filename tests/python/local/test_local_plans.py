@@ -1,11 +1,23 @@
 """Local plans: area-path-free plan scope, validation against shared configuration."""
 import copy
+import json
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from threading import Barrier, Event
+from time import perf_counter
+from uuid import uuid4
 
 import pytest
 
-from planner_lib.database import PlannerDatabase
+from planner_lib.admin.config_manager import ConfigManager
+from planner_lib.backend.local import LocalTaskBackend
+from planner_lib.database import SCHEMA_TARGET, PlannerDatabase, planner_database
 from planner_lib.local.catalogue import LocalCatalogue, StaleRevisionError
 from planner_lib.local.plans import LocalPlans, PlanInUseError
+from planner_lib.local.tasks import LocalTasks
+from planner_lib.migrations import coordinator
+from planner_lib.migrations.contracts import SchemaError
+from planner_lib.migrations.coordinator import Database
 from planner_lib.migrations.revisions import initialize
 from planner_lib.storage.memory_backend import MemoryStorage
 
@@ -31,6 +43,179 @@ def _plan(catalogue, **overrides):
             'markers': [{'id': 'm1', 'label': 'Release', 'date': '2026-12-01', 'color': '#f00'}]}
     plan.update(overrides)
     return plan
+
+
+def _seed_operational_plan(handle):
+    database, storage = handle.planner_database, handle.storage
+    catalogue = LocalCatalogue(database).create_starter(0)
+    LocalPlans(database, storage).save({'revision': 0, 'plans': [_plan(catalogue, iteration_uuid=None)]})
+    return catalogue['processes'][0]['types']
+
+
+def test_local_read_snapshot_during_concurrent_publication(tmp_path, monkeypatch):
+    handle = Database(tmp_path).prepare()
+    try:
+        task_type = _seed_operational_plan(handle)[0]
+        reader = LocalTasks(handle.planner_database, handle.storage)
+        writer = LocalTasks(handle.planner_database, handle.storage)
+        base = writer.create({'project': PLAN_ID, 'typeId': task_type['id'], 'title': 'Before'}, 'creator')
+        snapshot_ready, release_reader = Event(), Event()
+        start_writers = Barrier(2, timeout=10)
+        read_tasks = reader._read
+
+        def wait_in_snapshot(connection):
+            snapshot_ready.set()
+            assert release_reader.wait(timeout=10)
+            return read_tasks(connection)
+
+        def publish(actor, field, value):
+            start_writers.wait()
+            return writer.update_batch([{'id': base['id'], 'revision': base['revision'],
+                                         'before': {field: base[field]}, 'fields': {field: value}}], actor)[0]
+
+        monkeypatch.setattr(reader, '_read', wait_in_snapshot)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            snapshot = pool.submit(reader.read_collection)
+            try:
+                assert snapshot_ready.wait(timeout=10)
+                rename = pool.submit(publish, 'alice', 'title', 'After')
+                schedule = pool.submit(publish, 'bob', 'start', '2026-12-01')
+                assert {rename.result(timeout=10)['revision'], schedule.result(timeout=10)['revision']} == {2, 3}
+            finally:
+                release_reader.set()
+            historical, selected = snapshot.result(timeout=10)
+
+        assert historical == [base]
+        assert PLAN_ID in selected
+        [current] = writer.read()
+        assert (current['title'], current['start'], current['revision']) == ('After', '2026-12-01', 3)
+        assert [(entry['value'], entry['changed_by']) for entry in writer.fetch_history(base['id'])] == [
+            ('2026-12-01', 'bob')]
+    finally:
+        handle.close()
+
+
+def test_local_task_history_survives_checkpoint_rotation_and_full_restore(tmp_path, monkeypatch):
+    root = tmp_path / 'installation'
+    with closing(Database(root).prepare()) as handle:
+        task_type = _seed_operational_plan(handle)[0]
+        database, storage = handle.planner_database, handle.storage
+        original_path = database.path
+        tasks = LocalTasks(database, storage)
+        created = tasks.create({'project': PLAN_ID, 'typeId': task_type['id'], 'title': 'Task',
+                                'start': '2026-12-01'}, 'creator')
+        task_id = created['id']
+        with database.connect() as reader:
+            reader.execute('BEGIN')
+            assert reader.execute('SELECT revision FROM tasks').fetchone()[0] == 1
+            [published] = tasks.update_batch([{'id': task_id, 'revision': 1,
+                                              'before': {'start': created['start']},
+                                              'fields': {'start': '2026-12-02'}}], 'publisher')
+            assert reader.execute('SELECT revision FROM tasks').fetchone()[0] == 1
+            manager = ConfigManager(storage, planner_database=database)
+            logical = manager.get_backup()['planner_database']['tables']
+            assert [(row['task_id'], row['revision']) for row in logical['tasks']] == [(task_id, 2)]
+            assert {row['revision'] for row in logical['task_history']} == {1, 2}
+            monkeypatch.setattr(planner_database, 'BUSY_TIMEOUT_MS', 100)
+            with pytest.raises(SchemaError, match='checkpoint is blocked'):
+                database.checkpoint()
+        database.checkpoint()
+        expected_history = tasks.fetch_history(task_id)
+        assert [(entry['value'], entry['changed_by']) for entry in expected_history] == [
+            ('2026-12-01', 'creator'), ('2026-12-02', 'publisher')]
+
+    backup = Database(root).export_legacy(tmp_path / 'full-backup')
+    next_schema = SCHEMA_TARGET + 1
+    monkeypatch.setattr(planner_database, 'MIGRATIONS', planner_database.MIGRATIONS + (
+        (next_schema, '9999.phase-six-probe', 'CREATE TABLE phase_six_probe (id INTEGER PRIMARY KEY);'),))
+    monkeypatch.setattr(planner_database, 'SCHEMA_TARGET', next_schema)
+    monkeypatch.setattr(coordinator, 'DATABASE_SCHEMA_TARGET', next_schema)
+    installation = Database(root, build='phase-six-test')
+    with closing(installation.prepare()) as handle:
+        rotated_path = handle.planner_database.path
+        assert rotated_path != original_path
+    with closing(installation.prepare()) as handle:
+        assert handle.planner_database.path == rotated_path
+        tasks = LocalTasks(handle.planner_database, handle.storage)
+        assert tasks.read() == [published]
+        assert tasks.fetch_history(task_id) == expected_history
+        tasks.delete(task_id, published['revision'], 'deleter')
+        assert tasks.read() == []
+
+    installation.restore(backup, confirmed=True)
+    with closing(installation.prepare()) as handle:
+        database = handle.planner_database
+        assert database.path != rotated_path
+        assert database.validate() == next_schema
+        tasks = LocalTasks(database, handle.storage)
+        assert tasks.read() == [published]
+        assert tasks.fetch_history(task_id) == expected_history
+
+
+def test_local_workload_query_and_time_budgets(tmp_path, monkeypatch, record_property):
+    with closing(Database(tmp_path).prepare()) as handle:
+        parent_type, child_type, *_ = _seed_operational_plan(handle)
+        database, storage = handle.planner_database, handle.storage
+        backend = LocalTaskBackend(database, storage)
+        parents = [backend.create_task({'project': PLAN_ID, 'typeId': parent_type['id'],
+                                        'title': f'Parent {index}'}, 'seed') for index in range(12)]
+        children = []
+        links = []
+        for parent in parents:
+            for index in range(99):
+                identity = str(uuid4())
+                children.append((identity, PLAN_ID, child_type['id'], f'Child {index}'))
+                links.append((parent['id'], identity))
+        with database.write() as connection:
+            state = connection.execute('SELECT state_id FROM tasks WHERE task_id = ?',
+                                       (parents[0]['id'],)).fetchone()[0]
+            connection.executemany('''
+                INSERT INTO tasks (task_id, plan_id, type_id, title, state_id, revision,
+                                   created_at, created_by, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?, 1, '2026-11-25', 'seed', '2026-11-25', 'seed')
+            ''', [(*child, state) for child in children])
+            connection.executemany("INSERT INTO task_relations VALUES (?, ?, 'parent')", links)
+            connection.executemany('''
+                INSERT INTO task_history (task_id, revision, field_key, new_value, actor_id, changed_at, batch_id)
+                VALUES (?, 1, 'title', ?, 'seed', '2026-11-25', 'seed')
+            ''', [(identity, json.dumps(title)) for identity, _, _, title in children])
+
+        statements = []
+        open_connection = database._open
+
+        def traced_connection():
+            connection = open_connection()
+            connection.set_trace_callback(statements.append)
+            return connection
+
+        def measure(operation, action, query_budget):
+            statements.clear()
+            started = perf_counter()
+            result = action()
+            elapsed = perf_counter() - started
+            record_property(f'{operation}_ms', round(elapsed * 1000, 2))
+            record_property(f'{operation}_statements', len(statements))
+            assert elapsed < 5, f'{operation} took {elapsed:.2f}s'
+            assert len(statements) <= query_budget, f'{operation} ran {len(statements)} SQL statements'
+            return result
+
+        monkeypatch.setattr(database, '_open', traced_connection)
+        collection = measure('tree_read', backend.fetch_task_collection, 8)
+        assert len(collection) == 1_200
+        by_id = {task['id']: task for task in collection}
+        assert all(by_id[child]['parentId'] == parent for parent, child in links)
+        edits = [{'id': identity, 'base': {'revision': 1, 'fields': {'start': None}},
+                  'start': '2026-12-01'} for _, identity in links[:60]]
+        result = measure('publish_60', lambda: backend.write_tasks(edits, None, actor_id='publisher'),
+                 15 + 5 * len(edits))
+        assert result == {'ok': True, 'updated': 60, 'errors': [], 'conflicts': []}
+
+        history = measure('task_history', lambda: backend.fetch_history(edits[0]['id']), 1)
+        assert [(entry['field'], entry['value'], entry['changed_by']) for entry in history] == [
+            ('start', '2026-12-01', 'publisher')]
+        with closing(open_connection()) as connection:
+            query_plan = [row['detail'] for row in connection.execute('EXPLAIN QUERY PLAN ' + statements[0])]
+        assert any('SEARCH task_history USING INDEX task_history_task (task_id=?)' in step for step in query_plan)
 
 
 def test_local_plans_round_trip_without_area_path(setup):
@@ -107,8 +292,6 @@ def test_create_local_task_and_read_schedule_history(setup):
     from uuid import UUID
 
     from planner_lib.backend.adapter import AzureAdapter
-    from planner_lib.local.tasks import LocalTasks
-
     plans, catalogue, database = setup
     field_id = '33333333-3333-4333-8333-333333333333'
     catalogue['fields'].append({'id': field_id, 'key': 'estimate', 'label': 'Estimate',
@@ -190,8 +373,6 @@ def test_local_backend_reads_cross_plan_context_and_markers(setup):
 
 def test_local_updates_merge_by_verified_field_and_rollback_on_conflict(setup):
     from planner_lib.domain.tasks import TaskConflictError
-    from planner_lib.local.tasks import LocalTasks
-
     plans, catalogue, database = setup
     plans.save({'revision': 0, 'plans': [_plan(catalogue)]})
     tasks = LocalTasks(database, plans._storage)
@@ -226,10 +407,7 @@ def test_local_updates_merge_by_verified_field_and_rollback_on_conflict(setup):
 
 
 def test_local_custom_fields_merge_independently_and_validate_required_values(setup):
-    from uuid import uuid4
-
     from planner_lib.domain.tasks import TaskConflictError
-    from planner_lib.local.tasks import LocalTasks
 
     plans, catalogue, database = setup
     for key in ('estimate', 'effort'):
