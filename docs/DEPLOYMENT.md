@@ -20,6 +20,13 @@ Caddy run in one Compose project. The manifest owns hosting and auth policy;
 - Mock sign-in can impersonate administrators. Restrict its audience; never expose
    it as production authentication. See [authentication](AUTHENTICATION.md).
 
+The examples below use the repository root as the working directory and
+`BASE_PATH=./etc`: authentication material goes under `./etc/auth/` and TLS material
+under `./etc/tls/`. Both directories are ignored by Git. On a hardened host, use
+`BASE_PATH="$HOME/.config/plannertool"` or `BASE_PATH="/etc/plannertool"` instead.
+If the base changes, replace the literal `./etc/...` values in YAML and env files;
+those files do not expand shell variables or `~`.
+
 ## Configure and Start
 
 Start from [docker/instances.example.yml](../docker/instances.example.yml), retaining
@@ -109,13 +116,16 @@ Use an RSA certificate and matching **unencrypted PEM private key**. The example
 below require OpenSSL 3 and run on the machine that will retain the private key.
 Do not use the Caddy/localhost HTTPS key for this purpose.
 
-1. Create a new protected directory outside the repository and generate a 3072-bit
-   RSA key. Run this once; `mkdir` intentionally fails if the directory already
-   exists, so do not rerun it over retained credentials. Stop on any command failure.
+1. Create a new protected directory under `./etc/auth/` and generate a 3072-bit RSA
+   key. Run this once; `mkdir` intentionally fails if the directory already exists,
+   so do not rerun it over retained credentials. To keep these files outside the
+   checkout, set `BASE_PATH` to a protected path under `$HOME` or system `/etc`.
+   Stop on any command failure.
 
 ```bash
 umask 077
-AUTH_DIR="$HOME/.config/plannertool/entra-certificate"
+BASE_PATH=./etc
+AUTH_DIR="$BASE_PATH/auth"
 mkdir -p "$(dirname "$AUTH_DIR")"
 mkdir -m 700 "$AUTH_DIR" && \
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 \
@@ -172,7 +182,8 @@ openssl x509 -in "$AUTH_DIR/entra-certificate.pem" -pubkey -noout \
    certificate** and upload only `entra-certificate.pem`. Confirm its expiry and
    registration. Never upload the private-key file. The portal may display a SHA-1
    thumbprint; do not copy it into configuration. MSAL calculates SHA-256 itself.
-5. Configure the two file paths below. Substitute the absolute paths created above;
+5. Configure the two file paths below. The paths are relative to the manifest. If
+   `BASE_PATH` was changed, use the corresponding literal absolute or relative paths;
    YAML values do not expand `$AUTH_DIR` or `~`. For Docker, have an administrator
    provision broker UID 1000 access to protected files/directories without broadening
    permissions. For direct local development, the current user owns the files.
@@ -182,8 +193,8 @@ registration:
    tenant_id: 11111111-1111-1111-1111-111111111111
    client_id: 22222222-2222-2222-2222-222222222222
    organization: example
-   client_certificate_file: /etc/plannertool/entra-certificate.pem
-   client_certificate_key_file: /etc/plannertool/entra-private-key.pem
+   client_certificate_file: ./etc/auth/entra-certificate.pem
+   client_certificate_key_file: ./etc/auth/entra-private-key.pem
 ```
 
 Paths may be absolute or relative to the manifest. MSAL derives the SHA-256 certificate
@@ -198,9 +209,11 @@ never in command arguments or chat:
 
 ```bash
 umask 077
-openssl pkcs12 -in supplied-certificate.pfx -clcerts -nokeys -out entra-certificate.pem
-openssl pkcs12 -in supplied-certificate.pfx -nocerts -noenc -out entra-private-key.pem
-chmod 600 entra-certificate.pem entra-private-key.pem
+openssl pkcs12 -in supplied-certificate.pfx -clcerts -nokeys \
+   -out "$AUTH_DIR/entra-certificate.pem"
+openssl pkcs12 -in supplied-certificate.pfx -nocerts -noenc \
+   -out "$AUTH_DIR/entra-private-key.pem"
+chmod 600 "$AUTH_DIR/entra-certificate.pem" "$AUTH_DIR/entra-private-key.pem"
 ```
 
 Use an RSA bundle, protect the original PFX too, and perform the same key-match,
@@ -230,7 +243,8 @@ Entra registration steps above, then:
 
 ```bash
 umask 077
-SECRET_DIR="$HOME/.config/plannertool/entra-secret"
+BASE_PATH=./etc
+SECRET_DIR="$BASE_PATH/auth"
 mkdir -p "$(dirname "$SECRET_DIR")"
 mkdir -m 700 "$SECRET_DIR"
 python -c 'from getpass import getpass; from pathlib import Path; import sys; Path(sys.argv[1]).open("x").write(getpass("Entra client secret Value: ") + "\n")' "$SECRET_DIR/client-secret"
@@ -247,11 +261,11 @@ registration:
    tenant_id: 11111111-1111-1111-1111-111111111111
    client_id: 22222222-2222-2222-2222-222222222222
    organization: example
-   client_secret_file: /etc/plannertool/entra-client-secret
+   client_secret_file: ./etc/auth/client-secret
 ```
 
 Replace the example path with the actual protected file path. For a direct broker
-or local development launch, use `ENTRA_CLIENT_SECRET_FILE=/absolute/path/client-secret`
+or local development launch, use `ENTRA_CLIENT_SECRET_FILE=./etc/auth/client-secret`
 and remove both `ENTRA_CLIENT_CERTIFICATE_*` entries. Direct launch also supports
 `ENTRA_CLIENT_SECRET`, but never set it together with `ENTRA_CLIENT_SECRET_FILE`;
 prefer the file so the value is absent from env files and process environments.
@@ -361,7 +375,7 @@ Never delete protected files, rotate retained keys or use `down -v` routinely.
 
 The ordinary `./scripts/run_dev.sh` retains the PAT/enrollment workflow. To connect
 the source-reloading backend and Vite to a local broker, use
-`./scripts/run_dev.sh --auth-env /absolute/path/to/dev-auth.env`. This trusted shell
+`./scripts/run_dev.sh --auth-env ./etc/auth/dev-auth.env`. This trusted shell
 env file is sourced and must have no group/other permissions (`chmod 600`). Install
 both the root and `entra-id/requirements.txt` dependencies in the active `.venv`.
 Never put private keys or client secrets in chat, tracked files or command history.
@@ -382,20 +396,23 @@ with an already installed local CA tool). Register the exact **Web** redirect UR
 permission and tenant-required consent. Use a separate app registration or add this
 URI to the existing registration. Keep implicit and public-client flows disabled.
 
-Create a private directory outside the repository. Provision distinct random
-per-instance and broker encryption keys in mode-0600 files. The instance key must
-contain at least 256 bits of random material (43 URL-safe base64 characters); the
-broker key must be a Fernet key. Compose `--apply` generates these internal keys
-automatically; the following manual generation is only for direct/local development.
-From the repository root, activate the existing virtual environment, then run once
-for a **new** local broker:
+Create protected `auth` and `tls` directories. Provision distinct random per-instance
+and broker encryption keys in mode-0600 files. The instance key must contain at least
+256 bits of random material (43 URL-safe base64 characters); the broker key must be
+a Fernet key. Compose `--apply` generates these internal keys automatically; the
+following manual generation is only for direct/local development. From the repository
+root, activate the existing virtual environment, then run once for a **new** local
+broker:
 
 ```bash
 source .venv/bin/activate
 umask 077
-DEV_AUTH_DIR="$HOME/.config/plannertool/dev-auth"
-mkdir -p "$(dirname "$DEV_AUTH_DIR")"
+BASE_PATH=./etc
+DEV_AUTH_DIR="$BASE_PATH/auth/dev"
+DEV_TLS_DIR="$BASE_PATH/tls/dev"
+mkdir -p "$BASE_PATH/auth" "$BASE_PATH/tls"
 mkdir -m 700 "$DEV_AUTH_DIR"
+mkdir -m 700 "$DEV_TLS_DIR"
 python -c 'from cryptography.fernet import Fernet; from pathlib import Path; import sys; Path(sys.argv[1]).open("x").write(Fernet.generate_key().decode() + "\n")' "$DEV_AUTH_DIR/broker-key"
 python -c 'import secrets; from pathlib import Path; import sys; Path(sys.argv[1]).open("x").write(secrets.token_urlsafe(32) + "\n")' "$DEV_AUTH_DIR/instance-secret"
 ```
@@ -408,13 +425,14 @@ the mode-0700 directory too. Do not regenerate keys to repair a failed login.
 
 Choose the application credential independently: follow **Method A** above to
 generate/register a certificate and key, or **Method B** to create an Entra-issued
-secret value. The env example below uses Method A. Replace every
-`/absolute/private/dev-auth` path with your actual directory and point the two
-certificate paths at the files generated for Method A. Replace registration values
-locally and protect the trusted env file with `chmod 600`:
+secret value. Place the browser-trusted localhost certificate and key at
+`./etc/tls/dev/localhost.pem` and `./etc/tls/dev/localhost-key.pem`. The env example
+below uses Method A and the documented `./etc` base. If you selected a different
+`BASE_PATH`, replace these paths consistently. Replace registration values locally
+and protect the trusted env file with `chmod 600`:
 
 ```bash
-DATA_DIR=/absolute/private/dev-auth/planner-data
+DATA_DIR=./etc/auth/dev/planner-data
 PLANNER_DEV_BACKEND_PORT=8002
 PLANNER_AUTH_PROVIDER=entra
 PLANNER_ADO_AUTHENTICATION=entra
@@ -422,26 +440,26 @@ PLANNER_AUTH_INSTANCE=dev
 PLANNER_AUTH_URL=http://localhost:8765/auth/
 PLANNER_AUTH_PUBLIC_URL=https://localhost:5174/auth/
 PLANNER_AUTH_UPSTREAM_MODE=entra
-PLANNER_AUTH_SECRET_FILE=/absolute/private/dev-auth/instance-secret
-PLANNER_DEV_TLS_CERT_FILE=/absolute/private/dev-auth/localhost.pem
-PLANNER_DEV_TLS_KEY_FILE=/absolute/private/dev-auth/localhost-key.pem
+PLANNER_AUTH_SECRET_FILE=./etc/auth/dev/instance-secret
+PLANNER_DEV_TLS_CERT_FILE=./etc/tls/dev/localhost.pem
+PLANNER_DEV_TLS_KEY_FILE=./etc/tls/dev/localhost-key.pem
 ENTRA_TENANT_ID=your-tenant-guid
 ENTRA_CLIENT_ID=your-client-guid
 ADO_ORGANIZATION=your-organization
-ENTRA_CLIENT_CERTIFICATE_FILE=/absolute/private/dev-auth/entra-certificate.pem
-ENTRA_CLIENT_CERTIFICATE_KEY_FILE=/absolute/private/dev-auth/entra-private-key.pem
+ENTRA_CLIENT_CERTIFICATE_FILE=./etc/auth/entra-certificate.pem
+ENTRA_CLIENT_CERTIFICATE_KEY_FILE=./etc/auth/entra-private-key.pem
 ENTRA_REDIRECT_URI=https://localhost:5174/auth/callback
 ENTRA_AUTH_MODE=entra
 ENTRA_ADO_TRANSPORT=live
 ENTRA_LISTEN_PORT=8765
 ENTRA_BROKER_PUBLIC_URL=https://localhost:5174/auth/
-ENTRA_BROKER_KEY_FILE=/absolute/private/dev-auth/broker-key
-ENTRA_BROKER_STORE=/absolute/private/dev-auth/broker.sqlite
-ENTRA_BROKER_REGISTRY_FILE=/absolute/private/dev-auth/instances.json
+ENTRA_BROKER_KEY_FILE=./etc/auth/dev/broker-key
+ENTRA_BROKER_STORE=./etc/auth/dev/broker.sqlite
+ENTRA_BROKER_REGISTRY_FILE=./etc/auth/dev/instances.json
 ```
 
 To use an application secret instead, replace both `ENTRA_CLIENT_CERTIFICATE_*`
-entries with `ENTRA_CLIENT_SECRET_FILE=/absolute/private/dev-auth/client-secret`.
+entries with `ENTRA_CLIENT_SECRET_FILE=./etc/auth/client-secret`.
 Do not configure both credential methods. The Entra application certificate is
 distinct from `PLANNER_DEV_TLS_CERT_FILE` and `PLANNER_DEV_TLS_KEY_FILE`.
 
@@ -454,7 +472,7 @@ as `PLANNER_AUTH_SECRET_FILE`:
    "instances": {
       "dev": {
          "completion_url": "https://localhost:5174/dev/api/auth/login/callback",
-         "secret_file": "/absolute/private/dev-auth/instance-secret"
+         "secret_file": "./etc/auth/dev/instance-secret"
       }
    },
    "mock_registration": null
@@ -464,8 +482,8 @@ as `PLANNER_AUTH_SECRET_FILE`:
 Check the configuration before starting services:
 
 ```bash
-./scripts/run_dev.sh --auth-env /absolute/path/to/dev-auth.env --check
-./scripts/run_dev.sh --auth-env /absolute/path/to/dev-auth.env
+./scripts/run_dev.sh --auth-env ./etc/auth/dev-auth.env --check
+./scripts/run_dev.sh --auth-env ./etc/auth/dev-auth.env
 ```
 
 `--check` checks local dependencies, installation-key presence and broker
@@ -678,16 +696,18 @@ When a company-issued certificate is available, select supplied PEM files:
 https_hostname: planner.example.test
 https_tls:
    mode: provided
-   certificate_file: /etc/plannertool/tls/fullchain.pem
-   key_file: /etc/plannertool/tls/key.pem
-   ca_file: /etc/plannertool/tls/company-ca.pem
+   certificate_file: ./etc/tls/fullchain.pem
+   key_file: ./etc/tls/key.pem
+   ca_file: ./etc/tls/company-ca.pem
 ```
 
 Paths resolve relative to the manifest, not the generated Compose directory.
 `certificate_file` must contain the hostname-matching leaf certificate followed
 by intermediate certificates; `key_file` must be its matching, unencrypted PEM
-private key with mode 0600. Keep private keys outside the repository. Deployment
-validates the pair before generation and mounts both files read-only into Caddy.
+private key with mode 0600. The documented `./etc/tls/` directory is ignored by Git;
+never commit private keys. Alternatively, use literal paths under `$HOME` or system
+`/etc`. Deployment validates the pair before generation and mounts both files
+read-only into Caddy.
 The optional `ca_file` supplies trusted CA certificates for deployment's readiness
 check; omit it if the deployment host already trusts the issuing CA. Client/browser
 trust must be configured separately. An explicit self-signed server certificate
@@ -700,7 +720,17 @@ provided TLS does not require changing the hostname or auth service public URL.
 
 #### Generating a Certificate Signing Request
 
-Create a `csr.conf` for the hostname and organization used by your deployment:
+Set the TLS basepath and create the protected directory:
+
+```bash
+BASE_PATH=./etc
+TLS_DIR="$BASE_PATH/tls"
+mkdir -p "$TLS_DIR"
+chmod 700 "$TLS_DIR"
+```
+
+Create `./etc/tls/csr.conf` for the hostname and organization used by your
+deployment:
 
 ```ini
 [req]
@@ -727,16 +757,19 @@ Replace the example subject and DNS name with values accepted by your certificat
 authority. Generate a private key, protect it, and create the CSR:
 
 ```bash
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out server.key
-chmod 600 server.key
-openssl req -new -key server.key -out server.csr -config csr.conf
-openssl req -in server.csr -noout -text
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$TLS_DIR/key.pem"
+chmod 600 "$TLS_DIR/key.pem"
+openssl req -new -key "$TLS_DIR/key.pem" \
+   -out "$TLS_DIR/server.csr" -config "$TLS_DIR/csr.conf"
+openssl req -in "$TLS_DIR/server.csr" -noout -text
 ```
 
-Submit only `server.csr` to your certificate authority and request a TLS server
+Submit only `./etc/tls/server.csr` to your certificate authority and request a TLS server
 certificate for the listed hostname. Confirm the issued certificate includes the
-hostname as a subject alternative name; configure its leaf certificate and matching
-`server.key` using `mode: provided` above. Keep the private key outside the repository.
+hostname as a subject alternative name; combine the leaf and intermediate certificates
+at `./etc/tls/fullchain.pem`, then configure that file and the matching
+`./etc/tls/key.pem` using `mode: provided` above. Keep the private key ignored by Git
+and mode 0600.
 
 For public ACME issuance (`https_tls: {mode: acme}`), Caddy obtains and renews
 certificates automatically. The hostname must resolve to this server and inbound

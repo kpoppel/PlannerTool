@@ -10,9 +10,9 @@ ado_authentication: pat
 # For a company-issued certificate, use this instead (paths relative to this file):
 # https_tls:
 #   mode: provided
-#   certificate_file: /etc/plannertool/tls/fullchain.pem
-#   key_file: /etc/plannertool/tls/key.pem
-#   ca_file: /etc/plannertool/tls/company-ca.pem
+#   certificate_file: ./etc/tls/fullchain.pem
+#   key_file: ./etc/tls/key.pem
+#   ca_file: ./etc/tls/company-ca.pem
 # Private keys must be unencrypted and mode 0600. ca_file is optional if host-trusted.
 # Use --apply --start to generate, start and verify HTTPS certificate readiness.
 # auth_services:
@@ -25,11 +25,11 @@ ado_authentication: pat
 #       client_id: 22222222-2222-2222-2222-222222222222
 #       organization: example
 # For live mode use mode: entra, real tenant_id/client_id, and add (recommended):
-#       client_certificate_file: /etc/plannertool/entra-certificate.pem
-#       client_certificate_key_file: /etc/plannertool/entra-private-key.pem
+#       client_certificate_file: ./etc/auth/entra-certificate.pem
+#       client_certificate_key_file: ./etc/auth/entra-private-key.pem
 # Upload the public certificate to the Entra app; retain the unencrypted RSA key locally.
 # Alternatively, replace both certificate fields with:
-#       client_secret_file: /etc/plannertool/entra-client-secret
+#       client_secret_file: ./etc/auth/client-secret
 # Keep credentials in mode-0600 files, not in this manifest. Never configure both methods.
 # Deployment preference: Entra certificate, then Entra app secret, then PATs.
 # Generated registry and secrets are managed in deployment/.auth/ on --apply.

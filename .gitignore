@@ -40,6 +40,7 @@ Thumbs.db
 # Configutation files
 deployment/
 data/
+etc/
 instances.yml
 .encryption_key
 .azure-pat
