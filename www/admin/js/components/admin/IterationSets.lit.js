@@ -9,6 +9,7 @@ const dateLabel = (value) => new Date(`${value}T12:00:00Z`).toLocaleDateString(u
 
 export class AdminIterations extends LitElement {
   static properties = {
+    local: { type: Boolean },
     sets: { state: true }, usage: { state: true }, draft: { state: true }, activeTab: { state: true },
     loading: { state: true }, busy: { state: true }, browseLoading: { state: true },
     sourceRows: { state: true }, filterText: { state: true }, projects: { state: true },
@@ -111,6 +112,7 @@ export class AdminIterations extends LitElement {
 
   constructor() {
     super();
+    this.local = false;
     this.sets = []; this.usage = {}; this.draft = null; this.activeTab = 'members';
     this.loading = true; this.busy = false; this.browseLoading = false;
     this.sourceRows = []; this.filterText = ''; this.projects = []; this.projectLoading = false;
@@ -136,6 +138,9 @@ export class AdminIterations extends LitElement {
 
   get hasUnsavedChanges() {
     return this.draft !== null && JSON.stringify(this.draft) !== JSON.stringify(this.sets.find((set) => set.id === this.draft.id));
+  }
+  get visibleSets() {
+    return this.local ? this.sets.filter((set) => set.source_type !== 'ado') : this.sets;
   }
   get generatorPending() {
     return this.draft !== null && this.draft.source_type === 'generated' && JSON.stringify(this.draft.generator) !== this._appliedGenerator;
@@ -220,7 +225,7 @@ export class AdminIterations extends LitElement {
       if (!result.ok) throw new Error(result.error.message);
       this.sets = result.data.iteration_sets;
       this.usage = result.data.usage;
-      this.activateSet(this.sets.length ? this.sets[0] : null);
+      this.activateSet(this.visibleSets.length ? this.visibleSets[0] : null);
       if (this.draft !== null && this.draft.source_type === 'ado') this.loadSource();
     } catch (error) {
       console.error('Loading iteration sets failed', error);
@@ -241,6 +246,7 @@ export class AdminIterations extends LitElement {
   }
 
   selectSet(set) {
+    if (this.local && set.source_type === 'ado') return;
     if (this.draft !== null && this.draft.id === set.id) return;
     if (!this.mayLeave()) return;
     this.activateSet(set);
@@ -248,6 +254,7 @@ export class AdminIterations extends LitElement {
   }
 
   createDraft(name, source, project) {
+    if (this.local && source === 'ado') throw new Error('ADO iteration sources are inactive.');
     if (!name.trim()) throw new Error('Enter a set name.');
     this.activateSet(null);
     this.draft = { id: crypto.randomUUID(), name: name.trim(), source_type: source,
@@ -272,6 +279,7 @@ export class AdminIterations extends LitElement {
   }
 
   async loadProjects() {
+    if (this.local) return;
     this.projectLoading = true; this.projectError = '';
     try {
       const config = await adminProvider.getBrowseConfig();
@@ -286,6 +294,7 @@ export class AdminIterations extends LitElement {
   }
 
   async loadSource() {
+    if (this.local) return;
     const request = ++this._sourceRequest;
     const id = this.draft.id;
     const project = this.draft.source_project;
@@ -346,7 +355,7 @@ export class AdminIterations extends LitElement {
   discardChanges() {
     if (!this.mayLeave()) return;
     const saved = this.sets.find((set) => set.id === this.draft.id);
-    this.activateSet(saved === undefined ? (this.sets.length ? this.sets[0] : null) : saved);
+    this.activateSet(saved === undefined ? (this.visibleSets.length ? this.visibleSets[0] : null) : saved);
   }
 
   async deleteSet() {
@@ -364,7 +373,7 @@ export class AdminIterations extends LitElement {
         throw new Error(result.error.message);
       }
       this.sets = this.sets.filter((set) => set.id !== id);
-      this.activateSet(this.sets.length ? this.sets[0] : null);
+      this.activateSet(this.visibleSets.length ? this.visibleSets[0] : null);
     } catch (error) {
       console.error('Deleting iteration set failed', { id, error });
       this.error = error.message;
@@ -526,7 +535,8 @@ export class AdminIterations extends LitElement {
     if (this.dialog === 'new') return html`<form @submit=${this.onCreate}><h3>New iteration set</h3>
       <label class="field">Set name<input name="name" required maxlength="100"></label>
       <label class="field">Source<select @change=${(event) => { this.newSource = event.target.value; if (this.newSource === 'ado') this.loadProjects(); }}>
-        ${Object.entries(SOURCE_LABELS).map(([value, label]) => html`<option value=${value} .selected=${value === this.newSource}>${label}</option>`)}
+        ${Object.entries(SOURCE_LABELS).filter(([value]) => !this.local || value !== 'ado')
+          .map(([value, label]) => html`<option value=${value} .selected=${value === this.newSource}>${label}</option>`)}
       </select></label>
       ${this.newSource === 'ado' ? html`<label class="field">Azure DevOps project<select name="project" required ?disabled=${this.projectLoading}>
         <option value="">${this.projectLoading ? 'Loading projects...' : 'Select a project'}</option>${this.projects.map((project) => html`<option value=${project}>${project}</option>`)}</select></label>
@@ -555,8 +565,8 @@ export class AdminIterations extends LitElement {
     return html`<header class="page-heading"><div><h2>Iteration sets</h2><p>Schedule presets for your plans</p></div>
       <button class="primary" ?disabled=${this.busy || this.loading} @click=${() => this.showDialog('new')}>+ New set</button></header>
       ${this.loading ? html`<p class="empty">Loading iteration sets...</p>` : html`<div class="workspace">
-        <aside class="sets" aria-label="Iteration sets"><div class="eyebrow">Saved sets (${this.sets.length})</div>
-          ${this.sets.map((set) => html`<button class="set-item ${this.draft !== null && this.draft.id === set.id ? 'selected' : ''}" ?disabled=${this.busy}
+        <aside class="sets" aria-label="Iteration sets"><div class="eyebrow">Saved sets (${this.visibleSets.length})</div>
+          ${this.visibleSets.map((set) => html`<button class="set-item ${this.draft !== null && this.draft.id === set.id ? 'selected' : ''}" ?disabled=${this.busy}
             @click=${() => this.selectSet(set)}><strong>${set.name}</strong><small>${SOURCE_LABELS[set.source_type]} / ${set.values.length} iterations</small>
             <small>${Object.hasOwn(this.usage, set.id) ? this.usage[set.id].length : 0} plans</small></button>`)}
           ${this.draft !== null && !this.sets.some((set) => set.id === this.draft.id) ? html`<div class="set-item selected"><strong>${this.draft.name}</strong><small>New draft</small></div>` : nothing}

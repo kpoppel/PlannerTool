@@ -89,6 +89,29 @@ export class AdminProviderREST extends RestProviderBase {
     return this._getContent('/admin/v1/ado-processes');
   }
 
+  async getLocalPlans() {
+    return this._getContent('/admin/v1/local/plans');
+  }
+
+  async saveLocalPlans(content) {
+    const result = await this._requestWithBody('/admin/v1/local/plans', { content }, 'PUT');
+    return result.ok ? ok(result.data.content) : result;
+  }
+
+  async getLocalCatalogue() {
+    return this._getContent('/admin/v1/local/catalogue');
+  }
+
+  async saveLocalCatalogue(content) {
+    const result = await this._requestWithBody('/admin/v1/local/catalogue', { content }, 'PUT');
+    return result.ok ? ok(result.data.content) : result;
+  }
+
+  async createLocalStarterCatalogue(revision) {
+    const result = await this._saveContent('/admin/v1/local/catalogue/starter', { revision });
+    return result.ok ? ok(result.data.content) : result;
+  }
+
   async resolveAdoProcess(project) {
     const result = await this._requestWithBody('/admin/v1/ado-processes/resolve', { project });
     if (!result.ok && (result.error.status === 400 || result.error.status === 404)) {

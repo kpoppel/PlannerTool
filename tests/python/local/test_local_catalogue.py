@@ -53,6 +53,7 @@ def test_starter_catalogue_round_trips_and_displays_three_tiers(catalogue):
     assert display['process_id'] == process['id']
     assert [[item['name'] for item in tier] for tier in display['tiers']] == [['Epic'], ['Feature'], ['User Story']]
     assert display['tiers'][0][0]['states'][0] == {'name': 'Open', 'category': 'Proposed'}
+    assert display['tiers'][0][0]['state_transitions']['Open'] == ['Refine', 'Closed']
 
 
 def test_starter_requires_an_empty_catalogue_and_current_revision(catalogue):

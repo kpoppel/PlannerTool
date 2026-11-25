@@ -8,7 +8,9 @@ from planner_lib.middleware.session import (
     get_session_credential_from_request,
 )
 from planner_lib.services.resolver import resolve_service
-from planner_lib.backend.port import BatchTaskBackend, DiagnosticBackend, TaskCreationBackend, TaskDeletionBackend
+from planner_lib.backend.port import (
+    BatchTaskBackend, DiagnosticBackend, TaskCreationBackend, TaskDeletionBackend, TaskEditorBackend,
+)
 from planner_lib.backend.errors import BackendConfigError, BackendDecisionError, BackendUnavailableError
 from planner_lib.domain.tasks import TaskConflictError
 import logging
@@ -139,6 +141,15 @@ async def api_markers(request: Request):
     return await asyncio.to_thread(
         plan_repo.list_markers, project_id=project_id or None, user_id=account_id
     )
+
+
+@router.get('/tasks/editor')
+@require_session
+async def api_task_editor(request: Request):
+    backend = resolve_service(request, 'backend')
+    if not isinstance(backend, TaskEditorBackend):
+        raise HTTPException(405, detail={'error': 'task_editor_not_supported'})
+    return await asyncio.to_thread(backend.task_editor_metadata)
 
 
 @router.post('/tasks/create', status_code=201)

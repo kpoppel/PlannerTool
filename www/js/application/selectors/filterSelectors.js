@@ -164,6 +164,17 @@ export function createFilterSelectors(store) {
       return type === undefined ? [] : type.states.filter((state) => state.category !== 'Removed');
     },
 
+    getFeatureStateChoices(feature, originalState) {
+      const type = displayTypes(projectDisplay(store.getState().baseline.projects))
+        .find((item) => item.key === featureTypeKey(feature));
+      if (type === undefined) return [];
+      if (!Object.hasOwn(type, 'state_transitions')) return selectors.getFeatureStates(feature);
+      const current = originalState === undefined ? feature.state : originalState;
+      const allowed = type.state_transitions[current];
+      return type.states.filter((state) => state.name === current || state.name === feature.state
+        || allowed.includes(state.name));
+    },
+
     getFeatureStateColors(states = selectors.getAvailableFeatureStates()) {
       return deriveStateColorMap(states);
     },

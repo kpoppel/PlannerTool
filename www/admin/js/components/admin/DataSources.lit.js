@@ -176,6 +176,7 @@ export class DataSources extends LitElement {
   ];
 
   static properties = {
+    mode: { type: String },
     authentication: { attribute: false },
     _loading:             { type: Boolean, state: true },
 
@@ -269,6 +270,7 @@ export class DataSources extends LitElement {
 
     // Task backend
     this._taskBackends        = [];
+    this.mode                 = 'generic';
     this._taskBackendId       = 'ado';
     this._savedTaskBackendId  = 'ado';
     this._activeTaskBackendId = 'ado';
@@ -323,18 +325,19 @@ export class DataSources extends LitElement {
   async _load() {
     this._loading = true;
     try {
+      const adoView = this.mode === 'ado';
       const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult, backendsResult] = await Promise.all([
-        adminProvider.getEventsConfig(),
-        adminProvider.getAdo(),
+        adoView ? null : adminProvider.getEventsConfig(),
+        adoView ? adminProvider.getAdo() : null,
         adminProvider.getSystem(),
-        adminProvider.getGroupsConfig(),
+        adoView ? null : adminProvider.getGroupsConfig(),
         adminProvider.getTaskBackends(),
       ]);
 
-      if (!evtCfgResult.ok) throw new Error(resultErrorMessage(evtCfgResult, 'Failed to load events config'));
-      if (!adoCfgResult.ok) throw new Error(resultErrorMessage(adoCfgResult, 'Failed to load ADO config'));
+      if (!adoView && !evtCfgResult.ok) throw new Error(resultErrorMessage(evtCfgResult, 'Failed to load events config'));
+      if (adoView && !adoCfgResult.ok) throw new Error(resultErrorMessage(adoCfgResult, 'Failed to load ADO config'));
       if (!sysCfgResult.ok) throw new Error(resultErrorMessage(sysCfgResult, 'Failed to load system config'));
-      if (!grpCfgResult.ok) throw new Error(resultErrorMessage(grpCfgResult, 'Failed to load groups config'));
+      if (!adoView && !grpCfgResult.ok) throw new Error(resultErrorMessage(grpCfgResult, 'Failed to load groups config'));
       if (!backendsResult.ok) throw new Error(resultErrorMessage(backendsResult, 'Failed to load task backends'));
 
       this._taskBackends       = backendsResult.data.backends;
@@ -344,10 +347,10 @@ export class DataSources extends LitElement {
       this._restartAvailable = backendsResult.data.restart_available;
       this._serverInstanceId = backendsResult.data.instance_id;
 
-      const evtCfg = evtCfgResult.data;
-      const adoCfg = adoCfgResult.data;
+      const evtCfg = adoView ? null : evtCfgResult.data;
+      const adoCfg = adoView ? adoCfgResult.data : null;
       const sysCfg = sysCfgResult.data;
-      const grpCfg = grpCfgResult.data;
+      const grpCfg = adoView ? null : grpCfgResult.data;
 
       // ---- Groups -------------------------------------------------------
       if (grpCfg) {
@@ -366,7 +369,7 @@ export class DataSources extends LitElement {
       this._savedEventsBackend = this._eventsBackend;
 
       // Pre-populate browse lists when already on ado_wiki
-      if (this._eventsBackend === 'ado_wiki') {
+      if (this._activeTaskBackendId === 'ado' && this._eventsBackend === 'ado_wiki') {
         this._fetchProjects();
         if (this._wikiProject) this._fetchWikis(this._wikiProject);
         if (this._wikiProject && this._wikiId)
@@ -422,9 +425,15 @@ export class DataSources extends LitElement {
   // These are called from the Plan Events row's browse dropdowns.
   // ------------------------------------------------------------------
 
-  _fetchProjects()                        { return fetchProjects(this); }
-  _fetchWikis(project)                    { return fetchWikis(this, project); }
-  _fetchWikiPages(project, wikiId)        { return fetchWikiPages(this, project, wikiId); }
+  _fetchProjects() {
+    if (this._activeTaskBackendId === 'ado') return fetchProjects(this);
+  }
+  _fetchWikis(project) {
+    if (this._activeTaskBackendId === 'ado') return fetchWikis(this, project);
+  }
+  _fetchWikiPages(project, wikiId) {
+    if (this._activeTaskBackendId === 'ado') return fetchWikiPages(this, project, wikiId);
+  }
 
   // ------------------------------------------------------------------
   // Validation & Save
@@ -434,7 +443,7 @@ export class DataSources extends LitElement {
     const errs = {};
 
     // ADO backend validation
-    const ado = this._taskBackendId === 'ado';
+    const ado = this.mode === 'ado';
     if (ado && this._adoBackendType === 'ado_live' && !this._orgUrl.trim())
       errs.orgUrl = 'Organization Name is required for Live ADO backend';
     if (ado && this._adoBackendType === 'ado_mock_fixture' && !this._fixtureDir.trim())
@@ -472,6 +481,33 @@ export class DataSources extends LitElement {
     this._statusType = '';
 
     try {
+      if (this.mode !== 'ado') await this._saveCommonSources();
+      else await this._saveAdoSource();
+
+      const ttlsToSave = {};
+      for (const [key, val] of Object.entries(this._ttls)) ttlsToSave[key] = Number(val);
+      const sysPayload = {
+        ...this._systemContent,
+        task_backend_id: this._taskBackendId,
+        cache: { ...this._systemContent.cache, ttls: ttlsToSave },
+      };
+      const systemSaveResult = await adminProvider.saveSystem(sysPayload);
+      if (!systemSaveResult.ok) {
+        throw new Error(resultErrorMessage(systemSaveResult, 'Failed to save system config'));
+      }
+      this._savedTaskBackendId = this._taskBackendId;
+      this._savedAdoBackendType = this._adoBackendType;
+      this._savedEventsBackend = this._eventsBackend;
+      this._systemContent = sysPayload;
+      this._statusMsg = 'Saved.';
+      this._statusType = 'success';
+    } catch (error) {
+      this._statusMsg = `Error saving: ${error.message}`;
+      this._statusType = 'error';
+    }
+  }
+
+  async _saveCommonSources() {
       // 1. Save Plan Events config
       const evtCfg = { event_backend: this._eventsBackend };
       if (this._eventsBackend === 'ado_wiki') {
@@ -494,7 +530,9 @@ export class DataSources extends LitElement {
       if (!groupsSaveResult?.ok) {
         throw new Error(resultErrorMessage(groupsSaveResult, 'Failed to save groups config'));
       }
+  }
 
+  async _saveAdoSource() {
       // 2. Save ADO config — backend selection + org URL + all sub-configs.
       // Sub-config values are always persisted (not just for the active backend)
       // so switching back retains the last-entered values.
@@ -527,38 +565,7 @@ export class DataSources extends LitElement {
         throw new Error(resultErrorMessage(adoSaveResult, 'Failed to save ADO config'));
       }
 
-      // 3. Save TTLs into server_config.cache.ttls
-      const ttlsToSave = {};
-      for (const [key, val] of Object.entries(this._ttls))
-        ttlsToSave[key] = Number(val);
-
-      const sysPayload = {
-        ...this._systemContent,
-        task_backend_id: this._taskBackendId,
-        cache: {
-          ...(this._systemContent.cache || {}),
-          ttls: ttlsToSave,
-        },
-      };
-      const systemSaveResult = await adminProvider.saveSystem(sysPayload);
-      if (!systemSaveResult?.ok) {
-        throw new Error(resultErrorMessage(systemSaveResult, 'Failed to save system config'));
-      }
-
-      // Update saved baselines so the restart banner reflects the new state
-      this._savedTaskBackendId  = this._taskBackendId;
-      this._savedAdoBackendType = this._adoBackendType;
-      this._savedEventsBackend  = this._eventsBackend;
-      this._adoContent          = adoPayload;
-      this._systemContent       = sysPayload;
-
-      this._statusMsg  = 'Saved.';
-      this._statusType = 'success';
-
-    } catch (e) {
-      this._statusMsg  = `Error saving: ${e?.message || e}`;
-      this._statusType = 'error';
-    }
+      this._adoContent = adoPayload;
   }
 
   // ------------------------------------------------------------------
@@ -664,7 +671,7 @@ export class DataSources extends LitElement {
               const pendingRestart = this._savedTaskBackendId !== this._activeTaskBackendId;
 
     return html`
-      <h2>Data Sources</h2>
+      <h2>${this.mode === 'ado' ? 'Azure DevOps Connection' : 'Data Sources'}</h2>
       <div class="panel">
 
         <table class="domain-table">
@@ -676,8 +683,8 @@ export class DataSources extends LitElement {
             </tr>
           </thead>
           <tbody>
+            ${this.mode === 'ado' ? renderAdoGroup(this) : html`
             ${this._taskBackendRow()}
-            ${this._taskBackendId === 'ado' ? renderAdoGroup(this) : ''}
             ${this._lockedRow('Scenarios', 'User-scoped what-if overrides — dates, capacity, state.', 'Local database')}
             ${this._lockedRow('Views', 'Saved timeline view state (zoom, filters, selected projects).', 'Local database')}
             <tr>
@@ -697,7 +704,7 @@ export class DataSources extends LitElement {
               <td class="ttl-col">${this._ttlInput('fetch_teams')}</td>
             </tr>
             ${renderPlanEventsRow(this)}
-            ${renderGroupsRow(this)}
+            ${renderGroupsRow(this)}`}
           </tbody>
         </table>
 

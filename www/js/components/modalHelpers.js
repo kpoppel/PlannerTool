@@ -17,6 +17,51 @@ const _modalImports = {
   './ViewDeleteModal.lit.js': () => import('./ViewDeleteModal.lit.js'),
 };
 
+export async function openLocalTaskEditor({ task = null, planId = '', refresh, readTask }) {
+  await import('./LocalTaskEditor.lit.js');
+  const dialog = document.createElement('dialog');
+  dialog.style.cssText = 'width:min(520px, 85vw);max-height:85vh;padding:20px;border:1px solid #cbd5e1;border-radius:8px';
+  const heading = document.createElement('h2');
+  heading.id = 'local-task-dialog-heading';
+  heading.textContent = task === null ? 'Create Local Task' : 'Edit Local Task';
+  dialog.setAttribute('aria-labelledby', heading.id);
+  const notice = document.createElement('p');
+  notice.setAttribute('role', 'status');
+  const close = document.createElement('button');
+  close.textContent = 'Close';
+  close.addEventListener('click', () => dialog.close());
+  const createEditor = (current) => {
+    const editor = document.createElement('local-task-editor');
+    Object.assign(editor, { task: current, planId });
+    editor.addEventListener('task-committed', async () => {
+      editor.inert = true;
+      notice.textContent = 'Refreshing tasks...';
+      try {
+        await refresh();
+        dialog.close();
+      } catch (error) {
+        notice.textContent = `Task saved, but refreshing failed: ${error.message}`;
+      }
+    });
+    editor.addEventListener('task-reload', async () => {
+      if (!window.confirm('Discard this draft and reload the current task?')) return;
+      notice.textContent = 'Refreshing task...';
+      try {
+        await refresh();
+        const latest = readTask(current.id);
+        notice.textContent = latest ? '' : 'This task is no longer available.';
+        if (latest) editor.replaceWith(createEditor(latest));
+        else editor.remove();
+      } catch (error) { notice.textContent = error.message; }
+    });
+    return editor;
+  };
+  dialog.append(heading, notice, createEditor(task), close);
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
 const _createModal = async (
   modulePath,
   tagName,
@@ -52,9 +97,10 @@ const _createModal = async (
   return { el, cleanup };
 };
 
-export const openConfigModal = async (opts = { parent: document.body }) => {
+export const openConfigModal = async ({ parent = document.body, taskBackendId = '' } = {}) => {
   const { el, cleanup } = await _createModal('./ConfigModal.lit.js', 'config-modal', {
-    parent: opts.parent,
+    parent,
+    attrs: { taskBackendId },
     autoOpen: true,
   });
   return new Promise((resolve) => {

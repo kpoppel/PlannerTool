@@ -3,6 +3,7 @@
 
 def test_local_catalogue_and_plans_endpoints(authenticated_client):
     client = authenticated_client
+    assert client.get('/api/tasks/editor').status_code == 405
     assert client.get('/admin/v1/local/catalogue').json()['content']['revision'] == 0
     starter = client.post('/admin/v1/local/catalogue/starter', json={'content': {'revision': 0}})
     assert starter.status_code == 200
@@ -103,6 +104,10 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
                 'allocatable_ids': [team_id]}
         plans = client.put('/admin/v1/local/plans', json={'content': {'revision': 0, 'plans': [plan]}})
         assert plans.status_code == 200, plans.text
+        editor = client.get('/api/tasks/editor')
+        assert editor.status_code == 200, editor.text
+        assert editor.json()['plans'] == [{'id': plan_id, 'name': 'Local plan', 'typeIds': [type_id]}]
+        assert editor.json()['catalogue']['workflows'] == catalogue.json()['content']['workflows']
         assert client.get('/api/tasks').json() == []
         presets = client.get('/api/iterations').json()['iterationSetsById']['manual-set']['presets']
         created = client.post('/api/tasks/create', json={

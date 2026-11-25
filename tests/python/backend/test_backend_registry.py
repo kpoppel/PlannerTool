@@ -74,10 +74,12 @@ def test_describe_backends_reports_identity_and_capabilities():
     assert ado['id'] == 'ado'
     assert ado['available'] is True
     assert ado['transports'] == ['live', 'mock_generator', 'mock_fixture', 'static']
+    assert ado['configuration_schema']['properties']['transport']['enum'] == ado['transports']
     assert set(ado['capabilities']) <= TASK_CAPABILITIES
     assert 'task_create' not in ado['capabilities']
     assert local['id'] == 'local'
     assert local['available'] is True
+    assert local['configuration_schema']['properties'] == {}
     assert set(local['capabilities']) <= TASK_CAPABILITIES
     assert 'task_create' in local['capabilities']
 

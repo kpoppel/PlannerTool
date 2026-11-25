@@ -191,7 +191,8 @@ export class DetailsPanelController {
 			header: {
 				feature, planName,
 				stateChanged: originalState !== undefined && feature.state !== originalState,
-				originalState, stateColors, availableFeatureStates: sel.filter.getFeatureStates(feature).map((state) => state.name),
+				originalState, stateColors,
+				availableFeatureStates: sel.filter.getFeatureStateChoices(feature, originalState).map((state) => state.name),
 				editingState: this.editor.editingState, stateEditValue: this.editor.stateEditValue,
 			},
 			scheduling: buildDetailsPanelSchedulingModel({

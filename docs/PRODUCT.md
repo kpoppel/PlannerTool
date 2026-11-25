@@ -14,6 +14,20 @@ The v.5 release centers the product around a scope-first planning model:
 
 ## What the product does
 
+### Local task backend
+
+Select **Local (SQLite)** in **Admin > Data Sources**, save, and restart the
+managed server. In the **Local** hub, configure a catalogue, assign task types
+to a project, and optionally attach a manual or generated iteration set and
+plan markers. Local starts empty and doesn't import Azure DevOps work items.
+Team and allocation definitions remain in **Workforce**.
+
+Use **Plan > Create task** to create a task and **Edit source task** in Details
+to edit or delete it. The attached workflow and field schema determine the
+available states and custom fields. Scenario changes remain separate until
+published; Local publication includes relationships and reports overlapping
+edits for review.
+
 ### Planning work in context
 
 PlannerTool helps users:

@@ -298,6 +298,22 @@ export class ProviderREST extends RestProviderBase {
     return this._requestJson('/api/task-backend');
   }
 
+  async getTaskEditor() {
+    return this._requestJson('/api/tasks/editor');
+  }
+
+  async createLocalTask(payload) {
+    return this._requestJson('/api/tasks/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteLocalTask(id, revision) {
+    return this._requestJson(`/api/tasks/${encodeURIComponent(id)}?revision=${encodeURIComponent(revision)}`, {
+      method: 'DELETE',
+    });
+  }
+
   async updateTasksWithCapacity(updates) {
     // Send task updates with optional capacity data to /api/tasks
     // Expected format: [{ id, start?, end?, capacity?: [{team, capacity}] }]

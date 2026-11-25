@@ -33,12 +33,24 @@ afterEach(() => {
 
 describe('ADO process navigation', () => {
   it.each(['admin', 'manage_projects'])('exposes catalogue and tiers to %s', (permission) => {
-    const sections = getAdminSections([permission]).map((section) => section.id);
-    expect(sections).toContain('ado-processes');
-    expect(sections).toContain('global-project-settings');
+    const sections = getAdminSections([permission], 'ado');
+    expect(sections.map((section) => section.id)).not.toContain('local');
+    expect(sections.map((section) => section.id)).not.toContain('ado-processes');
+    const views = sections.find((section) => section.id === 'ado').views;
+    expect(views.map((view) => view.id)).toEqual(expect.arrayContaining([
+      'projects', 'ado-processes', 'global-project-settings',
+    ]));
   });
-  it.each([[], ['manage_iterations'], ['manage_workforce_teams']])('hides catalogue without permission %j', (...permissions) => {
-    expect(getAdminSections(permissions.flat()).map((section) => section.id)).not.toContain('ado-processes');
+
+  it('only exposes iterations to an iteration manager', () => {
+    const sections = getAdminSections(['manage_iterations'], 'ado');
+    expect(sections.find((section) => section.id === 'ado').views.map((view) => view.id))
+      .toEqual(['iterations']);
+  });
+
+  it('only exposes Workforce to a local team manager without project permissions', () => {
+    const sections = getAdminSections(['manage_workforce_teams'], 'local');
+    expect(sections.map((section) => section.id)).toEqual(['workforce']);
   });
 });
 

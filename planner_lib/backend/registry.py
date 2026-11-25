@@ -85,12 +85,14 @@ def describe_backends() -> List[Dict[str, Any]]:
         'label': 'Azure DevOps',
         'available': ADO_BACKEND_ID in available,
         'transports': list(ADO_TRANSPORTS),
+        'configuration_schema': get_ado_schema(),
         'capabilities': sorted(classes['live'].CAPABILITIES),
     }, {
         'id': LOCAL_BACKEND_ID,
         'label': 'Local (SQLite)',
         'available': LOCAL_BACKEND_ID in available,
         'transports': [],
+        'configuration_schema': {'type': 'object', 'properties': {}, 'additionalProperties': False},
         'capabilities': sorted(get_active_class({'task_backend_id': LOCAL_BACKEND_ID}, {}).CAPABILITIES),
     }]
 

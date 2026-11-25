@@ -18,6 +18,7 @@ Template - do not change :
 - Read and create local tasks from configured projects, workflows and field schemas, including scheduling presets, plan markers and task history.
 - Edit and soft-delete local tasks, and publish scenario changes and relationships atomically. Independent edits merge; overlapping changes are shown for review before retrying.
 - Restart the managed server from Data Sources after saving a switch between Azure DevOps and local tasks.
+- Configure Local projects, task types, field schemas, workflows, iterations, and plan markers in the Local admin hub. Create tasks from the Plan menu and edit or delete source tasks from Details.
 - Add whole-hour allocation entry alongside Percent and Man-days, using each team or group's workforce project-hour budget in task details and the portfolio table, with effort preserved when scheduling changes.
 - Add a read-only Cone of Uncertainty tool with three configurable forecast scopes, browser-saved duration uncertainty preferences, and shaded task finish ranges for communicating long-range planning assumptions. Compact rows use task-board type icons and follow the task sort setting, ordering by rank or latest forecast finish. Show global and selected-plan events from the configured local or ADO/wiki source as labeled date lines and range bands.
 - Show display-only Virtual rows and timeline cards for selected teams' effective commitments held in other loaded plans, respecting task-type filters, with source details, source-plan attribution and no virtual editing actions.
@@ -45,7 +46,7 @@ Template - do not change :
 - Move server status, uptime, loaded-task totals and attribution into a persistent, single-line footer along the bottom of Help instead of overlaying the task list.
 - Use compact-height cards in Normal and Packed layouts, showing type icon, ID, allocation bars and right-aligned closed/total descendant counts. Fill each card with a pastel project color in proportion to completed descendants, keep swimlane tints faint to distinguish that progress, and hide whole fields from right to left when space runs out. Migrate saved Compact views to Normal in revision 45.
 - Keep swimlane tags on the timeline rather than over the task column, at each lane's top or pinned below the timeline header while that lane scrolls off-screen.
-- Display ADO authentication as read-only deployment information instead of a disabled dropdown in Data Sources.
+- Group Azure DevOps administration in its own hub, including read-only deployment authentication information. Data Sources retains backend selection and shared settings.
 - Share authentication discovery, status and typed recovery across planner and administration; broker mode hides PAT, enrollment and device/key controls.
 - Build/start source-declared app and broker services together, honoring pinned images, protected environment files and project names. Both images receive version and latest tags from the build script.
 - Upgrade from dev in revision 44, preserving accounts, permissions and credentials while expiring pre-policy sessions.

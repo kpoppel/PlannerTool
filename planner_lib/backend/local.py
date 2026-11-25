@@ -27,6 +27,14 @@ class LocalTaskBackend:
     def create_task(self, payload, actor_id):
         return self._tasks.create(payload, actor_id)
 
+    def task_editor_metadata(self):
+        catalogue = self._catalogue.read()
+        task_level = [entry['id'] for process in catalogue['processes']
+                      for entry in process['types'] if entry['backlog_level'] == 'task']
+        return {'catalogue': catalogue, 'plans': [
+            {'id': plan['id'], 'name': plan['name'], 'typeIds': [*plan['task_types'], *task_level]}
+            for plan in self.fetch_project_map()]}
+
     def write_tasks(self, updates, credential, *, actor_id):
         edits = []
         for update in updates:

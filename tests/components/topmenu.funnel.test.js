@@ -65,6 +65,7 @@ describe('TopMenu Data Funnel', () => {
 
   it('offers configuration and administration from the gear for authorized users', async () => {
     menu.permissions = ['manage_projects'];
+    menu.taskBackendId = 'ado';
     await menu.updateComplete;
     menu.shadowRoot.querySelector('#openConfigBtn').click();
     await menu.updateComplete;
@@ -74,28 +75,29 @@ describe('TopMenu Data Funnel', () => {
     expect(menu.shadowRoot.querySelector('.settings-chevron')).to.exist;
     expect(menu.shadowRoot.querySelector('.application-link[aria-label="Open administration"]')).to.equal(null);
     expect([...settings.querySelectorAll('a')].map((link) => link.textContent.trim()))
-      .to.deep.equal(['Plans', 'Azure DevOps Processes', 'Global Project Settings']);
-    expect(settings.querySelector('a').getAttribute('href')).to.equal('/admin/#projects');
+      .to.deep.equal(['Azure DevOps']);
+    expect(settings.querySelector('a').getAttribute('href')).to.equal('/admin/#ado');
     menu.permissions = ['manage_workforce_costs', 'manage_iterations'];
     await menu.updateComplete;
     expect([...settings.querySelectorAll('a')].map((link) => link.textContent.trim()))
-      .to.deep.equal(['Workforce', 'Iterations']);
+      .to.deep.equal(['Azure DevOps', 'Workforce']);
     menu.permissions = [];
     await menu.updateComplete;
     expect(settings.querySelector('a')).to.equal(null);
   });
 
   it('loads current permissions through the installation-scoped account endpoint', async () => {
-    const request = vi.spyOn(window, 'fetch').mockResolvedValue({ ok: true,
-      json: async () => ({ permissions: ['admin'] }) });
+    const request = vi.spyOn(window, 'fetch').mockImplementation(async (url) => ({ ok: true,
+      json: async () => url.endsWith('/task-backend') ? { id: 'local' } : { permissions: ['admin'] },
+    }));
     menu.baseUrl = '/planner';
     await menu.loadPermissions();
     await menu.updateComplete;
     expect(request.mock.calls[0][0]).to.equal('/planner/api/auth/me');
     menu.shadowRoot.querySelector('#openConfigBtn').click();
     await menu.updateComplete;
-    expect(menu.shadowRoot.querySelector('[role="menuitem"][data-section="projects"]').getAttribute('href'))
-      .to.equal('/planner/admin/#projects');
+    expect(menu.shadowRoot.querySelector('[role="menuitem"][data-section="local"]').getAttribute('href'))
+      .to.equal('/planner/admin/#local');
   });
 
   it('reuses the header in admin mode without board controls and preserves proxy paths', async () => {

@@ -2,6 +2,11 @@ import { test, expect } from '@playwright/test';
 import { fulfillAccountApi } from './helpers.js';
 import { createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/mockAuth.js';
 
+const adoBackends = { active: 'ado', configured: 'ado', restart_available: false,
+  instance_id: 'browser-fixture', backends: [{ id: 'ado', label: 'Azure DevOps', available: true,
+    configuration_schema: { properties: { transport: { enum: ['live', 'mock_generator', 'mock_fixture', 'static'] } } },
+  }] };
+
 test('HTTP authentication clients preserve same-account drafts and fence changed accounts on desktop', async ({ page }, testInfo) => {
   const connected = createMockAuth('entra_signed_in').state;
   let account = connected.account;
@@ -13,7 +18,8 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
     email: 'administrator@example.test', permissions: ['admin'],
   }));
   await page.route('**/admin/check', route => route.fulfill({ json: { ok: true, permissions: ['admin'] } }));
-  await page.route('**/admin/v1/**', route => route.fulfill({ json: { content: {} } }));
+  await page.route('**/admin/v1/**', route => route.fulfill({ json: route.request().url().endsWith('/task-backends')
+    ? adoBackends : { content: { feature_flags: {} } } }));
   await page.goto('/admin/#data-sources');
   await expect(page.locator('admin-data-sources')).toBeVisible();
   await page.route('**/api/auth/**', route => {
@@ -107,7 +113,7 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
   expect(errors).toEqual([]);
 });
 
-test('ADO authentication policy is read-only and excluded from data source saves', async ({ page }, testInfo) => {
+test('ADO authentication policy is read-only and excluded from connection saves', async ({ page }, testInfo) => {
   const saves = [];
   const authRequests = [];
   const errors = [];
@@ -124,42 +130,41 @@ test('ADO authentication policy is read-only and excluded from data source saves
   await page.route('**/admin/v1/**', route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path.endsWith('/task-backends')) return route.fulfill({ json: adoBackends });
     if (request.method() !== 'GET') saves.push({ path, payload: request.postDataJSON() });
     let content = {};
-    if (path.endsWith('/ado')) content = { organization_url: 'example', feature_flags: {} };
+    if (path.endsWith('/ado')) content = { organization_url: 'example', feature_flags: {}, transport: 'live' };
     if (path.endsWith('/events-config')) content = { event_backend: 'local' };
     if (path.endsWith('/groups-config')) content = { groups_backend: 'local' };
     if (path.endsWith('/system')) content = { server_name: 'Fixture', feature_flags: {} };
     return route.fulfill({ json: { ok: true, content } });
   });
-  await page.goto('/admin/#data-sources');
+  await page.goto('/admin/#ado-connection');
   const editor = page.locator('admin-data-sources');
-  const mode = editor.getByLabel('ADO authentication');
   const status = editor.locator('#ado-authentication-status');
   const backend = editor.locator('select.backend-select').first();
-  await expect(mode).toHaveValue('pat');
-  await expect(mode).toBeDisabled();
-  await expect(status).toContainText('Active: PAT');
+  await expect(status).toHaveText('Personal Access Token');
+  await expect(editor.locator('[data-authentication-settings] select')).toHaveCount(0);
   const initialAuthRequests = [...authRequests];
   for (const value of ['ado_mock_fixture', 'ado_mock_generator', 'ado_static']) {
     await backend.selectOption(value);
-    await expect(mode).toHaveCount(0);
+    await expect(status).toHaveCount(0);
   }
   await backend.selectOption('ado_live');
-  await expect(mode).toBeDisabled();
-  await expect(status).toContainText('Deployment controlled');
+  await expect(status).toHaveText('Personal Access Token');
   expect(saves).toEqual([]);
   expect(authRequests).toEqual(initialAuthRequests);
   await page.screenshot({ path: testInfo.outputPath('ado-authentication-policy-desktop.png'), fullPage: true });
   await page.reload();
-  await expect(mode).toHaveValue('pat');
+  await expect(status).toHaveText('Personal Access Token');
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(editor.locator('.status')).toHaveText('Saved.');
   const patPayloads = [...saves];
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(editor.locator('.status')).toHaveText('Saved.');
-  expect(saves.slice(4)).toEqual(patPayloads);
-  await expect(status).toContainText('Active: PAT');
+  await expect.poll(() => saves.length).toBe(patPayloads.length * 2);
+  expect(saves.slice(patPayloads.length)).toEqual(patPayloads);
+  expect(patPayloads.map(({ path }) => path)).toEqual(['/admin/v1/ado', '/admin/v1/system']);
   expect(errors).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
@@ -243,7 +248,7 @@ test('Empty process catalogue points to plan setup without a bulk refresh', asyn
   await page.goto('/admin/#ado-processes');
   await expect(page.getByRole('link', { name: 'Add a plan', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Add a plan', exact: true }))
-    .toHaveAttribute('href', 'http://127.0.0.1:5175/admin/#projects');
+    .toHaveAttribute('href', new URL('/admin/#projects', page.url()).href);
   await expect(page.getByRole('button', { name: 'Reload from Azure DevOps' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Save import selections' })).toBeDisabled();
   expect(refreshes).toEqual([]);
@@ -292,9 +297,9 @@ test('Delegated process catalogue imports types and keeps validation errors visi
         const payload = request.postDataJSON();
         saves.push(payload);
         if (rejectSave) {
-          return route.fulfill({ status: 400, json: { detail: {
+          return route.fulfill({ status: 400, json: {
             error: 'type_in_use', message: 'Import selection is required by plans: Platform roadmap',
-          } } });
+          } });
         }
         catalogue = payload.content;
         return route.fulfill({ json: { ok: true, content: catalogue } });
@@ -515,8 +520,8 @@ test('Denied administration startup redirects without mounting configuration con
 });
 
 for (const [permission, sections] of [
-  ['manage_projects', ['Plans', 'Azure DevOps Processes', 'Global Project Settings']],
-  ['manage_iterations', ['Iterations']],
+  ['manage_projects', ['Azure DevOps']],
+  ['manage_iterations', ['Azure DevOps']],
   ['manage_workforce_teams', ['Workforce']],
   ['manage_workforce_costs', ['Workforce']],
 ]) {
@@ -544,7 +549,7 @@ for (const [permission, sections] of [
       const content = {
         '/admin/v1/projects': { content: { schema_version: 4, container_types: ['project'],
           project_map: [], allocation_defaults: { project: [] } } },
-        '/admin/v1/iterations': { content: { iteration_sets: [] } },
+        '/admin/v1/iterations': { content: { iteration_sets: [], usage: {} } },
         '/admin/v1/ado-processes': { content: { schema_version: 1, processes: [] } },
         '/admin/v1/browse-config': { content: { organization_url: 'ExampleOrg' } },
         '/admin/v1/schema/projects': { type: 'object', properties: {} },
@@ -581,9 +586,9 @@ test('Shared header switches applications and opens Configuration under a proxy 
   let permissions = ['admin'];
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.route('**/tenant/api/**', route => route.fulfill({ json: {
+  await page.route('**/tenant/api/**', route => fulfillAccountApi(route, {
     email: 'header@example.test', permissions,
-  } }));
+  }));
   await page.route('**/tenant/admin/check', route => route.fulfill({ json: { ok: true, permissions } }));
   await page.route('**/tenant/admin/v1/**', route => {
     const path = new URL(route.request().url()).pathname;
@@ -593,7 +598,7 @@ test('Shared header switches applications and opens Configuration under a proxy 
     const content = {
       '/tenant/admin/v1/projects': { schema_version: 4, container_types: ['project'],
         project_map: [], allocation_defaults: { project: [] } },
-      '/tenant/admin/v1/iterations': { iteration_sets: [] },
+      '/tenant/admin/v1/iterations': { iteration_sets: [], usage: {} },
       '/tenant/admin/v1/ado-processes': { schema_version: 1, processes: [] },
       '/tenant/admin/v1/browse-config': { organization_url: 'ExampleOrg' },
       '/tenant/admin/v1/workforce': { revision: 'header',
@@ -625,6 +630,8 @@ test('Shared header switches applications and opens Configuration under a proxy 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Configuration', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: 'Set or update Azure DevOps PAT', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Server', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeFocused();
@@ -635,22 +642,21 @@ test('Shared header switches applications and opens Configuration under a proxy 
   await page.locator('config-modal #closeConfigBtn').click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath('gear-administration-menu-desktop.png') });
-  await page.getByRole('menuitem', { name: 'Plans', exact: true }).click();
-  await expect(page).toHaveURL(/\/tenant\/admin\/#projects$/);
+  await page.getByRole('menuitem', { name: 'Azure DevOps', exact: true }).click();
+  await expect(page).toHaveURL(/\/tenant\/admin\/#ado$/);
   await expect(page.getByRole('navigation', { name: 'Top menu' })).toBeVisible();
   await expect(page.locator('admin-app .admin-content')).toHaveJSProperty('offsetTop', 40);
-  await expect(page.locator('admin-app .chip.active')).toHaveText('Plans');
+  await expect(page.locator('admin-app .chip.active')).toHaveText('Azure DevOps');
   await expect(page.locator('admin-projects')).toBeAttached();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Iterations', exact: true }).click();
+  await page.getByRole('button', { name: 'Iterations', exact: true }).click();
   await expect(page).toHaveURL(/\/tenant\/admin\/#iterations$/);
-  await expect(page.locator('admin-app .chip.active')).toHaveText('Iterations');
+  await expect(page.locator('admin-app .chip.active')).toHaveText('Azure DevOps');
   await expect(page.getByRole('menu', { name: 'Settings', exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('shared-admin-header-desktop.png') });
   await page.getByRole('link', { name: 'Open planner', exact: true }).click();
   await expect(page).toHaveURL(/\/tenant\/$/);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Plans', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Azure DevOps', exact: true })).toBeVisible();
   permissions = [];
   await page.evaluate(() => document.querySelector('top-menu-bar').loadPermissions());
   await expect(page.getByRole('group', { name: 'Administration', exact: true })).toHaveCount(0);
@@ -658,8 +664,10 @@ test('Shared header switches applications and opens Configuration under a proxy 
 });
 
 test('Administrator grants independent permissions from User Management', async ({ page }, testInfo) => {
-  const accounts = [{ id: 'admin-id', email: 'admin@example.com', permissions: ['admin'] },
-    { id: 'delegate-id', email: 'delegate@example.com', permissions: ['manage_projects'] }];
+  const accounts = [
+    { id: 'admin-id', email: 'admin@example.com', permissions: ['admin'], lastActive: null },
+    { id: 'delegate-id', email: 'delegate@example.com', permissions: ['manage_projects'], lastActive: null },
+  ];
   const writes = [];
   await page.route('**/api/**', route => fulfillAccountApi(route, { email: 'admin@example.com' }));
   await page.route('**/admin/check', route => route.fulfill({ json: {
@@ -681,11 +689,14 @@ test('Administrator grants independent permissions from User Management', async 
   });
   await page.goto('/admin/');
   await page.getByRole('button', { name: 'Users', exact: true }).click();
-  const delegate = page.locator('.user-item').filter({ hasText: 'delegate@example.com' });
-  await expect(delegate.getByRole('checkbox', { name: 'Projects', exact: true })).toBeChecked();
-  await delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true }).check();
-  await expect(delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true })).toBeEnabled();
-  await expect(delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true })).toBeChecked();
+  await page.getByRole('row').filter({ hasText: 'delegate@example.com' }).getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Edit permissions', exact: true }).click();
+  const permissions = page.getByRole('dialog', { name: 'Edit user permissions' });
+  await expect(permissions.getByRole('checkbox', { name: 'Projects', exact: true })).toBeChecked();
+  await permissions.getByRole('checkbox', { name: 'Iteration mappings', exact: true }).check();
+  await permissions.getByRole('button', { name: 'Review changes' }).click();
+  await page.getByRole('button', { name: 'Apply changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(writes).toEqual([{ permissions: ['manage_projects', 'manage_iterations'] }]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('user-delegation-desktop.png') });

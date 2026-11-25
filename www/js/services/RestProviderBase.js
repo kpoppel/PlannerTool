@@ -167,6 +167,7 @@ export class RestProviderBase {
       if (!response || typeof response.ok !== 'boolean') {
         return fail({ message: 'Invalid response object' });
       }
+      if (response.status === 204) return ok(null);
 
       let payload = null;
       let parsed = false;

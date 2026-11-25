@@ -27,6 +27,21 @@ beforeEach(async () => {
 afterEach(() => { component.remove(); vi.restoreAllMocks(); });
 
 describe('admin iteration sets', () => {
+  it('hides dormant ADO sets in Local mode without removing them on save', async () => {
+    component.local = true;
+    adminProvider.getIterations.mockResolvedValue({ ok: true,
+      data: { iteration_sets: [adoSet()], usage: {} } });
+    await component.loadConfig();
+    await component.updateComplete;
+    expect(component.shadowRoot.textContent).not.toContain('Release');
+    expect(adminProvider.browseIterations).not.toHaveBeenCalled();
+    component.createDraft('Delivery', 'generated', '');
+    component.generatePreview();
+    await component.saveSet();
+    expect(adminProvider.saveIterations.mock.calls[0][0].iteration_sets.map((set) => set.source_type))
+      .toEqual(['ado', 'generated']);
+  });
+
   it('loads without requesting ADO metadata', () => {
     expect(adminProvider.browseAzureProjects).not.toHaveBeenCalled();
     expect(adminProvider.browseIterations).not.toHaveBeenCalled();

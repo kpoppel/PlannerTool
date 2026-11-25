@@ -117,6 +117,7 @@ export class AdminUsers extends LitElement {
     authentication: { attribute: false },
     users: { type: Array }, loading: { type: Boolean }, error: { type: String },
     newUser: { state: true }, newUserPat: { state: true }, requiresPat: { type: Boolean },
+    taskBackendId: { type: String },
     statusMsg: { state: true }, resetting: { state: true }, saving: { state: true },
     search: { state: true }, view: { state: true }, permissionFilter: { state: true },
     accessFilter: { state: true }, selected: { state: true }, pageIndex: { state: true },
@@ -136,6 +137,7 @@ export class AdminUsers extends LitElement {
     this.newUser = '';
     this.newUserPat = '';
     this.requiresPat = false;
+    this.taskBackendId = 'ado';
     this.current = null;
     this.statusMsg = '';
     this.resetting = false;
@@ -547,7 +549,7 @@ export class AdminUsers extends LitElement {
           }}>
             <label class="field">Email<input type="email" required autocomplete="off"
               .value=${this.newUser} @input=${(event) => { this.newUser = event.target.value; }}></label>
-            ${this.requiresPat && (this.authentication === null || this.authentication.state.capabilities.pat) ? html`<label class="field">Azure DevOps PAT<input type="password"
+            ${this.taskBackendId === 'ado' && this.requiresPat && (this.authentication === null || this.authentication.state.capabilities.pat) ? html`<label class="field">Azure DevOps PAT<input type="password"
               autocomplete="new-password" data-pat="User" required .value=${this.newUserPat}
               @input=${(event) => { this.newUserPat = event.target.value; }}></label>` : ''}
             <p class="muted">Initial access: standard user</p>

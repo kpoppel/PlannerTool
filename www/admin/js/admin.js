@@ -34,9 +34,11 @@ async function mountAdminApp() {
     const res = await adminProvider.checkAccess();
     if (res.ok) {
       const access = res.data;
+      const backend = await dataService.getTaskBackend();
+      if (!backend.ok) throw new Error('Failed to load the active task backend');
       const { showReleaseNotes } = await import('/static/js/components/ReleaseNotes.lit.js');
       await showReleaseNotes(`${window.APP_BASE_URL}/api`);
-      mount(access.permissions);
+      mount(access.permissions, backend.data.id);
       return;
     }
     if (res.error.status === 401) {
@@ -50,11 +52,11 @@ async function mountAdminApp() {
 
   window.location.href = `${window.APP_BASE_URL}/admin/login`;
 
-  function mount(permissions) {
+  function mount(permissions, taskBackendId) {
     const root = document.getElementById('admin-root') || document.body;
     if (!document.querySelector('admin-app')) {
       const app = document.createElement('admin-app');
-      app.setPermissions(permissions);
+      app.setPermissions(permissions, taskBackendId);
       root.appendChild(app);
     }
   }

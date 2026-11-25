@@ -72,4 +72,48 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
     expect.objectContaining({ id: parent.id, revision: 2, relations: [{ type: 'Child', id: child.id }] }),
     expect.objectContaining({ id: child.id, revision: 3, parentId: parent.id, tags: 'Proposed' }),
   ]));
+
+  await page.getByRole('navigation', { name: 'Top menu' }).getByRole('button', { name: /^Plan(?:\s|$)/ }).click();
+  await page.locator('plan-menu').getByRole('button', { name: 'Create task' }).click();
+  const createDialog = page.getByRole('dialog', { name: 'Create Local Task' });
+  await createDialog.getByLabel('Task type').selectOption(types[1].id);
+  await createDialog.getByLabel('Title').fill('Browser task');
+  const createdResponse = page.waitForResponse((response) => response.url().endsWith('/api/tasks/create'));
+  await createDialog.getByRole('button', { name: 'Create task' }).click();
+  const createdTask = await (await createdResponse).json();
+  await expect(createDialog).not.toBeVisible();
+
+  await page.goto(`/${createdTask.url}`);
+  const panel = page.locator('details-panel');
+  await panel.getByRole('button', { name: 'Edit source task' }).click();
+  const editDialog = page.getByRole('dialog', { name: 'Edit Local Task' });
+  await editDialog.getByLabel('State').selectOption('Refine');
+  await editDialog.getByLabel('Description').fill('Edited in Chromium');
+  await editDialog.getByRole('button', { name: 'Save task' }).click();
+  await expect(editDialog).not.toBeVisible();
+  await expect.poll(async () => (await (await page.request.get('/api/tasks')).json())
+    .find((task) => task.id === createdTask.id)).toMatchObject({ state: 'Refine', description: 'Edited in Chromium' });
+
+  await panel.getByRole('button', { name: 'Edit source task' }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await editDialog.getByRole('button', { name: 'Delete task' }).click();
+  await expect(editDialog).not.toBeVisible();
+  await expect.poll(async () => (await (await page.request.get('/api/tasks')).json())
+    .some((task) => task.id === createdTask.id)).toBe(false);
+
+  const adoRequests = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.includes('/api/azure/') || path.startsWith('/admin/v1/ado')) adoRequests.push(path);
+  });
+  await page.goto('/admin/#ado-processes');
+  const sidebar = page.locator('admin-app .admin-sidebar');
+  await expect(sidebar.getByRole('button', { name: 'Local', exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('button', { name: 'Azure DevOps', exact: true })).toHaveCount(0);
+  await sidebar.getByRole('button', { name: 'Local', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Local Projects' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Local plan' })).toBeVisible();
+  await page.getByRole('button', { name: 'Catalogue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Local Catalogue' })).toBeVisible();
+  expect(adoRequests).toEqual([]);
 });

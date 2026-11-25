@@ -23,6 +23,15 @@ class DataService {
   async getTaskBackend() {
     return this.providers['rest'].getTaskBackend();
   }
+  async getTaskEditor() {
+    return this.providers['rest'].getTaskEditor();
+  }
+  async createLocalTask(payload) {
+    return this.providers['rest'].createLocalTask(payload);
+  }
+  async deleteLocalTask(id, revision) {
+    return this.providers['rest'].deleteLocalTask(id, revision);
+  }
   async getCapabilities() {
     return this.providers['mock'].getCapabilities();
   }

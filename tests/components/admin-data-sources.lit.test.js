@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 import { createMockAuth } from '../helpers/mockAuth.js';
 import '../../www/admin/js/components/admin/DataSources.lit.js';
-async function mount(authentication = null, ado = {}) {
+async function mount(authentication = null, ado = {}, mode = 'generic') {
   vi.spyOn(adminProvider, 'getEventsConfig').mockResolvedValue({ ok: true, data: { event_backend: 'local' } });
   vi.spyOn(adminProvider, 'getAdo').mockResolvedValue({ ok: true,
     data: { organization_url: 'example', feature_flags: {}, transport: 'live', ...ado } });
@@ -14,7 +14,9 @@ async function mount(authentication = null, ado = {}) {
     restart_available: true,
     instance_id: 'initial-instance',
     backends: [
-      { id: 'ado', label: 'Azure DevOps', available: true },
+      { id: 'ado', label: 'Azure DevOps', available: true, configuration_schema: { properties: {
+        transport: { enum: ['live', 'mock_generator', 'mock_fixture', 'static'] },
+      } } },
       { id: 'local', label: 'Local (SQLite)', available: false },
     ],
   } });
@@ -23,6 +25,7 @@ async function mount(authentication = null, ado = {}) {
     vi.spyOn(adminProvider, method).mockResolvedValue({ ok: true });
   }
   const element = document.createElement('admin-data-sources');
+  element.mode = mode;
   element.authentication = authentication;
   document.body.append(element);
   await vi.waitFor(() => expect(element._loading).toBe(false));
@@ -48,18 +51,18 @@ describe('Data Sources task backend', () => {
     const options = [...element.shadowRoot.querySelectorAll('.task-backend-select option')];
     expect(options.map(option => [option.value, option.disabled, option.selected]))
       .toEqual([['ado', false, true], ['local', true, false]]);
-    expect(element.shadowRoot.querySelector('.backend-select')).not.toBeNull();
+    expect(element.shadowRoot.querySelector('option[value="ado_live"]')).toBeNull();
+    expect(adminProvider.getAdo).not.toHaveBeenCalled();
   });
 
   it('hides ADO sources for another backend and saves the selection with retained ADO settings', async () => {
     const element = await mount();
-    expect(element.shadowRoot.querySelector('option[value="ado_live"]')).not.toBeNull();
+    expect(element.shadowRoot.querySelector('option[value="ado_live"]')).toBeNull();
     await select(element, '.task-backend-select', 'local');
     expect(element.shadowRoot.querySelector('option[value="ado_live"]')).toBeNull();
     await element._save();
     expect(adminProvider.saveSystem.mock.calls[0][0].task_backend_id).toBe('local');
-    expect(adminProvider.saveAdo.mock.calls[0][0].transport).toBe('live');
-    expect(adminProvider.saveAdo.mock.calls[0][0].organization_url).toBe('example');
+    expect(adminProvider.saveAdo).not.toHaveBeenCalled();
   });
 
   it('shows the server validation message when saving fails', async () => {
@@ -87,7 +90,7 @@ describe('Data Sources task backend', () => {
 
 describe('Data Sources authentication policy', () => {
   it('shows read-only deployment policy', async () => {
-    const element = await mount();
+    const element = await mount(null, {}, 'ado');
     expect(element.shadowRoot.querySelector('[data-authentication-settings] select')).toBeNull();
     expect(element.shadowRoot.querySelector('[data-authentication-settings] label').textContent)
       .toBe('ADO authentication method');
@@ -97,7 +100,7 @@ describe('Data Sources authentication policy', () => {
 
   it.each(['ado_mock_fixture', 'ado_mock_generator', 'ado_static'])(
     'hides the ADO authentication policy for %s', async (backend) => {
-      const element = await mount();
+      const element = await mount(null, {}, 'ado');
       await select(element, '.backend-select', backend);
       expect(element.shadowRoot.querySelector('[data-authentication-settings]')).toBeNull();
       await select(element, '.backend-select', 'ado_live');
@@ -106,22 +109,21 @@ describe('Data Sources authentication policy', () => {
     });
 
   it.each(['entra_signed_in', 'unavailable'])('shows only the Entra method for %s', async (scenario) => {
-    const element = await mount(createMockAuth(scenario));
+    const element = await mount(createMockAuth(scenario), {}, 'ado');
     expect(element.shadowRoot.querySelector('[data-authentication-settings] select')).toBeNull();
     expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim()).toBe('Entra ID');
     expect(element.shadowRoot.querySelector('auth-status')).toBeNull();
   });
 
   it('does not save authentication policy with data sources', async () => {
-    const element = await mount();
+    const element = await mount(null, {}, 'ado');
     await element._save();
-    const patPayloads = ['saveEventsConfig', 'saveGroupsConfig', 'saveAdo', 'saveSystem']
-      .map(method => structuredClone(adminProvider[method].mock.calls[0][0]));
+    const payload = structuredClone(adminProvider.saveAdo.mock.calls[0][0]);
     await element._load();
     await element._save();
-    for (const [index, method] of ['saveEventsConfig', 'saveGroupsConfig', 'saveAdo', 'saveSystem'].entries()) {
-      expect(adminProvider[method].mock.calls[1][0]).toEqual(patPayloads[index]);
-    }
+    expect(adminProvider.saveAdo.mock.calls[1][0]).toEqual(payload);
+    expect(adminProvider.saveEventsConfig).not.toHaveBeenCalled();
+    expect(adminProvider.saveGroupsConfig).not.toHaveBeenCalled();
     expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim())
       .toBe('Personal Access Token');
     expect(element._statusMsg).toBe('Saved.');
@@ -130,7 +132,7 @@ describe('Data Sources authentication policy', () => {
 
 describe('Data Sources ADO transport', () => {
   it('loads the persisted transport and saves it without selector flags', async () => {
-    const element = await mount(null, { transport: 'mock_fixture' });
+    const element = await mount(null, { transport: 'mock_fixture' }, 'ado');
     expect(element.shadowRoot.querySelector('.backend-select').value).toBe('ado_mock_fixture');
     await select(element, '.backend-select', 'ado_static');
     element._staticDataPath = 'data/static.yml';

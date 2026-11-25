@@ -87,6 +87,13 @@ describe('config-modal', () => {
     expect(modal._qs('#autosaveInterval').value).to.equal('17');
   });
 
+  it('keeps preferences but hides the Azure DevOps PAT field in Local mode', async () => {
+    modal.taskBackendId = 'local';
+    await modal.updateComplete;
+    expect(modal._qs('#configPat')).to.equal(null);
+    expect(modal._qs('#autosaveInterval')).not.to.equal(null);
+  });
+
   it('uses broker logout and forbids broker account deletion', async () => {
     const model = createMockAuth('entra_signed_in');
     modal.authentication = model;

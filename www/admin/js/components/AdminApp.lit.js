@@ -3,17 +3,20 @@ import '../../../js/components/TopMenu.lit.js';
 import { getAdminSections } from '../../../js/services/adminNavigation.js';
 import './admin/GlobalSettings.lit.js';
 import './admin/AdoProcesses.lit.js';
-// AzureDevOps module removed — backend config and TTLs are now in Data Sources
 import './admin/DataSources.lit.js';
 import './admin/Plugins.lit.js';
 import './admin/BackupSnapshots.lit.js';
+import './admin/LocalPlans.lit.js';
+import './admin/LocalCatalogue.lit.js';
 
 export class AdminApp extends LitElement {
   static properties = {
     activeSection: { type: String },
+    activeView: { type: String },
     sections: { type: Array },
     permissions: { type: Array },
     manageBackupSnapshots: { type: Boolean },
+    taskBackendId: { type: String },
   };
 
   static styles = css`
@@ -86,6 +89,8 @@ export class AdminApp extends LitElement {
     .admin-content h2 {
       margin-top: 0;
     }
+    .hub-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .hub-nav button[aria-current='page'] { font-weight: 700; }
     .panel {
       padding: 12px;
       background: #fff;
@@ -97,9 +102,11 @@ export class AdminApp extends LitElement {
   constructor() {
     super();
     this.activeSection = '';
+    this.activeView = '';
     this.sections = [];
     this.permissions = [];
     this.manageBackupSnapshots = false;
+    this.taskBackendId = '';
     this._onHashChange = () => this._selectHashSection();
   }
 
@@ -113,25 +120,57 @@ export class AdminApp extends LitElement {
     window.removeEventListener('hashchange', this._onHashChange);
   }
 
-  setPermissions(permissions) {
+  get _navigation() {
+    return getAdminSections(this.permissions, this.taskBackendId, this.manageBackupSnapshots);
+  }
+
+  setPermissions(permissions, taskBackendId) {
     this.permissions = permissions;
-    this.sections = getAdminSections(permissions, this.manageBackupSnapshots)
-      .map((section) => section.label);
-    this.activeSection = this.sections.length === 0 ? '' : this.sections[0];
+    this.taskBackendId = taskBackendId;
+    this._refreshSections();
+  }
+
+  _refreshSections() {
+    const navigation = this._navigation;
+    this.sections = navigation.map((section) => section.label);
+    if (!this.sections.includes(this.activeSection)) {
+      this.activeSection = '';
+      this.activeView = '';
+      if (navigation.length > 0) this._activate(navigation[0], this._defaultView(navigation[0]));
+    } else {
+      const current = navigation.find((section) => section.label === this.activeSection);
+      if (current.views && !current.views.some((view) => view.id === this.activeView)) {
+        this._activate(current, this._defaultView(current));
+      }
+    }
     this._selectHashSection();
   }
 
+  _defaultView(section) {
+    return section.views ? section.views[0].id : '';
+  }
+
+  _activate(section, view) {
+    this.activeSection = section.label;
+    this.activeView = view;
+  }
+
+  _writeHash(id) {
+    const url = new URL(window.location.href);
+    url.hash = id;
+    window.history.replaceState(null, '', url.href);
+  }
+
   _selectHashSection() {
-    const section = getAdminSections(this.permissions, this.manageBackupSnapshots)
-      .find((entry) => `#${entry.id}` === window.location.hash);
-    if (section !== undefined && this.sections.includes(section.label)) {
-      if (!this._mayLeaveSection(section.label)) {
-        const url = new URL(window.location.href);
-        url.hash = 'iterations';
-        window.history.replaceState(null, '', url.href);
-        return;
+    const id = window.location.hash.slice(1);
+    for (const section of this._navigation) {
+      const view = id === section.id ? this._defaultView(section) : id;
+      if (id !== section.id && !(section.views && section.views.some((entry) => entry.id === id))) {
+        continue;
       }
-      this.activeSection = section.label;
+      if (this._mayLeaveSection(view)) this._activate(section, view);
+      else this._writeHash(this.activeView);
+      return;
     }
   }
 
@@ -143,38 +182,27 @@ export class AdminApp extends LitElement {
       if (res.ok) {
         const data = await res.json();
         this.manageBackupSnapshots = data.content.feature_flags.manage_backup_snapshots === true;
-        if (this.manageBackupSnapshots && !this.sections.includes('Backup Snapshots')) {
-          // Insert after Utilities, before any future sections
-          const idx = this.sections.indexOf('Utilities');
-          if (idx !== -1) {
-            this.sections.splice(idx + 1, 0, 'Backup Snapshots');
-          } else {
-            this.sections.push('Backup Snapshots');
-          }
-          this._selectHashSection();
-        }
+        this._refreshSections();
       }
     } catch (e) {
       console.warn('AdminApp: failed to check feature flags', e);
     }
   }
 
-  _mayLeaveSection(section) {
-    if (this.activeSection !== 'Iterations' || section === 'Iterations') return true;
+  _mayLeaveSection(view) {
+    if ((this.activeView !== 'iterations' && this.activeView !== 'local-iterations')
+      || this.activeView === view) return true;
     const editor = this.shadowRoot.querySelector('admin-iterations');
     return editor === null || editor.mayLeave();
   }
 
   _onSelect(section) {
-    if (!this.sections.includes(section)) return;
-    if (!this._mayLeaveSection(section)) return;
-    this.activeSection = section;
-    const target = getAdminSections(this.permissions, this.manageBackupSnapshots)
-      .find((entry) => entry.label === section);
-    const url = new URL(window.location.href);
-    url.hash = target.id;
-    window.history.replaceState(null, '', url.href);
-    this.requestUpdate();
+    const target = this._navigation.find((entry) => entry.label === section);
+    if (target === undefined) return;
+    const view = this._defaultView(target);
+    if (!this._mayLeaveSection(view)) return;
+    this._activate(target, view);
+    this._writeHash(target.id);
   }
 
   renderSidebar() {
@@ -203,26 +231,29 @@ export class AdminApp extends LitElement {
   }
 
   renderContent() {
-    if (!this.sections.includes(this.activeSection)) return html``;
+    const section = this._navigation.find((entry) => entry.label === this.activeSection);
+    if (section === undefined) return html``;
+    if (section.views) {
+      if (!section.views.some((view) => view.id === this.activeView)) return html``;
+      return html`<nav class="hub-nav" aria-label=${section.label}>
+        ${section.views.map((view) => html`<button type="button"
+          aria-current=${view.id === this.activeView ? 'page' : 'false'}
+          @click=${() => {
+            if (!this._mayLeaveSection(view.id)) return;
+            this._activate(section, view.id);
+            this._writeHash(view.id);
+          }}>${view.label}</button>`)}
+      </nav>${this._renderBackendView()}`;
+    }
     switch (this.activeSection) {
       case 'Server':
         return html`<admin-system></admin-system>`;
       case 'Data Sources':
         return html`<admin-data-sources></admin-data-sources>`;
       case 'Users':
-        return html`<admin-users></admin-users>`;
-      case 'Global Project Settings':
-        return html`<admin-global-settings></admin-global-settings>`;
-      case 'Azure DevOps Processes':
-        return html`<admin-ado-processes></admin-ado-processes>`;
-      case 'Plans':
-        return html`<admin-projects .permissions=${this.permissions}></admin-projects>`;
+        return html`<admin-users .taskBackendId=${this.taskBackendId}></admin-users>`;
       case 'Workforce':
         return html`<admin-workforce .permissions=${this.permissions}></admin-workforce>`;
-      case 'Area Mappings':
-        return html`<area-mappings-new></area-mappings-new>`;
-      case 'Iterations':
-        return html`<admin-iterations></admin-iterations>`;
       case 'Utilities':
         return html`<admin-utilities></admin-utilities>`;
       case 'Plugins':
@@ -234,9 +265,26 @@ export class AdminApp extends LitElement {
     }
   }
 
+  _renderBackendView() {
+    switch (this.activeView) {
+      case 'projects': return html`<admin-projects .permissions=${this.permissions}></admin-projects>`;
+      case 'ado-processes': return html`<admin-ado-processes></admin-ado-processes>`;
+      case 'global-project-settings': return html`<admin-global-settings></admin-global-settings>`;
+      case 'iterations': return html`<admin-iterations></admin-iterations>`;
+      case 'area-mappings': return html`<area-mappings-new></area-mappings-new>`;
+      case 'ado-connection': return html`<admin-data-sources mode="ado"></admin-data-sources>`;
+      case 'local-projects': return html`<admin-local-plans></admin-local-plans>`;
+      case 'local-catalogue': return html`<admin-local-catalogue></admin-local-catalogue>`;
+      case 'local-markers': return html`<admin-local-plans mode="markers"></admin-local-plans>`;
+      case 'local-iterations': return html`<admin-iterations .local=${true}></admin-iterations>`;
+      default: return html``;
+    }
+  }
+
   render() {
     return html`<top-menu-bar application="admin" .permissions=${this.permissions}
       .manageBackupSnapshots=${this.manageBackupSnapshots}
+      .taskBackendId=${this.taskBackendId}
       .baseUrl=${window.APP_BASE_URL}></top-menu-bar>
     <div class="admin-root">
       ${this.renderSidebar()}

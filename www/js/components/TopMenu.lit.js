@@ -44,6 +44,7 @@ export class TopMenuBarLit extends LitElement {
     permissions: { type: Array },
     baseUrl: { type: String },
     manageBackupSnapshots: { type: Boolean },
+    taskBackendId: { type: String },
     _menusOverflow: { state: true },
     _menusAtStart: { state: true },
     _menusAtEnd: { state: true },
@@ -330,6 +331,7 @@ export class TopMenuBarLit extends LitElement {
     this.permissions = [];
     this.baseUrl = '';
     this.manageBackupSnapshots = false;
+    this.taskBackendId = '';
     this.openMenu = null;
     this.projects = [];
     this.teams = [];
@@ -587,7 +589,7 @@ export class TopMenuBarLit extends LitElement {
   }
 
   get adminSections() {
-    return getAdminSections(this.permissions, this.manageBackupSnapshots);
+    return getAdminSections(this.permissions, this.taskBackendId, this.manageBackupSnapshots);
   }
 
   async loadPermissions() {
@@ -597,6 +599,13 @@ export class TopMenuBarLit extends LitElement {
     if (!response.ok) throw new Error(`Loading account permissions failed: ${response.status}`);
     const account = await response.json();
     this.permissions = account.permissions;
+    if (this.application !== 'admin') {
+      const backend = await fetch(`${this.baseUrl}/api/task-backend`, {
+        credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store',
+      });
+      if (!backend.ok) throw new Error(`Loading task backend failed: ${backend.status}`);
+      this.taskBackendId = (await backend.json()).id;
+    }
   }
 
   _toggleMenu(menuName, e) {
@@ -978,7 +987,7 @@ export class TopMenuBarLit extends LitElement {
           @keydown=${this._onMenuKeyDown}>
           <button class="settings-action" role="menuitem" id="configurationMenuItem"
             @click=${this._onConfig}>Configuration</button>
-          ${getAuthentication() === null || getAuthentication().state.capabilities.pat ? html`
+          ${this.taskBackendId !== 'local' && (getAuthentication() === null || getAuthentication().state.capabilities.pat) ? html`
           <button class="settings-action" role="menuitem" id="setPatMenuItem"
             @click=${() => this._runNotificationAction(NotificationActionIds.SET_PAT, 'pat_required')}>
             Set or update Azure DevOps PAT
@@ -1086,6 +1095,7 @@ export class TopMenuBarLit extends LitElement {
           .projects=${this.projects}
           .activeViewId=${this.activeViewId}
           .activeViewData=${this.activeViewData}
+          .taskBackendId=${this.taskBackendId}
         ></plan-menu>`;
       case 'scope':
         return html`<scope-menu style="${style}"></scope-menu>`;
@@ -1099,7 +1109,7 @@ export class TopMenuBarLit extends LitElement {
   async _onConfig() {
     this._closeMenu();
     const { openConfigModal } = await import('./modalHelpers.js');
-    await openConfigModal();
+    await openConfigModal({ taskBackendId: this.taskBackendId });
   }
 
   async _onHelp() {

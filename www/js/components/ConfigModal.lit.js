@@ -11,6 +11,7 @@ import { getAuthentication } from '../services/authStartup.js';
 class ConfigModal extends LitElement {
   static properties = {
     authentication: { attribute: false },
+    taskBackendId: { type: String },
     open: { type: Boolean },
     _signingOut: { state: true },
     _linking: { state: true },
@@ -20,6 +21,7 @@ class ConfigModal extends LitElement {
   constructor() {
     super();
     this.authentication = getAuthentication();
+    this.taskBackendId = '';
     new AuthPresentationController(this);
     this.open = false;
     this._signingOut = false;
@@ -202,7 +204,7 @@ class ConfigModal extends LitElement {
                 @click=${this._onLinkAccount}>${this._linking ? 'Linking...' : 'Link account'}</button>
               <div class="status" role="status">${this._linkError}</div>
             </div>` : ''}
-            ${capabilities.pat ? html`<div class="form-row">
+            ${this.taskBackendId !== 'local' && capabilities.pat ? html`<div class="form-row">
               <label for="configPat">Personal Access Token (PAT)</label>
               <input type="password" id="configPat" placeholder="••••••••" />
             </div>` : ''}

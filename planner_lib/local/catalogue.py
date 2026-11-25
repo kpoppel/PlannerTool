@@ -438,9 +438,16 @@ class LocalCatalogue:
         for process in catalogue['processes']:
             tiers: Dict[int, list] = {}
             for entry in process['types']:
+                workflow = workflows[entry['workflow_id']]
+                state_names = {state_id: states[state_id]['name'] for state_id in workflow['states']}
+                allowed = {state_id: set(workflow['from_any']) - {state_id} for state_id in state_names}
+                for transition in workflow['transitions']:
+                    allowed[transition['from']].add(transition['to'])
                 tiers.setdefault(entry['tier'], []).append({'name': entry['name'], 'states': [
                     {'name': states[state_id]['name'], 'category': states[state_id]['category']}
-                    for state_id in workflows[entry['workflow_id']]['states']]})
+                    for state_id in state_names], 'state_transitions': {
+                        name: [target_name for target, target_name in state_names.items() if target in allowed[state_id]]
+                        for state_id, name in state_names.items()}})
             display.append({'process_id': process['id'], 'tiers': [tiers[tier] for tier in sorted(tiers)]})
         return display
 

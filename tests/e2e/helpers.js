@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 export function fulfillAccountApi(route, body) {
   const path = new URL(route.request().url()).pathname;
   if (path.endsWith('/auth/config')) return route.fulfill({ json: { mode: 'local' } });
+  if (path.endsWith('/task-backend')) return route.fulfill({ json: { id: 'ado', capabilities: [] } });
   return route.fulfill({ json: path.endsWith('/auth/release-notes')
     ? { releaseId: 'v5.0.0', acknowledged: true } : body });
 }

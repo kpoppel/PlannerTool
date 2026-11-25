@@ -10,9 +10,19 @@ PlannerTool is an authenticated planning service. It combines locally managed co
 
 ### Core Metaphor
 
-The server is a ports-and-adapters pipeline with two kinds of state: authoritative local state and disposable remote-read cache state. Routes resolve repositories and services through explicit dependency injection. Repositories call focused backend protocols; the active remote adapter can be selected by feature flag and optionally decorated with a TTL cache.
+The server is a ports-and-adapters pipeline with two kinds of state: authoritative local state and disposable remote-read cache state. Routes resolve repositories and services through explicit dependency injection. Repositories call focused backend protocols; `task_backend_id` selects one active task adapter. The Azure DevOps adapter can be decorated with a TTL cache; the Local adapter reads and writes the active generation's `planner.sqlite` directly.
 
 The browser owns interactive editing state. The server owns durable configuration, user data, remote reads, credentials, and the HTTP contract.
+
+Signed-in clients read the active backend and capabilities from
+`GET /api/task-backend`. Local mode exposes `GET /api/tasks/editor` for plan
+type assignments and catalogue metadata, `POST /api/tasks/create` for creation,
+and `DELETE /api/tasks/{id}?revision=<revision>` for revision-checked soft
+deletion. Local edits and scenario publication use `POST /api/tasks` with
+reviewed field values and a revision in each update's `base`; overlapping
+changes return a structured `409`. Local definition edits use the revisioned
+`/admin/v1/local/catalogue` and `/admin/v1/local/plans` documents and require
+project administration permissions.
 
 ### People and External Systems
 

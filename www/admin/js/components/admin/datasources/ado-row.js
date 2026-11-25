@@ -17,6 +17,11 @@
  */
 import { html } from '/static/js/vendor/lit.js';
 
+const TRANSPORT_LABELS = {
+  live: 'Live Azure DevOps REST API', mock_fixture: 'Fixture Mock (pre-recorded)',
+  mock_generator: 'Synthetic Generator Mock', static: 'Static File (read-only)',
+};
+
 /**
  * Render the three ADO domain rows as a group.
  * @param {DataSources} comp
@@ -24,6 +29,8 @@ import { html } from '/static/js/vendor/lit.js';
 export function renderAdoGroup(comp) {
   const errs = comp._validationErrors;
   const type = comp._adoBackendType;
+  const provider = comp._taskBackends.find((entry) => entry.id === 'ado');
+  const transports = provider.configuration_schema.properties.transport.enum;
 
   return html`
     <tr>
@@ -41,10 +48,8 @@ export function renderAdoGroup(comp) {
               comp._statusMsg        = '';
             }}
           >
-            <option value="ado_live"           ?selected=${type === 'ado_live'}>Live Azure DevOps REST API</option>
-            <option value="ado_mock_fixture"   ?selected=${type === 'ado_mock_fixture'}>Fixture Mock (pre-recorded)</option>
-            <option value="ado_mock_generator" ?selected=${type === 'ado_mock_generator'}>Synthetic Generator Mock</option>
-            <option value="ado_static"         ?selected=${type === 'ado_static'}>Static File (read-only)</option>
+            ${transports.map((transport) => html`<option value=${`ado_${transport}`}
+              .selected=${type === `ado_${transport}`}>${TRANSPORT_LABELS[transport]}</option>`)}
           </select>
           ${renderAdoSubForm(comp, type, errs)}
         </div>

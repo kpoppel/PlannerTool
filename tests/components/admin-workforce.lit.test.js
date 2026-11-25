@@ -11,7 +11,7 @@ import '../../www/admin/js/components/AdminApp.lit.js';
 
 it('routes workforce administration exclusively to the canonical editor', () => {
   const app = document.createElement('admin-app');
-  app.setPermissions(['admin']);
+  app.setPermissions(['admin'], 'ado');
   expect(app.sections).not.toContain('Cost');
   expect(app.sections).not.toContain('People');
   expect(app.sections).not.toContain('Teams');
@@ -27,11 +27,12 @@ it('opens only authorized administration deep links', () => {
   try {
     window.history.replaceState(null, '', '#iterations');
     const app = document.createElement('admin-app');
-    app.setPermissions(['manage_projects', 'manage_iterations']);
-    expect(app.activeSection).toBe('Iterations');
+    app.setPermissions(['manage_projects', 'manage_iterations'], 'ado');
+    expect(app.activeSection).toBe('Azure DevOps');
+    expect(app.activeView).toBe('iterations');
     window.history.replaceState(null, '', '#users');
-    app.setPermissions(['manage_projects']);
-    expect(app.activeSection).toBe('Plans');
+    app.setPermissions(['manage_projects'], 'ado');
+    expect(app.activeView).toBe('projects');
   } finally {
     window.history.replaceState(null, '', previousUrl);
   }
@@ -45,7 +46,7 @@ it('keeps sidebar navigation on the canonical URL despite the static asset base'
     base.href = '/static/admin/';
     document.head.prepend(base);
     const app = document.createElement('admin-app');
-    app.setPermissions(['admin']);
+    app.setPermissions(['admin'], 'ado');
     app._onSelect('Users');
     expect(window.location.pathname).toBe('/admin/');
     expect(window.location.hash).toBe('#users');
@@ -58,18 +59,35 @@ it('keeps sidebar navigation on the canonical URL despite the static asset base'
 it('limits delegated navigation and rejects direct selection of restricted sections', () => {
   const app = document.createElement('admin-app');
   expect(app.sections).toEqual([]);
-  app.setPermissions(['manage_projects', 'manage_iterations']);
-  expect(app.sections).toEqual([
-    'Plans', 'Azure DevOps Processes', 'Global Project Settings', 'Iterations',
-  ]);
-  expect(app.activeSection).toBe('Plans');
+  app.setPermissions(['manage_projects', 'manage_iterations'], 'ado');
+  expect(app.sections).toEqual(['Azure DevOps']);
+  expect(app.activeSection).toBe('Azure DevOps');
   app._onSelect('Users');
-  expect(app.activeSection).toBe('Plans');
-  app.setPermissions(['manage_workforce_costs']);
+  expect(app.activeSection).toBe('Azure DevOps');
+  app.setPermissions(['manage_workforce_costs'], 'ado');
   expect(app.sections).toEqual(['Workforce']);
-  app.setPermissions([]);
+  app.setPermissions([], 'ado');
   expect(app.sections).toEqual([]);
 });
+
+it.each([
+  ['local', '#ado-processes', 'Local', 'Azure DevOps'],
+  ['ado', '#local-catalogue', 'Azure DevOps', 'Local'],
+])('does not render a provider view at an inactive hash in %s mode',
+  (backend, hash, visible, hidden) => {
+    const previousUrl = window.location.href;
+    try {
+      window.history.replaceState(null, '', hash);
+      const app = document.createElement('admin-app');
+      app.setPermissions(['admin'], backend);
+      expect(app.sections).toContain(visible);
+      expect(app.sections).not.toContain(hidden);
+      expect(app.activeSection).toBe('Server');
+      expect(app.renderContent().strings.join('')).toContain('<admin-system');
+    } finally {
+      window.history.replaceState(null, '', previousUrl);
+    }
+  });
 
 function fixture() {
   return {

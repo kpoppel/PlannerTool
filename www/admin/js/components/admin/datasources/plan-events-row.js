@@ -40,6 +40,7 @@ function resultErrorMessage(result, fallback = 'Request failed') {
  * @param {DataSources} comp
  */
 export async function fetchProjects(comp) {
+  if (comp._activeTaskBackendId !== 'ado') return;
   comp._projectsLoading = true;
   comp._projectsError   = '';
   try {
@@ -113,7 +114,7 @@ export function onWikiOrgUrlCommit(comp) {
  * @param {string} project
  */
 export async function fetchWikis(comp, project) {
-  if (!project) return;
+  if (comp._activeTaskBackendId !== 'ado' || !project) return;
   comp._wikisLoading = true;
   comp._wikisError   = '';
   comp._wikis        = [];
@@ -143,7 +144,7 @@ export async function fetchWikis(comp, project) {
  * @param {string} wikiId
  */
 export async function fetchWikiPages(comp, project, wikiId) {
-  if (!project || !wikiId) return;
+  if (comp._activeTaskBackendId !== 'ado' || !project || !wikiId) return;
   comp._wikiPagesLoading = true;
   comp._wikiPagesError   = '';
   try {
@@ -170,6 +171,7 @@ export async function fetchWikiPages(comp, project, wikiId) {
  */
 export function renderPlanEventsRow(comp) {
   const isWiki = comp._eventsBackend === 'ado_wiki';
+  const canBrowse = comp._activeTaskBackendId === 'ado';
   const errs   = comp._validationErrors;
 
   return html`
@@ -194,12 +196,12 @@ export function renderPlanEventsRow(comp) {
             <option value="local"    ?selected=${comp._eventsBackend === 'local'}>
               Local database (PlannerTool)
             </option>
-            <option value="ado_wiki" ?selected=${comp._eventsBackend === 'ado_wiki'}>
+            ${canBrowse || isWiki ? html`<option value="ado_wiki" ?disabled=${!canBrowse} .selected=${isWiki}>
               Azure DevOps Wiki page
-            </option>
+            </option>` : ''}
           </select>
 
-          ${isWiki ? _renderWikiSubForm(comp, errs) : ''}
+          ${isWiki && canBrowse ? _renderWikiSubForm(comp, errs) : ''}
         </div>
       </td>
       <td class="ttl-col"><span class="ttl-dash">—</span></td>
