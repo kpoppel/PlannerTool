@@ -64,7 +64,9 @@ function baseState(overrides = {}) {
 
 describe('application/selectors/scopeSelectors', () => {
   function virtualState() {
-    const state = baseState({ selection: { teamIds: ['team-a'] } });
+    const state = baseState({
+      selection: { teamIds: ['team-a'] }, view: { options: { taskViewMode: 'team' } },
+    });
     state.baseline.features = [
       { id: 'real', project: 'selected', type: 'Feature', capacity: [{ team: 'team-a', capacity: 20 }] },
       { id: 'hidden', project: 'selected', type: 'Epic', capacity: [{ team: 'team-a', capacity: 50 }, { team: 'team-b', capacity: 60 }] },
@@ -97,20 +99,22 @@ describe('application/selectors/scopeSelectors', () => {
   it('hides deselected types and only projects eligible other-plan demand', () => {
     const state = virtualState();
     const selectors = createScopeSelectors(createStore(state));
-    for (const taskViewMode of ['plan', 'team']) {
+    const resolved = selectors.getResolvedFeatures();
+    for (const taskViewMode of ['plan', 'team', 'plan', 'team']) {
       state.view.options = { ...state.view.options, taskViewMode };
       const entries = selectors.getBoardPresentation();
-      expect(entries.map((entry) => [entry.kind, entry.sourceId])).toEqual([
-        ['task', 'real'], ['virtual', 'peer'],
-      ]);
-      expect(entries[1].allocations).toEqual([{ team: 'team-a', capacity: 30 }]);
-      expect(entries[1].feature.capacity).toHaveLength(1);
+      expect(entries.map((entry) => [entry.kind, entry.sourceId])).toEqual(taskViewMode === 'team'
+        ? [['task', 'real'], ['virtual', 'peer']] : [['task', 'real']]);
+      if (taskViewMode === 'team') {
+        expect(entries[1].allocations).toEqual([{ team: 'team-a', capacity: 30 }]);
+      }
       expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['real']);
       expect(selectors.getBoardBreakdown().tasksVisible).toBe(1);
+      expect(selectors.getResolvedFeatures()).toBe(resolved);
     }
     state.selection.teamIds = ['team-a', 'team-b'];
-    expect(selectors.getBoardPresentation().filter((entry) => entry.sourceId === 'peer'))
-      .toHaveLength(1);
+    expect(selectors.getBoardPresentation().map((entry) => entry.sourceId)).toEqual(['real']);
+    expect(selectors.getResolvedFeatures()).toBe(resolved);
     state.selection.taskTypeNames = [taskTypeKey('process', 'Epic')];
     expect(selectors.getBoardPresentation().map((entry) => [entry.kind, entry.sourceId]))
       .toEqual([['task', 'hidden']]);
@@ -166,20 +170,16 @@ describe('application/selectors/scopeSelectors', () => {
             capacity: [{ team: 'team-b', capacity: 60 }] },
         ];
         const selectors = createScopeSelectors(createStore(state));
-        for (const taskViewMode of ['plan', 'team']) {
-          state.view.options = { ...state.view.options, taskViewMode };
-          expect(selectors.getBoardPresentation().map((entry) => [entry.kind, entry.sourceId]))
-            .toEqual([['task', 'real'], ['virtual', 'peer'], ['virtual', 'reservation']]);
-          expect(selectors.getBoardPresentation().find((entry) => entry.sourceId === 'reservation')
-            .allocations).toEqual([{ team: 'team-a', capacity: 40 }]);
-        }
+        expect(selectors.getBoardPresentation().map((entry) => [entry.kind, entry.sourceId]))
+          .toEqual([['task', 'real'], ['virtual', 'peer'], ['virtual', 'reservation']]);
+        expect(selectors.getBoardPresentation().find((entry) => entry.sourceId === 'reservation')
+          .allocations).toEqual([{ team: 'team-a', capacity: 40 }]);
         state.selection.teamIds = ['team-a', 'team-b'];
         expect(selectors.getBoardPresentation().map((entry) => entry.sourceId))
-          .toEqual(['real', 'peer', 'reservation', 'other-team']);
+          .toEqual(['real']);
         state.selection.projectIds = ['selected', 'other'];
         expect(selectors.getBoardPresentation().map((entry) => [entry.kind, entry.sourceId]))
-          .toEqual([['task', 'real'], ['task', 'peer'], ['task', 'other-team'],
-            ['virtual', 'reservation']]);
+          .toEqual([['task', 'real'], ['task', 'peer'], ['task', 'other-team']]);
         state.selection.taskTypeNames = [taskTypeKey('process', 'Epic')];
         expect(selectors.getBoardPresentation()).toEqual([]);
       });
@@ -189,6 +189,7 @@ describe('application/selectors/scopeSelectors', () => {
   it('deduplicates ordinary sources and preserves unrelated virtual eligibility filters', () => {
     const state = virtualState();
     const selectors = createScopeSelectors(createStore(state));
+    state.baseline.features[1].capacity = [{ team: 'team-a', capacity: 50 }];
     state.selection.taskTypeNames = [];
     state.selection.projectIds = ['selected', 'other'];
     expect(selectors.getBoardPresentation().map((entry) => entry.kind)).toEqual(['task', 'task', 'task']);
@@ -221,8 +222,8 @@ describe('application/selectors/scopeSelectors', () => {
     expect(selectors.getBoardPresentation().find((entry) => entry.sourceId === 'hidden').allocations)
       .toEqual([{ team: 'team-a', capacity: 50 }]);
     state.selection.teamIds = ['group'];
-    expect(selectors.getBoardPresentation().find((entry) => entry.sourceId === 'hidden').allocations)
-      .toEqual([{ team: 'team-a', capacity: 50 }, { team: 'team-b', capacity: 50 }]);
+    expect(selectors.getBoardPresentation().every((entry) => entry.kind === 'task')).toBe(true);
+    state.selection.teamIds = ['team-a'];
     state.scenarios.items = [{ id: 'baseline', overrides: { hidden: { capacity: [] } } }];
     expect(selectors.getBoardPresentation().map((entry) => entry.sourceId)).toEqual(['real', 'peer']);
   });

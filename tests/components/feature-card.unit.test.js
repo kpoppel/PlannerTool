@@ -22,9 +22,9 @@ describe('FeatureCardLit basic behaviors', () => {
     await el.updateComplete;
     const root = el.shadowRoot.querySelector('.feature-card');
     expect(root.classList.contains('virtual')).to.be.true;
-    expect(root.title).to.include('Virtual');
+    expect(root.title).to.include('Other plan');
     expect(root.title).to.include('Program');
-    expect(el.shadowRoot.querySelector('.virtual-label').textContent).to.equal('Virtual');
+    expect(el.shadowRoot.querySelector('.virtual-label').textContent).to.equal('Other plan');
     expect(el.shadowRoot.querySelector('.drag-handle')).to.be.null;
     expect(el.shadowRoot.querySelectorAll('.team-load-box')).to.have.lengthOf(1);
     const background = sinon.spy();

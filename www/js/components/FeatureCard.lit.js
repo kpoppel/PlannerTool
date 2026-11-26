@@ -922,7 +922,7 @@ export class FeatureCardLit extends LitElement {
     const completion = sel.feature.getDescendantCompletion(this.feature.id);
     const progress = completion.total > 0 ? completion.closed / completion.total : isCompleted ? 1 : 0;
     this._cardTooltip = `${this.feature.id}: ${this.feature.title}${dateLabel ? ` · ${dateLabel}` : ''}${isAnchor ? ' · historical anchor' : ''}${this.feature.ancestorOnly === true ? ' · Ancestor context only. Other child branches are not loaded.' : ''}`;
-    if (this._isVirtual) this._cardTooltip += ` - Virtual - ${this.project === null || this.project === undefined ? this.feature.sourcePlanName : this.project.name}`;
+    if (this._isVirtual) this._cardTooltip += ` - Other plan - ${this.project === null || this.project === undefined ? this.feature.sourcePlanName : this.project.name}`;
 
     const cardClasses = {
       'feature-card': true,
@@ -973,7 +973,7 @@ export class FeatureCardLit extends LitElement {
         <div class="card-content">
           ${this._renderTypeIcon()}
           <span class="feature-id">${this.feature.id}</span>
-          ${this._isVirtual ? html`<span class="virtual-label">Virtual</span>` : ''}
+          ${this._isVirtual ? html`<span class="virtual-label">Other plan</span>` : ''}
           ${this._renderTeamLoadRow()}
           <span class="completion-count" title=${`${completion.closed} closed / ${completion.total} sub-items`}>${completion.closed}/${completion.total}</span>
         </div>

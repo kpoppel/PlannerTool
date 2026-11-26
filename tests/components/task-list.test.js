@@ -31,7 +31,7 @@ describe('Task list presentation', () => {
     await list.updateComplete;
     const row = list.shadowRoot.querySelector('[data-task-id="42"]');
     expect(row.classList.contains('virtual')).toBe(true);
-    expect(row.querySelector('.task-meta').textContent).toContain('Virtual');
+    expect(row.querySelector('.task-meta').textContent).toContain('Other plan');
     expect(row.querySelector('.task-meta').textContent).toContain('Release plan');
     expect(row.querySelector('.task-type').title).toBe('Feature');
     row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));

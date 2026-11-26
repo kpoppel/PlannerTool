@@ -17,7 +17,7 @@ Template - do not change :
 ### Added
 - Add whole-hour allocation entry alongside Percent and Man-days, using each team or group's workforce project-hour budget in task details and the portfolio table, with effort preserved when scheduling changes.
 - Add a read-only Cone of Uncertainty tool with three configurable forecast scopes, browser-saved duration uncertainty preferences, and shaded task finish ranges for communicating long-range planning assumptions. Compact rows use task-board type icons and follow the task sort setting, ordering by rank or latest forecast finish. Show global and selected-plan events from the configured local or ADO/wiki source as labeled date lines and range bands.
-- Show display-only Virtual rows and timeline cards for selected teams' effective commitments held in other loaded plans, respecting task-type filters, with source details, source-plan attribution and no virtual editing actions.
+- Show effective commitments from other loaded plans as read-only **Other plan** rows and timeline cards in single-team Team focus, with source-plan attribution and access to the original task details. Team allocation graphs still account for those commitments in every board mode.
 - Support external Entra broker login with encrypted persistent MSAL caches, browser-bound PKCE handoffs, on-demand delegated ADO credentials and instance-scoped logout. Real-tenant acceptance remains required.
 - Bootstrap the first administrator on empty live installations and offer one-time claims for existing accounts. Manual claims accept email entry alone, including administrators, and require a restricted migration audience.
 - Support mock broker sign-in that can reuse existing account permissions. Fake credentials are rejected before ADO/wiki calls without ending local sessions or cached access.
@@ -48,7 +48,7 @@ Template - do not change :
 
 ### Fixed
 - Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
-- Keep type-filtered tasks hidden instead of turning selected-plan work into virtual context; deselecting all task types clears task rows and cards without changing calculated team demand.
+- Keep type-filtered tasks hidden instead of turning selected-plan work into other-plan context; deselecting all task types clears task rows and cards without changing calculated team demand.
 - Render the task list when restored views include context-only tasks without a configured owning plan.
 - Nest and fold tasks by their actual parent links, including same-type parents, while retaining hierarchy-type warnings in health reports.
 - Keep task grouping responsive by applying subtree assignments together and reusing allocation calculations when only membership changes.

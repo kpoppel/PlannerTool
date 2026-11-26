@@ -213,17 +213,21 @@ export function createScopeSelectors(store) {
     if (selectedPlans.size === 0) return [];
     const features = getResolvedFeatures();
     const visibleFeatures = getVisibleFeatures();
+    const taskViewMode = state.view.options.taskViewMode;
     const key = [features, visibleFeatures, state.selection.projectIds.join(','),
-      state.selection.teamIds.join(',')];
+      state.selection.teamIds.join(','), state.baseline.teams, taskViewMode];
     if (presentationCache && key.every((value, index) => value === presentationCacheKey[index])) {
       return presentationCache;
     }
+    const selectedTeamIds = toIdSet(state.selection.teamIds);
+    const showOtherPlans = taskViewMode === 'team' && selectedTeamIds.size === 1
+      && state.baseline.teams.some((team) => team.kind !== 'group' && selectedTeamIds.has(String(team.id)));
     const excludeExternal = createCardExclusionFilter(state.view.context, false);
     presentationCache = projectVirtualAllocations({
       features,
       visibleFeatures,
       teams: state.baseline.teams,
-      selectedTeamIds: toIdSet(state.selection.teamIds),
+      selectedTeamIds: showOtherPlans ? selectedTeamIds : new Set(),
       isEligible(feature) {
         const external = !selectedPlans.has(String(feature.project));
         return external && excludeExternal(feature) === null;

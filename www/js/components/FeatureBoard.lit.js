@@ -876,7 +876,11 @@ class FeatureBoard extends LitElement {
 
       // Group visible features into per-swimlane buckets
       const buckets = new Map(swimlanes.map((s) => [s.id, []]));
-      for (const feature of displayedFeatures) {
+      const collapsedOtherPlanMembers = isPacked ? [] : visibleFeatures.filter((feature) => {
+        const id = String(feature.id);
+        return virtualIds.has(id) && groupIsCollapsed(groupByMember.get(id));
+      });
+      for (const feature of [...displayedFeatures, ...collapsedOtherPlanMembers]) {
         const sid = assignFeatureToSwimlane(
           feature,
           swimlanes,

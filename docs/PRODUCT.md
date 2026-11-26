@@ -41,26 +41,24 @@ Existing descendant-over-ancestor precedence still applies; superseded
 reservations do not contribute a residual allocation. Project and organization
 reporting retain their existing scope, and no additional tasks are fetched.
 
-With teams selected, both Plan overview and Team focus automatically show
-**Virtual** entries for effective allocations whose source belongs to another
-loaded plan outside the selected plans. Each source appears once, combining
-only the selected teams' effective demand. A visible real source replaces its
-virtual presentation. Task-type, state, schedule, allocation, hierarchy and
-relationship filters and applicable branch/group folds still apply. Hiding a
-task type never converts selected-plan work into virtual context. Deselecting
-all task types hides all task rows and cards, including virtual entries. These
-display choices do not remove calculated demand from the team allocation graph.
-Incoming demand is determined by selected teams, not the selected plan's level:
-selecting all teams on a project plan can show external commitments across all
-those teams, while a team plan can focus the same context on its selected team.
+Team focus with exactly one individual team selected shows that team's effective
+allocations from other loaded plans, regardless of plan level. This includes
+group reservations that contribute demand for that team. Plan overview, or Team
+focus with no team, multiple teams, or a group selected, does not add rows solely
+for those reservations. Normal hierarchy and relationship context still applies.
 
-Virtual rows and cards retain the source type marker, title, dates and ordering,
-with a Virtual label and subtle diagonal shading. External sources use identified
-source-plan lanes even with Context expansion off; single-band rows retain plan
-metadata. Clicking a row or card opens the actual source details with existing
-permissions. Virtual presentations have no drag, resize, allocation, revert or
-group-move actions. They are never saved as tasks, added to task counts, or used
-as additional inputs to allocation, cost or reconciliation calculations.
+Each source appears once; if the task is already visible as an ordinary row, no
+extra row is added. Task filters and applicable branch/group folds still apply.
+Deselecting all task types hides all task rows and cards. These display choices
+do not remove calculated demand from the team allocation graph.
+
+Other-plan rows and cards retain the source type, title, dates and ordering,
+with an **Other plan** label and diagonal shading. They show the source plan
+even with Context expansion off. Clicking opens the original task details with
+existing permissions. The rows and cards have no drag, resize, allocation,
+revert or group-move actions. They are never saved as tasks, added to task
+counts, or used as additional inputs to allocation, cost or reconciliation
+calculations.
 
 ### Scenario-based experimentation
 

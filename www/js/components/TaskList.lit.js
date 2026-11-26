@@ -134,7 +134,7 @@ export class TaskList extends LitElement {
         const folded = group ? row.collapsed : row.folded;
         const groupColor = group ? row.groupObj.color : row.groupColor;
         const metadata = [];
-        if (virtual) metadata.push('Virtual');
+        if (virtual) metadata.push('Other plan');
         if (!group) {
           metadata.push(`#${row.feature.id}`);
           if (row.feature.parentId !== null && row.feature.parentId !== undefined) {
