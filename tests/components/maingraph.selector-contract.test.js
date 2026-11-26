@@ -12,7 +12,8 @@ const mockSel = vi.hoisted(() => ({
     getEffectiveSelectedProjectIds: vi.fn(() => ['p1']),
     getSelectedTeamIds: vi.fn(() => ['t1']),
     getTeams: vi.fn(() => [{ id: 't1', selected: true }]),
-    getProjects: vi.fn(() => [{ id: 'p1', selected: true }]),
+    getProjects: vi.fn(() => [{ id: 'p1', selected: true, type: 'project',
+      container_order: 0, container_types: ['project', 'team'] }]),
   },
   scope: {
     getContextTeams: vi.fn(() => ['t1']),
@@ -145,7 +146,7 @@ describe('MainGraph selector seam', () => {
     expect(el._renderData.selectedProjectIds).toEqual(['p1']);
   });
 
-  it('renders custom lowest containers as lines with raw team percentages', async () => {
+  it('renders team reservations under a higher-level plan without a loaded lowest container', async () => {
     const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
     const context = HTMLCanvasElement.prototype.getContext.mock.results[0].value;
     context.fillRect = vi.fn();
@@ -155,17 +156,16 @@ describe('MainGraph selector seam', () => {
       months: [new Date('2026-01-01T00:00:00Z')],
       teams: [{ id: 't1', name: 'Delivery', color: '#112233' }, { id: 't2' }],
       projects: [
-        { id: 'root', type: 'portfolio', container_order: 0 },
-        { id: 'middle', type: 'program', container_order: 1 },
-        { id: 'leaf', type: 'squad', container_order: 2, container_types: ['portfolio', 'program', 'squad'] },
+        { id: 'root', type: 'portfolio', container_order: 0,
+          container_types: ['portfolio', 'program', 'squad'] },
       ],
       capacityDates: ['2026-01-01'],
       teamDailyCapacityMap: [{ t1: 80 }],
-      planDailyCapacityMap: [{ leaf: 80 }],
-      planTeamDailyCapacityMap: [{ leaf: { t1: 80 } }],
+      planDailyCapacityMap: [{ root: 80 }],
+      planTeamDailyCapacityMap: [{ root: { t1: 80 } }],
       capacityViewMode: 'squad',
       selectedTeamIds: new Set(['t1']),
-      selectedProjectIds: new Set(['leaf']),
+      selectedProjectIds: new Set(['root']),
     });
     expect(el._hoverDays[0].entries).toEqual([
       { name: 'Delivery', color: '#112233', value: 80 },
@@ -191,7 +191,8 @@ describe('MainGraph selector seam', () => {
         projects: [
           { id: 'own', type: 'squad', container_order: 2, container_types: ['portfolio', 'program', 'squad'] },
           { id: 'peer', type: 'squad', container_order: 2, container_types: ['portfolio', 'program', 'squad'] },
-          { id: 'program', type: 'program', container_order: 1 },
+          { id: 'program', type: 'program', container_order: 1,
+            container_types: ['portfolio', 'program', 'squad'] },
         ],
         capacityDates: ['2026-01-01'],
         teamDailyCapacityMap: [{ A: 90, B: 40, G: 65 }],

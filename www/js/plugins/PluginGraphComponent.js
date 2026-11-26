@@ -11,7 +11,7 @@
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
-import { isLowestContainer } from '../application/shared/ownership.js';
+import { getLowestContainerType } from '../application/shared/ownership.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import { findInBoard } from '../components/board-utils.js';
@@ -296,28 +296,28 @@ export class PluginGraph extends LitElement {
   }
 
   _usesLines(mode) {
-    return sel.selection.getProjects().some((plan) => plan.type === mode && isLowestContainer(plan));
+    return sel.selection.getProjects().some((plan) => getLowestContainerType(plan) === mode);
   }
 
   _computeDailyTotals(mode, sDate, eDate) {
     const teams = sel.selection.getTeams();
     const allProjects = sel.selection.getProjects();
     const usingLines = this._usesLines(mode);
-    const visibleTeamIds = sel.scope.getTeamDrilldownIds();
+    const contextTeamIds = new Set(sel.scope.getContextTeams());
+    const visibleTeamIds = sel.scope.getTeamDrilldownIds().filter((id) => contextTeamIds.has(id));
     const scopedProjects = sel.scope.getContextFeatures()
       .map((feature) => String(feature.project));
     const selectedStates = sel.filter.getSelectedFeatureStateNames();
     const projectSetSelected = new Set(scopedProjects);
-    const teamSetVisible = new Set(visibleTeamIds.map((id) => String(id)));
     if (projectSetSelected.size === 0)
       return { days: 0, totals: [] };
-    if (usingLines && teamSetVisible.size === 0) return { days: 0, totals: [] };
+    if (usingLines && visibleTeamIds.length === 0) return { days: 0, totals: [] };
     if (selectedStates.length === 0) return { days: 0, totals: [] };
 
     const days = this._daysBetween(sDate, eDate);
     const stateDates = sel.capacity.getCapacityDates();
     const planDaily = sel.capacity.getPlanDailyCapacityMap();
-    const planTeams = sel.capacity.getPlanTeamDailyCapacityMap();
+    const teamDaily = sel.capacity.getTeamDailyCapacityMap();
     if (stateDates.length) {
       const dateIndexMap = new Map(stateDates.map((ds, i) => [ds, i]));
       const totals = new Array(days)
@@ -327,31 +327,23 @@ export class PluginGraph extends LitElement {
         const iso = this._fmtDate(this._addDays(sDate, i));
         const si = dateIndexMap.get(iso);
         if (si === undefined) continue;
-        const dayPlans = planDaily[si];
-        const dayTeams = planTeams[si];
-        let maxTeamVal = 0;
-        let sumProj = 0;
-        for (const plan of allProjects) {
-          if (!projectSetSelected.has(String(plan.id)) || plan.type !== mode) continue;
-          if (usingLines) {
-            const loads = dayTeams[plan.id];
-            if (!loads) continue;
-            for (const [teamId, value] of Object.entries(loads)) {
-              if (!teamSetVisible.has(String(teamId))) continue;
-              if (totals[i].perTeam[teamId] === undefined) totals[i].perTeam[teamId] = 0;
-              totals[i].perTeam[teamId] += value;
-            }
-          } else {
-            const load = dayPlans[plan.id];
+        const day = totals[i];
+        if (usingLines) {
+          for (const teamId of visibleTeamIds) {
+            const load = teamDaily[si][teamId];
+            const value = load === undefined ? 0 : load;
+            day.perTeam[teamId] = value;
+            day.total = Math.max(day.total, value);
+          }
+        } else {
+          for (const plan of allProjects) {
+            if (!projectSetSelected.has(String(plan.id)) || plan.type !== mode) continue;
+            const load = planDaily[si][plan.id];
             const value = load === undefined ? 0 : load / Math.max(1, teams.length);
-            totals[i].perProject[plan.id] = value;
-            sumProj += value;
+            day.perProject[plan.id] = value;
+            day.total += value;
           }
         }
-        for (const value of Object.values(totals[i].perTeam)) {
-          if (value > maxTeamVal) maxTeamVal = value;
-        }
-        totals[i].total = usingLines ? maxTeamVal : sumProj;
       }
       return { days, totals };
     }

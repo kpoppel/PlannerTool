@@ -56,6 +56,7 @@ Template - do not change :
 - Keep hierarchy branches in the same date or rank order when folded, using descendant dates or ranks for parents without their own.
 - Disable the Plan menu in cross-plan Team mode without changing the saved plan selection.
 - Keep off-scope team selections from appearing in the load graph or bringing deselected teams' task branches back into Team focus.
+- Let project and program views switch to participating teams' reservations without revealing lower-level tasks.
 - Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
 - Keep type-filtered tasks hidden instead of turning selected-plan work into other-plan context; deselecting all task types clears task rows and cards without changing calculated team demand.
 - Render the task list when restored views include context-only tasks without a configured owning plan.

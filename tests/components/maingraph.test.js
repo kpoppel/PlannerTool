@@ -200,7 +200,7 @@ describe('MainGraph Tests', () => {
         teams: [{ id: 't1', color: '#111' }],
         projects: [
           { id: 'p1', color: '#222', type: 'project', container_order: 0, container_types: ['project', 'team'] },
-          { id: 'leaf', type: 'team', container_order: 1 },
+          { id: 'leaf', type: 'team', container_order: 1, container_types: ['project', 'team'] },
         ],
         capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
@@ -362,7 +362,7 @@ describe('MainGraph Tests', () => {
         projects: [
           { id: 'p1', name: 'Program 1', type: 'program', color: '#333', container_order: 0, container_types: ['program', 'squad'] },
           { id: 'p2', name: 'Program 2', type: 'program', color: '#777', container_order: 0, container_types: ['program', 'squad'] },
-          { id: 'leaf', type: 'squad', container_order: 1 },
+          { id: 'leaf', type: 'squad', container_order: 1, container_types: ['program', 'squad'] },
         ],
         capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
         teamDailyCapacity: [], teamDailyCapacityMap: [],
@@ -396,7 +396,7 @@ describe('MainGraph Tests', () => {
         teams: [{ id: 't1', color: '#111' }, { id: 't2', color: '#222' }],
         projects: [
           { id: 'p1', name: 'Plan', color: '#333', type: 'project', container_order: 0, container_types: ['project', 'team'] },
-          { id: 'leaf', type: 'team', container_order: 1 },
+          { id: 'leaf', type: 'team', container_order: 1, container_types: ['project', 'team'] },
         ],
         capacityDates: months.map((month) => month.toISOString().slice(0, 10)),
         teamDailyCapacity: [],

@@ -1,5 +1,6 @@
 /** @typedef {import('../types.js').StoreApi} StoreApi */
 import { createScopeSelectors } from './scopeSelectors.js';
+import { getLowestContainerType } from '../shared/ownership.js';
 
 function toStringArray(values) {
   return Array.from(values).map((v) => String(v));
@@ -47,6 +48,21 @@ function getStoreHiddenTypes(state) {
  */
 export function createViewSelectors(store) {
   const scopeSelectors = createScopeSelectors(store);
+
+  function getGraphTypeOrders(includeTeamMode) {
+    const scopedPlanIds = new Set(scopeSelectors.getContextFeatures()
+      .map((feature) => String(feature.project)));
+    const types = new Map();
+    for (const project of store.getState().baseline.projects) {
+      if (!scopedPlanIds.has(String(project.id))) continue;
+      types.set(project.type, project.container_order);
+      if (includeTeamMode) {
+        types.set(getLowestContainerType(project), project.container_types.length - 1);
+      }
+    }
+    return types;
+  }
+
   const selectors = {
     getTimelineScale() {
       return getTimelineScaleFromStore(store.getState());
@@ -65,14 +81,7 @@ export function createViewSelectors(store) {
     },
 
     getAvailableGraphTypes() {
-      const state = store.getState();
-      const scopedPlanIds = new Set(scopeSelectors.getContextFeatures()
-        .map((feature) => String(feature.project)));
-      const types = new Map();
-      for (const project of state.baseline.projects) {
-        if (scopedPlanIds.has(String(project.id))) types.set(project.type, project.container_order);
-      }
-      return [...types.entries()].sort((first, second) => first[1] - second[1])
+      return [...getGraphTypeOrders(true)].sort((first, second) => first[1] - second[1])
         .map(([type]) => type);
     },
 
@@ -82,14 +91,15 @@ export function createViewSelectors(store) {
       if (available.length === 0) return null;
       const preferred = state.view.options.capacityViewMode;
       if (available.includes(preferred)) return preferred;
+      const scopedTypes = getGraphTypeOrders(false);
       const preferredPlan = state.baseline.projects.find((project) => project.type === preferred);
-      if (!preferredPlan) return available[available.length - 1];
-      const byType = new Map(state.baseline.projects.map((project) =>
-        [project.type, project.container_order]));
-      return [...available].sort((first, second) =>
-        Math.abs(byType.get(first) - preferredPlan.container_order) -
-        Math.abs(byType.get(second) - preferredPlan.container_order) ||
-        byType.get(second) - byType.get(first))[0];
+      return [...scopedTypes.keys()].sort((first, second) => {
+        const firstOrder = scopedTypes.get(first);
+        const secondOrder = scopedTypes.get(second);
+        if (!preferredPlan) return secondOrder - firstOrder;
+        return Math.abs(firstOrder - preferredPlan.container_order) -
+          Math.abs(secondOrder - preferredPlan.container_order) || secondOrder - firstOrder;
+      })[0];
     },
 
     getHighlightFeatureRelationMode() {

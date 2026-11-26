@@ -1,5 +1,9 @@
 import { featureHasEligibleParent } from './featureProjection.js';
 
+export function getLowestContainerType(plan) {
+  return plan.container_types.at(-1);
+}
+
 export function isLowestContainer(plan) {
   return plan.container_order === plan.container_types.length - 1;
 }

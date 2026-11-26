@@ -59,11 +59,12 @@ describe('application/selectors/viewSelectors', () => {
 
   it('offers graph levels from scoped task plans and resolves an unavailable preference', () => {
     const state = createInitialAppState();
+    const containerTypes = ['program', 'project', 'team'];
     state.baseline.projects = [
       { id: 'team-f', type: 'team', container_order: 2 },
       { id: 'project-a', type: 'project', container_order: 1 },
       { id: 'program-1', type: 'program', container_order: 0 },
-    ];
+    ].map((plan) => ({ ...plan, container_types: containerTypes }));
     state.baseline.teams = [{ id: 'team-f' }];
     state.baseline.features = [
       { id: 'program-task', project: 'program-1', parentId: null, state: 'Active',
@@ -76,17 +77,24 @@ describe('application/selectors/viewSelectors', () => {
     state.selection.projectIds = ['project-a'];
     const selectors = createViewSelectors({ getState: () => state });
 
-    expect(selectors.getAvailableGraphTypes()).toEqual(['project']);
+    expect(selectors.getAvailableGraphTypes()).toEqual(['project', 'team']);
+    expect(selectors.getEffectiveCapacityViewMode()).toBe('project');
     state.view.context.parent = true;
-    expect(selectors.getAvailableGraphTypes()).toEqual(['program', 'project']);
+    expect(selectors.getAvailableGraphTypes()).toEqual(['program', 'project', 'team']);
     state.view.context.child = true;
     expect(selectors.getAvailableGraphTypes()).toEqual(['program', 'project', 'team']);
     state.view.options.capacityViewMode = 'team';
     expect(selectors.getEffectiveCapacityViewMode()).toBe('team');
     state.view.context.child = false;
-    expect(selectors.getEffectiveCapacityViewMode()).toBe('project');
+    expect(selectors.getEffectiveCapacityViewMode()).toBe('team');
 
     state.view.context.parent = false;
+    state.selection.projectIds = ['program-1'];
+    expect(selectors.getAvailableGraphTypes()).toEqual(['program', 'team']);
+    expect(selectors.getEffectiveCapacityViewMode()).toBe('team');
+    state.view.options.capacityViewMode = null;
+    expect(selectors.getEffectiveCapacityViewMode()).toBe('program');
+
     state.selection.projectIds = ['team-f'];
     state.view.options.capacityViewMode = 'project';
 
@@ -101,8 +109,10 @@ describe('application/selectors/viewSelectors', () => {
   it('defaults to the deepest available custom container without a named type preference', () => {
     const state = createInitialAppState();
     state.baseline.projects = [
-      { id: 'root', type: 'portfolio', container_order: 0 },
-      { id: 'leaf', type: 'squad', container_order: 2 },
+      { id: 'root', type: 'portfolio', container_order: 0,
+        container_types: ['portfolio', 'program', 'squad'] },
+      { id: 'leaf', type: 'squad', container_order: 2,
+        container_types: ['portfolio', 'program', 'squad'] },
     ];
     state.baseline.features = [
       { id: 'parent', project: 'root', state: 'Active', capacity: [], relations: [] },

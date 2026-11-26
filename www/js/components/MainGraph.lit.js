@@ -3,7 +3,7 @@
 
 import { LitElement, html, css } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
-import { isLowestContainer } from '../application/shared/ownership.js';
+import { getLowestContainerType } from '../application/shared/ownership.js';
 import { ceilAllocation } from '../application/shared/teamAllocation.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
@@ -429,8 +429,7 @@ export class MainGraphLit extends LitElement {
     const selectedProjectIdSet = new Set(
       Array.from(selectedProjectIds).map((id) => String(id))
     );
-    const usingTeam = projects.some((plan) =>
-      plan.type === capacityViewMode && isLowestContainer(plan));
+    const usingTeam = projects.some((plan) => getLowestContainerType(plan) === capacityViewMode);
 
     const MONTH_WIDTH = this._getRenderMonthWidth();
 
