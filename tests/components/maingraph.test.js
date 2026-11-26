@@ -16,7 +16,7 @@ describe('MainGraph Tests', () => {
       expect(canvas).to.exist;
       expect(canvas.tagName).to.equal('CANVAS');
       expect(canvas.getAttribute('aria-label')).to.equal(
-        'Organization-wide capacity load. Sidebar display filters do not change this graph.'
+        'Organization-wide capacity load for the teams or plans in view.'
       );
       expect(canvas.hasAttribute('title')).to.equal(false);
       expect(el.renderGraph).to.be.a('function');

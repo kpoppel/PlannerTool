@@ -30,6 +30,7 @@ PlannerTool helps users:
 - Plan overview shows all display-eligible work in the selected scope, independently of team selection.
 - Ancestors and Descendant work include eligible hierarchy paths at every loaded level.
 - Team focus shows selected-team allocations, their connecting ancestors, and unallocated descendants.
+- Team selections outside the board's Teams control do not expand the in-scope task tree or add team lines to the graph.
 - Other-team-only descendant branches are excluded unless they contain selected-team work; connecting ancestors remain as context, without including unrelated siblings.
 - Scope options and schedule, allocation, hierarchy, relations, state and task-type filters still apply.
 - Hierarchy relevance never creates team allocations or changes assigned-task counts, capacity or cost calculations.

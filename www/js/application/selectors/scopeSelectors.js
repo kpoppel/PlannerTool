@@ -198,11 +198,11 @@ export function createScopeSelectors(store) {
   function getVisibleFeatures() {
     const state = store.getState();
     const contextFeatures = getContextFeatures();
-    const key = [contextFeatures, state.baseline.projects, state.selection.teamIds.join(','), state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','), state.selection.taskFilters, state.view.options];
+    const key = [contextFeatures, state.baseline.projects, state.baseline.teams, state.selection.teamIds.join(','), state.selection.featureStateNames.join(','), state.selection.taskTypeNames.join(','), state.selection.taskFilters, state.view.options];
     if (visibleCache && key.every((value, index) => value === visibleCacheKey[index])) return visibleCache;
     visibleCacheKey = key;
     visibleCache = getBoardFeatures(
-      contextFeatures, toIdSet(state.selection.teamIds), state.view.options.taskViewMode === 'team'
+      contextFeatures, getSelectedContextTeamIds(), state.view.options.taskViewMode === 'team'
     );
     return visibleCache;
   }
@@ -352,6 +352,11 @@ export function createScopeSelectors(store) {
       for (const entry of feature.capacity) teamIds.add(String(entry.team));
     }
     return Array.from(teamIds);
+  }
+
+  function getSelectedContextTeamIds() {
+    const selectedIds = toIdSet(store.getState().selection.teamIds);
+    return new Set(getContextTeams().filter((id) => selectedIds.has(id)));
   }
 
   function getTeamDrilldownIds() {

@@ -130,12 +130,18 @@ describe('MainGraph selector seam', () => {
     expect(subscribedEvents).toContain(TimelineEvents.SCALE_CHANGED);
   });
 
-  it('retains selected teams and plans even when Context has no work for them', async () => {
+  it('plots only selected teams in Context without removing the selected plan', async () => {
+    mockSel.selection.getSelectedTeamIds.mockReturnValueOnce(['t1', 'off-plan']);
+    mockSel.scope.getContextTeams.mockReturnValueOnce(['t1', 'unselected']);
+    const scoped = await fixture(html`<maingraph-lit></maingraph-lit>`);
+    await scoped.updateComplete;
+    expect(scoped._renderData.selectedTeamIds).toEqual(['t1']);
+
     mockSel.scope.getContextFeatures.mockReturnValueOnce([]);
     mockSel.scope.getContextTeams.mockReturnValueOnce([]);
     const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
     await el.updateComplete;
-    expect(el._renderData.selectedTeamIds).toEqual(['t1']);
+    expect(el._renderData.selectedTeamIds).toEqual([]);
     expect(el._renderData.selectedProjectIds).toEqual(['p1']);
   });
 

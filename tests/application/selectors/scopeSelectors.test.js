@@ -361,6 +361,28 @@ describe('application/selectors/scopeSelectors', () => {
     ]);
   });
 
+  it('does not reselect a deselected team through a group outside the board scope', () => {
+    const state = baseState({
+      view: { options: { taskViewMode: 'team' } },
+      selection: { teamIds: ['team-a', 'group'], taskTypeNames: [] },
+    });
+    state.baseline.teams = [
+      { id: 'group', kind: 'group', group_id: null },
+      { id: 'team-a', kind: 'team', group_id: 'group' },
+      { id: 'team-b', kind: 'team', group_id: 'group' },
+    ];
+    state.baseline.features = [
+      { id: 'connecting-parent', project: 'selected', parentId: null, capacity: [{ team: 'team-b' }] },
+      { id: 'selected-work', project: 'selected', parentId: 'connecting-parent', capacity: [{ team: 'team-a' }] },
+      { id: 'unrelated-work', project: 'selected', parentId: null, capacity: [{ team: 'team-b' }] },
+    ].map((feature) => ({ process_id: 'process', type: 'Feature', state: 'Active',
+      start: '2026-10-01', end: '2026-10-31', relations: [], ...feature }));
+    const selectors = createScopeSelectors(createStore(state));
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual([
+      'connecting-parent', 'selected-work',
+    ]);
+  });
+
   it('reconciles selected-plan pool, scope, presentation, filters and team focus', () => {
     const state = baseState({
       selection: { teamIds: ['team-a'] },

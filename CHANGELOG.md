@@ -47,6 +47,7 @@ Template - do not change :
 - Exclude credentials and broker authority from logical backups. Enrollment account restore needs fresh operator-reset keys; Entra accounts cannot be replaced.
 
 ### Fixed
+- Keep off-scope team selections from appearing in the load graph or bringing deselected teams' task branches back into Team focus.
 - Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
 - Keep type-filtered tasks hidden instead of turning selected-plan work into other-plan context; deselecting all task types clears task rows and cards without changing calculated team demand.
 - Render the task list when restored views include context-only tasks without a configured owning plan.

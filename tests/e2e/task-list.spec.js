@@ -790,8 +790,28 @@ test('team focus stays visible and the overview fits the graph height', async ({
   const teamMenu = overview.getByRole('button', { name: 'Team drill-down', exact: true });
   await teamMenu.click();
   await expect(page.getByRole('dialog', { name: 'Filters', exact: true })).toBeVisible();
-  await expect(page.locator('board-controls-menu .team-view-mode button[aria-pressed="true"]'))
-    .toHaveText('Selected teams');
+  const filters = page.locator('board-controls-menu');
+  const allPlanWork = filters.getByRole('button', { name: 'All plan work', exact: true });
+  const selectedTeams = filters.getByRole('button', { name: 'Selected teams', exact: true });
+  const platformTask = page.locator('task-list [data-task-id="task-2"]');
+  const experienceTask = page.locator('task-list [data-task-id="task-8"]');
+  await expect(selectedTeams).toHaveAttribute('aria-pressed', 'true');
+  await expect(platformTask).toHaveCount(0);
+  await expect(experienceTask).toHaveCount(1);
+  await allPlanWork.click();
+  await expect(platformTask).toHaveCount(1);
+  await expect(experienceTask).toHaveCount(1);
+  await selectedTeams.click();
+  await expect(platformTask).toHaveCount(0);
+  await expect(experienceTask).toHaveCount(1);
+  const platformFilter = filters.locator('.team-drilldown-row[title="Platform"]');
+  await expect(platformFilter).toHaveAttribute('aria-pressed', 'false');
+  await platformFilter.click();
+  await expect(platformTask).toHaveCount(1);
+  await expect(experienceTask).toHaveCount(1);
+  await platformFilter.click();
+  await expect(platformTask).toHaveCount(0);
+  await expect(experienceTask).toHaveCount(1);
   const menuBounds = await page.locator('board-controls-menu .controls').evaluate((controls) => ({
     bottom: controls.getBoundingClientRect().bottom,
     viewport: innerHeight,

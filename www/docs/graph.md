@@ -21,7 +21,7 @@ Plan records returned by the API carry `type`, `container_order`, and the full o
 Each task's allocation contributes to its own plan and to the plans on its single parent-task chain. A team serving two programs can therefore contribute to both, but work under one program is never charged to the other through the shared team plan. The Plan menu's "Connected to" focus only limits which plans are listed for browsing; it does not change the checked selection.
 
 ## Lowest-level graph
-Lowest-level graphs display the sum of raw capacity allocation calculated per day across scoped plans of the lowest configured type where the team has an allocation.
+Lowest-level graphs plot the selected teams shown in the board's Teams control. Each line shows that team's raw daily capacity allocation across all loaded plans, not just the work visible on the board.
 
 ### Here is an example:
 

@@ -120,7 +120,7 @@ export class MainGraphLit extends LitElement {
 
   render() {
     const graphScopeLabel =
-      'Organization-wide capacity load. Sidebar display filters do not change this graph.';
+      'Organization-wide capacity load for the teams or plans in view.';
     return html`
       <div class="graph-container">
         <canvas
@@ -203,7 +203,9 @@ export class MainGraphLit extends LitElement {
         ...sel.selection.getEffectiveSelectedProjectIds().map(String),
         ...sel.scope.getContextFeatures().map((feature) => String(feature.project)),
       ])];
-      const selectedTeamIds = sel.selection.getSelectedTeamIds();
+      const contextTeamIds = new Set(sel.scope.getContextTeams());
+      const selectedTeamIds = sel.selection.getSelectedTeamIds()
+        .filter((id) => contextTeamIds.has(String(id)));
       return {
         months,
         teams: sel.selection.getTeams(),
