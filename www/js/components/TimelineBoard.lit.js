@@ -55,7 +55,9 @@ export class TimelineBoard extends LitElement {
     this.boardZoom = 1;
     this._view = new StoreController(this, (state) => state.view.options);
     this._filterSelection = new StoreController(this, (state) => state.selection);
-    this._taskLayout = { height: 0, rows: [], groups: [], swimlanes: [], searchFeatures: [] };
+    this._taskLayout = {
+      height: 0, rows: [], hierarchyRows: null, groups: [], swimlanes: [], searchFeatures: [],
+    };
     this._query = '';
     this._searchStatus = { count: 0, index: 0 };
     this._resizeWidth = null;

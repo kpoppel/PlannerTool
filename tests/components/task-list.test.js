@@ -11,7 +11,7 @@ describe('Task list presentation', () => {
     state.baseline.projects = [{ id: 'release-plan', name: 'Release plan' }];
     store.setState(state, true);
     list = document.createElement('task-list');
-    list.layout = { height: 900, swimlanes: [], groups: [], rows: [
+    list.layout = { height: 900, hierarchyRows: null, swimlanes: [], groups: [], rows: [
       { id: 'group', isGroup: true, top: 0, height: 28, groupObj: { name: 'Release' }, collapsed: false },
       { id: '42', top: 28, height: 60, feature: { id: '42', title: 'Ship release', parentId: null,
         project: 'release-plan', type: 'Feature' }, groupColor: '#347ab3',
@@ -123,6 +123,58 @@ describe('Task list presentation', () => {
       .toBe('Context descendant');
     expect(list.shadowRoot.querySelector('[data-task-id="99"] .task-meta').textContent)
       .toBe('#99 · Parent #42');
+  });
+
+  it('indents and connects only direct relationships in the displayed branch', async () => {
+    const [group, root] = list.layout.rows;
+    const task = (id, parentId, top) => ({ ...root, id, top,
+      feature: { ...root.feature, id, parentId }, foldCount: 0 });
+    list.layout = { ...list.layout, rows: [group, root, task('43', '42', 88),
+      task('44', '43', 148), task('45', '42', 208), task('46', 'hidden', 268),
+      task('47', 'hidden', 328), task('48', '42', 388)] };
+    await list.updateComplete;
+
+    const row = (id) => list.shadowRoot.querySelector(`[data-task-id="${id}"]`);
+    const indent = (id) => row(id).style.getPropertyValue('--hierarchy-indent').trim();
+    expect(indent('43')).toBe(indent('45'));
+    expect(parseInt(indent('43'))).toBeGreaterThan(0);
+    expect(parseInt(indent('44'))).toBeGreaterThan(parseInt(indent('43')));
+    for (const id of ['42', '46', '47', '48']) expect(indent(id)).toBe('0px');
+    expect([...list.shadowRoot.querySelectorAll('.branch-elbow')]
+      .map((connector) => connector.dataset.childId)).toEqual(['43', '44', '45']);
+    expect(list.shadowRoot.querySelector('.level')).toBeNull();
+  });
+
+  it('places separate up and down reveal actions in one hierarchy gutter without selecting', async () => {
+    const [group, root] = list.layout.rows;
+    list.layout = { ...list.layout, rows: [group, { ...root, folded: true,
+      taskContext: [{ relation: 'parents', label: 'Parent', icon: '\u2191', open: false }] }] };
+    await list.updateComplete;
+
+    const parent = vi.fn();
+    const children = vi.fn();
+    const selected = vi.spyOn(cmd.feature, 'setSelectedFeature');
+    list.addEventListener('task-context-toggle', parent);
+    list.addEventListener('feature-fold-toggle', children);
+    const gutter = list.shadowRoot.querySelector('[data-task-id="42"] .hierarchy-controls');
+    gutter.querySelector('button[aria-label="Parent"]').click();
+    gutter.querySelector('button[aria-label="Expand Ship release"]').click();
+    expect(parent.mock.calls[0][0].detail).toEqual({ featureId: '42', relation: 'parents' });
+    expect(children.mock.calls[0][0].detail).toEqual({ featureId: '42' });
+    expect(selected).not.toHaveBeenCalled();
+  });
+
+  it('keeps branch alignment stable when a parent scrolls out of the virtual window', async () => {
+    const [, root] = list.layout.rows;
+    const child = { ...root, id: '43', top: 88,
+      feature: { ...root.feature, id: '43', parentId: '42' } };
+    list.layout = { ...list.layout, rows: [child], hierarchyRows: [root, child] };
+    await list.updateComplete;
+
+    expect(list.shadowRoot.querySelector('[data-task-id="42"]')).toBeNull();
+    expect(list.shadowRoot.querySelector('[data-task-id="43"]').style
+      .getPropertyValue('--hierarchy-indent')).toBe('12px');
+    expect(list.shadowRoot.querySelector('.branch-elbow[data-child-id="43"]')).not.toBeNull();
   });
 
   it('selects the whole row once and emits start-aligned navigation on a repeat click', async () => {

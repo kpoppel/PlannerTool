@@ -83,6 +83,7 @@ class FeatureBoard extends LitElement {
     this._overlayOffset = 0;
     this._renderGeneration = 0;
     this._fullRenderList = [];
+    this._taskHierarchyRows = null;
     this._boardHeight = 0;
     this._insertionCaretTop = null;
     this._viewportRenderScheduled = false;
@@ -94,16 +95,25 @@ class FeatureBoard extends LitElement {
 
   getTaskLayout({ full = false } = {}) {
     const window = this._taskWindow;
+    const hierarchyRow = (item) => ({
+      id: item.isGroup ? String(item.id) : String(item.feature.id),
+      height: item.isGroup ? 28 : laneHeight(),
+    });
+    if (!full && window !== undefined && this._taskHierarchyRows === null) {
+      this._taskHierarchyRows = this._fullRenderList.map((item) => ({
+        ...hierarchyRow(item), feature: item.feature, isGroup: item.isGroup,
+        top: item.top, laneTop: item.laneTop,
+      }));
+    }
     const rows = this._fullRenderList.filter((item) => full || window === undefined ||
       (item.top + (item.isGroup ? 28 : laneHeight()) >= window.top && item.top <= window.bottom));
     return {
       height: this._boardHeight,
-      rows: rows.map((item) => ({ ...item,
-        id: item.isGroup ? String(item.id) : String(item.feature.id),
-        height: item.isGroup ? 28 : laneHeight(),
+      rows: rows.map((item) => ({ ...item, ...hierarchyRow(item),
         collapsed: item.isGroup && this._collapsedGroups.has(String(item.id)) &&
           !this._revealedGroups.has(String(item.id)),
       })),
+      hierarchyRows: full || window === undefined ? null : this._taskHierarchyRows,
       swimlanes: this._swimlanes,
       groups: this._groupBands,
       searchFeatures: this._taskSearchFeatures === undefined ? [] : this._taskSearchFeatures,
@@ -1301,6 +1311,7 @@ class FeatureBoard extends LitElement {
     this._renderGeneration += 1;
     const generation = this._renderGeneration;
     this._fullRenderList = renderList;
+    this._taskHierarchyRows = null;
     this._taskSearchFeatures = renderList.filter((item) => !item.isGroup).map((item) => item.feature);
     this._taskWindow = undefined;
 

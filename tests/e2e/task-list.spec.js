@@ -131,8 +131,11 @@ test('keeps the clicked task in view after an inline parent reveal reflows date-
   });
   const task = page.locator('task-list [data-task-id="task-28"]');
   const button = task.getByRole('button', { name: 'Parent', exact: true });
+  const connector = page.locator('task-list .branch-elbow[data-child-id="task-28"]');
   const scroll = page.locator('timeline-board #scroll-container');
   await expect(button).toBeVisible();
+  await expect(task).toHaveCSS('--hierarchy-indent', '0px');
+  await expect(connector).toHaveCount(0);
   const bottom = await task.evaluate((row) => row.getBoundingClientRect().bottom);
   await scroll.evaluate((container, rowBottom) => {
     container.scrollTop += rowBottom - container.getBoundingClientRect().bottom + 4;
@@ -142,6 +145,8 @@ test('keeps the clicked task in view after an inline parent reveal reflows date-
   const before = await scroll.evaluate((container) => ({ top: container.scrollTop, left: container.scrollLeft }));
   await button.click();
   await expect(page.locator('task-list [data-task-id="earlier-parent"]')).toBeVisible();
+  await expect(task).toHaveCSS('--hierarchy-indent', '12px');
+  await expect(connector).toBeVisible();
   await expect(task).toBeInViewport({ ratio: 0.99 });
   await expect.poll(() => scroll.evaluate((container) => container.scrollTop)).toBeGreaterThan(before.top);
   expect(await scroll.evaluate((container) => container.scrollLeft)).toBe(before.left);
@@ -213,7 +218,8 @@ test('reveals cross-plan task context and switches to cross-plan team work', asy
   await expect(lanes).toHaveCount(0);
   await expect(rows.nth(0)).toHaveAttribute('data-task-id', 'parent');
   await expect(rows.nth(1)).toHaveAttribute('data-task-id', 'focus');
-  await expect(row('focus').locator('.level')).toHaveText('1');
+  await expect(row('focus')).toHaveCSS('--hierarchy-indent', '12px');
+  await expect(page.locator('task-list .branch-elbow[data-child-id="focus"]')).toBeVisible();
   await expect(row('parent').locator('.task-meta')).toContainText('Peer plan');
   await expect(row('focus').getByRole('button', { name: 'Parent', exact: true })).toHaveCount(0);
   await expect(row('child')).toHaveCount(0);
@@ -1263,7 +1269,7 @@ test('search navigates without filtering and task selection opens read-only deta
   await expect(page.locator('feature-card-lit[data-feature-id="task-6"]')).toHaveClass(/search-highlight/);
   await expect(page.locator('task-list [data-task-id]')).toHaveCount(count);
   const row = page.locator('task-list [data-task-id="task-6"]');
-  await expect(row.locator('.level')).toHaveText('6');
+  await expect(page.locator('task-list .branch-elbow[data-child-id="task-6"]')).toBeVisible();
   await expect(row.locator('.task-title')).toHaveAttribute('title', /Delivery 0.*Deeply nested/);
   await row.locator('.task-title').click();
   await expect(page.locator('details-panel .panel')).toBeVisible();
