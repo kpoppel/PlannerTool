@@ -410,12 +410,12 @@ class FeatureBoard extends LitElement {
       const open = this._toggleTaskReveal(id, 'children');
       if (open) this._foldedFeatures.delete(id);
       else this._foldedFeatures.add(id);
-      this.renderFeatures();
-      return;
+    } else if (this._foldedFeatures.has(id)) {
+      this._foldedFeatures.delete(id);
+    } else {
+      this._foldedFeatures.add(id);
     }
-    if (this._foldedFeatures.has(id)) this._foldedFeatures.delete(id);
-    else this._foldedFeatures.add(id);
-    this.renderFeatures();
+    return this._renderKeepingTaskInView(id);
   }
 
   _toggleTaskReveal(id, relation) {
@@ -429,8 +429,32 @@ class FeatureBoard extends LitElement {
 
   _onTaskContextToggle(event) {
     const { featureId, relation } = event.detail;
-    this._toggleTaskReveal(String(featureId), relation);
-    this.renderFeatures();
+    const id = String(featureId);
+    this._toggleTaskReveal(id, relation);
+    return this._renderKeepingTaskInView(id);
+  }
+
+  async _renderKeepingTaskInView(id) {
+    await this.renderFeatures();
+    await this.updateComplete;
+    const row = this._fullRenderList.find((item) => !item.isGroup && String(item.feature.id) === id);
+    if (row === undefined) return;
+
+    const scrollContainer = findInBoard('#scroll-container');
+    const header = findInBoard('timeline-lit');
+    // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
+    if (scrollContainer === null || header === null) return;
+
+    const rowTop = this.getBoundingClientRect().top + row.top;
+    const visibleTop = header.getBoundingClientRect().bottom;
+    const visibleBottom = scrollContainer.getBoundingClientRect().top
+      + scrollContainer.clientTop + scrollContainer.clientHeight;
+    const rowBottom = rowTop + laneHeight();
+    if (rowTop < visibleTop) {
+      scrollContainer.scrollTop += Math.floor(rowTop - visibleTop);
+    } else if (rowBottom > visibleBottom) {
+      scrollContainer.scrollTop += Math.ceil(rowBottom - visibleBottom);
+    }
   }
 
   foldHierarchy(action) {
@@ -646,17 +670,37 @@ class FeatureBoard extends LitElement {
 
   // ---- Sorting / filtering helpers ----
 
-  _sortByRank(features) {
-    return features.sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
-  }
-
-  _sortByDate(features) {
-    return features.sort((a, b) => {
-      if (!a.start && !b.start) return 0;
-      if (!a.start) return 1;
-      if (!b.start) return -1;
-      return a.start.localeCompare(b.start);
-    });
+  _branchComparator(sortMode, contextFor) {
+    const ownKey = sortMode === 'rank'
+      ? (feature) => Number.isInteger(feature.originalRank) ? feature.originalRank : null
+      : (feature) => feature.start ? feature.start : null;
+    const compareKeys = (left, right) => {
+      if (left === right) return 0;
+      if (left === null) return 1;
+      if (right === null) return -1;
+      return left < right ? -1 : 1;
+    };
+    const branchKeys = new Map();
+    const keyFor = (feature) => {
+      const id = String(feature.id);
+      if (branchKeys.has(id)) return branchKeys.get(id);
+      let key = ownKey(feature);
+      if (key === null) {
+        const seen = new Set([id]);
+        const pending = [...contextFor(id).children];
+        for (const child of pending) {
+          const childId = String(child.id);
+          if (seen.has(childId)) continue;
+          seen.add(childId);
+          const childKey = ownKey(child);
+          if (compareKeys(childKey, key) < 0) key = childKey;
+          for (const descendant of contextFor(childId).children) pending.push(descendant);
+        }
+      }
+      branchKeys.set(id, key);
+      return key;
+    };
+    return (left, right) => compareKeys(keyFor(left), keyFor(right));
   }
 
   /**
@@ -679,17 +723,14 @@ class FeatureBoard extends LitElement {
    * Roots are items with no parentId. Their children (and grandchildren, etc.)
    * are inserted in sorted order immediately after each parent.
    */
-  _orderFeaturesHierarchically(sourceFeatures, sortMode) {
-    const sortFn =
-      sortMode === 'rank' ? this._sortByRank.bind(this) : this._sortByDate.bind(this);
+  _orderFeaturesHierarchically(sourceFeatures, compareBranches, compareRoots) {
     const childrenMap = this._buildChildrenMap(sourceFeatures);
-    childrenMap.forEach((children) => sortFn(children));
+    childrenMap.forEach((children) => children.sort(compareBranches));
 
     // Roots are items with no parentId present in this dataset
     const sourceIds = new Set(sourceFeatures.map((f) => f.id));
-    const roots = sortFn(
-      sourceFeatures.filter((f) => !f.parentId || !sourceIds.has(f.parentId))
-    );
+    const roots = sourceFeatures.filter((feature) => !feature.parentId || !sourceIds.has(feature.parentId));
+    roots.sort(compareRoots);
 
     const ordered = [];
     const visited = new Set();
@@ -761,7 +802,9 @@ class FeatureBoard extends LitElement {
       if (!taskContext.has(id)) taskContext.set(id, sel.scope.getTaskContext(id));
       return taskContext.get(id);
     };
+    const compareBranches = this._branchComparator(sel.view.getFeatureSortMode(), contextFor);
     const revealed = new Map();
+    const revealAnchors = new Map();
     if (reviewContext === null) {
       const seen = new Set(ordinaryIds);
       const pending = [...ordinaryIds];
@@ -773,6 +816,7 @@ class FeatureBoard extends LitElement {
             if (seen.has(target)) continue;
             seen.add(target);
             revealed.set(target, feature);
+            revealAnchors.set(target, revealAnchors.has(id) ? revealAnchors.get(id) : id);
             pending.push(target);
           }
         }
@@ -796,8 +840,8 @@ class FeatureBoard extends LitElement {
     const groupedOwnerPlanByFeatureId = getDisplayGroupOwnerPlanByFeatureId(displayGroups);
     const candidateSwimlanes = buildSwimlaneList(
       selectedProjects,
-      visibleFeatures,
-      revealed.size > 0 || sel.view.getTaskViewMode() === 'team-all-plans'
+      visibleFeatures.filter((feature) => !revealAnchors.has(String(feature.id))),
+      sel.view.getTaskViewMode() === 'team-all-plans'
         ? { ...context, dependency: true } : context,
       virtualIds
     );
@@ -812,6 +856,23 @@ class FeatureBoard extends LitElement {
       const members = group.members === undefined ? [] : group.members;
       for (const id of members) groupByMember.set(String(id), String(group.id));
     }
+    for (const [id, anchorId] of revealAnchors) {
+      if (groupByMember.has(anchorId)) groupByMember.set(id, groupByMember.get(anchorId));
+      else groupByMember.delete(id);
+    }
+    const inlineMembersByGroup = new Map();
+    for (const id of revealAnchors.keys()) {
+      if (!groupByMember.has(id)) continue;
+      const groupId = groupByMember.get(id);
+      if (!inlineMembersByGroup.has(groupId)) inlineMembersByGroup.set(groupId, []);
+      inlineMembersByGroup.get(groupId).push(id);
+    }
+    const layoutGroups = revealAnchors.size === 0 ? displayGroups : displayGroups.map((group) => {
+      const groupId = String(group.id);
+      const members = group.members.filter((id) => !revealAnchors.has(String(id)));
+      if (inlineMembersByGroup.has(groupId)) members.push(...inlineMembersByGroup.get(groupId));
+      return { ...group, members };
+    });
     const revealedGroups = new Set();
     if (reviewContext !== null) {
       for (const featureId of reviewContext.featureIds) {
@@ -835,17 +896,25 @@ class FeatureBoard extends LitElement {
       return false;
     };
     const allFeaturesById = new Map(rawFeatures.map((feature) => [String(feature.id), feature]));
+    const ordinaryById = new Map(ordinaryFeatures.map((feature) => [String(feature.id), feature]));
+    const presentationLane = (feature, virtual = false) => {
+      const id = String(feature.id);
+      if (revealAnchors.has(id)) {
+        const anchorId = revealAnchors.get(id);
+        return assignFeatureToSwimlane(ordinaryById.get(anchorId), candidateSwimlanes,
+          allFeaturesById, context, groupedOwnerPlanByFeatureId.get(anchorId));
+      }
+      return assignFeatureToSwimlane(feature, candidateSwimlanes, allFeaturesById, context,
+        groupedOwnerPlanByFeatureId.get(id), virtual);
+    };
     const canonicalSection = (feature) => {
-      const lane = swimlaneActive ? assignFeatureToSwimlane(feature, candidateSwimlanes,
-        allFeaturesById, context, groupedOwnerPlanByFeatureId.get(String(feature.id))) : 'board';
+      const lane = swimlaneActive ? presentationLane(feature) : 'board';
       return `${lane}:${groupByMember.get(String(feature.id))}`;
     };
     const presentedIds = new Set(visibleFeatures.map((feature) => String(feature.id)));
     const foldedVirtualCounts = new Map();
     const presentationSection = (feature) => {
-      const lane = swimlaneActive ? assignFeatureToSwimlane(feature, candidateSwimlanes,
-        allFeaturesById, context, groupedOwnerPlanByFeatureId.get(String(feature.id)),
-        virtualIds.has(String(feature.id))) : 'board';
+      const lane = swimlaneActive ? presentationLane(feature, virtualIds.has(String(feature.id))) : 'board';
       return `${lane}:${groupByMember.get(String(feature.id))}`;
     };
     if (!isPacked && reviewContext === null) {
@@ -876,19 +945,27 @@ class FeatureBoard extends LitElement {
     const foldableFeatures = visibleFeatures.filter(
       (feature) => !groupIsCollapsed(groupByMember.get(String(feature.id)))
     );
+    let compareRoots = compareBranches;
+    if (revealAnchors.size > 0) {
+      const positions = new Map([...visibleFeatures].sort(compareBranches).map((feature, index) =>
+        [String(feature.id), index]));
+      const position = (feature) => {
+        const id = String(feature.id);
+        const anchorId = revealAnchors.get(id);
+        return positions.get(positions.has(anchorId) ? anchorId : id);
+      };
+      compareRoots = (left, right) => position(left) - position(right);
+    }
     const sections = new Map();
     for (const feature of foldableFeatures) {
-      const lane = swimlaneActive ? assignFeatureToSwimlane(
-        feature, candidateSwimlanes, allFeaturesById, context,
-        groupedOwnerPlanByFeatureId.get(String(feature.id)), virtualIds.has(String(feature.id))
-      ) : 'board';
+      const lane = swimlaneActive ? presentationLane(feature, virtualIds.has(String(feature.id))) : 'board';
       const groupId = groupByMember.get(String(feature.id));
       sections.set(String(feature.id), `${lane}:${groupId ? groupId : 'ungrouped'}`);
     }
     const foldedFeatures = reviewContext === null ? this._foldedFeatures
       : new Set([...this._foldedFeatures].filter((id) => !reviewContext.featureIds.has(id)));
     this._foldModel = isPacked ? null : buildFoldModel(
-      this._orderFeaturesHierarchically(foldableFeatures, sel.view.getFeatureSortMode()),
+      this._orderFeaturesHierarchically(foldableFeatures, compareBranches, compareRoots),
       sections,
       foldedFeatures,
       sel.feature.getWorkItemDisplay()
@@ -943,10 +1020,6 @@ class FeatureBoard extends LitElement {
       // independently. Bands are stacked vertically with a gap between them.
       // -----------------------------------------------------------------------
 
-      // Build a lookup for parent-chain walking in assignFeatureToSwimlane.
-      // Use rawFeatures (pre-dedup, full set) so cross-project parent references resolve.
-      const allFeaturesById = new Map(rawFeatures.map((f) => [String(f.id), f]));
-
       const swimlanes = candidateSwimlanes;
 
       // Group visible features into per-swimlane buckets
@@ -956,13 +1029,7 @@ class FeatureBoard extends LitElement {
         return virtualIds.has(id) && groupIsCollapsed(groupByMember.get(id));
       });
       for (const feature of [...displayedFeatures, ...collapsedOtherPlanMembers]) {
-        const sid = assignFeatureToSwimlane(
-          feature,
-          swimlanes,
-          allFeaturesById,
-          context,
-          groupedOwnerPlanByFeatureId.get(String(feature.id)), virtualIds.has(String(feature.id))
-        );
+        const sid = presentationLane(feature, virtualIds.has(String(feature.id)));
         const bucket = buckets.get(sid) ?? buckets.get(swimlanes[0]?.id);
         if (bucket) bucket.push(feature);
       }
@@ -1058,24 +1125,22 @@ class FeatureBoard extends LitElement {
 
         // Use group layout for plan/expanded-plan swimlanes that have groups.
         const planGroups = (swimlane.type === 'plan' || swimlane.type === 'expanded-plan')
-          ? deriveDisplayGroupsForFeatures(displayGroups, bucket, swimlane.id)
+          ? deriveDisplayGroupsForFeatures(layoutGroups, bucket, swimlane.id)
           : [];
 
         if (planGroups.length > 0) {
           // Group-aware layout: group pills + packed or flat features per group
           const orderedBucket = this._orderFeaturesHierarchically(
             bucket,
-            sel.view.getFeatureSortMode()
+            compareBranches, compareRoots
           );
           const { items: groupItems, totalHeight: gHeight, bands: groupBandItems } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
             sel.view.getCondensedCards(), isPacked, collapsedGroups,
             {
               preserveFeatureOrder: true,
-              dateFeatures: visibleFeatures.filter((feature) => assignFeatureToSwimlane(
-                feature, swimlanes, allFeaturesById, context,
-                groupedOwnerPlanByFeatureId.get(String(feature.id)), virtualIds.has(String(feature.id))
-              ) === swimlane.id),
+              dateFeatures: visibleFeatures.filter((feature) =>
+                presentationLane(feature, virtualIds.has(String(feature.id))) === swimlane.id),
             }
           );
           for (const item of groupItems) {
@@ -1114,7 +1179,7 @@ class FeatureBoard extends LitElement {
           // Per-swimlane flat hierarchical sort (no groups)
           const ordered = this._orderFeaturesHierarchically(
             bucket,
-            sel.view.getFeatureSortMode()
+            compareBranches, compareRoots
           );
           let laneIndex = 0;
           for (const feature of ordered) {
@@ -1169,22 +1234,17 @@ class FeatureBoard extends LitElement {
       // -----------------------------------------------------------------------
       this._swimlanes = [];
 
-      // Order features once; used by both group and flat paths.
-      const ordered = this._orderFeaturesHierarchically(
-        sourceFeatures,
-        sel.view.getFeatureSortMode()
-      );
       // Scope groups to the currently-selected plans only.  getAllGroups()
       // returns groups from ALL cached plans (including stale entries from plans
       // no longer selected), which would show empty group pills from other plans.
-      const allGroups = displayGroups;
+      const allGroups = layoutGroups;
 
       // Always go through the group band layout, even with zero groups: it is
       // what stamps the shared ordering keys onto every row, which the group
       // insertion caret needs in order to point between two ungrouped tasks.
       const visibleFiltered = this._orderFeaturesHierarchically(
         displayedFeatures,
-        sel.view.getFeatureSortMode()
+        compareBranches, compareRoots
       );
       const { items: groupItems, totalHeight: gHeight, bands: groupBandItems } = buildGroupBandItems(
         visibleFiltered, allGroups, allGroups.length > 0 ? 0 : this._overlayOffset, months,

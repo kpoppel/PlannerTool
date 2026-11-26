@@ -35,7 +35,8 @@ export class TaskList extends LitElement {
     .task-meta { display: block; margin-top: calc(1px * var(--board-zoom, 1)); line-height: 1.1;
       font-size: calc(10px * var(--board-zoom, 1));
       color: #626d78; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .task-type { flex: 0 0 calc(16px * var(--board-zoom, 1)); display: inline-flex; }
+    .task-type { flex: 0 0 calc(16px * var(--board-zoom, 1)); display: inline-flex;
+      margin-inline-start: var(--hierarchy-indent); }
     .task-type svg { width: 100%; height: calc(16px * var(--board-zoom, 1)); }
     button:focus-visible { outline: 2px solid #347ab3; outline-offset: -2px; }
     .level { flex: 0 0 24px; text-align: center; color: #626d78; font-size: 10px; }
@@ -173,6 +174,7 @@ export class TaskList extends LitElement {
             ${folded ? html`&#9656;` : html`&#9662;`}</button>
           <span class="level" title=${ancestry.join(' / ')}>${ancestry.length > 0 ? ancestry.length : ''}</span>
           ${group ? '' : html`<span class="task-type" title=${row.feature.type} role="img"
+            style="--hierarchy-indent: ${Math.min(ancestry.length, 3) * 8}px"
             aria-label=${row.feature.type}>${getIconTemplate(row.feature.type)}</span>`}
           <div class="task-copy"><button class="task-title" title=${[...ancestry, title].join(' / ')}>${title}</button>
             ${group ? '' : html`<span class="task-meta" title=${metadata.join(' - ')}>${metadata.join(' \u00b7 ')}</span>`}

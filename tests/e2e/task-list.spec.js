@@ -49,6 +49,138 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('task-list [data-task-id="task-0"]')).toBeVisible();
 });
 
+for (const mode of ['date', 'rank']) {
+  test(`keeps an unscheduled branch in place when revealing or folding children in ${mode} order`, async ({ page }) => {
+    await page.evaluate((sortMode) => {
+      window.taskBoardStore.setState((state) => {
+        const [base] = state.baseline.features;
+        const [plan] = state.baseline.projects;
+        const features = [
+          { ...base, id: 'later', start: '2026-10-20', originalRank: 30 },
+          { ...base, id: 'branch', title: 'Branch', start: null, end: null },
+          { ...base, id: 'earlier', start: '2026-10-01', originalRank: 10 },
+          { ...base, id: 'dated-child', project: 'peer', parentId: 'branch', type: 'Feature',
+            start: '2026-10-10', originalRank: 20 },
+          { ...base, id: 'conflicting-child', parentId: 'later', type: 'Feature',
+            start: '2026-09-01', originalRank: 5 },
+        ];
+        return { ...state, baseline: { ...state.baseline, features,
+          projects: [plan, { ...plan, id: 'peer', name: 'Peer' }] } };
+      });
+      window.taskBoardCommands.view.setFeatureSortMode(sortMode);
+      window.refreshTaskBoard();
+    }, mode);
+
+    const rows = page.locator('task-list [data-task-id]');
+    const branch = page.locator('task-list [data-task-id="branch"]');
+    const order = () => rows.evaluateAll((items) => items.map((item) => item.dataset.taskId));
+    await expect.poll(order).toEqual(['earlier', 'branch', 'later', 'conflicting-child']);
+    await branch.getByRole('button', { name: 'Expand Branch' }).click();
+    await expect.poll(order).toEqual(['earlier', 'branch', 'dated-child', 'later', 'conflicting-child']);
+    await branch.getByRole('button', { name: 'Collapse Branch' }).click();
+    await expect.poll(order).toEqual(['earlier', 'branch', 'later', 'conflicting-child']);
+  });
+}
+
+for (const mode of ['date', 'rank']) {
+  test(`keeps a revealed parent anchored when its originating child is folded in ${mode} order`, async ({ page }) => {
+    await page.evaluate((sortMode) => {
+      window.taskBoardStore.setState((state) => {
+        const [base] = state.baseline.features;
+        const [plan] = state.baseline.projects;
+        const features = [
+          { ...base, id: 'before', start: '2026-10-01', originalRank: 10 },
+          { ...base, id: 'origin', type: 'Feature', parentId: 'parent',
+            start: '2026-10-10', originalRank: 20 },
+          { ...base, id: 'after', start: '2026-10-20', originalRank: 30 },
+          { ...base, id: 'parent', title: 'Revealed parent', project: 'peer',
+            start: null, end: null, originalRank: 40 },
+        ];
+        return { ...state, baseline: { ...state.baseline, features,
+          projects: [plan, { ...plan, id: 'peer', name: 'Peer' }] } };
+      });
+      window.taskBoardCommands.view.setFeatureSortMode(sortMode);
+      window.refreshTaskBoard();
+    }, mode);
+
+    const rows = page.locator('task-list [data-task-id]');
+    const parent = page.locator('task-list [data-task-id="parent"]');
+    const order = () => rows.evaluateAll((items) => items.map((item) => item.dataset.taskId));
+    await page.locator('task-list [data-task-id="origin"]')
+      .getByRole('button', { name: 'Parent', exact: true }).click();
+    await expect.poll(order).toEqual(['before', 'parent', 'origin', 'after']);
+    await parent.getByRole('button', { name: 'Collapse Revealed parent' }).click();
+    await expect.poll(order).toEqual(['before', 'parent', 'after']);
+    await parent.getByRole('button', { name: 'Expand Revealed parent' }).click();
+    await expect.poll(order).toEqual(['before', 'parent', 'origin', 'after']);
+  });
+}
+
+test('keeps the clicked task in view after an inline parent reveal reflows date-sorted rows', async ({ page }) => {
+  await page.evaluate(() => {
+    window.taskBoardStore.setState((state) => {
+      const features = state.baseline.features.map((feature) => feature.id === 'task-28'
+        ? { ...feature, parentId: 'earlier-parent' } : feature);
+      const [plan] = state.baseline.projects;
+      features.push({ ...features[0], id: 'earlier-parent', project: 'program', start: '2026-09-01' });
+      return { ...state, baseline: { ...state.baseline, features,
+        projects: [plan, { ...plan, id: 'program', name: 'Program' }] } };
+    });
+    window.taskBoardCommands.view.setFeatureSortMode('date');
+    window.refreshTaskBoard();
+  });
+  const task = page.locator('task-list [data-task-id="task-28"]');
+  const button = task.getByRole('button', { name: 'Parent', exact: true });
+  const scroll = page.locator('timeline-board #scroll-container');
+  await expect(button).toBeVisible();
+  const bottom = await task.evaluate((row) => row.getBoundingClientRect().bottom);
+  await scroll.evaluate((container, rowBottom) => {
+    container.scrollTop += rowBottom - container.getBoundingClientRect().bottom + 4;
+    container.scrollLeft = 125;
+  }, bottom);
+  await expect(task).toBeInViewport({ ratio: 0.99 });
+  const before = await scroll.evaluate((container) => ({ top: container.scrollTop, left: container.scrollLeft }));
+  await button.click();
+  await expect(page.locator('task-list [data-task-id="earlier-parent"]')).toBeVisible();
+  await expect(task).toBeInViewport({ ratio: 0.99 });
+  await expect.poll(() => scroll.evaluate((container) => container.scrollTop)).toBeGreaterThan(before.top);
+  expect(await scroll.evaluate((container) => container.scrollLeft)).toBe(before.left);
+});
+
+test('keeps a revealed parent inside the originating group with multiple plans selected', async ({ page }) => {
+  await page.evaluate(() => {
+    window.taskBoardStore.setState((state) => {
+      const [base] = state.baseline.features;
+      const [plan] = state.baseline.projects;
+      const features = [
+        { ...base, id: 'focus', type: 'Feature', parentId: 'parent' },
+        { ...base, id: 'parent', project: 'program', type: 'Epic', parentId: null },
+        { ...base, id: 'other-task', project: 'other', parentId: null },
+      ];
+      const projects = [plan, { ...plan, id: 'other', name: 'Other' },
+        { ...plan, id: 'program', name: 'Program' }];
+      const groups = { byPlanId: { plan: [{ id: 'focus-group', plan_id: 'plan', name: 'Focus group',
+        members: ['focus'], rank: -1024, parent_id: null, color: '#298864' }] },
+        loadedPlanIds: ['plan', 'other'],
+      };
+      return { ...state, baseline: { ...state.baseline, features, projects }, groups };
+    });
+    window.taskBoardCommands.selection.setProjectSelected('other', true);
+    window.reloadTaskGroups();
+  });
+
+  const rows = page.locator('task-list [data-task-id]');
+  const focus = page.locator('task-list [data-task-id="focus"]');
+  const lanes = page.locator('feature-board .swimlane-label');
+  await expect(lanes).toHaveCount(2);
+  await focus.getByRole('button', { name: 'Parent', exact: true }).click();
+  await expect(lanes).toHaveCount(2);
+  await expect(rows.nth(0)).toHaveAttribute('data-task-id', 'focus-group');
+  await expect(rows.nth(1)).toHaveAttribute('data-task-id', 'parent');
+  await expect(rows.nth(2)).toHaveAttribute('data-task-id', 'focus');
+  await expect(rows.nth(3)).toHaveAttribute('data-task-id', 'other-task');
+});
+
 test('reveals cross-plan task context and switches to cross-plan team work', async ({ page }) => {
   await page.evaluate(() => {
     const store = window.taskBoardStore;
@@ -73,13 +205,22 @@ test('reveals cross-plan task context and switches to cross-plan team work', asy
   });
 
   const row = (id) => page.locator(`task-list [data-task-id="${id}"]`);
+  const rows = page.locator('task-list [data-task-id]');
+  const lanes = page.locator('feature-board .swimlane-label');
   await expect(row('parent')).toHaveCount(0);
   await row('focus').getByRole('button', { name: 'Parent', exact: true }).click();
   await expect(row('parent')).toBeVisible();
+  await expect(lanes).toHaveCount(0);
+  await expect(rows.nth(0)).toHaveAttribute('data-task-id', 'parent');
+  await expect(rows.nth(1)).toHaveAttribute('data-task-id', 'focus');
+  await expect(row('focus').locator('.level')).toHaveText('1');
+  await expect(row('parent').locator('.task-meta')).toContainText('Peer plan');
   await expect(row('focus').getByRole('button', { name: 'Parent', exact: true })).toHaveCount(0);
   await expect(row('child')).toHaveCount(0);
   await row('focus').getByRole('button', { name: 'Expand focus' }).click();
   await expect(row('child')).toBeVisible();
+  await expect(lanes).toHaveCount(0);
+  await expect(rows.nth(2)).toHaveAttribute('data-task-id', 'child');
   await expect(row('focus').getByRole('button', { name: 'Linked tasks' })).toHaveCount(0);
   await expect(row('linked')).toHaveCount(0);
 

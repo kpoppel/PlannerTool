@@ -51,6 +51,8 @@ Template - do not change :
 - Exclude credentials and broker authority from logical backups. Enrollment account restore needs fresh operator-reset keys; Entra accounts cannot be replaced.
 
 ### Fixed
+- Reveal a task's parent or children inline without opening a source-plan swimlane or losing sight of the clicked task.
+- Keep hierarchy branches in the same date or rank order when folded, using descendant dates or ranks for parents without their own.
 - Disable the Plan menu in cross-plan Team mode without changing the saved plan selection.
 - Keep off-scope team selections from appearing in the load graph or bringing deselected teams' task branches back into Team focus.
 - Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
