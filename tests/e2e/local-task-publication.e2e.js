@@ -101,15 +101,18 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   const editDialog = page.getByRole('dialog', { name: 'Edit Task' });
   await editDialog.getByLabel('State').selectOption('Refine');
   await editDialog.getByLabel('Description').fill('Edited in Chromium');
-  await editDialog.getByRole('spinbutton', { name: 'Rank' }).fill('512');
+  await expect(editDialog.getByRole('spinbutton', { name: 'Rank' })).toHaveCount(0);
   await editDialog.getByRole('button', { name: 'Save task' }).click();
   await expect(editDialog).not.toBeVisible();
   await expect.poll(async () => (await (await page.request.get('/api/tasks')).json())
     .find((task) => task.id === createdTask.id)).toMatchObject({ state: 'Refine', description: 'Edited in Chromium',
-      number: 3, rank: 512 });
+      number: 3, rank: createdTask.rank });
 
   await panel.getByRole('button', { name: 'Edit source task' }).click();
-  await editDialog.getByLabel('Move before').selectOption(child.id);
+  await editDialog.getByRole('searchbox', { name: 'Search tasks' }).fill(`#${child.number}`);
+  const destination = editDialog.getByLabel('Move before');
+  await expect(destination.locator('option').filter({ hasText: /^#\d+/ })).toHaveCount(1);
+  await destination.selectOption(String(child.number));
   await editDialog.getByRole('button', { name: 'Save task' }).click();
   await expect(editDialog).not.toBeVisible();
   const rankedTasks = await (await page.request.get('/api/tasks')).json();

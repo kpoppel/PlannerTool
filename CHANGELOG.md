@@ -16,8 +16,8 @@ Template - do not change :
 ## [v5.2.0] - unreleased
 ### Added
 - Read and create local tasks from configured projects, workflows and field schemas, including scheduling presets, plan markers and task history.
-- Give Local tasks short sequential reference numbers while preserving existing task links, and let users edit the persisted board rank independently.
-- Move Local tasks before another task or to the end of the global order. Redistribute ranks automatically when no rank fits between adjacent tasks.
+- Give Local tasks short sequential reference numbers while preserving existing task links.
+- Move Local tasks before another task found by number or title, or to the end of the global order. The server manages rank automatically.
 - Edit and soft-delete local tasks, and publish scenario changes and relationships atomically. Independent edits merge; overlapping changes are shown for review before retrying.
 - Restart the managed server from Data Sources after saving a switch between Azure DevOps and local tasks; with other launchers (such as the development server) the switch is saved and takes effect after a manual restart.
 - Configure Local projects, task types, field schemas, workflows, iterations, and plan markers in the Local admin hub. Create tasks from the Plan menu and edit or delete source tasks from Details.

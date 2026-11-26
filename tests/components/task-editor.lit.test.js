@@ -26,7 +26,7 @@ it('does not claim an initial state when the source owns workflow validation', a
 
 it('offers only allowed states and publishes typed changes with the reviewed baseline', async () => {
   const task = { id: 'one', project: 'plan', process_id: 'process', type: 'Feature', revision: 5,
-    title: 'Original', description: null, state: 'Open', customFields: { score: 2 } };
+    title: 'Original', description: null, state: 'Open', number: 1, rank: 100, customFields: { score: 2 } };
   vi.spyOn(dataService, 'getTaskEditor').mockResolvedValue({ ok: true, data: { plans: [], catalogue: {
     processes: [{ id: 'process', types: [{ id: 'feature', name: 'Feature', workflow_id: 'flow',
       field_schema_id: 'schema' }] }], fields: [{ id: 'score-field', key: 'score', label: 'Score', type: 'integer' }],
@@ -38,9 +38,24 @@ it('offers only allowed states and publishes typed changes with the reviewed bas
   } } });
   const publish = vi.spyOn(dataService, 'publishBaseline').mockResolvedValue({ ok: true, data: { errors: [] } });
   const editor = document.createElement('task-editor');
-  editor.task = task;
+  Object.assign(editor, { task, moveTargets: [
+    { id: 'two', number: 2, title: 'Target task' }, { id: 'three', number: 3, title: 'Other task' },
+  ] });
   document.body.append(editor);
   await vi.waitFor(() => expect(editor.shadowRoot.querySelector('[name="state"]')).not.toBeNull());
+  expect(editor.shadowRoot.querySelector('[name="rank"]')).toBeNull();
+  expect(editor.draft).not.toHaveProperty('rank');
+  const search = editor.shadowRoot.querySelector('[name="move-search"]');
+  const destination = editor.shadowRoot.querySelector('[name="move-before"]');
+  for (const query of ['#2', '2', 'target']) {
+    search.value = query;
+    search.dispatchEvent(new Event('input'));
+    await editor.updateComplete;
+    expect(destination.textContent).toContain('#2 Target task');
+    expect(destination.textContent).not.toContain('#3 Other task');
+  }
+  destination.value = '2';
+  destination.dispatchEvent(new Event('change'));
   expect([...editor.shadowRoot.querySelectorAll('[name="state"] option')].map((option) => option.value))
     .toEqual(['Open', 'Review']);
   const score = editor.shadowRoot.querySelector('[name="score"]');
@@ -48,7 +63,7 @@ it('offers only allowed states and publishes typed changes with the reviewed bas
   score.dispatchEvent(new Event('input'));
   editor.shadowRoot.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
   await vi.waitFor(() => expect(publish).toHaveBeenCalledWith([{ id: 'one', customFields: { score: 4 },
-    base: { revision: 5, fields: { customFields: { score: 2 } } } }]));
+    rank: { beforeTaskId: 'two' }, base: { revision: 5, fields: { customFields: { score: 2 }, rank: 100 } } }]));
 });
 
 it('offers deletion only when the task backend declares it', async () => {

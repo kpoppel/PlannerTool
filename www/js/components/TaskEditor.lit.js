@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing } from '/static/js/vendor/lit.js';
 import { dataService } from '../services/dataService.js';
 
 const BASE_FIELDS = ['title', 'description', 'state'];
-const END_OF_RANK = '__end__';
+const END_OF_ORDER = 'end';
 const numberTypes = ['integer', 'number'];
 const sameValue = (left, right) => left === right;
 const displayValue = (value) => value === null ? '(empty)' : JSON.stringify(value);
@@ -17,7 +17,7 @@ function choice(name, entries, value, set, placeholder = 'Select') {
 
 export class TaskEditor extends LitElement {
   static properties = { task: { attribute: false }, planId: { type: String }, canDelete: { type: Boolean },
-    rankTargets: { attribute: false },
+    moveTargets: { attribute: false }, moveQuery: { state: true }, moveBefore: { state: true },
     metadata: { state: true }, draft: { state: true }, busy: { state: true },
     error: { state: true }, conflicts: { state: true } };
 
@@ -36,7 +36,9 @@ export class TaskEditor extends LitElement {
     this.task = null;
     this.planId = '';
     this.canDelete = false;
-    this.rankTargets = [];
+    this.moveTargets = [];
+    this.moveQuery = '';
+    this.moveBefore = '';
     this.metadata = null;
     this.draft = null;
     this.busy = false;
@@ -84,7 +86,6 @@ export class TaskEditor extends LitElement {
   _editFields(type) {
     const fields = [...BASE_FIELDS];
     if (this._schema(type).fields.length > 0) fields.push('customFields');
-    if (Number.isFinite(this.task.rank)) fields.push('rank');
     return fields;
   }
 
@@ -101,16 +102,19 @@ export class TaskEditor extends LitElement {
 
   _patch(patch) { this.draft = { ...this.draft, ...patch }; }
 
-  _rankFields(rank) {
-    const relative = typeof rank === 'object';
-    const target = relative ? (rank.beforeTaskId === null ? END_OF_RANK : rank.beforeTaskId) : '';
-    const options = [...this.rankTargets, { id: END_OF_RANK, name: 'End of global order' }];
-    return html`<label>Rank <input name="rank" type="number" required step="any"
-        min="-1000000000000" max="1000000000000" .value=${String(relative ? this.task.rank : rank)}
-        ?disabled=${relative} @change=${(event) => this._patch({ rank: event.target.valueAsNumber })}></label>
-      <label>Move before ${choice('rank-position', options, target, (id) => this._patch({
-        rank: id === '' ? this.task.rank : { beforeTaskId: id === END_OF_RANK ? null : id },
-      }), 'Use numeric rank')}</label>`;
+  _moveFields() {
+    const query = this.moveQuery.trim().toLowerCase();
+    const numberQuery = /^#?\d+$/.test(query) ? query.replace(/^#/, '') : null;
+    const matches = this.moveTargets.filter(({ number, title }) => numberQuery === null
+      ? title.toLowerCase().includes(query) : String(number).startsWith(numberQuery));
+    const selected = this.moveTargets.find(({ number }) => String(number) === this.moveBefore);
+    const visible = selected === undefined || matches.includes(selected) ? matches : [selected, ...matches];
+    const entries = [...visible.map(({ number, title }) => ({ id: String(number), name: `#${number} ${title}` })),
+      { id: END_OF_ORDER, name: 'End of global order' }];
+    return html`<label>Search tasks <input type="search" name="move-search" placeholder="Task number or title"
+      .value=${this.moveQuery} @input=${(event) => { this.moveQuery = event.target.value; }}></label>
+      <label>Move before ${choice('move-before', entries, this.moveBefore,
+        (value) => { this.moveBefore = value; }, 'Keep current order')}</label>`;
   }
 
   _customField(field, entry) {
@@ -202,11 +206,17 @@ export class TaskEditor extends LitElement {
       return;
     }
     const keys = this._changes();
-    if (keys.length === 0) return;
-    await this._run(() => dataService.publishBaseline([{ id: this.task.id,
-      ...Object.fromEntries(keys.map((key) => [key, this.draft[key]])),
+    const changes = Object.fromEntries(keys.map((key) => [key, this.draft[key]]));
+    if (this.moveBefore !== '') {
+      const beforeTaskId = this.moveBefore === END_OF_ORDER ? null
+        : this.moveTargets.find(({ number }) => String(number) === this.moveBefore).id;
+      changes.rank = { beforeTaskId };
+    }
+    const fields = Object.keys(changes);
+    if (fields.length === 0) return;
+    await this._run(() => dataService.publishBaseline([{ id: this.task.id, ...changes,
       base: { revision: this.task.revision,
-        fields: Object.fromEntries(keys.map((key) => [key, this.task[key]])) },
+        fields: Object.fromEntries(fields.map((key) => [key, this.task[key]])) },
     }]));
   }
 
@@ -231,12 +241,15 @@ export class TaskEditor extends LitElement {
           @input=${(event) => this._patch({ title: event.target.value })}></label>
         <label>Description <textarea name="description" .value=${description === null ? '' : description}
           @input=${(event) => this._patch({ description: event.target.value === '' ? null : event.target.value })}></textarea></label>
-        ${Object.hasOwn(this.draft, 'rank') ? this._rankFields(this.draft.rank) : nothing}
+        ${this.task !== null && Number.isSafeInteger(this.task.number) && Number.isFinite(this.task.rank)
+          ? this._moveFields() : nothing}
         ${type === undefined ? nothing : this._typeFields(type)}
       </div>
       ${this.error ? html`<div role="alert">${this.error}</div>` : nothing}
       ${this.conflicts.length > 0 ? html`<div class="conflicts">
-        ${this.conflicts.map((conflict) => html`<p><strong>${conflict.field === null ? 'Task revision' : conflict.field}</strong>:
+        ${this.conflicts.map((conflict) => conflict.field === 'rank'
+          ? html`<p>Task order has changed. Reload the current task before moving it.</p>`
+          : html`<p><strong>${conflict.field === null ? 'Task revision' : conflict.field}</strong>:
           reviewed ${displayValue(conflict.base)}, current ${displayValue(conflict.current)},
           proposed ${displayValue(conflict.proposed)}.</p>`)}
         <button type="button" @click=${() => this.dispatchEvent(new CustomEvent('task-reload'))}>Reload current task</button>

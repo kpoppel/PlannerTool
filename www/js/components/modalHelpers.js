@@ -49,10 +49,9 @@ export async function openTaskEditor({ task = null, planId = '', canDelete = fal
   close.addEventListener('click', () => dialog.close());
   const createEditor = (current) => {
     const editor = document.createElement('task-editor');
-    const rankTargets = current === null || !Number.isFinite(current.rank) ? []
-      : sel.feature.getBaselineFeatures().filter((entry) => entry.id !== current.id && Number.isFinite(entry.rank))
-        .map((entry) => ({ id: entry.id, name: `#${entry.number} ${entry.title}` }));
-    Object.assign(editor, { task: current, planId, canDelete, rankTargets });
+    const moveTargets = current === null || !Number.isSafeInteger(current.number) ? []
+      : sel.feature.getBaselineFeatures().filter((entry) => entry.id !== current.id && Number.isSafeInteger(entry.number));
+    Object.assign(editor, { task: current, planId, canDelete, moveTargets });
     editor.addEventListener('task-committed', async () => {
       editor.inert = true;
       notice.textContent = 'Refreshing tasks...';
