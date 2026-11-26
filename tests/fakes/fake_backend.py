@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from planner_lib.backend.port import BackendCredential, BackendPort
+from planner_lib.backend.port import ADO_CAPABILITIES, BackendCredential, BackendPort
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 
@@ -43,6 +43,8 @@ class FakeBackend(BackendPort):
         When True, ``write_task()`` raises RuntimeError (to test error paths).
     """
 
+    BACKEND_ID = 'ado'
+    CAPABILITIES = ADO_CAPABILITIES
     is_remote = True
 
     def __init__(
@@ -246,7 +248,7 @@ class FakeCredentialProvider:
     user_id:
         The user_id / email this provider is authoritative for.
     token:
-        The PAT token to return.
+        The bearer token to return.
     extra_users:
         Optional mapping of ``user_id -> BackendCredential`` for multi-user tests.
     """
@@ -257,7 +259,7 @@ class FakeCredentialProvider:
         token: str = 'fake-pat',
         extra_users: Optional[Dict[str, BackendCredential]] = None,
     ) -> None:
-        self._default = BackendCredential(kind='pat', token=token, user_id=user_id)
+        self._default = BackendCredential(kind='bearer', token=token, user_id=user_id)
         self._users: Dict[str, BackendCredential] = {user_id: self._default}
         if extra_users:
             self._users.update(extra_users)

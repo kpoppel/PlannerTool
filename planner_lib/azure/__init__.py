@@ -86,21 +86,17 @@ class AzureService:
 
         Callers should use ``with service.connect(credential) as client:``.
         """
-        if not self.requires_pat and (credential is None or credential['kind'] == 'pat'):
+        if not self.is_remote:
             from planner_lib.azure.AzureMockClient import _MOCK_CREDENTIAL
             credential = _MOCK_CREDENTIAL
         return self._client.connect(credential)
 
     @property
     def is_remote(self) -> bool:
-        return self.requires_pat
+        """Return True when calls reach live Azure DevOps and need a Bearer credential.
 
-    @property
-    def requires_pat(self) -> bool:
-        """Return True when a non-empty PAT is required to make API calls.
-
-        False for mock clients (fixture replay and synthetic generator) because
-        they never contact the live Azure DevOps endpoint.
+        False for mock clients (fixture replay and synthetic generator), which
+        always connect with the mock credential.
         """
         from planner_lib.azure.AzureMockClient import AzureMockClient
         from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient

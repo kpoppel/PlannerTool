@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { adminProvider } from '../../www/admin/js/services/providerREST.js';
 import { createMockAuth } from '../helpers/mockAuth.js';
 import '../../www/admin/js/components/admin/DataSources.lit.js';
-async function mount(authentication = null, ado = {}, mode = 'generic') {
+const ALL_TRANSPORTS = ['live', 'mock_generator', 'mock_fixture', 'static'];
+
+async function mount(authentication = null, ado = {}, mode = 'generic', transports = ALL_TRANSPORTS) {
   vi.spyOn(adminProvider, 'getEventsConfig').mockResolvedValue({ ok: true, data: { event_backend: 'local' } });
   vi.spyOn(adminProvider, 'getAdo').mockResolvedValue({ ok: true,
     data: { organization_url: 'example', feature_flags: {}, transport: 'live', ...ado } });
@@ -14,8 +16,9 @@ async function mount(authentication = null, ado = {}, mode = 'generic') {
     restart_available: true,
     instance_id: 'initial-instance',
     backends: [
-      { id: 'ado', label: 'Azure DevOps', available: true, configuration_schema: { properties: {
-        transport: { enum: ['live', 'mock_generator', 'mock_fixture', 'static'] },
+      { id: 'ado', label: 'Azure DevOps', available: true,
+        transports, configuration_schema: { properties: {
+        transport: { enum: transports },
       } } },
       { id: 'local', label: 'Local (SQLite)', available: false },
     ],
@@ -95,7 +98,7 @@ describe('Data Sources authentication policy', () => {
     expect(element.shadowRoot.querySelector('[data-authentication-settings] label').textContent)
       .toBe('ADO authentication method');
     expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim())
-      .toBe('Personal Access Token');
+      .toBe('Entra ID (broker not configured)');
   });
 
   it.each(['ado_mock_fixture', 'ado_mock_generator', 'ado_static'])(
@@ -105,7 +108,7 @@ describe('Data Sources authentication policy', () => {
       expect(element.shadowRoot.querySelector('[data-authentication-settings]')).toBeNull();
       await select(element, '.backend-select', 'ado_live');
       expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim())
-        .toBe('Personal Access Token');
+        .toBe('Entra ID (broker not configured)');
     });
 
   it.each(['entra_signed_in', 'unavailable'])('shows only the Entra method for %s', async (scenario) => {
@@ -125,7 +128,7 @@ describe('Data Sources authentication policy', () => {
     expect(adminProvider.saveEventsConfig).not.toHaveBeenCalled();
     expect(adminProvider.saveGroupsConfig).not.toHaveBeenCalled();
     expect(element.shadowRoot.querySelector('#ado-authentication-status').textContent.trim())
-      .toBe('Personal Access Token');
+      .toBe('Entra ID (broker not configured)');
     expect(element._statusMsg).toBe('Saved.');
   });
 });
@@ -143,5 +146,15 @@ describe('Data Sources ADO transport', () => {
       expect(payload.feature_flags).not.toHaveProperty(flag);
     }
     expect(adminProvider.saveSystem.mock.calls[0][0].task_backend_id).toBe('ado');
+  });
+
+  it('shows a persisted live transport the deployment cannot serve as unavailable', async () => {
+    const element = await mount(null, {}, 'ado', ['mock_generator', 'mock_fixture', 'static']);
+    const live = element.shadowRoot.querySelector('option[value="ado_live"]');
+    expect([live.disabled, live.selected]).toEqual([true, true]);
+    expect(live.textContent).toContain('requires Entra sign-in');
+    await select(element, '.backend-select', 'ado_mock_generator');
+    await element._save();
+    expect(adminProvider.saveAdo.mock.calls[0][0].transport).toBe('mock_generator');
   });
 });

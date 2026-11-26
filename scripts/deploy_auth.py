@@ -31,8 +31,8 @@ def load_client_credential(source, base):
 
 def validate_deployment_policy(config):
     mode = config.get('ado_authentication')
-    if mode not in ('disabled', 'pat', 'entra'):
-        raise ValueError('Deployment requires ado_authentication: disabled|pat|entra')
+    if mode not in ('disabled', 'entra'):
+        raise ValueError('Deployment requires ado_authentication: disabled|entra')
     for instance in config['instances']:
         instance['_ado_authentication'] = mode
     return mode

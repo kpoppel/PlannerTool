@@ -329,7 +329,7 @@ async def admin_browse_iterations(request: Request):
     """Browse iterations for a given Azure project.
 
     Payload: ``{ "project": "ProjectName", "root_path": "optional", "depth": 10 }``
-    PAT is retrieved from the current session.
+    The Azure DevOps credential is retrieved from the current session.
     """
     try:
         payload = await request.json()
@@ -343,7 +343,7 @@ async def admin_browse_iterations(request: Request):
         azure_svc = resolve_service(request, 'azure_client')
         credential = get_session_credential_from_request(request, backend=azure_svc)
         if azure_svc.is_remote and credential is None:
-            raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
+            raise HTTPException(status_code=403, detail={'error': 'ado_credential_required', 'message': 'Azure DevOps sign-in required'})
 
         def fetch_iterations():
             """Keep the thread-local Azure connection on the worker."""
@@ -427,7 +427,7 @@ async def admin_refresh_area_mapping(request: Request):
 @router.post('/admin/v1/area-mapping/refresh-all')
 @require_admin_session
 async def admin_refresh_all_area_mappings(request: Request):
-    """Refresh mappings for all configured area_paths.  PAT from session."""
+    """Refresh mappings for all configured area_paths with the session credential."""
     try:
         azure_svc = resolve_service(request, 'azure_client')
         credential = get_session_credential_from_request(request, backend=azure_svc)
@@ -690,8 +690,6 @@ async def admin_save_system(request: Request):
         if not isinstance(content, dict) or 'task_backend_id' not in content:
             raise ValueError('Server configuration requires task_backend_id')
         pending_restart = request.app.state.task_backend['id'] != content['task_backend_id']
-        if pending_restart and not callable(getattr(request.app.state, 'request_restart', None)):
-            raise ValueError('Changing the task backend requires the managed server launcher')
         admin_svc.save_config('server_config', content)
         if pending_restart:
             return {'ok': True, 'restart_required': True}
@@ -716,12 +714,13 @@ async def admin_save_system(request: Request):
 async def admin_get_task_backends(request: Request):
     """Return registered task backends and the active selection."""
     from planner_lib.backend.registry import describe_backends
+    from planner_lib.session.policy import live_ado_permitted
     config = resolve_service(request, 'config_backend')
     return {'active': request.app.state.task_backend['id'],
             'configured': config.fetch_server_config()['task_backend_id'],
             'instance_id': request.app.state.instance_id,
             'restart_available': callable(getattr(request.app.state, 'request_restart', None)),
-            'backends': describe_backends()}
+            'backends': describe_backends(live_ado=live_ado_permitted())}
 
 
 @router.post('/admin/v1/restart', status_code=202)

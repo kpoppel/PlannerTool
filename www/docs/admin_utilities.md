@@ -83,7 +83,7 @@ on the server immediately before restore. Selective restore retains the backup's
 schema revision; removing categories does not bypass this requirement.
 
 All categories, including **User accounts**, are checked by default. Uncheck **User accounts** to preserve current accounts,
-PATs, keys, permissions, and remembered-browser credentials. Logical backups exclude
+keys, permissions, and remembered-browser credentials. Logical backups exclude
 credentials, devices, sessions and broker authority; credential-bearing imports are
 rejected. All successful restores clear active sessions.
 

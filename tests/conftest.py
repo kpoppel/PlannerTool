@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-# Ensure a test secret key is always available so AccountManager can encrypt
-# PATs without raising RuntimeError about a missing PLANNER_SECRET_KEY.
+# Ensure a test secret key is always available so encrypted secrets (e.g. broker grants)
+# can be handled without raising RuntimeError about a missing PLANNER_SECRET_KEY.
 os.environ.setdefault('PLANNER_SECRET_KEY', 'test-only-secret-key-not-for-production')
 
 

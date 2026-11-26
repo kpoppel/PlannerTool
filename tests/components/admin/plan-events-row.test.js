@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { render } from '../../../www/js/vendor/lit.js';
 import { adminProvider } from '../../../www/admin/js/services/providerREST.js';
 import {
   onWikiOrgUrlInput,
@@ -6,10 +7,12 @@ import {
   fetchProjects,
   fetchWikis,
   fetchWikiPages,
+  renderPlanEventsRow,
 } from '../../../www/admin/js/components/admin/datasources/plan-events-row.js';
 
 function makeComp() {
   return {
+    _activeTaskBackendId: 'ado',
     _wikiOrgUrl: '',
     _wikiProject: 'OldProject',
     _wikiId: 'OldWiki',
@@ -82,18 +85,32 @@ describe('plan-events-row org input helper', () => {
     expect(adminProvider.browseAzureProjects).not.toHaveBeenCalled();
   });
 
-  it('fetchProjects handles Result error objects without throwing', async () => {
+  it('fetchProjects reports a missing Azure DevOps credential without throwing', async () => {
     const comp = makeComp();
     comp._wikiOrgUrl = 'MyOrg';
     adminProvider.browseAzureProjects = vi.fn().mockResolvedValue({
       ok: false,
-      error: { message: 'PAT missing' },
+      error: { message: 'HTTP 403', status: 403, code: 'ado_credential_required' },
     });
 
     await fetchProjects(comp);
 
-    expect(comp._projectsError).to.include('Personal Access Token is required');
+    expect(comp._projectsError).toBe(
+      'An Azure DevOps credential is required. Sign in with Entra ID and try again.');
     expect(comp._projectsLoading).toBe(false);
+  });
+
+  it('fetchProjects reports other Result failures with their message', async () => {
+    const comp = makeComp();
+    comp._wikiOrgUrl = 'MyOrg';
+    adminProvider.browseAzureProjects = vi.fn().mockResolvedValue({
+      ok: false,
+      error: { message: 'projects backend unavailable' },
+    });
+
+    await fetchProjects(comp);
+
+    expect(comp._projectsError).toBe('Could not load projects: projects backend unavailable');
   });
 
   it('fetchWikis and fetchWikiPages use error.message from Result failures', async () => {
@@ -112,5 +129,22 @@ describe('plan-events-row org input helper', () => {
 
     await fetchWikiPages(comp, 'ProjectA', 'WikiA');
     expect(comp._wikiPagesError).to.include('pages backend unavailable');
+  });
+});
+
+describe('plan-events-row backend choice', () => {
+  const optionValues = (transports) => {
+    const comp = { ...makeComp(), _eventsBackend: 'local', _validationErrors: {},
+      _taskBackends: [{ id: 'ado', transports }] };
+    const table = document.createElement('table');
+    const body = document.createElement('tbody');
+    table.appendChild(body);
+    render(renderPlanEventsRow(comp), body);
+    return [...body.querySelectorAll('option')].map((option) => option.value);
+  };
+
+  it('offers the Azure DevOps wiki only when live Azure DevOps is available', () => {
+    expect(optionValues(['live', 'mock_generator'])).toEqual(['local', 'ado_wiki']);
+    expect(optionValues(['mock_generator', 'mock_fixture', 'static'])).toEqual(['local']);
   });
 });

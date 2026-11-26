@@ -25,7 +25,7 @@ Design
     key-hash scheme, one per cached method+args) holding only a
     ``fresh_until`` timestamp.  On read, a fresh entry is served directly;
     once soft-expired a live refresh is attempted.  For the **remote (ADO)
-    backend only**, if that refresh raises (e.g., expired PAT or an ADO
+    backend only**, if that refresh raises (e.g., a rejected credential or an ADO
     outage) or returns no data while content already exists, the existing
     entry is kept and served and a warning is queued — the cache is never
     purged on an error/empty response.  Local, static, and mock backends never
@@ -153,8 +153,8 @@ class CachingBackend:
         self._inner = inner
         self._storage = storage
         self._ttl_config = ttl_config or CacheTTLConfig()
-        # Only the live ADO backend is subject to transient API outages or PAT
-        # expiry; local/static/mock backends never are.  Stale-on-failure
+        # Only the live ADO backend is subject to transient API outages or credential
+        # rejection; local/static/mock backends never are.  Stale-on-failure
         # resilience (serve cached tasks instead of erroring/emptying) is
         # therefore scoped to remote backends only.
         self._inner_is_remote = bool(getattr(inner, 'is_remote', False))
@@ -182,6 +182,14 @@ class CachingBackend:
     @property
     def is_remote(self) -> bool:
         return self._inner_is_remote
+
+    @property
+    def BACKEND_ID(self) -> str:
+        return self._inner.BACKEND_ID
+
+    @property
+    def CAPABILITIES(self) -> frozenset:
+        return self._inner.CAPABILITIES
 
     def read_task_snapshot(self, build, identity, guard, credential):
         if not self._inner_is_remote:
@@ -330,9 +338,9 @@ class CachingBackend:
         elif isinstance(exc, BackendAuthError) and exc.credential is not None and exc.credential['kind'] == 'bearer':
             code, message = 'access_denied', 'Azure DevOps denied this refresh; cached results are retained.'
         elif isinstance(exc, BackendAuthError):
-            code, message = 'tasks_stale_invalid_pat', (
-                'Azure DevOps denied the work-item refresh due to a stale PAT, so cached work items could not be '
-                'refreshed. Latest cached results will be used instead.'
+            code, message = 'tasks_stale_credential_rejected', (
+                'Azure DevOps rejected the credential for the work-item refresh, so cached work items could not '
+                'be refreshed. Latest cached results will be used instead.'
             )
         elif isinstance(exc, BackendConfigError):
             code, message = 'tasks_stale_invalid_query_config', (
@@ -479,7 +487,7 @@ class CachingBackend:
         try:
             result = inner_method(*args, **kwargs)
         except BackendError as exc:
-            # Resilience is ADO-only: a remote outage / PAT expiry should not
+            # Resilience is ADO-only: a remote outage / credential rejection should not
             # drop already-cached content.  Only the live ADO backend raises
             # BackendError, so this branch never fires for local backends.
             if self._inner_is_remote and have_cached and cached_has_content:
@@ -519,8 +527,20 @@ class CachingBackend:
         if result.get('ok') or result.get('updated', 0) > 0:
             with self._storage.transaction():
                 self._task_snapshot.changed()
-                self._patch_task_in_cache(task_id, updates)
+                self._patch_task_in_cache(task_id, {key: value for key, value in updates.items() if key != 'base'})
         return result
+
+    def create_task(self, payload, actor_id, credential):
+        task = self._inner.create_task(payload, actor_id, credential)
+        self.invalidate_cache()
+        return task
+
+    def delete_task(self, task_id, revision, actor_id, credential):
+        self._inner.delete_task(task_id, revision, actor_id, credential)
+        self.invalidate_cache()
+
+    def task_editor_metadata(self):
+        return self._inner.task_editor_metadata()
 
     def _patch_task_in_cache(self, task_id: int | str, updates: Dict[str, Any]) -> None:
         """Update every cached fetch_tasks list that contains *task_id* in-place.

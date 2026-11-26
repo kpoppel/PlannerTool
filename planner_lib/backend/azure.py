@@ -28,7 +28,7 @@ from threading import Lock
 from typing import Any, Dict, List, Optional
 
 from planner_lib.azure.authentication import token_from_credential
-from planner_lib.azure.catalogue import imported_type_index, resolve_plan_process
+from planner_lib.azure.catalogue import imported_type_index, resolve_plan_process, work_item_display
 from planner_lib.backend.port import ADO_CAPABILITIES, BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter, normalize_iteration_path
 from planner_lib.backend.errors import (
@@ -36,13 +36,24 @@ from planner_lib.backend.errors import (
     BackendConfigError,
     classify_ado_exception,
 )
-from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
+from planner_lib.domain.tasks import BackendTask, DomainTask, TaskConflictError, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.storage.base import StorageBackend
 from planner_lib.util import project_id_for_area_path
 
 
 logger = logging.getLogger(__name__)
+
+CREATE_FIELDS = {'project', 'typeId', 'title', 'description', 'start', 'end', 'tags', 'customFields'}
+
+
+def _revision_conflict(task_id: str, base: int, current: Optional[int]) -> dict:
+    return {'taskId': task_id, 'field': None, 'reason': 'missing_task' if current is None else 'overlap',
+            'revision': current, 'base': base, 'current': current, 'proposed': None}
+
+
+def _editor_type_id(process: dict, item: dict) -> str:
+    return f"{process['id']}/{item['reference_name']}"
 
 def _terminal_date(value: Any) -> Optional[date]:
     if isinstance(value, datetime):
@@ -78,9 +89,11 @@ class AzureDevOpsBackend(BackendPort):
     BACKEND_ID = 'ado'
     TRANSPORT = 'live'
     CAPABILITIES = ADO_CAPABILITIES
+    # Reads may be served from the response cache (CachingBackend).
+    CACHEABLE = True
 
-    # Live ADO is the only backend subject to transient API outages and PAT
-    # expiry.  CachingBackend reads this flag to scope its stale-on-failure
+    # Live ADO is the only backend subject to transient API outages and credential
+    # rejection.  CachingBackend reads this flag to scope its stale-on-failure
     # resilience to the remote backend only — local/static/mock backends never
     # face these conditions, so their reads pass through unchanged.
     is_remote = True
@@ -560,6 +573,38 @@ class AzureDevOpsBackend(BackendPort):
         item_updated = False
 
         with self._conn.connect(credential) as client:
+            # Reviewed revision ──────────────────────────────────────────
+            # Patches are separate requests, so the check precedes the first one.
+            if 'base' in updates:
+                current = client.get_work_item_revision(task_id)
+                if current != updates['base']['revision']:
+                    return WriteResult(ok=False, updated=0, errors=[], conflicts=[_revision_conflict(
+                        str(task_id), updates['base']['revision'], current)])
+
+            # Title ─────────────────────────────────────────────────────
+            if 'title' in updates:
+                try:
+                    title = updates['title']
+                    if not isinstance(title, str) or not title.strip():
+                        raise ValueError('title is required')
+                    client.update_work_item_title(task_id, title.strip())
+                    item_updated = True
+                except Exception as exc:
+                    errors.append(f"{task_id} (title): {exc}")
+
+            # Description (keeps the stored capacity block) ─────────────
+            if 'description' in updates:
+                try:
+                    proposed = updates['description']
+                    if proposed is not None and not isinstance(proposed, str):
+                        raise ValueError('description must be text')
+                    current_desc = client.get_work_item_description(task_id)
+                    client.update_work_item_description(task_id, self._capacity_service.keep_block(
+                        current_desc, '' if proposed is None else proposed))
+                    item_updated = True
+                except Exception as exc:
+                    errors.append(f"{task_id} (description): {exc}")
+
             # Dates ─────────────────────────────────────────────────────
             if self._adapter.has_date_update(updates):
                 try:
@@ -618,6 +663,100 @@ class AzureDevOpsBackend(BackendPort):
             updated=1 if item_updated else 0,
             errors=errors,
         )
+
+    # ------------------------------------------------------------------
+    # Task authoring
+    # ------------------------------------------------------------------
+
+    def task_editor_metadata(self) -> dict:
+        """Imported ADO types as a catalogue; ADO enforces its own workflow rules."""
+        catalogue = self._storage.load('config', 'ado_processes')
+        processes, states, workflows = [], [], []
+        for process in catalogue['processes']:
+            types = []
+            for item in process['types']:
+                if not item['imported'] or item['missing']:
+                    continue
+                identity = _editor_type_id(process, item)
+                ordered = [f"{identity}#{state['name']}" for state in
+                           sorted(item['states'], key=lambda state: state['order'])]
+                states.extend({'id': f"{identity}#{state['name']}", 'name': state['name'],
+                               'category': state['category']} for state in item['states'])
+                workflows.append({'id': identity, 'name': item['name'], 'states': ordered,
+                                  'initial': ordered[0], 'transitions': [], 'from_any': ordered})
+                types.append({'id': identity, 'name': item['name'], 'backlog_level': item['backlog_level'],
+                              'workflow_id': identity, 'field_schema_id': 'ado'})
+            if types:
+                processes.append({'id': process['id'], 'name': process['name'], 'types': types})
+        plans = []
+        for plan in self.fetch_project_map():
+            process = resolve_plan_process(plan, catalogue)
+            selected = {name.casefold() for name in plan['task_types']}
+            plans.append({'id': plan['id'], 'name': plan['name'], 'typeIds': [
+                _editor_type_id(process, item) for item in process['types']
+                if item['imported'] and not item['missing'] and item['name'].casefold() in selected]})
+        return {'plans': plans, 'catalogue': {
+            'processes': processes, 'states': states, 'workflows': workflows,
+            'fields': [], 'field_schemas': [{'id': 'ado', 'name': 'Azure DevOps', 'fields': []}]}}
+
+    def create_task(self, payload: dict, actor_id: str, credential: Optional[BackendCredential]) -> BackendTask:
+        """Create one work item in the plan's area; ADO records the authenticated author."""
+        if not isinstance(payload, dict) or set(payload) - CREATE_FIELDS:
+            raise ValueError('Unsupported task creation fields')
+        plan = next((entry for entry in self.fetch_project_map() if entry['id'] == payload.get('project')), None)
+        if plan is None:
+            raise ValueError('Task plan is not an active plan')
+        catalogue = self._storage.load('config', 'ado_processes')
+        process = resolve_plan_process(plan, catalogue)
+        selected = {name.casefold() for name in plan['task_types']}
+        item = next((entry for entry in process['types'] if _editor_type_id(process, entry) == payload.get('typeId')
+                     and entry['imported'] and entry['name'].casefold() in selected), None)
+        if item is None:
+            raise ValueError('Task type is not available in the plan')
+        title = payload.get('title')
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError('title is required')
+        if 'customFields' in payload and payload['customFields'] != {}:
+            raise ValueError('Azure DevOps tasks have no PlannerTool custom fields')
+        fields = {'System.Title': title.strip(), 'System.AreaPath': plan['area_path']}
+        for key, name in (('description', 'System.Description'), ('tags', 'System.Tags')):
+            if payload.get(key) is not None:
+                if not isinstance(payload[key], str):
+                    raise ValueError(f'{key} must be text')
+                fields[name] = payload[key]
+        for key, name in (('start', 'Microsoft.VSTS.Scheduling.StartDate'),
+                          ('end', 'Microsoft.VSTS.Scheduling.TargetDate')):
+            value = payload.get(key)
+            if value is not None:
+                if not isinstance(value, str) or _terminal_date(value) is None or len(value) != 10:
+                    raise ValueError(f'{key} must be YYYY-MM-DD')
+                fields[name] = value
+        if 'Microsoft.VSTS.Scheduling.StartDate' in fields and 'Microsoft.VSTS.Scheduling.TargetDate' in fields \
+                and fields['Microsoft.VSTS.Scheduling.StartDate'] > fields['Microsoft.VSTS.Scheduling.TargetDate']:
+            raise ValueError('start must not follow end')
+        credential = self._require_credential(credential, 'create_task')
+        project = plan['area_path'].replace('/', '\\').lstrip('\\').split('\\')[0]
+        with self._conn.connect(credential) as client:
+            raw = client.create_work_item(project, item['name'], fields)
+        task = self._adapter.to_domain(
+            raw_wi=raw, project_id=plan['id'], team_repository=self._team_repository,
+            type_canonical={item['name'].lower(): item['name']}, iteration_map={},
+            capacity_service=self._capacity_service,
+        )
+        task['process_id'] = process['id']
+        return task
+
+    def delete_task(self, task_id: str, revision: int, actor_id: str,
+                    credential: Optional[BackendCredential]) -> None:
+        """Move the reviewed revision of a work item to the ADO recycle bin."""
+        if type(revision) is not int or revision < 1:
+            raise ValueError('Deleting a task requires its revision')
+        credential = self._require_credential(credential, 'delete_task')
+        with self._conn.connect(credential) as client:
+            current = client.get_work_item_revision(int(task_id))
+            if current != revision:
+                raise TaskConflictError([_revision_conflict(str(task_id), revision, current)])
+            client.delete_work_item(int(task_id))
 
     # ------------------------------------------------------------------
     # BackendPort: fetch_history
@@ -727,6 +866,11 @@ class AzureDevOpsBackend(BackendPort):
             return []
         
         return self._config.fetch_projects()
+
+    def work_item_display(self) -> List[dict]:
+        """Imported ADO processes ordered by Global Project Settings."""
+        return work_item_display(self._storage.load('config', 'ado_processes'),
+                                 self._storage.load('config', 'global_settings'))
 
     def fetch_project_map(
         self,

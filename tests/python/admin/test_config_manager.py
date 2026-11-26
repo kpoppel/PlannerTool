@@ -80,7 +80,7 @@ def test_fresh_install_uses_generator_and_first_admin_needs_no_pat():
     _, _, session = auth.enroll('admin@example.com', 'First Admin')
 
     assert accounts.has_permission('admin@example.com', 'admin')
-    assert accounts.load('admin@example.com')['pat'] is None
+    assert set(storage.load('accounts', 'admin@example.com')) == {'account_id', 'email', 'permissions'}
     assert sessions.is_valid(session)
 
 
@@ -117,18 +117,25 @@ def test_disabled_ado_policy_validates_restore_flags_before_writing(monkeypatch)
     assert storage.load('config', 'ado_config')['transport'] == 'static'
 
 
-@pytest.mark.parametrize('provider,mode', [('enrollment', 'pat'), ('entra', 'entra')])
-def test_admin_owns_backend_selection_without_changing_authentication(monkeypatch, provider, mode):
+@pytest.mark.parametrize('provider,mode,transports', [
+    ('enrollment', None, ('mock_generator', 'static')),
+    ('entra', 'entra', ('live', 'mock_generator', 'static')),
+])
+def test_admin_owns_backend_selection_without_changing_authentication(
+        monkeypatch, provider, mode, transports):
     from planner_lib.admin.config_manager import ConfigManager
     from planner_lib.storage.memory_backend import MemoryStorage
 
     storage = MemoryStorage()
     initialize(storage)
-    monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', mode)
+    if mode is None:
+        monkeypatch.delenv('PLANNER_ADO_AUTHENTICATION', raising=False)
+    else:
+        monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', mode)
     monkeypatch.setenv('PLANNER_AUTH_PROVIDER', provider)
     manager = ConfigManager(storage)
     authentication = storage.load('config', 'authentication')
-    for transport in ('live', 'mock_generator', 'static'):
+    for transport in transports:
         manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {},
                                            'transport': transport})
         assert storage.load('config', 'ado_config')['transport'] == transport
@@ -164,9 +171,29 @@ def test_delegated_ado_selection_requires_auth_wiring_not_a_backend_manifest_fie
     monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', 'entra')
     monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'enrollment')
     manager = ConfigManager(storage)
-    with pytest.raises(ValueError, match='connected Entra auth service'):
+    with pytest.raises(ValueError, match='require the Entra login provider'):
         manager.save_config('ado_config', {'organization_url': 'example', 'feature_flags': {},
                                            'transport': 'live'})
+    assert storage.load('config', 'ado_config')['transport'] == 'mock_generator'
+
+
+@pytest.mark.parametrize('provider', ['enrollment', 'entra'])
+def test_pat_deployment_ado_authentication_is_rejected(monkeypatch, provider):
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.session.policy import validate_backend_policy, validate_deployment_ado_authentication
+    from planner_lib.storage.memory_backend import MemoryStorage
+
+    with pytest.raises(ValueError, match='PLANNER_ADO_AUTHENTICATION=pat is no longer supported'):
+        validate_deployment_ado_authentication('pat')
+    storage = MemoryStorage()
+    initialize(storage)
+    monkeypatch.setenv('PLANNER_ADO_AUTHENTICATION', 'pat')
+    monkeypatch.setenv('PLANNER_AUTH_PROVIDER', provider)
+    with pytest.raises(ValueError, match='no longer supported'):
+        validate_backend_policy(storage)
+    with pytest.raises(ValueError, match='no longer supported'):
+        ConfigManager(storage).save_config('ado_config', {'organization_url': 'example', 'feature_flags': {},
+                                                          'transport': 'static'})
     assert storage.load('config', 'ado_config')['transport'] == 'mock_generator'
 
 
@@ -393,7 +420,7 @@ def test_restore_backup_guards_current_admin():
 @pytest.mark.parametrize('destination_enrolled', [False, True])
 def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path, monkeypatch, destination_enrolled):
     import json
-    from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload
+    from planner_lib.accounts.config import AccountManager
     from planner_lib.admin.config_manager import ConfigManager
     from planner_lib.session.auth import AuthManager
     from planner_lib.storage.diskcache_backend import DiskCacheStorage
@@ -406,7 +433,6 @@ def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path
         source_accounts = AccountManager(source)
         source_auth = AuthManager(source, source_accounts, SessionManager(source_accounts, source))
         device, recovery, _ = source_auth.enroll('admin@example.com', 'Administrator')
-        source_accounts.update_credentials(AccountCredentialsPayload(email='admin@example.com', pat='azure-pat'))
         backup = json.loads(json.dumps(ConfigManager(
             source, planner_database=PlannerDatabase.in_memory()).get_backup()))
 
@@ -441,8 +467,8 @@ def test_backup_restore_preserves_auth_and_clears_temporary_credentials(tmp_path
         assert target.load('auth_control', 'bootstrap_claimed') is True
         account_id = target_accounts.get_account_id('admin@example.com')
         assert target.load('account_auth', account_id)['devices'] == {}
-        assert backup['accounts']['users']['admin@example.com']['pat'] is None
-        assert target_accounts.load('admin@example.com')['pat'] is None
+        assert 'pat' not in backup['accounts']['users']['admin@example.com']
+        assert 'pat' not in target.load('accounts', 'admin@example.com')
         with pytest.raises(PermissionError):
             target_auth.authenticate_device(device)
         with pytest.raises(PermissionError):
@@ -586,7 +612,7 @@ def test_auth_restore_rolls_back_failed_account_sync(tmp_path):
 
 
 def test_selective_restore_without_accounts_preserves_current_credentials(tmp_path, monkeypatch):
-    from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload
+    from planner_lib.accounts.config import AccountManager
     from planner_lib.admin.config_manager import ConfigManager
     from planner_lib.session.auth import AuthManager
     from planner_lib.storage.diskcache_backend import DiskCacheStorage
@@ -596,16 +622,16 @@ def test_selective_restore_without_accounts_preserves_current_credentials(tmp_pa
         sessions = SessionManager(accounts, storage)
         auth = AuthManager(storage, accounts, sessions)
         device, key, session = auth.enroll('owner@example.com', 'Owner')
-        accounts.update_credentials(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
         account_id = accounts.get_account_id('owner@example.com')
         original = storage.load('account_auth', account_id)
+        original_account = storage.load('accounts', 'owner@example.com')
         storage.save('config', 'ado_config', dict(ADO_CONFIG))
         ConfigManager(storage).restore_backup({
             'schema_revision': TARGET_REVISION,
             'config': {'server_config': _server(version='restored')},
         })
         assert storage.load('account_auth', account_id) == original
-        assert accounts.load('owner@example.com')['pat'] == 'azure-pat'
+        assert storage.load('accounts', 'owner@example.com') == original_account
         assert not sessions.is_valid(session)
         assert auth.authenticate_device(device)[0] == 'owner@example.com'
         assert auth.enroll('owner@example.com', account_key=key)[1] != key
@@ -614,36 +640,12 @@ def test_selective_restore_without_accounts_preserves_current_credentials(tmp_pa
 
 
 # ---------------------------------------------------------------------------
-# PAT plaintext backup / re-encryption on restore
+# Legacy PAT-bearing logical backups
 # ---------------------------------------------------------------------------
 
 
-def test_get_backup_excludes_pats(monkeypatch):
-    """Logical export must contain neither plaintext nor encrypted PATs."""
-    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
-    from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload
-    from planner_lib.admin.config_manager import ConfigManager
-
-    acct = _Store()
-    # Save a user with a properly encrypted PAT via AccountManager
-    mgr = AccountManager(storage=acct)
-    mgr.update_credentials(
-        AccountCredentialsPayload(email='user@example.com', pat='my-azure-pat-abc123')
-    )
-
-    cm = ConfigManager(storage=acct, planner_database=PlannerDatabase.in_memory())
-    bk = cm.get_backup()
-
-    assert '_meta' not in bk, 'Backup should not include redundant metadata for PAT format'
-    user_record = bk['accounts']['users'].get('user@example.com', {})
-    assert user_record['pat'] is None
-    assert 'my-azure-pat-abc123' not in str(bk)
-
-
-def test_restore_backup_rejects_legacy_plaintext_pat_metadata(monkeypatch):
+def test_restore_backup_rejects_legacy_plaintext_pat_metadata():
     """Old secret-portable logical backups require an explicit conversion."""
-    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
-    from planner_lib.accounts.config import _try_decrypt_pat
     from planner_lib.admin.config_manager import ConfigManager
 
     synced: dict = {}
@@ -667,47 +669,32 @@ def test_restore_backup_rejects_legacy_plaintext_pat_metadata(monkeypatch):
     assert synced == {}
 
 
-def test_restore_backup_rejects_plaintext_pats_without_metadata(monkeypatch):
-    """Omitting format metadata cannot bypass the authority-import gate."""
-    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+@pytest.mark.parametrize('credential_fields', [
+    {'pat': 'plaintext-pat'}, {'pat': None}, {'pat_invalid': True},
+])
+def test_restore_backup_rejects_account_records_containing_pat(credential_fields):
+    """Any PAT field in an account record is refused before writes, even an empty one."""
     from planner_lib.admin.config_manager import ConfigManager
-    from planner_lib.accounts.config import _try_decrypt_pat
 
     synced: dict = {}
 
     def sync(users, admins):
         synced['users'] = users
 
-    # Backup payload omits _meta but still carries plaintext PAT.
-    cm = ConfigManager(storage=_Store())
+    store = _Store()
+    cm = ConfigManager(storage=store)
     data = {
         'schema_revision': TARGET_REVISION,
         'accounts': {
-            'users': {'user@example.com': {'account_id': ACCOUNT_ID, 'email': 'user@example.com', 'pat': 'plaintext-pat'}},
-            'admins': {},
+            'users': {'user@example.com': {'account_id': ACCOUNT_ID, 'email': 'user@example.com',
+                                           'permissions': [], **credential_fields}},
         },
         'authentication': {'account_auth': {ACCOUNT_ID: {'enrolled': False}}, 'auth_control': {}},
     }
-    with pytest.raises(ValueError, match='PAT authority'):
+    with pytest.raises(ValueError, match='personal access tokens'):
         cm.restore_backup(data, sync_accounts_fn=sync)
     assert synced == {}
-
-
-def test_get_backup_corrupt_pat_becomes_none(monkeypatch):
-    """If a stored PAT can't be decrypted (e.g. key rotation), backup includes pat=None."""
-    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
-    from planner_lib.admin.config_manager import ConfigManager
-
-    acct = _Store()
-    # Inject a corrupt ciphertext directly into storage
-    acct.save('accounts', 'bad@example.com', {'account_id': ACCOUNT_ID, 'email': 'bad@example.com', 'pat': 'not-a-fernet-token'})
-
-    cm = ConfigManager(storage=acct, planner_database=PlannerDatabase.in_memory())
-    bk = cm.get_backup()
-
-    user_record = bk['accounts']['users'].get('bad@example.com', {})
-    # Corrupt PAT should degrade to None, not crash backup
-    assert user_record.get('pat') is None
+    assert store.list_keys('accounts') == []
 
 
 # ---------------------------------------------------------------------------

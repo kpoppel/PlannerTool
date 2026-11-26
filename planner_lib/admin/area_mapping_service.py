@@ -18,7 +18,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from planner_lib.azure.authentication import pat_from_credential
+from planner_lib.azure.authentication import token_from_credential
 from planner_lib.backend.port import BackendCredential
 from planner_lib.util import project_id_for_area_path
 
@@ -107,10 +107,9 @@ def refresh_all(credential: BackendCredential, azure_client, admin_svc) -> dict:
 
     Parameters mirror :func:`refresh_single` except no ``area_path`` argument.
     """
-    try:
-        pat_from_credential(credential)
-    except ValueError as error:
-        raise ValueError('A PAT is required to query Azure for mappings') from error
+    if credential is None:
+        raise ValueError('An Azure DevOps credential is required to query Azure for mappings')
+    token_from_credential(credential)
 
     project_map: list = admin_svc.get_project_map() or []
     existing: dict = admin_svc.get_config('area_plan_map') or {}

@@ -455,6 +455,30 @@ class WorkItemOperations:
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id} description: {e}")
 
+    def update_work_item_title(self, work_item_id: int, title: str) -> Any:
+        """Replace System.Title of a work item."""
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
+        ops = [{"op": "add", "path": "/fields/System.Title", "value": title}]
+        try:
+            return self.client.wit_client.update_work_item(document=ops, id=work_item_id)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update work item {work_item_id} title: {e}")
+
+    def create_work_item(self, project: str, type_name: str, fields: dict) -> dict:
+        """Create a work item of *type_name* in *project* and return it normalized."""
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
+        ops = [{"op": "add", "path": f"/fields/{name}", "value": value} for name, value in fields.items()]
+        item = self.client.wit_client.create_work_item(document=ops, project=project, type=type_name)
+        return self.normalize_work_item(item)
+
+    def delete_work_item(self, work_item_id: int) -> None:
+        """Move a work item to the project recycle bin (restorable in ADO)."""
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(credential):' to obtain a connected client.")
+        self.client.wit_client.delete_work_item(id=work_item_id, destroy=False)
+
     def update_work_item_state(self, work_item_id: int, state_value: str) -> Any:
         """Update the System.State field for a work item.
 

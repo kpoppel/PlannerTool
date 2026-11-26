@@ -201,8 +201,8 @@ describe('ProviderREST /api/session tests', () => {
     expectVitest(client.blocked).toBe(true);
   });
 
-  it('rejects a PAT response in the Entra HTTP adapter instead of selecting PAT', async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(createMockAuth('pat_current').state)));
+  it('rejects a local-mode response in the Entra HTTP adapter', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(createMockAuth('local').state)));
     const adapter = createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl, presentLogin: vi.fn() });
     await expectVitest(adapter.status()).rejects.toThrow('incompatible authentication mode');
   });

@@ -28,16 +28,15 @@ file in secure storage and replace the old saved key. Choose a new output filena
 for each enrollment; the CLI will not overwrite an existing key file. If the
 response is lost after enrollment, ask an administrator to reset access.
 
-Fresh installations use the synthetic generator demo and require no Azure PAT.
-When live Azure DevOps is selected, both enrollment commands privately prompt for
-a PAT if the server requires or rejects that account's credential. The PAT is sent
-only to the enrollment API, not stored in the cookie jar or account-key file,
-printed, or accepted as a command-line argument. Rejected PATs do not consume the
-current account key. Existing stored PATs are reused only for that same account.
-An ADO validation outage is an error, not a reason to replace the account key or
-mark the stored PAT invalid. Authenticated CLI data calls report HTTP 403
-`pat_required` / `pat_invalid`; use browser Configuration or enrollment with the
-current key to set a valid credential.
+Fresh installations use the synthetic generator demo and require no Azure credential.
+Live Azure DevOps requires Entra sign-in (`PLANNER_AUTH_PROVIDER=entra`); personal
+access tokens are no longer supported. Authenticated CLI data calls against live Azure
+DevOps without a delegated Entra grant report HTTP 401 `ado_credential_required` or
+HTTP 403 `ado_credential_unusable`; sign in through the browser to grant access.
+
+Developer scripts that call Azure DevOps directly (`load_team_tasks.py`,
+`record_azure_mock.py`, `azure_sandbox.py`) use a Bearer token from
+`AZURE_DEVOPS_TOKEN`, or from the signed-in Azure CLI (`az login`) when unset.
 
 Enroll `user@example.com` or reuse its session. The script renews an expired session
 first and re-enrolls only when renewal fails. It sends the stored account key from
@@ -85,7 +84,7 @@ restored, newer keys may stop working, and deleted accounts or revoked browsers
 may return. Ensure an administrator has snapshot-valid credentials; use Reset
 access for users who cannot enroll, sign in again, or delete their account.
 Active sessions are cleared even when accounts are skipped. Backups contain
-plaintext PATs; the helper creates a private file and will not overwrite it.
+account identities and configuration; the helper creates a private file and will not overwrite it.
 
 Logical exports now include `schema_revision`. Selective restore preserves it;
 unsupported revisions or old payload contracts are rejected without live migration.

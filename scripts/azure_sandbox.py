@@ -2,7 +2,7 @@
 """
 Azure DevOps sandbox script to try out API functions.
 
-- Set your PAT below (constant for quick experimentation)
+- Sign in with `az login` or set AZURE_DEVOPS_TOKEN to a Bearer token
 - Adjust ORGANIZATION_URL to your Azure DevOps organization
 - Run the script and choose a demo from the menu
 
@@ -16,10 +16,11 @@ import logging
 from typing import Any, List
 
 from azure.devops.connection import Connection
-from msrest.authentication import BasicAuthentication
+from msrest.authentication import BasicTokenAuthentication
+
+from ado_token import ado_access_token
 
 # --- Configure these constants for your environment ---
-PAT = os.environ.get("AZURE_DEVOPS_PAT", "YOURPAT")
 ORGANIZATION_URL = os.environ.get("AZURE_DEVOPS_ORG_URL", "https://dev.azure.com/MyCompany")
 PROJECT_NAME = os.environ.get("AZURE_DEVOPS_PROJECT", "TeamA")
 PROJECT_AREA_PATH = os.environ.get("AZURE_DEVOPS_AREA_PATH", "MyProject\\TeamA\\Teams\\SubTeamA")
@@ -29,9 +30,7 @@ logger = logging.getLogger("azure_sandbox")
 
 
 def get_connection() -> Connection:
-    if not PAT or PAT == "YOURPAT":
-        logger.warning("PAT not set. Set AZURE_DEVOPS_PAT or edit PAT constant.")
-    credentials = BasicAuthentication("", PAT)
+    credentials = BasicTokenAuthentication({'access_token': ado_access_token(), 'token_type': 'Bearer'})
     return Connection(base_url=ORGANIZATION_URL, creds=credentials)
 
 

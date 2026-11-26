@@ -65,9 +65,6 @@ def make_request(container, payload, session_email=None):
 
 
 class ExplicitAccountManager:
-    def requires_pat(self):
-        return False
-
     def __init__(self):
         self.accounts = {
             'current@example.com': {
@@ -81,7 +78,6 @@ class ExplicitAccountManager:
         self.accounts[credentials.email] = {
             'id': '33333333-3333-4333-8333-333333333333',
             'email': credentials.email,
-            'pat': credentials.pat,
             'permissions': list(permissions or []),
         }
         return {'ok': True, 'id': self.accounts[credentials.email]['id'], 'email': credentials.email}
@@ -154,11 +150,26 @@ def test_create_user_rejects_invalid_email():
     assert exc_info.value.status_code == 400
 
 
+def test_create_user_rejects_a_pat_field():
+    from fastapi import HTTPException
+    from planner_lib.admin.users_routes import admin_create_user
+    account_manager = ExplicitAccountManager()
+    request = _explicit_request(account_manager, {
+        'email': 'new@example.com', 'pat': 'token', 'permissions': [],
+    })
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(admin_create_user.__wrapped__(request))
+
+    assert exc_info.value.status_code == 400
+    assert 'new@example.com' not in account_manager.accounts
+
+
 def test_old_setup_cannot_issue_email_only_admin_session():
     from planner_lib.admin.setup_routes import admin_setup
     from fastapi import HTTPException
     request = _explicit_request(ExplicitAccountManager(), {
-        'email': 'current@example.com', 'pat': 'valid-pat',
+        'email': 'current@example.com',
     })
     with pytest.raises(HTTPException) as error:
         asyncio.run(admin_setup(request))
@@ -179,7 +190,6 @@ def test_get_users_returns_account_ids_and_current_id():
             'permissions': ['admin'],
         }],
         'currentId': '11111111-1111-4111-8111-111111111111',
-        'requiresPat': False,
     }
 
 

@@ -39,7 +39,7 @@ class _TrackingSave(MemoryStorage):
 
 
 AREA = 'MyOrg\\TeamA'
-CRED = {'kind': 'pat', 'token': 'tok', 'user_id': 'u@example.com'}
+CRED = {'kind': 'bearer', 'token': 'tok', 'user_id': 'u@example.com'}
 
 
 def test_fetch_tasks_saved_with_correct_ttl():

@@ -8,7 +8,7 @@ cd "$ROOT_DIR"
 usage() {
 	printf '%s\n' \
 		'Usage: scripts/run_dev.sh [--auth-env /absolute/path/to/protected.env] [--check]' \
-		'Without --auth-env: ordinary PAT/enrollment development.' \
+		'Without --auth-env: enrollment development with mock or local data (no live Azure DevOps).' \
 		'--check validates local prerequisites and broker configuration without starting services.' \
 		'Entra certificate (recommended): ENTRA_CLIENT_CERTIFICATE_FILE and ENTRA_CLIENT_CERTIFICATE_KEY_FILE.' \
 		'Entra app secret: ENTRA_CLIENT_SECRET_FILE instead of both certificate fields.' \
@@ -72,7 +72,7 @@ if [[ -n "${PLANNER_AUTH_INSTANCE:-}" ]]; then
 	fi
 	"$PYTHON" entra-id/app.py --check
 else
-	echo 'Authentication: PAT/enrollment (no Entra broker).'
+	echo 'Authentication: enrollment only (no Entra broker; live Azure DevOps unavailable).'
 fi
 if [[ "$CHECK_ONLY" == true ]]; then
 	echo 'Local configuration check passed; no services started. This does not verify Microsoft consent or connectivity.'

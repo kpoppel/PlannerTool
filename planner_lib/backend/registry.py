@@ -76,16 +76,24 @@ def rebuild_backend_instance(
     return instance
 
 
-def describe_backends() -> List[Dict[str, Any]]:
-    """Backend identity and display metadata for administration."""
+def describe_backends(*, live_ado: bool) -> List[Dict[str, Any]]:
+    """Backend identity and display metadata for administration.
+
+    *live_ado* is False when the deployment cannot supply delegated (Entra) credentials;
+    the live transport is then not offered.
+    """
     classes = _ado_transport_classes()
     available = available_backend_ids()
+    transports = [name for name in ADO_TRANSPORTS if live_ado or name != 'live']
+    schema = get_ado_schema()
+    schema['properties']['transport']['enum'] = transports
+    schema['properties']['transport']['default'] = transports[0]
     return [{
         'id': ADO_BACKEND_ID,
         'label': 'Azure DevOps',
         'available': ADO_BACKEND_ID in available,
-        'transports': list(ADO_TRANSPORTS),
-        'configuration_schema': get_ado_schema(),
+        'transports': transports,
+        'configuration_schema': schema,
         'capabilities': sorted(classes['live'].CAPABILITIES),
     }, {
         'id': LOCAL_BACKEND_ID,
@@ -95,12 +103,6 @@ def describe_backends() -> List[Dict[str, Any]]:
         'configuration_schema': {'type': 'object', 'properties': {}, 'additionalProperties': False},
         'capabilities': sorted(get_active_class({'task_backend_id': LOCAL_BACKEND_ID}, {}).CAPABILITIES),
     }]
-
-
-def active_backend_info(server_config: Dict[str, Any], ado_config: Dict[str, Any]) -> Dict[str, Any]:
-    """Backend-neutral identity and capabilities of the selected backend."""
-    cls = get_active_class(server_config, ado_config)
-    return {'id': cls.BACKEND_ID, 'capabilities': sorted(cls.CAPABILITIES)}
 
 
 def active_backend_info(server_config: Dict[str, Any], ado_config: Dict[str, Any]) -> Dict[str, Any]:

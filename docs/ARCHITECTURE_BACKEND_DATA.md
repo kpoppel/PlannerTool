@@ -27,21 +27,22 @@ The pipeline normalizes provider-specific records into domain objects before the
 rest of the application sees them. The cache can return stale remote data during
 an outage, but it must never be used as the system of record for user changes.
 
-Authentication composition selects enrollment/PAT or the broker adapter once.
+Authentication composition selects enrollment or the broker adapter once.
 Provider-neutral `external_identities` records map verified issuer/subject pairs to
 local account UUIDs; contact email is not a production ownership or linking key.
 Explicit mock-only email impersonation can reuse an existing local account. Delegated
 credentials include `kind: bearer`, acting `user_id`, opaque `token`, local
 `binding`, authentication `epoch`, `expires_at` and explicit `transport` metadata.
 The provider resolves only the current request's session-owned grant. SDK/wiki
-construction selects Basic/Bearer explicitly; fixture credentials cannot enter
+construction requires an explicit Bearer credential; fixture credentials cannot enter
 live transport. Background task snapshots renew through that provider and hold
 an authoritative grant/account/epoch validation guard through cache publication.
 Mock and live service paths have offline tests; real-tenant acceptance remains required.
 
-Deployment policy owns ADO PAT versus delegated Entra composition; instance
+Deployment policy (`ado_authentication: disabled|entra`) owns delegated Entra
+composition; Azure DevOps PATs are no longer supported. Instance
 settings cannot override it. Local-only deployments retain enrollment without a
-broker and reject remote task/wiki configuration. Deployment login-source changes
+broker, issue no remote credentials and reject remote task/wiki configuration. Deployment login-source changes
 advance the policy epoch without purging accounts or credentials. Logical exports
 contain account/data records, never login authority. Restored
 enrollment accounts require fresh operator reset; Entra account replacement is
@@ -251,7 +252,7 @@ Type comparisons are case-insensitive, and plan saves canonicalize type casing.
 
 Selecting a project in Plans administration resolves its process and loads only
 that process's types, states and backlog behaviors on a cache miss, using the
-acting user's PAT. Additional types remain unimported until explicitly selected.
+acting user's delegated credential. Additional types remain unimported until explicitly selected.
 Eligible types used by existing plans, including archived plans, are imported
 and locked. Plan saves atomically commit plans, requested imports and synchronized
 global display settings. Catalogue refresh reloads known processes only and drops
@@ -363,6 +364,22 @@ restricted to the owning plan's configured presets. A path change does not
 implicitly overwrite task dates; a scheduling write can include both boundaries
 in the same batch.
 
+Workforce capacity/allocation validation lives in `WorkforceTaskRepository`, which
+passes it to backends through `write_tasks(..., validate=...)`. Backends apply it
+inside their write transaction; `planner_lib/local/tasks.py` does not import
+workforce modules.
+
+#### Task Authoring
+
+Task create, edit and delete are backend capabilities (`task_create`, `task_edit`,
+`task_delete`). `POST /api/tasks/create`, `GET /api/tasks/editor` and
+`DELETE /api/tasks/{id}?revision=` return 405 when the active backend lacks the
+capability. The frontend gates its create/edit/delete UI on `taskCapabilities`
+through the generic `task-editor` component (`TaskEditor.lit.js`). The Azure DevOps
+backend supports create, edit (title, description, state and other editor fields,
+with a revision pre-check returning 409 `task_conflict`) and delete, which moves the
+work item to the ADO recycle bin after the same revision check.
+
 ### Provider Selection
 
 `server_config.task_backend_id` selects exactly one task backend (`ado` or
@@ -379,9 +396,13 @@ retired `use_*` selector flags, preserving their former priority.
 | `live` | `AzureDevOpsBackend` | Live Azure DevOps data translated by `AzureAdapter`. |
 
 Each backend class declares `BACKEND_ID` and `CAPABILITIES` (see
-`TASK_CAPABILITIES` in `planner_lib/backend/port.py`). `GET /api/task-backend`
+`TASK_CAPABILITIES` in `planner_lib/backend/port.py`: `task_read`, `task_publish`,
+`task_create`, `task_edit`, `task_delete`, `field_merge`, ...). Callers check a
+capability instead of probing for methods or backend classes. `GET /api/task-backend`
 returns the active id and capabilities; `GET /admin/v1/task-backends` lists
-registered backends.
+registered backends. A `CACHEABLE` class attribute decides whether `CachingBackend`
+wraps the backend when caching is enabled: the ADO and Static backends are
+cacheable, the Local backend is not.
 
 ### Cache Read Path
 
@@ -408,7 +429,7 @@ After a configuration change, that specific access failure serves the previous
 snapshot with `stale_reason='configuration_changed'`; other errors propagate.
 The requesting user receives a `task_cache_access` warning. A later successful
 build clears the error and stale reason. Refreshes always use the acting user's
-PAT; no server scheduler or alternate account credential is involved.
+delegated credential; no server scheduler or alternate account credential is involved.
 
 Configuration fingerprints include project, team, ADO, process catalogue, global display,
 iteration and area-plan settings. A configuration guard and task-cache mutation
@@ -489,6 +510,28 @@ Default cache freshness windows are configured by `cache.ttls` in
 `0` means no soft expiry until explicit invalidation. These are freshness
 windows, not deletion deadlines: preserving stale rows is what allows an
 outage-safe refresh.
+
+### Planner Database Schema and SQL Dialect
+
+Schema DDL is split per module: core tables in `planner_lib/database/schema.py`,
+which composes the ordered migration list, ADO tables in
+`planner_lib/database/ado_schema.py` and Local tables in `planner_lib/local/schema.py`.
+Local admin routes live in `planner_lib/local/admin_routes.py`; Local administration
+(the "Plans" and "Plan Markers" hub entries) remains editable while ADO is the active
+backend.
+
+`PlannerDatabase` (`planner_lib/database/planner_database.py`) is the SQLite adapter:
+it alone imports the driver and issues PRAGMAs and transaction statements. Callers
+write portable SQL:
+
+- qmark parameters and `read()` / `write()` for transactions
+- no rowid ordering; ordered lists use explicit `position` columns
+- upserts use `INSERT ... ON CONFLICT`, never `INSERT OR REPLACE`
+- integer booleans are compared with `= 1` / `= 0`
+- catch `database.IntegrityError` and call `defer_foreign_keys()` rather than
+  using `sqlite3` directly; only the adapter and migration DDL touch `sqlite3`
+
+Migration DDL is dialect-specific by nature; another database needs its own migrations.
 
 ### Side Effects
 

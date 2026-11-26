@@ -25,14 +25,12 @@
           your existing account data and permissions.</li>
         <li>For first enrollment, enter your real name. For an already enrolled account, enter its current
           account key instead. The form checks your email to choose the required field.</li>
-        <li>If Azure DevOps access requires a PAT, enter your own valid PAT in the separate masked field.</li>
         <li>Select <strong>Enroll</strong>. Save the account key displayed next in a password manager or
           another private secure location. Confirm that you saved it, then continue.</li></ol>
       <figure><img src="images/enrollment.png" width="560" height="640"
-        alt="Enrollment dialog with email, real name, a separate Azure DevOps PAT field and the contextual help button">
+        alt="Enrollment dialog with email, real name and the contextual help button">
         <figcaption>The form asks for a real name on first enrollment, or an account key for an existing enrolled account.</figcaption></figure>
-      <div class="notice warning"><strong>Your account key is not your Azure PAT.</strong> Never paste the
-        account key into the PAT field. Keep both private. Do not share them in chat, screenshots, logs
+      <div class="notice warning"><strong>Keep your account key private.</strong> Do not share it in chat, screenshots, logs
         or the project repository. PlannerTool stores only a hash of your account key and cannot show it again.</div>
     </section>
     <section id="another-browser"><h2>Another browser, or signing in again</h2>
@@ -47,7 +45,7 @@
     <section id="recovery"><h2>Lost a key or a browser?</h2>
       <p>Ask an administrator to use <strong>Users &gt; Reset access</strong> and hand you the replacement
         key through a trusted channel. A reset revokes every remembered browser and active session while
-        preserving account identity, permissions, PAT and saved data. Enroll using the replacement key,
+        preserving account identity, permissions and saved data. Enroll using the replacement key,
         then save the next key the enrollment issues.</p>
       <p>If a browser was lost or stolen, use <strong>Configuration &gt; Remembered browsers</strong> to
         refresh the list and revoke it. Revocation removes that browser's access, not your account.</p>
@@ -55,12 +53,13 @@
         unlock an enrolled account. A backup restore may revive an older key; request Reset access if needed.</p>
     </section>
     <section><h2>Azure access and signing out</h2>
-      <p>A PAT rejected by Azure must be repaired using a valid PAT for that account. Enrollment does
-        not grant Azure permissions. Your PlannerTool account key cannot repair a PAT.</p>
+      <p>PlannerTool does not use Azure DevOps Personal Access Tokens. When your installation reads live
+        Azure DevOps, access comes from your organization sign-in. Enrollment does not grant Azure
+        permissions, and your PlannerTool account key cannot grant Azure access.</p>
       <p><strong>Sign out</strong> in Configuration revokes this browser and clears its local drafts and
         preferences. Save work first. Server-saved views/scenarios and other enrolled browsers are retained.</p>
       <p><strong>Delete account</strong> requires the current account key and confirmation. It removes
-        the account, PAT, server-saved views/scenarios and access from all browsers. It is not sign-out;
+        the account, server-saved views/scenarios and access from all browsers. It is not sign-out;
         the final administrator cannot delete their account.</p>
     </section>
   </main>

@@ -20,7 +20,7 @@ from planner_lib.backend.azure import AzureDevOpsBackend
 from planner_lib.backend.port import BackendCredential
 
 
-_CRED = BackendCredential(kind='pat', token='test-pat', user_id='user1')
+_CRED = BackendCredential(kind='bearer', token='test-pat', user_id='user1')
 _AREA = 'MyOrg\\TeamA'
 _PLAN_ID = 'b3a58eba-6464-4b28-99dd-57a50676fe23'
 _MARKERS = [

@@ -14,8 +14,7 @@ it is not enough on its own to sign in after enrollment.
    **Continue**.
 
 Use only your own email address. If your account existed before the authentication
-upgrade, enrollment preserves its permissions and Azure Personal Access Token
-(PAT). For an already enrolled account, enter your current account key in the
+upgrade, enrollment preserves its permissions. For an already enrolled account, enter your current account key in the
 same Enrollment form; email and name cannot replace its credentials. After your
 email is checked, Enrollment shows Real name for first enrollment or Account key
 for an already enrolled account, never both.
@@ -29,9 +28,10 @@ Open **Configuration** from the gear button. **Account email** is displayed as
 non-editable text: it identifies the account currently signed in. Configuration
 does not change account identity.
 
-The Azure **Personal Access Token (PAT)** is separate from your account key.
-Enter your Azure PAT in the PAT field when Azure access requires it, then click
-**Save**. Never paste a PlannerTool account key into that field.
+PlannerTool no longer accepts Azure DevOps Personal Access Tokens (PATs). When
+your installation reads live Azure DevOps, you sign in with your organization
+account and PlannerTool uses that sign-in for Azure access. Never paste a
+PlannerTool account key anywhere other than the Enrollment dialog.
 
 ## Enroll another browser or sign in again
 
@@ -70,7 +70,7 @@ If you have lost your latest account key, ask an
 administrator to open **Users** and use **Reset access** for your account.
 
 A reset revokes every remembered browser and active session, and replaces the
-account key. It preserves your account email, account ID, name, PAT, and
+account key. It preserves your account email, account ID, name, and
 permissions. The administrator receives the new key in a save-and-confirm modal
 and must hand it to you through a trusted channel. Use **Enrollment** with that
 key, then save the next replacement key displayed after enrollment.
@@ -92,7 +92,7 @@ clears PlannerTool preferences, cached data, and local drafts, and reloads to
 account access. Save your work first: local drafts cannot be recovered afterward.
 If server sign-out fails, local data is retained and you can try again.
 
-Server-saved data, your account, Azure PAT, permissions, account key, and other
+Server-saved data, your account, permissions, account key, and other
 enrolled browsers are unchanged. To return, use **Enrollment** with your current
 account key. Closing a tab or browser
 alone does not sign out.
@@ -103,7 +103,7 @@ server data. Storage belonging to unrelated applications is left alone.
 
 To remove your account, choose **Delete account** in Configuration or the
 Enrollment dialog, enter your current account key, and confirm. This deletes
-your account, PAT, saved views/scenarios, and all server access. No replacement
+your account, saved views/scenarios, and all server access. No replacement
 key is issued. The final administrator cannot delete their account. Other
 browsers lose server access, but offline drafts and previously retained backups
 cannot be erased remotely. Signing out is not account deletion.
@@ -116,8 +116,9 @@ cannot be erased remotely. Signing out is not account deletion.
   work.
 - **Access disappeared after reset:** every browser was revoked. Enroll with the
   replacement key issued by that reset.
-- **Azure data cannot be read or saved after sign-in:** check your Azure PAT and
-   permissions. A PlannerTool account key is not an Azure PAT.
+- **Azure data cannot be read or saved after sign-in:** sign in again with your
+   organization account and check your Azure DevOps permissions. A PlannerTool
+   account key does not grant Azure access.
 - **Key stopped working after a backup restore:** the backup may contain an older
    key. Ask an administrator to use Reset access if you cannot enroll, sign in again,
    or delete your account, then save the replacement key after enrollment.

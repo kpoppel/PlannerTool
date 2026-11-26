@@ -2,7 +2,6 @@ import { expect } from '@esm-bundle/chai';
 import { vi } from 'vitest';
 import { ProviderREST } from '../../www/js/services/providerREST.js';
 import { store } from '../../www/js/application/store.js';
-import { NotificationActionIds } from '../../www/js/application/commands/uiCommands.js';
 
 describe('ProviderREST feature/team/project endpoints', () => {
   beforeEach(() => store.setState({ notifications: [] }));
@@ -22,18 +21,30 @@ describe('ProviderREST feature/team/project endpoints', () => {
     expect(store.getState().notifications[0].severity).to.equal('error');
   });
 
-  it('records PAT failures as one actionable warning without a generic HTTP error', async () => {
+  it('records credential failures as one warning without a generic HTTP error', async () => {
     const provider = new ProviderREST();
     vi.spyOn(provider, '_fetchImpl').mockImplementation(async () =>
-      new Response(JSON.stringify({ error: 'pat_required' }), { status: 403 }));
+      new Response(JSON.stringify({ error: 'ado_credential_unusable' }), { status: 403 }));
 
     await provider.checkHealth();
     await provider.checkHealth();
 
     expect(store.getState().notifications).to.have.length(1);
-    expect(store.getState().notifications[0].actionId).to.equal(NotificationActionIds.SET_PAT);
+    expect(store.getState().notifications[0].code).to.equal('ado_credential_unusable');
     expect(store.getState().notifications[0].severity).to.equal('warning');
     expect(store.getState().notifications[0].count).to.equal(2);
+  });
+
+  it('explains that Azure DevOps needs Entra sign-in when no credential exists', async () => {
+    const provider = new ProviderREST();
+    vi.spyOn(provider, '_fetchImpl').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'ado_credential_required' }), { status: 403 }));
+
+    await provider.checkHealth();
+
+    expect(store.getState().notifications).to.have.length(1);
+    expect(store.getState().notifications[0].code).to.equal('ado_credential_required');
+    expect(store.getState().notifications[0].message).to.include('Entra');
   });
 
   it('records every failed publish item even when HTTP succeeds', async () => {

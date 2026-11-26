@@ -56,7 +56,7 @@ def sandbox(monkeypatch, tmp_path, request):
     }.items():
         monkeypatch.setenv(key, value)
     app = create_app(Config(storage_backend='memory', data_dir=str(tmp_path), static_dir='www'))
-    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.accounts.config import AccountIdentityPayload
     from planner_lib.session.identity import identity_key
 
     container = app.state.container
@@ -68,7 +68,7 @@ def sandbox(monkeypatch, tmp_path, request):
         '44444444-4444-4444-4444-444444444444': ('sam@example.test', 'Sam Sandbox'),
     }
     for index, (subject, (email, name)) in enumerate(identities.items()):
-        accounts.create_account(AccountCredentialsPayload(email=email), permissions=['admin'] if index == 0 else [])
+        accounts.create_account(AccountIdentityPayload(email=email), permissions=['admin'] if index == 0 else [])
         storage.save('external_identities', identity_key(BROKER_ISSUER, subject), {
             'version': 3, 'issuer': BROKER_ISSUER, 'subject': subject,
             'account_id': accounts.get_account_id(email), 'environment': settings.metadata(),
@@ -173,7 +173,7 @@ def prepare_live_accounts(client, identity):
 
 
 def test_live_email_claim_is_one_time_and_keeps_existing_permissions(sandbox):
-    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.accounts.config import AccountIdentityPayload
     client, requests = sandbox
     identity = {'issuer': BROKER_ISSUER, 'subject': 'live-subject',
                 'name': 'Live User', 'email': 'ALEX@EXAMPLE.TEST'}
@@ -186,7 +186,7 @@ def test_live_email_claim_is_one_time_and_keeps_existing_permissions(sandbox):
     new = login.identities.resolve({**identity, 'subject': 'different-identity'})
     assert new['id'] != original
     assert new['permissions'] == []
-    later = login.accounts.create_account(AccountCredentialsPayload(email='later@example.test'), permissions=[])
+    later = login.accounts.create_account(AccountIdentityPayload(email='later@example.test'), permissions=[])
     another = login.identities.resolve({**identity, 'subject': 'later-identity', 'email': 'later@example.test'})
     assert another['id'] != later['id']
 
@@ -239,14 +239,14 @@ def test_fresh_live_installation_first_account_is_only_initial_admin(sandbox):
 
 
 def test_mock_to_live_startup_preserves_accounts_and_consumed_claims(sandbox, tmp_path, monkeypatch):
-    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.accounts.config import AccountIdentityPayload
     client, requests = sandbox
     root = tmp_path / 'cutover'
     config = Config(data_dir=str(root), static_dir='www')
     mock_app = create_app(config)
     with TestClient(mock_app):
         login = mock_app.state.container.get('login_adapter')
-        existing = login.accounts.create_account(AccountCredentialsPayload(email='owner@example.test'),
+        existing = login.accounts.create_account(AccountIdentityPayload(email='owner@example.test'),
                                                  permissions=['admin'])['id']
         login.identities.resolve({'issuer': login.settings.public_url, 'subject': 'mock-subject',
             'name': 'Mock Owner', 'email': 'owner@example.test', 'link_existing_by_email': True})
@@ -322,7 +322,7 @@ def set_broker_token_kind(client, token_kind):
 
 
 def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, monkeypatch, tmp_path):
-    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.accounts.config import AccountIdentityPayload
 
     monkeypatch.setenv('PLANNER_AUTH_PROVIDER', 'enrollment')
     config = Config(data_dir=str(tmp_path / 'copied'), static_dir='www')
@@ -330,8 +330,8 @@ def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, 
     container = original.state.container
     storage = container.get('storage')
     accounts = container.get('account_manager')
-    accounts.create_account(AccountCredentialsPayload(
-        email='existing@example.test', pat='synthetic-existing-pat'), permissions=['admin'])
+    accounts.create_account(AccountIdentityPayload(email='existing@example.test'),
+                            permissions=['admin'])
     sessions = container.get('session_manager')
     session_id = sessions.create('existing@example.test')
     assert sessions.is_valid(session_id)
@@ -363,7 +363,7 @@ def test_mock_auth_accepts_copied_accounts_and_preserves_configuration(sandbox, 
         assert storage.load('config', 'ado_config') == ado_config
 
 
-def test_new_entra_identity_can_sign_in_with_live_ado_without_pat(sandbox, monkeypatch):
+def test_new_entra_identity_can_sign_in_with_live_ado(sandbox):
     from planner_lib.session.identity import identity_key
 
     client, requests = sandbox
@@ -375,7 +375,6 @@ def test_new_entra_identity_can_sign_in_with_live_ado_without_pat(sandbox, monke
         BROKER_ISSUER, '33333333-3333-3333-3333-333333333333'))
     storage.save('config', 'ado_config', {
         'organization_url': 'https://dev.azure.com/example', 'feature_flags': {}, 'transport': 'live'})
-    monkeypatch.setattr(accounts, 'validate_pat', lambda value: pytest.fail('Login required a PAT'))
 
     state = client.post('/api/auth/login/begin', headers={
         'Origin': 'http://localhost:8765'}).json()['state']
@@ -387,7 +386,6 @@ def test_new_entra_identity_can_sign_in_with_live_ado_without_pat(sandbox, monke
     assert profile['permissions'] == []
     assert profile['status'] == 'signed_in'
     assert accounts.get_account_by_id(admin['id']) == admin
-    assert not accounts.requires_pat()
     assert not any(request.url.path.endswith('/token') for request in requests)
 
 
@@ -652,7 +650,7 @@ def test_config_save_and_restore_cannot_activate_a_source(sandbox):
     storage = client.app.state.container.get('storage')
     manager = ConfigManager(storage)
     current = storage.load('config', 'authentication')
-    incompatible = {**current, 'active': 'enrollment', 'backend_credentials': 'pat'}
+    incompatible = {**current, 'active': 'enrollment', 'backend_credentials': 'none'}
     with pytest.raises(ValueError, match='deployment-controlled'):
         manager.save_config('authentication', incompatible)
     with pytest.raises(ValueError, match='deployment-controlled'):
@@ -661,9 +659,9 @@ def test_config_save_and_restore_cannot_activate_a_source(sandbox):
                                        'transport': 'live'})
 
 
-def test_entra_denies_pat_and_enrollment_mutations(sandbox):
+def test_entra_denies_enrollment_mutations(sandbox):
     client, requests = sandbox
-    for path in ('/api/config', '/admin/v1/users', '/api/session',
+    for path in ('/admin/v1/users', '/api/session',
                  '/api/auth/enrollment-status', '/api/auth/admin-reset/account'):
         assert client.post(path, json={}).status_code == 403
 
@@ -903,14 +901,6 @@ def test_cancellation_validates_browser_and_consumes_pending_state(sandbox):
     assert cancelled.status_code == 200
     assert '"error": "cancelled"' in cancelled.text
     assert complete_login(client, begin['state']).status_code == 401
-
-
-def test_entra_rejects_pat_at_account_storage_boundary(sandbox):
-    from planner_lib.accounts.config import AccountCredentialsPayload
-
-    accounts = sandbox[0].app.state.container.get('account_manager')
-    with pytest.raises(ValueError, match='forbids PAT'):
-        accounts.update_credentials(AccountCredentialsPayload(email='alex@example.test', pat='new-synthetic-pat'))
 
 
 def test_fake_token_is_rejected_before_wiki_operations(sandbox):

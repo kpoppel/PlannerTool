@@ -49,7 +49,7 @@ async function openUsers(page, options = {}) {
           lastActive: null });
         return route.fulfill({ json: { ok: true } });
       }
-      return route.fulfill({ json: { accounts, currentId: 'self', requiresPat: options.requiresPat === true } });
+      return route.fulfill({ json: { accounts, currentId: 'self' } });
     }
     if (request.method() === 'DELETE') {
       accounts.splice(accounts.findIndex((user) => user.id === path.split('/').at(-1)), 1);
@@ -156,20 +156,19 @@ test('Bulk permission review locks pending edits and retains failed users for re
   await page.screenshot({ path: testInfo.outputPath('users-permission-review-desktop.png') });
 });
 
-test('Account creation retains PAT on failure and reset uses the saved-key dialog', async ({ page }) => {
-  const { editor, creates, state, errors } = await openUsers(page, { requiresPat: true });
+test('Account creation retains input on failure and reset uses the saved-key dialog', async ({ page }) => {
+  const { editor, creates, state, errors } = await openUsers(page);
   await editor.getByRole('button', { name: 'Add user', exact: true }).click();
   const modal = editor.getByRole('dialog');
   await modal.getByRole('textbox', { name: 'Email', exact: true }).fill('new@example.com');
-  await modal.locator('[data-pat="User"]').fill('synthetic-pat');
   state.rejectCreate = true;
   await modal.getByRole('button', { name: 'Add user', exact: true }).click();
   await expect(modal.getByRole('alert')).toBeVisible();
-  await expect(modal.locator('[data-pat="User"]')).toHaveValue('synthetic-pat');
+  await expect(modal.getByRole('textbox', { name: 'Email', exact: true })).toHaveValue('new@example.com');
   state.rejectCreate = false;
   await modal.getByRole('button', { name: 'Add user', exact: true }).click();
   await expect(modal).toHaveCount(0);
-  expect(creates[1]).toEqual({ email: 'new@example.com', permissions: [], pat: 'synthetic-pat' });
+  expect(creates[1]).toEqual({ email: 'new@example.com', permissions: [] });
   await expect(editor.locator('tbody tr')).toHaveCount(1);
   await editor.getByRole('button', { name: 'Actions for new@example.com', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());

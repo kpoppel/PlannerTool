@@ -72,37 +72,37 @@ describe('RestProviderBase', () => {
     expect(acquireSecond).toHaveBeenCalledTimes(1);
   });
 
-  it('reports PAT failures without waiting for repair or replaying the request', async () => {
-    const onPatRequired = vi.fn(() => new Promise(() => {}));
+  it('reports credential failures without waiting for recovery or replaying the request', async () => {
+    const notifyDecision = vi.fn(() => new Promise(() => {}));
     const onResponse = vi.fn();
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'pat_required' }), { status: 403 }));
-    const recovery = createAuthRecovery({ notifyCredential: onPatRequired });
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'ado_credential_unusable' }), { status: 403 }));
+    const recovery = createAuthRecovery({ notifyDecision });
     const base = new RestProviderBase({ fetchImpl, ...recovery, onResponse, session: true });
 
     const response = await base._fetch('/api/tasks');
 
     expect(response.status).toBe(403);
-    expect(onPatRequired).toHaveBeenCalledWith('pat_required');
+    expect(notifyDecision).toHaveBeenCalledWith('ado_credential_unusable');
     expect(onResponse).toHaveBeenCalledWith(response, expect.objectContaining({
       credentialFailure: true,
     }));
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('does not replay a write after PAT repair or open repair for permission denials', async () => {
-    const onPatRequired = vi.fn().mockResolvedValue(true);
+  it('does not replay a write after a credential failure or report unknown denials', async () => {
+    const notifyDecision = vi.fn();
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: 'pat_invalid' }), { status: 403 }),
+      new Response(JSON.stringify({ error: 'interaction_required' }), { status: 409 }),
     );
-    const recovery = createAuthRecovery({ notifyCredential: onPatRequired });
+    const recovery = createAuthRecovery({ notifyDecision });
     const base = new RestProviderBase({ fetchImpl, ...recovery });
     await base._fetch('/api/tasks', { method: 'POST' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(onPatRequired).toHaveBeenCalledTimes(1);
-    fetchImpl.mockResolvedValue(new Response(JSON.stringify({ error: 'access_denied' }), { status: 403 }));
+    expect(notifyDecision).toHaveBeenCalledWith('interaction_required');
+    fetchImpl.mockResolvedValue(new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }));
     await base._fetch('/admin/check');
-    expect(onPatRequired).toHaveBeenCalledTimes(1);
+    expect(notifyDecision).toHaveBeenCalledTimes(1);
   });
 
   it('observes only the final response after session recovery', async () => {

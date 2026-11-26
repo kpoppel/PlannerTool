@@ -2,7 +2,6 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
 import { StoreController } from '../core/StoreController.js';
 import { bus } from '../core/EventBus.js';
-import { NotificationActionIds } from '../application/commands/uiCommands.js';
 import {
   ProjectEvents,
   TeamEvents,
@@ -16,7 +15,6 @@ import {
 import { pluginManager } from '../core/PluginManager.js';
 import { dataService } from '../services/dataService.js';
 import { getAdminSections } from '../services/adminNavigation.js';
-import { getAuthentication } from '../services/authStartup.js';
 import './PlanMenu.lit.js';
 import './ScenarioMenu.lit.js';
 import './ViewMenu.lit.js';
@@ -45,6 +43,7 @@ export class TopMenuBarLit extends LitElement {
     baseUrl: { type: String },
     manageBackupSnapshots: { type: Boolean },
     taskBackendId: { type: String },
+    taskCapabilities: { type: Array },
     _menusOverflow: { state: true },
     _menusAtStart: { state: true },
     _menusAtEnd: { state: true },
@@ -332,6 +331,7 @@ export class TopMenuBarLit extends LitElement {
     this.baseUrl = '';
     this.manageBackupSnapshots = false;
     this.taskBackendId = '';
+    this.taskCapabilities = [];
     this.openMenu = null;
     this.projects = [];
     this.teams = [];
@@ -604,7 +604,9 @@ export class TopMenuBarLit extends LitElement {
         credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store',
       });
       if (!backend.ok) throw new Error(`Loading task backend failed: ${backend.status}`);
-      this.taskBackendId = (await backend.json()).id;
+      const taskBackend = await backend.json();
+      this.taskBackendId = taskBackend.id;
+      this.taskCapabilities = taskBackend.capabilities;
     }
   }
 
@@ -652,11 +654,6 @@ export class TopMenuBarLit extends LitElement {
     cmd.ui.clearNotifications();
     this._closeMenu(false);
     this.shadowRoot.querySelector('#openConfigBtn').focus();
-  }
-
-  _runNotificationAction(actionId, code) {
-    this._closeMenu(false);
-    cmd.ui.runNotificationAction(actionId, code);
   }
 
   _pluginMenuControls() {
@@ -987,11 +984,6 @@ export class TopMenuBarLit extends LitElement {
           @keydown=${this._onMenuKeyDown}>
           <button class="settings-action" role="menuitem" id="configurationMenuItem"
             @click=${this._onConfig}>Configuration</button>
-          ${this.taskBackendId !== 'local' && (getAuthentication() === null || getAuthentication().state.capabilities.pat) ? html`
-          <button class="settings-action" role="menuitem" id="setPatMenuItem"
-            @click=${() => this._runNotificationAction(NotificationActionIds.SET_PAT, 'pat_required')}>
-            Set or update Azure DevOps PAT
-          </button>` : ''}
           ${this.canOpenAdmin ? html`<div class="settings-group" role="group" aria-label="Administration">
             <div class="settings-group-label" aria-hidden="true">Administration</div>
             ${this.adminSections.map((section) => html`
@@ -1025,11 +1017,6 @@ export class TopMenuBarLit extends LitElement {
                   </div>
                   <p class="notification-message">${entry.message}</p>
                   ${entry.count > 1 ? html`<div class="notification-meta">${entry.count} occurrences</div>` : ''}
-                  ${entry.actionId === NotificationActionIds.SET_PAT ? html`
-                    <button class="settings-action notification-action" type="button"
-                      @click=${() => this._runNotificationAction(entry.actionId, entry.code)}>
-                      Set or update Azure DevOps PAT
-                    </button>` : ''}
                 </li>`)}
             </ol>`}
         </div>`;
@@ -1095,7 +1082,7 @@ export class TopMenuBarLit extends LitElement {
           .projects=${this.projects}
           .activeViewId=${this.activeViewId}
           .activeViewData=${this.activeViewData}
-          .taskBackendId=${this.taskBackendId}
+          .taskCapabilities=${this.taskCapabilities}
         ></plan-menu>`;
       case 'scope':
         return html`<scope-menu style="${style}"></scope-menu>`;
@@ -1109,7 +1096,7 @@ export class TopMenuBarLit extends LitElement {
   async _onConfig() {
     this._closeMenu();
     const { openConfigModal } = await import('./modalHelpers.js');
-    await openConfigModal({ taskBackendId: this.taskBackendId });
+    await openConfigModal();
   }
 
   async _onHelp() {

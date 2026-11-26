@@ -4,8 +4,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from planner_lib.accounts.config import AccountCredentialsPayload
-
 pytestmark = pytest.mark.real_auth
 
 
@@ -23,10 +21,7 @@ def test_service_failure_returns_generic_error(
         'email': 'errors@example.com', 'name': 'Error Contract',
     }).status_code == 200
     container = client.app.state.container
-    container.get('account_manager').update_credentials(
-        AccountCredentialsPayload(email='errors@example.com', pat='test-PAT')
-    )
-    failure = Mock(side_effect=RuntimeError('private-PAT-secret /private/config.yml'))
+    failure = Mock(side_effect=RuntimeError('private-token-secret /private/config.yml'))
     monkeypatch.setattr(container.get(service_name), operation, failure)
 
     response = client.request(method, path, json=payload)
@@ -34,5 +29,5 @@ def test_service_failure_returns_generic_error(
     failure.assert_called_once()
     assert response.status_code == 500
     assert response.json() == 'Internal server error'
-    assert 'private-PAT-secret' not in response.text
+    assert 'private-token-secret' not in response.text
     assert '/private/config.yml' not in response.text

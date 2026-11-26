@@ -256,8 +256,8 @@ async def cache_metrics(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Azure browse endpoints — available to any user with a valid PAT in their
-# session (no admin privilege required).
+# Azure browse endpoints — available to any user with a valid Azure DevOps
+# credential in their session (no admin privilege required).
 # ---------------------------------------------------------------------------
 
 def _get_credential_or_raise(request: Request) -> BackendCredential:
@@ -297,7 +297,7 @@ async def azure_browse_projects(
     request: Request,
     org_url: str = Query(..., description="Azure DevOps organization name or URL"),
 ):
-    """List all Azure DevOps projects visible with the user's PAT.
+    """List all Azure DevOps projects visible with the user's Azure DevOps credential.
 
     Query params:
         org_url: Azure DevOps organization name or full URL (required)

@@ -6,7 +6,7 @@ import re
 from uuid import UUID, uuid4
 
 from .contracts import (
-    BASELINE_REVISION, MIGRATION_IDS, TARGET_REVISION, Migration, SchemaError,
+    BASELINE_REVISION, MIGRATION_IDS, NO_PAT_REVISION, TARGET_REVISION, Migration, SchemaError,
     schema_state, validate_registry, validate_schema_state,
 )
 
@@ -578,11 +578,12 @@ def upgrade_43(storage) -> None:
 
 
 def upgrade_44(storage):
-    from planner_lib.session.policy import initial_authentication
-
     with storage.transaction():
         storage.expire()
-        storage.save('config', 'authentication', initial_authentication())
+        # Revision-44 shape; revision 49 rewrites 'pat' to 'none'.
+        storage.save('config', 'authentication', {
+            'version': 1, 'selected': 'enrollment', 'active': 'enrollment',
+            'backend_credentials': 'pat', 'epoch': 1})
         for key in list(storage.list_keys('auth_sessions')):
             try:
                 storage.delete('auth_sessions', key)
@@ -640,7 +641,47 @@ def upgrade_47(storage):
 
 
 def upgrade_48(storage):
-    """The coordinator moves configuration after migrating the candidate SQLite schema."""
+    """Retire legacy shapes the SQLite projection rejects; the coordinator then moves configuration.
+
+    ``azure_devops_organization`` was superseded by ``ado_config.organization_url`` and is
+    carried over only when that setting is empty. Catalogues refreshed before hidden ADO states
+    were filtered can repeat a state name; the later (hidden) duplicate is dropped.
+    """
+    with storage.transaction():
+        server = storage.load('config', 'server_config')
+        if 'azure_devops_organization' in server:
+            legacy = server.pop('azure_devops_organization')
+            ado = storage.load('config', 'ado_config')
+            if legacy and not ado.get('organization_url'):
+                storage.save('config', 'ado_config', {**ado, 'organization_url': legacy})
+            storage.save('config', 'server_config', server)
+        if storage.exists('config', 'ado_processes'):
+            catalogue = storage.load('config', 'ado_processes')
+            changed = False
+            for process in catalogue['processes']:
+                for item in process['types']:
+                    states = {}
+                    for state in sorted(item['states'], key=lambda entry: entry['order']):
+                        kept = states.setdefault(state['name'], state)
+                        if kept['category'] != state['category']:
+                            raise SchemaError('Conflicting duplicate ADO state ' + state['name'])
+                    if len(states) != len(item['states']):
+                        item['states'] = list(states.values())
+                        changed = True
+            if changed:
+                storage.save('config', 'ado_processes', catalogue)
+
+
+def upgrade_49(storage):
+    """Purge stored Azure DevOps personal access tokens; only delegated credentials remain."""
+    with storage.transaction():
+        for email in list(storage.list_keys('accounts')):
+            account = storage.load('accounts', email)
+            storage.save('accounts', email, {key: value for key, value in account.items()
+                                             if key not in ('pat', 'pat_invalid')})
+        policy = storage.load('config', 'authentication')
+        if policy['backend_credentials'] == 'pat':
+            storage.save('config', 'authentication', {**policy, 'backend_credentials': 'none'})
 
 
 def _validate_backend_selection(server, ado):
@@ -663,7 +704,7 @@ REGISTRY = tuple(
         (41, 40, upgrade_41), (42, 41, upgrade_42), (43, 42, upgrade_43),
         (44, 43, upgrade_44),
         (45, 44, upgrade_45), (46, 45, upgrade_46), (47, 46, upgrade_47),
-        (48, 47, upgrade_48),
+        (48, 47, upgrade_48), (49, 48, upgrade_49),
     )
 )
 
@@ -721,7 +762,7 @@ def admit_legacy(storage, ledger, *, server_config=None):
 
 
 def validate_records(storage, revision, *, server_config=None):
-    from planner_lib.accounts.config import _decrypt_pat, _is_valid_email
+    from planner_lib.accounts.config import _is_valid_email
     from planner_lib.admin.config_manager import ConfigManager
     from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
 
@@ -802,7 +843,7 @@ def validate_records(storage, revision, *, server_config=None):
             validate_iteration_sets(storage.load('config', 'iterations'))
         if revision >= 44:
             from planner_lib.session.policy import validate_authentication
-            validate_authentication(storage.load('config', 'authentication'))
+            validate_authentication(storage.load('config', 'authentication'), revision)
         if revision >= 46:
             _validate_backend_selection(server, storage.load('config', 'ado_config'))
         if revision >= 47 and 'stand_alone_mode' in server['feature_flags']:
@@ -814,8 +855,9 @@ def validate_records(storage, revision, *, server_config=None):
                     or not isinstance(account['permissions'], list)
                     or any(not isinstance(permission, str) for permission in account['permissions'])):
                 raise SchemaError('Invalid account contract')
-            if account.get('pat'):
-                _decrypt_pat(account['pat'])
+            # Older revisions may still hold PATs, which revision 49 purges unread.
+            if revision >= NO_PAT_REVISION and ('pat' in account or 'pat_invalid' in account):
+                raise SchemaError('Accounts must not hold ADO personal access tokens')
             if revision >= 28:
                 account_id = account['account_id']
                 if str(UUID(account_id)) != account_id or account_id in account_ids:

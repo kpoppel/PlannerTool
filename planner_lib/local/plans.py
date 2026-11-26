@@ -5,7 +5,6 @@ configuration store; links to them are validated here on save.
 """
 from __future__ import annotations
 
-import sqlite3
 from datetime import date
 from typing import Any, Dict, List
 from uuid import UUID
@@ -41,33 +40,29 @@ class LocalPlans:
             "SELECT revision FROM document_revisions WHERE document = 'local_plans'").fetchone()[0]
 
     def read(self) -> Dict[str, Any]:
-        with self._database.connect() as connection:
-            connection.execute('BEGIN')
-            try:
-                plans = []
-                for row in connection.execute(
-                        'SELECT p.*, i.iteration_set_id FROM plan_definitions p '
-                        'LEFT JOIN plan_iteration_sets i ON i.plan_id = p.plan_id '
-                        'WHERE p.backend_id = ? ORDER BY p.display_order', (LOCAL_BACKEND_ID,)):
-                    key = (row['plan_id'],)
-                    plan = {
-                        'id': row['plan_id'], 'name': row['name'], 'type': row['kind'],
-                        'archived': bool(row['archived']),
-                        'task_types': [item[0] for item in connection.execute(
-                            'SELECT type_id FROM plan_task_types WHERE plan_id = ? ORDER BY rowid', key)],
-                        'closed_history_days': row['closed_history_days'],
-                        'iteration_uuid': row['iteration_set_id'],
-                        'markers': [{'id': m['marker_id'], 'label': m['label'], 'date': m['marker_date'],
-                                     'color': m['color']} for m in connection.execute(
-                            'SELECT * FROM plan_markers WHERE plan_id = ? ORDER BY marker_date, rowid', key)],
-                    }
-                    if row['allocation_override']:
-                        plan['allocatable_ids'] = [item[0] for item in connection.execute(
-                            'SELECT team_id FROM plan_allocatable_teams WHERE plan_id = ? ORDER BY position', key)]
-                    plans.append(plan)
-                return {'revision': self._revision(connection), 'plans': plans}
-            finally:
-                connection.execute('ROLLBACK')
+        with self._database.read() as connection:
+            plans = []
+            for row in connection.execute(
+                    'SELECT p.*, i.iteration_set_id FROM plan_definitions p '
+                    'LEFT JOIN plan_iteration_sets i ON i.plan_id = p.plan_id '
+                    'WHERE p.backend_id = ? ORDER BY p.display_order', (LOCAL_BACKEND_ID,)):
+                key = (row['plan_id'],)
+                plan = {
+                    'id': row['plan_id'], 'name': row['name'], 'type': row['kind'],
+                    'archived': bool(row['archived']),
+                    'task_types': [item[0] for item in connection.execute(
+                        'SELECT type_id FROM plan_task_types WHERE plan_id = ? ORDER BY position', key)],
+                    'closed_history_days': row['closed_history_days'],
+                    'iteration_uuid': row['iteration_set_id'],
+                    'markers': [{'id': m['marker_id'], 'label': m['label'], 'date': m['marker_date'],
+                                 'color': m['color']} for m in connection.execute(
+                        'SELECT * FROM plan_markers WHERE plan_id = ? ORDER BY marker_date, position', key)],
+                }
+                if row['allocation_override']:
+                    plan['allocatable_ids'] = [item[0] for item in connection.execute(
+                        'SELECT team_id FROM plan_allocatable_teams WHERE plan_id = ? ORDER BY position', key)]
+                plans.append(plan)
+            return {'revision': self._revision(connection), 'plans': plans}
 
     def validate_configuration(self):
         document = self.read()
@@ -124,7 +119,7 @@ class LocalPlans:
                     raise StaleRevisionError('Local plans changed since they were loaded; reload and retry')
                 self._apply(connection, document['plans'])
                 connection.execute("UPDATE document_revisions SET revision = revision + 1 WHERE document = 'local_plans'")
-        except sqlite3.IntegrityError as error:
+        except self._database.IntegrityError as error:
             raise PlanInUseError('A removed plan still owns tasks; move or delete them first') from error
         return self.read()
 
@@ -134,8 +129,8 @@ class LocalPlans:
         scope = 'plan_id IN (SELECT plan_id FROM plan_definitions WHERE backend_id = ?)'
         for table in ('plan_task_types', 'plan_allocatable_teams', 'plan_iteration_sets', 'plan_markers'):
             connection.execute(f'DELETE FROM {table} WHERE {scope}', local)
-        # Free display positions before rewriting them.
-        connection.execute('UPDATE plan_definitions SET display_order = -1 - rowid WHERE backend_id = ?', local)
+        # Free display positions before rewriting them; current positions are unique and nonnegative.
+        connection.execute('UPDATE plan_definitions SET display_order = -1 - display_order WHERE backend_id = ?', local)
         keep = [plan['id'] for plan in plans]
         placeholders = ', '.join('?' for _ in keep)
         connection.execute('DELETE FROM plan_definitions WHERE backend_id = ?'
@@ -150,15 +145,17 @@ class LocalPlans:
                 'allocation_override = excluded.allocation_override',
                 (plan['id'], LOCAL_BACKEND_ID, plan['name'].strip(), plan['type'], int(plan['archived']), order,
                  plan['closed_history_days'], int('allocatable_ids' in plan)))
-            for type_id in plan['task_types']:
-                connection.execute('INSERT INTO plan_task_types VALUES (?, ?)', (plan['id'], type_id))
+            for position, type_id in enumerate(plan['task_types']):
+                connection.execute('INSERT INTO plan_task_types (plan_id, type_id, position) VALUES (?, ?, ?)',
+                                   (plan['id'], type_id, position))
             for position, team_id in enumerate(plan.get('allocatable_ids', [])):
                 connection.execute('INSERT INTO plan_allocatable_teams VALUES (?, ?, ?)', (plan['id'], team_id, position))
             if plan['iteration_uuid'] is not None:
                 connection.execute('INSERT INTO plan_iteration_sets VALUES (?, ?)', (plan['id'], plan['iteration_uuid']))
-            for marker in plan['markers']:
-                connection.execute('INSERT INTO plan_markers VALUES (?, ?, ?, ?, ?)',
-                                   (marker['id'], plan['id'], marker['label'].strip(), marker['date'], marker['color']))
+            for position, marker in enumerate(plan['markers']):
+                connection.execute('INSERT INTO plan_markers (marker_id, plan_id, label, marker_date, color, position) '
+                                   'VALUES (?, ?, ?, ?, ?, ?)', (marker['id'], plan['id'], marker['label'].strip(),
+                                                                 marker['date'], marker['color'], position))
 
 
 def _is_date(value):

@@ -18,7 +18,7 @@ const ADO_VIEWS = [
 ];
 
 const LOCAL_VIEWS = [
-  { id: 'local-projects', label: 'Local Projects', permissions: ['manage_projects'] },
+  { id: 'local-projects', label: 'Plans', permissions: ['manage_projects'] },
   { id: 'local-catalogue', label: 'Catalogue', permissions: ['manage_projects'] },
   { id: 'local-markers', label: 'Markers', permissions: ['manage_projects'] },
   { id: 'local-iterations', label: 'Iterations', permissions: ['manage_iterations'] },

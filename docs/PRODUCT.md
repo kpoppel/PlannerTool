@@ -154,9 +154,10 @@ and offer Retry. A refresh that cannot read all configured work never publishes
 partial data; the previous complete snapshot remains available with an access
 warning to the requesting user.
 
-Fresh installations use generated demo data without requiring an ADO PAT. With
-live ADO selected, every account must configure a valid PAT, and all ADO requests
-use the acting user's credentials. Account credential repair remains reachable.
+Fresh installations use generated demo data without requiring Azure DevOps
+credentials. Live ADO requires Entra sign-in, and all ADO requests use the acting
+user's delegated credentials. Without Entra, PlannerTool runs on the demo, static
+or Local backends.
 
 ## Core user value
 

@@ -240,7 +240,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
                 '/api/session', '/api/auth/enroll', '/api/auth/enrollment-status',
                 '/api/auth/delete-account',
             } or route_path.startswith(('/api/auth/admin-reset/', '/api/auth/devices/')) or (
-                request.method == 'POST' and route_path in {'/api/config', '/admin/v1/users'})
+                request.method == 'POST' and route_path == '/admin/v1/users')
             if forbidden:
                 return JSONResponse({'error': 'access_denied'}, status_code=403)
         if request.method == 'POST' and request.url.path.endswith((

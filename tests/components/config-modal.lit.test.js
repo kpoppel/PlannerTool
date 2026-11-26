@@ -25,7 +25,6 @@ describe('config-modal', () => {
     const checkbox = modal._qs('#letterShortcuts');
     expect(checkbox.checked).to.equal(true);
     const setPref = vi.spyOn(dataService, 'setLocalPref').mockResolvedValue(undefined);
-    vi.spyOn(dataService, 'saveConfig').mockResolvedValue({ ok: true });
     checkbox.checked = false;
     modal._qs('#saveConfigBtn').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -47,7 +46,6 @@ describe('config-modal', () => {
     await modal.updateComplete;
     const scenarios = store.getState().scenarios;
     const setPref = vi.spyOn(dataService, 'setLocalPref').mockResolvedValue(undefined);
-    vi.spyOn(dataService, 'saveConfig').mockResolvedValue({ ok: true });
     const load = vi.spyOn(dataService, 'getCostTeams').mockResolvedValue({ ok: true, data: {
       teams: {}, groups: {},
     } });
@@ -81,17 +79,9 @@ describe('config-modal', () => {
     await modal._populate();
     expect(modal._qs('#configEmail').value).to.equal('alex@example.com');
     modal._qs('#autosaveInterval').value = '17';
-    expect(modal._qs('#configPat')).to.equal(null);
     expect(modal._qs('#deviceListBtn')).to.equal(null);
     expect(modal._qs('#deleteAccountBtn')).to.equal(null);
     expect(modal._qs('#autosaveInterval').value).to.equal('17');
-  });
-
-  it('keeps preferences but hides the Azure DevOps PAT field in Local mode', async () => {
-    modal.taskBackendId = 'local';
-    await modal.updateComplete;
-    expect(modal._qs('#configPat')).to.equal(null);
-    expect(modal._qs('#autosaveInterval')).not.to.equal(null);
   });
 
   it('uses broker logout and forbids broker account deletion', async () => {
@@ -224,14 +214,12 @@ describe('config-modal', () => {
     dataService.getLocalPref = origGet;
   });
 
-  it('Save button triggers dataService.setLocalPref and saveConfig', async () => {
+  it('Save button persists preferences locally', async () => {
     const origSet = dataService.setLocalPref;
-    const origSave = dataService.saveConfig;
     const saved = {};
     dataService.setLocalPref = async (k, v) => {
       saved[k] = v;
     };
-    dataService.saveConfig = async (cfg) => ({ ok: true });
     // wait for Lit render/update lifecycle to complete and find inner modal elements
     if (modal.updateComplete) await modal.updateComplete;
     const inner2 =
@@ -250,6 +238,5 @@ describe('config-modal', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(saved['user.email']).to.equal('z@y.z');
     dataService.setLocalPref = origSet;
-    dataService.saveConfig = origSave;
   });
 });

@@ -268,7 +268,7 @@ or
 
 Notes:
 - `tests/playwright.config.js` starts an isolated uvicorn server on `127.0.0.1:8010`.
-- The Playwright web server sets a dedicated `PLANNER_SECRET_KEY` for account PAT encryption in tests.
+- The Playwright web server sets a dedicated `PLANNER_SECRET_KEY` for encrypting secrets at rest in tests.
 - E2E storage and generated mock data use a fresh temporary directory per run, passed through `PLANNER_E2E_TEST_DATA_DIR` and Playwright metadata. Existing test databases and the repository `data/` are not modified.
 
 ## UI/UX v5 release validation
@@ -300,11 +300,8 @@ python3 -m scripts.api_cli get /api/projects --cookies "$HOME/planner-cookies.tx
 
 Keep credential files outside the repository and do not log their contents.
 Routine calls renew from the cookie jar without consuming the account key.
-Use a private JSON file for PAT configuration payloads and POST it to
-`/api/config`, never to `/api/session`.
 
 ```bash
-python3 -m scripts.api_cli post /api/config --cookies "$HOME/planner-cookies.txt" -d @private-config.json
 curl -s -b "$HOME/planner-cookies.txt" -c "$HOME/planner-cookies.txt" \
     -X POST -H 'Accept: application/json' "$API_BASE/api/session"
 curl -s -b "$HOME/planner-cookies.txt" -H 'Accept: application/json' "$API_BASE/api/cost"

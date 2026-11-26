@@ -29,7 +29,7 @@ required in both mock and live modes. Real-tenant acceptance remains outstanding
 5. Users must already have ADO organization access. No ADO service user is needed.
 
 For this deployment, prefer certificate-backed Entra authentication over application
-secrets, and Entra over PATs. MSAL signs short-lived client assertions and derives a
+secrets; Azure DevOps PATs are not supported. MSAL signs short-lived client assertions and derives a
 SHA-256 certificate thumbprint; the private key is never sent to Entra. Either Entra
 credential authenticates token exchanges; ADO operations still use each signed-in
 user's delegated token and permissions. These are explicit choices, not automatic

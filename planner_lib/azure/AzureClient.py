@@ -15,7 +15,6 @@ from planner_lib.azure.markers import MarkersOperations
 from planner_lib.azure.processes import ProcessOperations
 from planner_lib.azure.authentication import (
     azure_devops_authentication,
-    azure_devops_pat_authentication,
     token_from_credential,
 )
 from planner_lib.backend.port import BackendCredential
@@ -30,7 +29,7 @@ class AzureClient:
     - MarkersOperations: delivery plan markers
 
     Mock clients (AzureMockClient, AzureMockGeneratorClient) extend this class
-    and override only ``_connect_with_pat`` to inject a fake SDK connection.
+    and override only ``_connect_mock`` to inject a fake SDK connection.
     Domain responses are cached by CachingBackend. The team/plan operation
     helper may separately cache Azure discovery calls behind explicit
     project-level and global invalidation methods.
@@ -68,12 +67,9 @@ class AzureClient:
     def conn(self, value: Optional[Any]) -> None:
         self._connection_state.connection = value
 
-    def _connect_with_pat(self, pat: str) -> None:
-        """Low-level connect using an explicit PAT.
-
-        This method sets up the azure-devops SDK connection object.
-        """
-        self._connect_with_authentication(azure_devops_pat_authentication(pat))
+    def _connect_mock(self) -> None:
+        """Install a fake SDK connection; only mock clients support mock credentials."""
+        raise ValueError('Live Azure DevOps cannot use a mock credential')
 
     def _connect_with_authentication(self, authentication) -> None:
         try:
@@ -84,8 +80,7 @@ class AzureClient:
             ) from error
 
         # If already connected, we can reuse the SDK connection for this
-        # instance only for the duration of the current context. Do not
-        # rely on any previously-stored PAT.
+        # instance only for the duration of the current context.
         if self._connected:
             return
 
@@ -93,30 +88,25 @@ class AzureClient:
         self._connected = True
 
     def connect(self, credential: BackendCredential) -> ContextManager["AzureClient"]:
-        """Context-manager that connects with a validated operation credential."""
-        token = token_from_credential(credential)
-        return self._connection_context(token, credential=credential)
+        """Context-manager that connects with a validated operation credential.
 
-    def connect_pat(self, pat: str) -> ContextManager["AzureClient"]:
-        """Context-manager for an explicit PAT-only connection outside a user credential."""
-        if not isinstance(pat, str) or not pat:
-            raise ValueError("PAT must be a non-empty string")
-        return self._connection_context(pat)
+        A Bearer credential works without a credential provider; the token is then not renewed.
+        """
+        token_from_credential(credential)
+        return self._connection_context(credential)
 
     @contextmanager
-    def _connection_context(
-        self, token: str, *, credential: BackendCredential | None = None,
-    ) -> ContextManager["AzureClient"]:
+    def _connection_context(self, credential: BackendCredential) -> ContextManager["AzureClient"]:
         """Connect with the transport selected by the credential contract and
         yield a connected client for the duration of the context.
         """
         authentication = None
         try:
-            if credential is not None and credential['kind'] == 'bearer':
+            if credential['kind'] == 'mock':
+                self._connect_mock()
+            else:
                 authentication = azure_devops_authentication(credential, self._credential_provider)
                 self._connect_with_authentication(authentication)
-            else:
-                self._connect_with_pat(token)
             yield self
         except Exception as error:
             from planner_lib.backend.errors import BackendAuthError, classify_ado_exception
@@ -392,6 +382,18 @@ class AzureClient:
     def update_work_item_relations(self, work_item_id: int, relations_ops: list):
         """Update work item relations (delegates to WorkItemOperations)."""
         return self._work_item_ops.update_work_item_relations(work_item_id, relations_ops)
+
+    def update_work_item_title(self, work_item_id: int, title: str):
+        return self._work_item_ops.update_work_item_title(work_item_id, title)
+
+    def create_work_item(self, project: str, type_name: str, fields: dict) -> dict:
+        return self._work_item_ops.create_work_item(project, type_name, fields)
+
+    def delete_work_item(self, work_item_id: int) -> None:
+        return self._work_item_ops.delete_work_item(work_item_id)
+
+    def get_work_item_revision(self, work_item_id: int):
+        return self._work_item_ops.get_work_item_revision(work_item_id)
 
     def get_work_item_description(self, work_item_id: int) -> str:
         """Fetch the description field of a single work item.

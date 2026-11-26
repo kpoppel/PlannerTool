@@ -126,22 +126,20 @@ async function init() {
     const topMenu = document.querySelector('top-menu-bar');
     topMenu.baseUrl = window.APP_BASE_URL;
     await topMenu.loadPermissions();
-    host.taskBackendId = topMenu.taskBackendId;
+    host.taskCapabilities = topMenu.taskCapabilities;
     const { cmd, sel } = await import('./application/imports.js');
     await cmd.data.hydrateBaseline();
     await cmd.data.initializeAllocationPreferences();
     await cmd.data.hydrateScenarioData();
     await cmd.viewRestore.restoreLastView();
-    if (topMenu.taskBackendId === 'local') {
-      const openLinkedTask = () => {
-        const taskId = new URLSearchParams(window.location.hash.slice(1)).get('task');
-        if (taskId === null) return;
-        const task = sel.feature.getEffectiveFeatureById(taskId);
-        if (task) cmd.feature.setSelectedFeature(task);
-      };
-      window.addEventListener('hashchange', openLinkedTask);
-      openLinkedTask();
-    }
+    const openLinkedTask = () => {
+      const taskId = new URLSearchParams(window.location.hash.slice(1)).get('task');
+      if (taskId === null) return;
+      const task = sel.feature.getEffectiveFeatureById(taskId);
+      if (task) cmd.feature.setSelectedFeature(task);
+    };
+    window.addEventListener('hashchange', openLinkedTask);
+    openLinkedTask();
     const { createAutosaveController } = await import('./application/autosaveController.js');
     const autosaveController = createAutosaveController({
       bus,

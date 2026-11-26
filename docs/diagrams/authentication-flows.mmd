@@ -3,7 +3,7 @@ flowchart TD
     Session -->|Yes| Ready
     Session -->|No| Mode{"Instance authentication mode"}
 
-    Mode -->|"Local backend or ADO / PAT"| Enrollment["Browser enrollment<br/>or remembered-browser renewal"]
+    Mode -->|"Enrollment (no live ADO)"| Enrollment["Browser enrollment<br/>or remembered-browser renewal"]
     Enrollment --> LocalAccount["Resolve instance account"]
     LocalAccount --> CreateSession
 
@@ -30,9 +30,9 @@ flowchart TD
 
     Route -->|Local database| Local["Read or write local data"]
     Route -->|Shared cached ADO read| Cache["Read instance-wide task snapshot<br/>Shared visibility is intentional"]
-    Route -->|"Live ADO operation or cache refresh"| Credential{"Configured ADO credential mode"}
+    Route -->|"Live ADO operation or cache refresh"| Credential{"Session has a delegated<br/>Entra credential?"}
 
-    Credential -->|PAT| PAT["Load acting account's encrypted PAT"]
+    Credential -->|"No (enrollment session)"| Required["Reject: 403 ado_credential_required"]
     Credential -->|Entra| Request["Request acting account's token<br/>Authenticated instance-to-broker call"]
     Request --> Token{"Usable access token<br/>in central cache?"}
     Token -->|Yes| Bearer["Return short-lived access token<br/>to instance server only"]
@@ -44,16 +44,14 @@ flowchart TD
     Preserve --> Begin
     Renewal -->|Service unavailable| Outage["Report temporary outage<br/>Do not create a login loop"]
 
-    PAT --> Call["Call Azure DevOps as the acting user<br/>PAT: Basic · Entra: Bearer"]
-    Bearer --> Call
+    Bearer --> Call["Call Azure DevOps as the acting user<br/>Bearer token"]
     Call --> Result{"ADO response"}
     Result -->|Success| Data["Return result<br/>Update shared snapshot if refreshing"]
     Result -->|Permission denied| Forbidden["Explain missing ADO access<br/>Do not repeatedly sign in"]
     Result -->|Authentication rejected| Recovery["Classify rejection and challenge<br/>Bounded credential recovery"]
     Recovery --> Next{"Required action"}
     Next -->|Entra interaction| Preserve
-    Next -->|PAT replacement| Replace["Ask acting user to replace PAT"]
-    Next -->|Cannot recover| Error["Report authentication failure<br/>No automatic switch to another credential mode"]
+    Next -->|Cannot recover| Error["Report authentication failure<br/>403 ado_credential_unusable or access_denied"]
     Result -->|Network or service failure| Outage
 
     Local --> Display(["Show result to user"])

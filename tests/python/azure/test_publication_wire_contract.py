@@ -16,7 +16,7 @@ from tests.helpers import register_service_on_client
 
 
 BASE_URL = 'https://dev.azure.com/publication-contract'
-CREDENTIAL = {'kind': 'pat', 'token': 'fixture-pat', 'user_id': 'fixture-user'}
+CREDENTIAL = {'kind': 'bearer', 'token': 'fixture-token', 'user_id': 'fixture-user'}
 
 
 @pytest.fixture
@@ -57,13 +57,13 @@ def publication_wire(monkeypatch):
     teams = TeamRepository(SimpleNamespace(fetch_config_teams=lambda **kwargs: [team]))
     backend = AzureDevOpsBackend('publication-contract', storage, teams, CapacityService(teams))
 
-    def connect(pat):
-        assert pat == CREDENTIAL['token']
+    def connect(authentication):
+        assert authentication.signed_session().headers['Authorization'] == f"Bearer {CREDENTIAL['token']}"
         backend._conn.conn = SimpleNamespace(base_url=BASE_URL, clients=SimpleNamespace(
             get_work_item_tracking_client=lambda: sdk))
         backend._conn._connected = True
 
-    monkeypatch.setattr(backend._conn, '_connect_with_pat', connect)
+    monkeypatch.setattr(backend._conn, '_connect_with_authentication', connect)
     return SimpleNamespace(backend=backend, requests=requests_sent, fields=fields,
                            failures=failures, storage=storage)
 
@@ -264,7 +264,6 @@ def publication_api(authenticated_client, publication_wire, monkeypatch):
     register_service_on_client(authenticated_client, 'task_repository', repository)
     register_service_on_client(authenticated_client, 'account_manager', SimpleNamespace(
         get_account_by_id=lambda user_id: {'email': 'user@example.com'},
-        load=lambda email: {'pat': CREDENTIAL['token']}, pat_error=lambda email: None,
     ))
     return authenticated_client
 
@@ -310,7 +309,7 @@ def test_invalid_http_batch_sends_zero_ado_requests(publication_api, publication
     ])
 
     assert response.status_code == 422, response.text
-    assert response.json()['error'] == 'invalid_allocation'
+    assert response.json()['error'] == 'invalid_task'
     assert publication_wire.requests == []
 
 

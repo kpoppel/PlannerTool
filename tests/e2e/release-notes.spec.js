@@ -96,9 +96,7 @@ test('capture release illustrations from isolated application components', async
   await page.evaluate(async () => {
     const { showAuthDialog } = await import('/static/js/components/AuthDialog.lit.js');
     showAuthDialog('/api');
-    const dialog = document.querySelector('auth-dialog');
-    dialog.requiresPat = true;
-    await dialog.updateComplete;
+    await document.querySelector('auth-dialog').updateComplete;
   });
   await page.locator('auth-dialog section').screenshot({ path: testInfo.outputPath('enrollment.png') });
 });

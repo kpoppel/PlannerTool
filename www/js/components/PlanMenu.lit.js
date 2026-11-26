@@ -284,7 +284,7 @@ export class PlanMenuLit extends LitElement {
     projects: { type: Array },
     activeViewId: { type: String },
     activeViewData: { type: Object },
-    taskBackendId: { type: String },
+    taskCapabilities: { type: Array },
     _eventsOpenPlanId: { type: String, state: true },
     focusedPlanId: { type: String, state: true },
     focusSearch: { type: String, state: true },
@@ -297,7 +297,7 @@ export class PlanMenuLit extends LitElement {
     this.projects = [];
     this.activeViewId = null;
     this.activeViewData = null;
-    this.taskBackendId = '';
+    this.taskCapabilities = [];
     this.focusedPlanId = '';
     this.focusSearch = '';
     this.focusOptionsOpen = false;
@@ -476,10 +476,10 @@ export class PlanMenuLit extends LitElement {
 
     return html`
       <div class="menu-popover" style="--plan-columns: ${columns}">
-        ${this.taskBackendId === 'local' ? html`<button type="button" @click=${async () => {
+        ${this.taskCapabilities.includes('task_create') ? html`<button type="button" @click=${async () => {
           const project = this.projects.find((entry) => entry.selected);
-          const { openLocalTaskEditor } = await import('./modalHelpers.js');
-          await openLocalTaskEditor({ planId: project === undefined ? '' : String(project.id),
+          const { openTaskEditor } = await import('./modalHelpers.js');
+          await openTaskEditor({ planId: project === undefined ? '' : String(project.id),
             refresh: () => cmd.scenario.refreshBaseline() });
         }}>Create task</button>` : ''}
         <div class="focus-controls" @focusout=${(event) => {

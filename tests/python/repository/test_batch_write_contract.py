@@ -7,6 +7,7 @@ from tests.helpers import register_service_on_client
 
 
 class _PerTaskBackend:
+    CAPABILITIES = frozenset({'task_read', 'task_publish'})
     is_remote = False
 
     def __init__(self):
@@ -32,7 +33,7 @@ class _BatchBackend(_PerTaskBackend):
         self.batches = []
         self._conflicts = list(conflicts)
 
-    def write_tasks(self, updates, credential, *, actor_id):
+    def write_tasks(self, updates, credential, *, actor_id, validate):
         self.batches.append((updates, actor_id))
         if self._conflicts:
             return {'updated': 0, 'errors': [], 'conflicts': self._conflicts}
@@ -83,4 +84,5 @@ def test_http_publication_returns_409_for_field_conflicts(authenticated_client):
     register_service_on_client(authenticated_client, 'task_repository', repository)
     response = authenticated_client.post('/api/tasks', json=[{'id': '1', 'start': 'c'}])
     assert response.status_code == 409
-    assert response.json() == {'error': 'task_conflict', 'conflicts': [conflict]}
+    assert response.json() == {'error': 'task_conflict', 'message': 'Tasks changed since the reviewed revision',
+                               'conflicts': [conflict]}

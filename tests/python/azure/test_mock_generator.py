@@ -55,7 +55,7 @@ def test_generator_process_catalogue_matches_configured_projects(tmp_path):
     _populate_mock_config(storage)
     client = AzureMockGeneratorClient('org', storage, data_dir=str(tmp_path),
                                       config_dict={'default_items_per_area': 2})
-    with client.connect({'kind': 'pat', 'token': 'fixture-pat', 'user_id': 'test'}):
+    with client.connect({'kind': 'mock', 'token': 'fixture-pat', 'user_id': 'test'}):
         processes = client.list_processes()
         process = next(item for item in processes if 'MyProject' in item['projects'])
         assert process['parent_name'] == 'Agile'
@@ -630,7 +630,7 @@ class TestAzureMockGeneratorClientIntegration:
         )
 
     def test_get_all_teams(self, client):
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             # Use the first project from projects.yml
             teams = c.get_all_teams("MyProject")
         assert isinstance(teams, list)
@@ -641,7 +641,7 @@ class TestAzureMockGeneratorClientIntegration:
         assert "area_path" in t or "areaPath" in t or True  # normalised form may vary
 
     def test_get_work_items_returns_results(self, client):
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             # The caller explicitly selects reviewed catalogue types.
             items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
@@ -652,12 +652,12 @@ class TestAzureMockGeneratorClientIntegration:
         assert len(items) > 0
 
     def test_get_all_plans(self, client):
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             plans = c.get_all_plans("MyProject")
         assert isinstance(plans, list)
 
     def test_get_iterations(self, client):
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             iters = c.get_iterations("MyProject")
         assert iters is not None
 
@@ -667,7 +667,7 @@ class TestAzureMockGeneratorClientIntegration:
         may be fewer than the total revision count.  We only assert the call
         does not raise and returns a list.
         """
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
@@ -677,7 +677,7 @@ class TestAzureMockGeneratorClientIntegration:
             pytest.skip("No items generated for Architecture")
         wid = items[0].get("id") or items[0].get("work_item_id")
         assert wid is not None
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             history = c.get_task_revision_history(wid)
         assert isinstance(history, list)
 
@@ -697,7 +697,7 @@ class TestAzureMockGeneratorClientIntegration:
                 "generator_config": _MULTI_CONFIG_DICT,
             },
         )
-        with svc.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with svc.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             teams = c.get_all_teams("MyProject")
         assert isinstance(teams, list)
 
@@ -730,7 +730,7 @@ class TestAzureMockGeneratorPersistence:
         pdir = str(tmp_path / "generated")
         client = self._make_client(storage, pdir)
         # Trigger build by connecting
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}):
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}):
             pass
         manifest = _json.loads((tmp_path / "generated" / "_manifest.json").read_text())
         assert manifest["work_item_count"] > 0
@@ -744,7 +744,7 @@ class TestAzureMockGeneratorPersistence:
         _populate_mock_config(storage)
         pdir = tmp_path / "generated"
         client = self._make_client(storage, str(pdir))
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}):
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}):
             pass
         wi_files = list(pdir.glob("sdk_work_items__*.json"))
         assert len(wi_files) > 0, "Expected sdk_work_items__*.json files"
@@ -761,7 +761,7 @@ class TestAzureMockGeneratorPersistence:
         _populate_mock_config(storage)
         pdir = tmp_path / "generated"
         client = self._make_client(storage, str(pdir))
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}):
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}):
             pass
         rev_files = list(pdir.glob("sdk_revisions__*.json"))
         assert len(rev_files) > 0, "Expected sdk_revisions__*.json files"
@@ -776,7 +776,7 @@ class TestAzureMockGeneratorPersistence:
         _populate_mock_config(storage)
         pdir = tmp_path / "generated"
         client = self._make_client(storage, str(pdir))
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}):
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}):
             pass
         stems = {f.name.split("__")[0] for f in pdir.glob("sdk_*.json")}
         expected = {
@@ -802,7 +802,7 @@ class TestAzureMockGeneratorPersistence:
             data_dir="data",
             config_dict=cfg,
         )
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}):
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}):
             pass
         assert (tmp_path / "via_cfg" / "_manifest.json").exists()
 
@@ -817,7 +817,7 @@ class TestAzureMockGeneratorPersistence:
         client = self._make_client(storage, str(pdir))
 
         # Connect and get a Feature work item
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
@@ -841,7 +841,7 @@ class TestAzureMockGeneratorPersistence:
         # Perform an update
         new_start = "2026-05-01T00:00:00Z"
         new_end = "2026-08-01T00:00:00Z"
-        with client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             c.update_work_item_dates(wid, start=new_start, end=new_end)
 
         disk_after = _get_disk_item(wid)
@@ -863,7 +863,7 @@ class TestAzureMockGeneratorPersistence:
         gen_client = self._make_client(
             storage, str(pdir)
         )
-        with gen_client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}):
+        with gen_client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}):
             pass
         # Now load with AzureMockClient pointing at the persisted directory
         mock_storage = create_storage(backend='memory', serializer='json')
@@ -873,7 +873,7 @@ class TestAzureMockGeneratorPersistence:
             storage=mock_storage,
             fixture_dir=str(pdir),
         )
-        with mock_client.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}) as c:
+        with mock_client.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}) as c:
             work_items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
@@ -902,7 +902,7 @@ class TestAzureMockGeneratorPersistence:
                 "generator_persist_dir": pdir,
             },
         )
-        with svc.connect({'kind': 'pat', 'token': "dummy-pat", 'user_id': 'test'}):
+        with svc.connect({'kind': 'mock', 'token': "dummy-pat", 'user_id': 'test'}):
             pass
         assert (tmp_path / "fflags" / "_manifest.json").exists()
 
@@ -990,7 +990,7 @@ class TestGeneratorPersistEnabled:
             create_storage(backend='memory', serializer='json'),
             {"generator_persist_enabled": True, "generator_persist_dir": pdir},
         )
-        with svc.connect({'kind': 'pat', 'token': 'dummy-pat', 'user_id': 'test'}) as c:
+        with svc.connect({'kind': 'mock', 'token': 'dummy-pat', 'user_id': 'test'}) as c:
             plans = c.get_all_plans("MyProject")
             assert len(plans) > 0
         manifest_path = tmp_path / "auto_persist" / "_manifest.json"
@@ -1008,7 +1008,7 @@ class TestGeneratorPersistEnabled:
             {"generator_persist_enabled": True, "generator_persist_dir": str(pdir)},
         )
         # Fetch a work item
-        with svc.connect({'kind': 'pat', 'token': 'dummy-pat', 'user_id': 'test'}) as c:
+        with svc.connect({'kind': 'mock', 'token': 'dummy-pat', 'user_id': 'test'}) as c:
             items = c.get_work_items(
                 "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
@@ -1026,7 +1026,7 @@ class TestGeneratorPersistEnabled:
 
         new_start = "2026-06-01T00:00:00Z"
         new_end   = "2026-09-01T00:00:00Z"
-        with svc.connect({'kind': 'pat', 'token': 'dummy-pat', 'user_id': 'test'}) as c:
+        with svc.connect({'kind': 'mock', 'token': 'dummy-pat', 'user_id': 'test'}) as c:
             c.update_work_item_dates(wid, start=new_start, end=new_end)
 
         updated = _disk_item(wid)

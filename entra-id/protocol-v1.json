@@ -10,7 +10,7 @@
     "mode": "broker",
     "status": "signed_in",
     "capabilities": {
-      "pat": false, "enrollment": false, "reauthenticate": true,
+      "enrollment": false, "reauthenticate": true,
       "logout": true, "deleteAccount": false, "linkAccount": false
     }
   },

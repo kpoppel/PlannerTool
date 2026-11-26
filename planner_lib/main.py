@@ -94,6 +94,10 @@ def _build_services(
     # --- Authoritative storage routed to the selected generation's two stores ---
     container.register_singleton("storage", storage_diskcache)
     container.register_singleton('planner_database', planner_database)
+    from planner_lib.local.catalogue import LocalCatalogue
+    from planner_lib.local.plans import LocalPlans
+    container.register_factory('local_catalogue', lambda: LocalCatalogue(planner_database))
+    container.register_factory('local_plans', lambda: LocalPlans(planner_database, storage_diskcache))
 
     # --- Remote-backend cache storage (lazy, separate diskcache directory) ---
     # Isolated from `storage` so the volatile, TTL-governed ADO/static/mock
@@ -118,19 +122,23 @@ def _build_services(
     # (removed — diskcache handles memory via OS page cache automatically)
 
     # --- Accounts / session ---
-    from planner_lib.session.policy import validate_backend_policy
-    validate_backend_policy(storage_diskcache)
+    from planner_lib.session.policy import validate_backend_policy, validate_deployment_ado_authentication
+    validate_deployment_ado_authentication(os.environ.get('PLANNER_ADO_AUTHENTICATION'))
+    # A persisted live-ADO selection the deployment cannot serve must not block startup: the
+    # server still starts so an admin can switch the transport; ADO requests fail with a
+    # credential error until then. Saves and restores keep rejecting the selection.
+    try:
+        validate_backend_policy(storage_diskcache)
+    except ValueError as error:
+        logger.warning('Persisted backend selection is unavailable in this deployment: %s', error)
     provider = os.environ.get('PLANNER_AUTH_PROVIDER', 'enrollment')
     if provider not in ('enrollment', 'entra'):
         raise ValueError('PLANNER_AUTH_PROVIDER must be enrollment or entra')
     deployment_mode = os.environ.get('PLANNER_ADO_AUTHENTICATION')
     if 'PLANNER_INSTANCE_BACKEND' in os.environ:
         raise ValueError('PLANNER_INSTANCE_BACKEND has been removed; regenerate the deployment configuration')
-    if deployment_mode is not None:
-        if deployment_mode not in ('disabled', 'pat', 'entra'):
-            raise ValueError('Invalid deployment ADO credential policy')
-        if provider == 'entra' and deployment_mode != 'entra':
-            raise ValueError('Login provider contradicts deployment policy')
+    if provider == 'entra' and deployment_mode not in (None, 'entra'):
+        raise ValueError('Login provider contradicts deployment policy')
     if provider == 'entra':
         from planner_lib.session.broker import BrokerClient, BrokerSettings, BrokerLoginAdapter
         broker_settings = BrokerSettings.from_env()
@@ -159,7 +167,7 @@ def _build_services(
                     storage_diskcache.delete('auth_sessions', key)
             storage_diskcache.save('config', 'authentication', {
                 'version': 1, 'selected': provider, 'active': provider,
-                'backend_credentials': 'delegated' if provider == 'entra' else 'pat',
+                'backend_credentials': 'delegated' if provider == 'entra' else 'none',
                 'epoch': auth_settings['epoch'] + 1})
     container.register_singleton('authentication_provider', provider)
     container.register_factory("account_manager",
@@ -210,13 +218,15 @@ def _build_services(
             org_url=ado_cfg['organization_url'],
             storage=storage_diskcache,
             planner_database=planner_database,
+            local_catalogue=container.get('local_catalogue'),
+            local_plans=container.get('local_plans'),
             config_backend=container.get("config_backend"),
             team_repository=container.get("team_repository"),
             capacity_service=container.get("capacity_service"),
             credential_provider=container.get('credential_provider') if provider == 'entra' else None,
         )
 
-        if inner.BACKEND_ID == 'ado' and feature_flags.get('enable_cache', False):
+        if inner.CACHEABLE and feature_flags.get('enable_cache', False):
             from planner_lib.backend.caching import CachingBackend, CacheTTLConfig
             ttl_config = CacheTTLConfig.from_config(
                 server_cfg.get('cache', {}).get('ttls', {})
@@ -253,7 +263,7 @@ def _build_services(
         GroupRepository,
     )
     from planner_lib.backend.credential import (
-        PatCredentialPolicy, DelegatedCredentialProvider,
+        NoRemoteCredentials, DelegatedCredentialProvider,
     )
 
     # project_repository uses the active backend (which handles enrichment).
@@ -266,7 +276,7 @@ def _build_services(
     container.register_factory("credential_provider",
         lambda: (DelegatedCredentialProvider(storage_diskcache, container.get('account_manager'),
                                              container.get('broker_client'))
-                 if provider == 'entra' else PatCredentialPolicy(container.get('account_manager'))))
+                 if provider == 'entra' else NoRemoteCredentials()))
     container.register_factory("credential_policy",
         lambda: container.get('credential_provider'))
 
@@ -509,13 +519,7 @@ def _build_app(
         if isinstance(exc, BackendAuthError) and exc.credential is not None:
             credential = exc.credential
         policy = resolve_service(request, 'credential_policy')
-        error = None
-        if credential is None:
-            from planner_lib.middleware.session import get_session_context_from_request
-            error = policy.credential_error(get_session_context_from_request(request)['account_id'])
-        if error is None:
-            error = policy.authentication_failed(credential)
-        return JSONResponse(status_code=403, content={'error': error})
+        return JSONResponse(status_code=403, content={'error': policy.authentication_failed(credential)})
 
     from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError
     from planner_lib.database.planner_database import PlannerDatabaseBusy
@@ -541,9 +545,6 @@ def _build_app(
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
-        if exc.status_code in (401, 403) and isinstance(exc.detail, dict):
-            if exc.detail.get('error') in ('invalid_pat', 'pat_invalid'):
-                return backend_auth_response(request, exc)
         if exc.status_code == 401:
             return access_denied_response(request, exc.detail)
         # For non-401 HTTP exceptions, return the error detail as JSON
@@ -559,7 +560,6 @@ def _build_app(
         raise exc
 
     from planner_lib.session.api import router as session_router
-    from planner_lib.accounts.api import router as config_router
     from planner_lib.projects.api import router as projects_router
     from planner_lib.scenarios.api import router as scenario_router
     from planner_lib.views.api import router as views_router
@@ -570,7 +570,6 @@ def _build_app(
     from planner_lib.groups.api import router as groups_router
 
     app.include_router(session_router, prefix='/api')
-    app.include_router(config_router, prefix='/api')
     app.include_router(projects_router, prefix='/api')
     app.include_router(scenario_router, prefix='/api')
     app.include_router(views_router, prefix='/api')
@@ -660,10 +659,10 @@ def _create_prepared_app(config: Config, storage_diskcache: StorageBackend, plan
     # Log the cache composition up-front — the backend is a lazy factory so
     # its own __init__ log only appears on the first request.  main.py owns the
     # flag-based decision, so it is the right place for this summary.
-    from planner_lib.backend.registry import get_active_class
-    _active_backend_cls = get_active_class(
-        server_cfg, storage_diskcache.load('config', 'ado_config'))
-    _cache_on = _active_backend_cls.BACKEND_ID == 'ado' and feature_flags.get('enable_cache', False)
+    from planner_lib.backend.registry import active_backend_info, get_active_class
+    ado_cfg = storage_diskcache.load('config', 'ado_config')
+    _active_backend_cls = get_active_class(server_cfg, ado_cfg)
+    _cache_on = _active_backend_cls.CACHEABLE and feature_flags.get('enable_cache', False)
     if _cache_on:
         logger.info(
             "Startup: cache=ON (disk), inner backend=%s",
@@ -676,7 +675,6 @@ def _create_prepared_app(config: Config, storage_diskcache: StorageBackend, plan
         )
 
     app = _build_app(config, container, feature_flags, logger)
-    app.state.task_backend = {'id': _active_backend_cls.BACKEND_ID,
-                              'capabilities': sorted(_active_backend_cls.CAPABILITIES)}
+    app.state.task_backend = active_backend_info(server_cfg, ado_cfg)
     app.state.instance_id = str(uuid4())
     return app

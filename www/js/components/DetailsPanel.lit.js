@@ -16,7 +16,7 @@ export class DetailsPanelLit extends LitElement {
   static properties = {
     feature: { type: Object },
     open: { type: Boolean },
-    taskBackendId: { type: String },
+    taskCapabilities: { type: Array },
     schedulePresets: { type: Array },
     editingCapacityTeam: { type: String, noAccessor: true },
     showAddTeamPopover: { type: Boolean, noAccessor: true },
@@ -29,7 +29,7 @@ export class DetailsPanelLit extends LitElement {
     this._controller = new DetailsPanelController(this);
     this.feature = null;
     this.open = false;
-    this.taskBackendId = '';
+    this.taskCapabilities = [];
     this.schedulePresets = [];
     this.editingCapacityTeam = null; // Track which team pill is being edited
     this.showAddTeamPopover = false; // Track if add team popover is visible
@@ -505,11 +505,12 @@ export class DetailsPanelLit extends LitElement {
           }),
         })}
         <div class="details-content">
-          ${this.taskBackendId === 'local' ? html`<button type="button" @click=${async () => {
+          ${this.taskCapabilities.includes('task_edit') ? html`<button type="button" @click=${async () => {
             const task = sel.feature.getBaselineFeatureById(feature.id);
             if (!task) return;
-            const { openLocalTaskEditor } = await import('./modalHelpers.js');
-            await openLocalTaskEditor({ task, refresh: async () => {
+            const { openTaskEditor } = await import('./modalHelpers.js');
+            await openTaskEditor({ task, canDelete: this.taskCapabilities.includes('task_delete'),
+              refresh: async () => {
               await cmd.scenario.refreshBaseline();
               if (!sel.feature.getBaselineFeatureById(task.id)) this.hide();
               else this._controller.refresh();

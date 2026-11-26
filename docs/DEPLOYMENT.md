@@ -46,7 +46,8 @@ instances:
 
 Under `entra`, connected instances use broker login regardless of backend;
 unconnected instances retain enrollment but cannot enable live ADO/wiki.
-`pat` retains enrollment; `disabled` forbids remote ADO/wiki. Backend saves never
+`disabled` retains enrollment and forbids remote ADO/wiki. The former value `pat` is
+rejected at startup: Azure DevOps PATs are no longer supported. Backend saves never
 change login mode or sessions. From the repository root:
 
 ```bash
@@ -62,17 +63,15 @@ revision-44 upgrade from dev. Intermediate branch formats are unsupported.
 
 ### Live Entra Registration
 
-For this deployment, prefer **Entra with a certificate**, followed by **Entra with
-an application secret**, then **PATs**. The first two methods use the same Entra
-application registration; select exactly one credential method below. PATs are
-created in Azure DevOps and do not require an Entra app registration. These are
-explicit choices, not automatic downgrade paths.
+For this deployment, prefer **Entra with a certificate** over **Entra with an
+application secret**. Both methods use the same Entra application registration;
+select exactly one credential method below. Live Azure DevOps requires one of them;
+PATs are no longer supported.
 
 | Credential | Created by | Stored locally | Purpose |
 | --- | --- | --- | --- |
 | Entra application certificate | Your organization or OpenSSL | Public certificate PEM and private key PEM | Broker signs token-exchange assertions |
 | Entra application secret | Entra app registration | File containing the secret **value** | Broker authenticates token exchanges |
-| Azure DevOps PAT | Each user in Azure DevOps | Entered in PlannerTool's protected PAT field | That user's ADO requests in PAT mode |
 | Broker encryption key | Deployment generator or local Python command | Fernet key file | Encrypts the broker's persisted token cache |
 | Per-instance shared secret | Deployment generator or local Python command | A distinct secret file for each instance | Authenticates PlannerTool to the broker |
 | Installation encryption key | Installation operator | Retained `.encryption_key` / `PLANNER_SECRET_KEY` | Encrypts PlannerTool credentials at rest |
@@ -273,33 +272,13 @@ empty data becomes admin; existing accounts follow the one-time email claim poli
 in [Authentication](AUTHENTICATION.md). Offline tests do not prove consent, tenant
 policy or real ADO renewal; validate those with a limited audience before cutover.
 
-### PAT Authentication (No Entra App Registration)
+### Deployments Without Entra
 
-Use this method only when deployment policy permits PATs. It does not configure a
-client secret or certificate on the Entra broker.
-
-1. Set top-level `ado_authentication: pat` in the manifest. For a PAT-only deployment,
-   omit `auth_services` and each instance's `auth_service`/`auth_client_secret_file`
-   settings. Redeploy with the ordinary command.
-2. In Azure DevOps, open **User settings > Personal access tokens > New Token**.
-   Select the correct organization, a recognizable name and a short expiry. Grant
-   only the scopes required by enabled operations: **Work Items (Read)** for reading
-   boards and **Wiki (Read)** for reading wiki content; grant write permissions only
-   when you intend to use corresponding publishing/editing operations. Tenant policy
-   may restrict PAT creation or allowed scopes.
-3. Create the PAT and retain its value in your approved secret store immediately;
-   Azure DevOps shows it only once. A PAT is issued by Azure DevOps, not generated
-   with OpenSSL, and is not an Entra client secret or a PlannerTool account key.
-4. Enroll/sign in to PlannerTool. The administrator selects the live Azure DevOps
-   backend and organization in **Admin > Data Sources**. Each user supplies their
-   own PAT in the masked enrollment or account-configuration field when requested.
-   Do not put PATs into the manifest, shared broker files or another user's account.
-5. Verify an ADO refresh and any enabled publishing operations. Before PAT expiry,
-   create a replacement in Azure DevOps, update that user's PlannerTool configuration,
-   verify access and revoke the old PAT.
-
-PATs are encrypted at rest using the installation's retained `PLANNER_SECRET_KEY`.
-PAT mode uses PlannerTool enrollment/account-key login, not Entra browser login.
+Without an Entra app registration, set `ado_authentication: disabled` and omit
+`auth_services` and each instance's `auth_service`/`auth_client_secret_file` settings.
+Users sign in with PlannerTool enrollment/account keys, and only the mock/generator,
+static and Local backends are available. Live Azure DevOps and wiki transport are
+rejected at startup, save and import.
 
 ## Access From Your Computer
 
@@ -359,7 +338,8 @@ Never delete protected files, rotate retained keys or use `down -v` routinely.
 
 ## Local Development With Entra ID
 
-The ordinary `./scripts/run_dev.sh` retains the PAT/enrollment workflow. To connect
+The ordinary `./scripts/run_dev.sh` uses the enrollment workflow with the mock,
+static or Local backends; live Azure DevOps requires Entra. To connect
 the source-reloading backend and Vite to a local broker, use
 `./scripts/run_dev.sh --auth-env /absolute/path/to/dev-auth.env`. This trusted shell
 env file is sourced and must have no group/other permissions (`chmod 600`). Install
@@ -474,7 +454,7 @@ makes no Microsoft requests and does not create/open the token database. Normal
 startup performs the same preflight before starting broker, backend or Vite; an
 invalid certificate or secret configuration stops the entire launch. It does not
 test free ports, HTTPS browser trust, Entra registration/consent or actual token
-renewal. Use `./scripts/run_dev.sh --check` for the ordinary PAT/enrollment setup.
+renewal. Use `./scripts/run_dev.sh --check` for the ordinary enrollment setup.
 
 After starting the launcher, open `https://localhost:5174/dev/` or
 `https://localhost:5174/dev/admin/`. Vite terminates TLS and proxies `/auth/` to the
@@ -489,7 +469,8 @@ all three services. Broker and backend access logging is disabled to keep callba
 of logs. Keep using the auth env file on subsequent starts. Authentication is a
 deployment choice: use `PLANNER_AUTH_PROVIDER=entra` with
 `PLANNER_ADO_AUTHENTICATION=entra`, or `PLANNER_AUTH_PROVIDER=enrollment` with
-`PLANNER_ADO_AUTHENTICATION=pat`, then restart the launcher. Data Sources displays
+`PLANNER_ADO_AUTHENTICATION` unset or `disabled` (no live ADO), then restart the
+launcher. `PLANNER_ADO_AUTHENTICATION=pat` is rejected at startup. Data Sources displays
 the deployed authentication mode but cannot change it.
 
 For offline mock sign-in, use `http://localhost:5174` everywhere above, remove the
@@ -600,14 +581,14 @@ python -c 'import base64, secrets; from pathlib import Path; Path(".encryption_k
 chmod 600 .encryption_key
 ```
 
-This key encrypts PlannerTool credentials, including PATs, at rest. For an existing
+This key encrypts PlannerTool secrets at rest, such as Entra broker grants. For an existing
 installation or copied data, restore its **original** key from your protected backup
 instead of generating a new one. Changing the key does not re-encrypt old credentials.
 
 **Note:**
 - Store the `.encryption_key` file securely and back it up
 - Never commit `.encryption_key` to version control
-- The same key must be used consistently or encrypted PATs cannot be decrypted
+- The same key must be used consistently or encrypted secrets cannot be decrypted
 
 With the key stored in `.encryption_key`, select one of the deployment methods.
 

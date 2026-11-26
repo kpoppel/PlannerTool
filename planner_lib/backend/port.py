@@ -67,7 +67,7 @@ never require a credential at all.
 """
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any, Literal
+from typing import Callable, List, Optional, Dict, Any, Literal
 from typing_extensions import TypedDict, Protocol, runtime_checkable, NotRequired
 
 from planner_lib.domain.tasks import BackendTask, BatchWriteResult, WriteResult
@@ -98,7 +98,8 @@ TASK_CAPABILITIES = frozenset({
     'remote_discovery',   # organization/project/area/iteration browsing
 })
 
-ADO_CAPABILITIES = frozenset({'task_read', 'task_publish', 'history', 'markers', 'remote_discovery'})
+ADO_CAPABILITIES = frozenset({'task_read', 'task_publish', 'task_create', 'task_edit', 'task_delete',
+                              'history', 'markers', 'remote_discovery'})
 
 
 # ---------------------------------------------------------------------------
@@ -109,10 +110,10 @@ class BackendCredential(TypedDict):
     """A credential scoped to one user session.
 
     kind    — the authentication mechanism used by the backend transport
-    token   — opaque PAT or delegated access token (never logged)
+    token   — opaque delegated access token or mock token (never logged)
     user_id — acting account UUID; used for ownership and auditing
     """
-    kind: Literal['pat', 'bearer']
+    kind: Literal['bearer', 'mock']
     token: str
     user_id: str
     binding: NotRequired[str]
@@ -126,7 +127,7 @@ class CredentialProvider(Protocol):
     """Retrieves a BackendCredential for a given user."""
 
     def get_credential(self, user_id: str) -> Optional[BackendCredential]:
-        """Return a credential for *user_id*, or None if no PAT is stored."""
+        """Return a credential for *user_id*, or None if no usable credential exists."""
         ...
 
 
@@ -216,17 +217,22 @@ class TaskCollectionBackend(Protocol):
 
 @runtime_checkable
 class TaskCreationBackend(Protocol):
-    def create_task(self, payload: dict, actor_id: str) -> BackendTask: ...
+    def create_task(self, payload: dict, actor_id: str,
+                    credential: Optional[BackendCredential]) -> BackendTask: ...
 
 
 @runtime_checkable
 class TaskEditorBackend(Protocol):
+    """Editor metadata: ``{catalogue: {processes, states, fields, field_schemas,
+    workflows}, plans: [{id, name, typeIds}]}`` in the Local catalogue shape."""
+
     def task_editor_metadata(self) -> dict: ...
 
 
 @runtime_checkable
 class TaskDeletionBackend(Protocol):
-    def delete_task(self, task_id: str, revision: int, actor_id: str) -> None: ...
+    def delete_task(self, task_id: str, revision: int, actor_id: str,
+                    credential: Optional[BackendCredential]) -> None: ...
 
 
 @runtime_checkable
@@ -241,7 +247,9 @@ class BatchTaskBackend(Protocol):
     """Task backend that commits a whole publication atomically.
 
     Each update may carry ``base`` (``UpdateBase``); fields changed since that
-    base are returned as ``conflicts`` and nothing is written.
+    base are returned as ``conflicts`` and nothing is written. ``validate``
+    receives the original and resulting tasks inside the atomic write and
+    raises ``ValueError`` to abort it; backends never apply workforce rules.
     """
 
     def write_tasks(
@@ -250,6 +258,7 @@ class BatchTaskBackend(Protocol):
         credential: Optional[BackendCredential],
         *,
         actor_id: str,
+        validate: Callable[[Dict[str, BackendTask], List[BackendTask]], None],
     ) -> BatchWriteResult: ...
 
 
@@ -310,11 +319,11 @@ class CatalogueBackend(Protocol):
     """Backend-owned process/type/state catalogue.
 
     ``work_item_display`` returns ``[{process_id, tiers: [[{name, states:
-    [{name, category}]}]]}]`` ordered for presentation. ``process_id`` values
-    are unique within ``backend_id``.
+    [{name, category}], state_transitions?: {state: [target states]}}]]}]``
+    ordered for presentation. ``state_transitions`` is present only when the
+    backend enforces a workflow. ``process_id`` values are unique within the
+    backend.
     """
-
-    backend_id: str
 
     def work_item_display(self) -> List[dict]: ...
 

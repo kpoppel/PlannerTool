@@ -1,23 +1,27 @@
-"""Local backend administration: catalogue and plan definitions."""
+"""Local backend administration: catalogue and plan definitions.
+
+Editable whether or not Local is the active task backend, so administrators can
+prepare definitions before switching.
+"""
 import asyncio
 
 from fastapi import APIRouter, HTTPException, Request
 
 from planner_lib.accounts.constants import AccountPermissions
-from planner_lib.local.catalogue import CatalogueInUseError, LocalCatalogue, StaleRevisionError
-from planner_lib.local.plans import LocalPlans, PlanInUseError
+from planner_lib.local.catalogue import CatalogueInUseError, StaleRevisionError
+from planner_lib.local.plans import PlanInUseError
 from planner_lib.middleware.admin import require_permission
 from planner_lib.services.resolver import resolve_service
 
 router = APIRouter()
 
 
-def _catalogue(request) -> LocalCatalogue:
-    return LocalCatalogue(resolve_service(request, 'planner_database'))
+def _catalogue(request):
+    return resolve_service(request, 'local_catalogue')
 
 
-def _plans(request) -> LocalPlans:
-    return LocalPlans(resolve_service(request, 'planner_database'), resolve_service(request, 'storage'))
+def _plans(request):
+    return resolve_service(request, 'local_plans')
 
 
 async def _content(request):

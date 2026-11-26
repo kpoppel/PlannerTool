@@ -24,6 +24,10 @@ from planner_lib.storage.memory_backend import MemoryStorage
 PLAN_ID = '11111111-1111-4111-8111-111111111111'
 
 
+def no_rules(originals, resulting):
+    """Local storage tests compose no workforce validation."""
+
+
 @pytest.fixture
 def setup():
     database = PlannerDatabase.in_memory()
@@ -71,7 +75,7 @@ def test_local_read_snapshot_during_concurrent_publication(tmp_path, monkeypatch
         def publish(actor, field, value):
             start_writers.wait()
             return writer.update_batch([{'id': base['id'], 'revision': base['revision'],
-                                         'before': {field: base[field]}, 'fields': {field: value}}], actor)[0]
+                                         'before': {field: base[field]}, 'fields': {field: value}}], actor, no_rules)[0]
 
         monkeypatch.setattr(reader, '_read', wait_in_snapshot)
         with ThreadPoolExecutor(max_workers=3) as pool:
@@ -110,7 +114,7 @@ def test_local_task_history_survives_checkpoint_rotation_and_full_restore(tmp_pa
             assert reader.execute('SELECT revision FROM tasks').fetchone()[0] == 1
             [published] = tasks.update_batch([{'id': task_id, 'revision': 1,
                                               'before': {'start': created['start']},
-                                              'fields': {'start': '2026-12-02'}}], 'publisher')
+                                              'fields': {'start': '2026-12-02'}}], 'publisher', no_rules)
             assert reader.execute('SELECT revision FROM tasks').fetchone()[0] == 1
             manager = ConfigManager(storage, planner_database=database)
             logical = manager.get_backup()['planner_database']['tables']
@@ -156,9 +160,9 @@ def test_local_workload_query_and_time_budgets(tmp_path, monkeypatch, record_pro
     with closing(Database(tmp_path).prepare()) as handle:
         parent_type, child_type, *_ = _seed_operational_plan(handle)
         database, storage = handle.planner_database, handle.storage
-        backend = LocalTaskBackend(database, storage)
+        backend = LocalTaskBackend(database, storage, LocalCatalogue(database), LocalPlans(database, storage))
         parents = [backend.create_task({'project': PLAN_ID, 'typeId': parent_type['id'],
-                                        'title': f'Parent {index}'}, 'seed') for index in range(12)]
+                                        'title': f'Parent {index}'}, 'seed', None) for index in range(12)]
         children = []
         links = []
         for parent in parents:
@@ -206,7 +210,7 @@ def test_local_workload_query_and_time_budgets(tmp_path, monkeypatch, record_pro
         assert all(by_id[child]['parentId'] == parent for parent, child in links)
         edits = [{'id': identity, 'base': {'revision': 1, 'fields': {'start': None}},
                   'start': '2026-12-01'} for _, identity in links[:60]]
-        result = measure('publish_60', lambda: backend.write_tasks(edits, None, actor_id='publisher'),
+        result = measure('publish_60', lambda: backend.write_tasks(edits, None, actor_id='publisher', validate=no_rules),
                  15 + 5 * len(edits))
         assert result == {'ok': True, 'updated': 60, 'errors': [], 'conflicts': []}
 
@@ -225,6 +229,16 @@ def test_local_plans_round_trip_without_area_path(setup):
     assert saved == {'revision': 1, 'plans': [_plan(catalogue, allocatable_ids=[])]}
     with database.connect() as connection:
         assert connection.execute('SELECT area_path FROM plan_definitions').fetchone()[0] is None
+
+
+def test_plan_task_types_and_same_day_markers_keep_document_order(setup):
+    plans, catalogue, _ = setup
+    markers = [{'id': f'm{n}', 'label': f'Marker {n}', 'date': '2026-12-01', 'color': None} for n in range(3)]
+    saved = plans.save({'revision': 0, 'plans': [_plan(catalogue, markers=markers)]})
+    plan = copy.deepcopy(saved['plans'][0])
+    plan['task_types'].reverse()
+    plan['markers'].reverse()
+    assert plans.save({'revision': 1, 'plans': [plan]})['plans'] == [plan]
 
 
 def test_allocation_override_is_distinct_from_defaults(setup):
@@ -343,12 +357,13 @@ def test_local_backend_reads_cross_plan_context_and_markers(setup):
     storage = plans._storage
     server = storage.load('config', 'server_config')
     backend = build_active_backend({**server, 'task_backend_id': 'local'}, storage.load('config', 'ado_config'),
+                                   local_catalogue=LocalCatalogue(database), local_plans=plans,
                                    planner_database=database, storage=storage)
     projects = ProjectRepository(backend)
     repository = TaskRepository(backend, projects, None)
     task_types = catalogue['processes'][0]['types']
-    parent = backend.create_task({'project': PLAN_ID, 'typeId': task_types[0]['id'], 'title': 'Parent'}, 'actor')
-    child = backend.create_task({'project': second, 'typeId': task_types[1]['id'], 'title': 'Child'}, 'actor')
+    parent = backend.create_task({'project': PLAN_ID, 'typeId': task_types[0]['id'], 'title': 'Parent'}, 'actor', None)
+    child = backend.create_task({'project': second, 'typeId': task_types[1]['id'], 'title': 'Child'}, 'actor', None)
     with database.write() as connection:
         connection.execute('INSERT INTO task_relations VALUES (?, ?, ?)', (parent['id'], child['id'], 'parent'))
         connection.execute('INSERT INTO task_allocations VALUES (?, ?, ?)', (child['id'], 'team-id', 15.5))
@@ -384,20 +399,23 @@ def test_local_updates_merge_by_verified_field_and_rollback_on_conflict(setup):
         return {'id': task['id'], 'revision': task['revision'], 'before': {field: before},
                 'fields': {field: value}}
 
-    tasks.update_batch([edit(first, 'title', 'First', 'Renamed')], 'alice')
-    tasks.update_batch([edit(first, 'start', None, '2026-12-01')], 'bob')
+    def update_batch(edits, actor):
+        return tasks.update_batch(edits, actor, no_rules)
+
+    update_batch([edit(first, 'title', 'First', 'Renamed')], 'alice')
+    update_batch([edit(first, 'start', None, '2026-12-01')], 'bob')
     with pytest.raises(TaskConflictError) as failed:
-        tasks.update_batch([edit(second, 'title', 'Second', 'Not committed'),
-                            edit(first, 'title', 'First', 'Overlapping')], 'bob')
+        update_batch([edit(second, 'title', 'Second', 'Not committed'),
+                      edit(first, 'title', 'First', 'Overlapping')], 'bob')
     assert failed.value.conflicts == [{'taskId': first['id'], 'field': 'title', 'reason': 'overlap',
                                        'base': 'First', 'current': 'Renamed', 'proposed': 'Overlapping',
                                        'revision': 3}]
     with pytest.raises(TaskConflictError) as unverified:
-        tasks.update_batch([edit(first, 'end', '2026-12-04', '2026-12-05')], 'bob')
+        update_batch([edit(first, 'end', '2026-12-04', '2026-12-05')], 'bob')
     assert unverified.value.conflicts[0]['reason'] == 'unverified_base'
     with pytest.raises(ValueError, match='Invalid workflow transition'):
-        tasks.update_batch([edit(second, 'title', 'Second', 'Not committed'),
-                            edit(first, 'state', 'Open', 'Review')], 'bob')
+        update_batch([edit(second, 'title', 'Second', 'Not committed'),
+                      edit(first, 'state', 'Open', 'Review')], 'bob')
     actual = {task['id']: task for task in tasks.read()}
     assert (actual[first['id']]['title'], actual[first['id']]['start'], actual[first['id']]['revision']) == (
         'Renamed', '2026-12-01', 3)
@@ -425,7 +443,7 @@ def test_local_custom_fields_merge_independently_and_validate_required_values(se
     def edit(source, proposed):
         return tasks.update_batch([{'id': task['id'], 'revision': source['revision'],
                                     'before': {'customFields': source['customFields']},
-                                    'fields': {'customFields': proposed}}], 'editor')[0]
+                                    'fields': {'customFields': proposed}}], 'editor', no_rules)[0]
 
     edit(task, {'estimate': 5, 'effort': 4})
     merged = edit(task, {'estimate': 2, 'effort': 6})

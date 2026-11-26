@@ -156,7 +156,7 @@ export class LocalPlans extends LitElement {
   }
 
   render() {
-    const title = this.mode === 'plans' ? 'Local Projects' : 'Local Plan Markers';
+    const title = this.mode === 'plans' ? 'Plans' : 'Plan Markers';
     return html`<h2>${title}</h2><p role="status">${this.busy ? 'Working...' : this.message}</p>
       ${this.model === null ? nothing : html`<div class="layout" ?inert=${this.busy}>
         <nav aria-label="Local plans">

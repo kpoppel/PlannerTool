@@ -1,7 +1,7 @@
 """Azure mock client that intercepts at the Azure DevOps SDK level.
 
 Instead of replacing the planner_lib client, this module injects a
-``_MockConnection`` into ``AzureCachingClient._connect_with_pat``.
+``_MockConnection`` through ``AzureClient._connect_mock``.
 Every layer above the SDK — caching, revision-checking, incremental
 updates, normalisation in work_items.py / teams_plans.py / markers.py —
 runs completely unchanged.  Only the raw ``azure.devops`` SDK calls are
@@ -19,8 +19,7 @@ Enable in diskcache `server_config`:
         use_azure_mock: true
         azure_mock_data_dir: data/azure_mock   # optional, this is the default
 
-Produce fixture files (requires a live Azure DevOps PAT):
-    AZURE_DEVOPS_PAT=<pat> python scripts/record_azure_mock.py
+Produce fixture files from live Azure DevOps with ``scripts/record_azure_mock.py``.
 """
 from __future__ import annotations
 
@@ -36,7 +35,7 @@ from planner_lib.storage.base import StorageBackend as StorageProtocol
 
 logger = logging.getLogger(__name__)
 
-_MOCK_CREDENTIAL = BackendCredential(kind='pat', token='mock-pat', user_id='mock-backend')
+_MOCK_CREDENTIAL = BackendCredential(kind='mock', token='mock-token', user_id='mock-backend')
 
 
 # ---------------------------------------------------------------------------
@@ -687,7 +686,7 @@ class _PersistingMockClientsAccessor(_MockClientsAccessor):
 class AzureMockClient(AzureClient):
     """Extends ``AzureClient`` with a mocked Azure DevOps SDK connection.
 
-    Overrides only ``_connect_with_pat`` to install a ``_MockConnection``
+    Overrides only ``_connect_mock`` to install a ``_MockConnection``
     instead of the real SDK ``Connection``.  Every other method
     (``get_work_items``, ``get_all_teams``, ``get_iterations``, etc.)
     is inherited unchanged from ``AzureClient``.
@@ -712,7 +711,7 @@ class AzureMockClient(AzureClient):
         self._fixture_dir = fixture_dir
         self._persist_enabled = persist_enabled
 
-    def _connect_with_pat(self, pat: str) -> None:
+    def _connect_mock(self) -> None:
         """Override: inject a MockConnection instead of the real Azure SDK."""
         if self._connected:
             return

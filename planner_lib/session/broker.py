@@ -229,7 +229,7 @@ class BrokerLoginAdapter:
             'account': account,
             'permissions': [] if context is None else self.accounts.get_account_by_id(context['account_id'])['permissions'],
             'capabilities': {
-                    'pat': False, 'enrollment': False, 'reauthenticate': account is not None,
+                    'enrollment': False, 'reauthenticate': account is not None,
                     'logout': account is not None, 'deleteAccount': False,
                     'linkAccount': context is not None and self.settings.upstream_mode == 'entra'
                         and self.accounts.get_account_by_id(context['account_id'])['email'].endswith('@identity.invalid')

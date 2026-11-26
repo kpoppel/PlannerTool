@@ -1103,7 +1103,6 @@ def test_invalid_creation_leaves_configuration_unchanged(
 def workforce_client(manager: WorkforceConfigManager) -> Iterator[TestClient]:
     """Exercise real authorization decorators with private, disposable cookie sessions."""
     accounts = Mock()
-    accounts.pat_error.return_value = None
     account_ids = {'admin@fixture.test': 'admin-id', 'member@fixture.test': 'member-id'}
     for account_id in account_ids.values():
         manager._storage.save('account_auth', account_id, {'enrolled': False})
@@ -1115,11 +1114,11 @@ def workforce_client(manager: WorkforceConfigManager) -> Iterator[TestClient]:
         email == 'admin@fixture.test' and permission == AccountPermissions.ADMIN
     )
     sessions = SessionManager(accounts, manager._storage)
-    from planner_lib.backend.credential import PatCredentialPolicy
+    from planner_lib.backend.credential import NoRemoteCredentials
     services = {
         'authentication_provider': 'enrollment',
         'account_manager': accounts,
-        'credential_policy': PatCredentialPolicy(accounts),
+        'credential_policy': NoRemoteCredentials(),
         'session_manager': sessions,
         'admin_service': WorkforceAdminService(manager._storage, None, accounts, None,
                           task_storage=manager._storage),

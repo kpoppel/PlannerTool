@@ -81,7 +81,6 @@ class BackendConfigError(BackendError):
 # in raw Azure DevOps SDK / HTTP exception messages.  Anything not matching is
 # treated as a transient availability problem.
 _AUTH_MARKERS = (
-    'invalid_pat',
     'unauthorized',
     '401',
     'forbidden',
@@ -89,7 +88,6 @@ _AUTH_MARKERS = (
     'tf400813',   # ADO: "The user is not authorized to access this resource."
     'vs30063',    # ADO: "You are not authorized to access ..."
     'authentication',
-    'personal access token',
 )
 
 # Substrings identifying server-side configuration issues (not service outage).

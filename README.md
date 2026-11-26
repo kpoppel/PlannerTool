@@ -66,15 +66,19 @@ Only bypass after explicit user confirmation that the construction is truly nece
 # First time use
 
 The application will load into first-time user setup if it is a fresh installation.
-If you don't want to go through the first time user setup UI, do it from the CLI directly:
+If you don't want to go through the first time user setup UI, enroll from the CLI directly
+(see `scripts/README.md`):
   ```
-  curl -i -X POST http://localhost:8001/admin/v1/setup -H "Content-Type: application/json" -d '{"email":"user@example.com","pat":"SOME_PAT"}'
+  python3 -m scripts.api_cli enroll user@example.com --name 'Example User' \
+      --cookies "$HOME/planner-cookies.txt" --key-output "$HOME/planner-account-key.txt"
   ```
 
 Otherwise just follow the UI setup.
 
 1. Point your browser to the IP address http://<your server IP>/ (add :8000 or :5173 if using one of the development deployment methods)
-2. Complete the user onboarding and add your email and PAT in the configuration page.
+2. Complete the user onboarding with your email and name, and save the account key. Live Azure DevOps
+   requires an Entra sign-in deployment (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)); Azure DevOps
+   personal access tokens are no longer supported.
 3. Now you can access the admin interface.
 4. From here add projects teams and users if you want. Self-signup was one of the design goals of this project to keep maintenance low.
    You can promote and delete users as well.

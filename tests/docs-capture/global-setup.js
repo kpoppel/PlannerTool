@@ -22,7 +22,6 @@ async function seedDocsData(page, dataDir) {
     if (renewal.status === 401) {
       await post('/api/auth/enroll', { email: 'alex.morgan@example.com', name: 'Alex Morgan' });
     }
-    await post('/api/config', { email: 'alex.morgan@example.com', pat: 'docs-synthetic-pat' });
 
     const projectTypes = ['Epic', 'Feature'];
     const teamTypes = ['Feature', 'User Story'];

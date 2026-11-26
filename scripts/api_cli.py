@@ -68,16 +68,8 @@ def cmd_health(args):
 
 
 def post_enrollment(session, base, payload):
-    response = session.post(build_url(base, '/api/auth/enroll'), json=payload,
-                            headers={'Accept': 'application/json'}, timeout=30)
-    if response.status_code == 400:
-        error = response.json()
-        if isinstance(error, dict) and error.get('error') in ('pat_required', 'pat_invalid'):
-            pat = getpass('Azure DevOps PAT: ')
-            response = session.post(build_url(base, '/api/auth/enroll'),
-                                    json={**payload, 'pat': pat},
-                                    headers={'Accept': 'application/json'}, timeout=30)
-    return response
+    return session.post(build_url(base, '/api/auth/enroll'), json=payload,
+                        headers={'Accept': 'application/json'}, timeout=30)
 
 
 def cmd_enroll(args):

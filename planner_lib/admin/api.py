@@ -59,7 +59,7 @@ from planner_lib.admin.workforce_routes import (
     admin_create_workforce_definition,
 )
 from planner_lib.admin.process_routes import router as _process_router
-from planner_lib.admin.local_routes import router as _local_router
+from planner_lib.local.admin_routes import router as _local_router
 
 router = APIRouter()
 router.include_router(_setup_router)

@@ -1,5 +1,5 @@
 from typing import Protocol, Union, runtime_checkable
-from planner_lib.accounts.config import AccountCredentialsPayload
+from planner_lib.accounts.config import AccountIdentityPayload
 @runtime_checkable
 class AccountManagerProtocol(Protocol):
     """Account manager interface used by the web layer.
@@ -11,17 +11,9 @@ class AccountManagerProtocol(Protocol):
 
     def create_account(
         self,
-        credentials: AccountCredentialsPayload,
+        identity: AccountIdentityPayload,
         permissions: list[str] | None = None,
     ) -> dict: ...
-
-    def update_credentials(self, credentials: AccountCredentialsPayload) -> dict: ...
-
-    def requires_pat(self) -> bool: ...
-
-    def pat_error(self, email: str) -> str | None: ...
-
-    def reject_pat(self, email: str, pat: str | None) -> None: ...
 
     def set_permissions(self, account_id: str, permissions: list[str]) -> None: ...
 
@@ -32,8 +24,6 @@ class AccountManagerProtocol(Protocol):
     def list_accounts(self) -> list[dict]: ...
 
     def delete_account(self, account_id: str) -> None: ...
-
-    def load(self, key: str) -> dict: ...
 
     def has_permission(self, key: str, permission: str) -> bool: ...
 

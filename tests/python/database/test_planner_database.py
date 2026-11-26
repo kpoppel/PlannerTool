@@ -22,6 +22,18 @@ def _seed_plan(connection, plan_id='plan-1', display_order=0):
                        "VALUES (?, 'local', 'Local', 'project', ?)", (plan_id, display_order))
 
 
+def test_applied_migration_scripts_never_change():
+    import hashlib
+    applied = {
+        1: '4e558ce7fc94c37b664998572b1aad5967f0ce90af18a8e43e93dc01cb6ff8e7',
+        2: 'e0e0daea28f30634e501e4e210e01de9e1fcffae283a143bcf0c8ffe42d22c55',
+        3: '5f9b8269b168cb9e72a26ca13f677cf72350a6c87ef1941f412be01cd439cb8b',
+        4: '1e5223810738c5ae6b2b1bc2ca94ccad44cf5f3f055182a19184bcf5b67f02c2',
+    }
+    scripts = {version: script for version, _, script in schema_module.MIGRATIONS}
+    assert {version: hashlib.sha256(scripts[version].encode()).hexdigest() for version in applied} == applied
+
+
 def test_create_applies_schema_with_private_permissions_and_wal(database):
     assert database.validate() == SCHEMA_TARGET
     assert os.stat(database.path).st_mode & 0o777 == 0o600
@@ -112,7 +124,7 @@ def test_workflow_allows_one_initial_state(database):
         with database.write() as connection:
             connection.execute("INSERT INTO states VALUES ('s1', 'local', 'New', 'Proposed', 0)")
             connection.execute("INSERT INTO states VALUES ('s2', 'local', 'Done', 'Completed', 1)")
-            connection.execute("INSERT INTO workflows VALUES ('w', 'local', 'Default')")
+            connection.execute("INSERT INTO workflows (workflow_id, backend_id, name) VALUES ('w', 'local', 'Default')")
             connection.execute("INSERT INTO workflow_states VALUES ('w', 's1', 0, 1)")
             connection.execute("INSERT INTO workflow_states VALUES ('w', 's2', 1, 1)")
 
@@ -134,6 +146,21 @@ def test_unknown_future_migration_requires_upgrade(database, monkeypatch):
         database.validate()
     database.migrate()
     assert database.validate() == SCHEMA_TARGET + 1
+
+
+def test_migration_0004_keeps_the_previously_observed_definition_order(tmp_path, monkeypatch):
+    import planner_lib.database.planner_database as owner
+    monkeypatch.setattr(owner, 'MIGRATIONS', schema_module.MIGRATIONS[:3])
+    database = PlannerDatabase.create(tmp_path / DATABASE_NAME, root=tmp_path)
+    with database.write() as connection:
+        for field_id in ('z', 'a', 'm'):
+            connection.execute("INSERT INTO field_definitions VALUES (?, 'local', ?, 'Label', 'string')",
+                               (field_id, f'key_{field_id}'))
+    monkeypatch.setattr(owner, 'MIGRATIONS', schema_module.MIGRATIONS)
+    database.migrate()
+    with database.connect() as connection:
+        assert [row[0] for row in connection.execute(
+            'SELECT field_id FROM field_definitions ORDER BY position')] == ['z', 'a', 'm']
 
 
 def test_migration_0002_rebuilds_plan_tables_preserving_rows(tmp_path, monkeypatch):

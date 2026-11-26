@@ -3,7 +3,6 @@ import { chromium } from 'playwright';
 async function bootstrapTestData(page, testDataDir) {
   const bootstrapSummary = await page.evaluate(async (dataDir) => {
     const adminEmail = 'user@example.com';
-    const adminPat = 'playwright-mock-pat';
 
     const readJson = async (response) => {
       const text = await response.text();
@@ -48,7 +47,6 @@ async function bootstrapTestData(page, testDataDir) {
     } else if (!renewal.ok) {
       throw new Error(`Session renewal failed (${renewal.status})`);
     }
-    await post('/api/config', { email: adminEmail, pat: adminPat });
 
     await post('/admin/v1/ado', {
       content: {

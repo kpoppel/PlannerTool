@@ -42,7 +42,7 @@ from typing import Any, Dict, List, Optional
 from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.domain.tasks import BackendTask, DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
-from planner_lib.azure.catalogue import resolve_plan_process, seed_in_window
+from planner_lib.azure.catalogue import resolve_plan_process, seed_in_window, work_item_display
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,7 @@ class StaticBackend(BackendPort):
     BACKEND_ID = 'ado'
     TRANSPORT = 'static'
     CAPABILITIES = frozenset({'task_read', 'markers'})
+    CACHEABLE = True
     is_remote = False
 
     @classmethod
@@ -172,6 +173,11 @@ class StaticBackend(BackendPort):
                 for task in items if task['type'].casefold() in selected
                 and seed_in_window(types[task['type'].casefold()], task['state'],
                                    task.get('stateChangeDate'), closed_history_days)]
+
+    def work_item_display(self) -> List[dict]:
+        """Imported ADO processes ordered by Global Project Settings."""
+        return work_item_display(self._storage.load('config', 'ado_processes'),
+                                 self._storage.load('config', 'global_settings'))
 
     # ------------------------------------------------------------------
     # BackendPort: write_task — not supported

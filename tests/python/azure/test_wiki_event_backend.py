@@ -12,7 +12,7 @@ import pytest
 from planner_lib.azure.wiki_events import AzureWikiEventBackend
 
 
-_CRED = {'kind': 'pat', 'token': 'test-pat', 'user_id': 'user@example.com'}
+_CRED = {'kind': 'bearer', 'token': 'test-pat', 'user_id': 'user@example.com'}
 
 _ORG = 'my-org'
 _PROJECT = 'MyProject'

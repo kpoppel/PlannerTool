@@ -8,13 +8,12 @@ reset instructions.
 
 ## Configuration
 
-Open the gear (Settings) menu and choose **Configuration** to set your Azure access token and personal preferences. Server, plan and team settings are managed by your administrator.
+Open the gear (Settings) menu and choose **Configuration** to set your personal preferences. Server, plan and team settings are managed by your administrator. Azure DevOps access comes from your organization sign-in; PlannerTool does not use Personal Access Tokens (PATs).
 
 ![Configuration dialog](img/config_modal.png)
 
 Fields
 - Account email: the signed-in account identity, displayed as non-editable text.
-- Personal Access Token (PAT): paste a PAT from Azure DevOps with Work Items (Read/Write/Manage) scope, and Wiki permission (read/write). Installations using a demo or static data source may not need one.
 - Remembered browsers: lists the browsers that remember your account; use **Refresh device list** to update it. See [Account Access](account_access.md) to revoke a browser.
 - Autosave interval (minutes, 0=off): saves changed editable scenarios to your account at this interval. This is a browser preference; it does not publish changes to Azure DevOps. See [Scenarios & Saving](scenarios.md).
 - Allocation unit: enter allocations in Percent (default), Man-days or Hours. Hours reflect each team's workforce project-hour budget. This is a browser-local preference.
@@ -22,27 +21,11 @@ Fields
 
 Buttons: **Sign out**, **Delete account** (see [Account Access](account_access.md)), **Save** and **Close**.
 
-If you don't know how to get a PAT, see below.
-
-1. Enter your Azure PAT if the installation requires it.
-2. Save the configuration.
-3. Reload the application.
-
-Now you should see projects defined on the server and teams. If this works, you are set for using the application.
+After enrollment or sign-in you should see the projects and teams defined on the server. If this works, you are set for using the application.
 
 ### Tips
-- If projects or teams do not appear after saving configuration, refresh the browser.
-- Verify PAT scopes and expiry if refresh or write operations fail.
-
-### How do I generate a Personal Access Token (PAT) when using ADO as the backend?
-When you are logged into Azure devops do as follows:
-
-1. Click the "User Settings" button next to your profile image.
-2. Select "Personal access tokens".
-3. Generate a token by clicking "+ New token".
-4. Give it a name "PlannerTool", and assign only the **Work Items** (Read, Write, Manage) and **Wiki** (Read, Write) permission scopes.
-5. Set the expiry date to as far in the future it is allowed.
-6. Save the token and copy the string to a safe place.
+- If projects or teams do not appear, refresh the browser.
+- If refresh or write operations against Azure DevOps fail, sign in again and check your Azure DevOps permissions (Work Items read/write, Wiki read/write).
 
 ### I cannot refresh delivery plan markers
 You need to have the right permission in Azure DevOps: "Manage Delivery Plans"

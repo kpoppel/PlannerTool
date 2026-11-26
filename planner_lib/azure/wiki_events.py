@@ -265,8 +265,8 @@ class AzureWikiEventBackend:
     def _require_credential(self, credential: Optional[BackendCredential]) -> BackendCredential:
         if not credential or not credential.get("token"):
             raise PermissionError(
-                "AzureWikiEventBackend requires a valid credential (PAT). "
-                "Ensure the user session includes a PAT."
+                "AzureWikiEventBackend requires a valid Azure DevOps credential. "
+                "Ensure the user is signed in to Azure DevOps."
             )
         return credential
 

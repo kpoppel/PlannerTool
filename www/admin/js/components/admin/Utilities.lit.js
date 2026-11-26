@@ -201,7 +201,7 @@ export class AdminUtilities extends LitElement {
     planner_database: 'Core configuration and Local task data',
   };
 
-  static accountRestoreWarning = 'Account restore excludes credentials and ends active sessions. Restored accounts cannot use old PATs, account keys or browser devices. Fresh keys require Users > Reset access or the offline operator reset procedure before anyone can sign in again. Entra account replacement is not supported. Confirm an operator recovery path before continuing.';
+  static accountRestoreWarning = 'Account restore excludes credentials and ends active sessions. Restored accounts cannot use old account keys or browser devices. Fresh keys require Users > Reset access or the offline operator reset procedure before anyone can sign in again. Entra account replacement is not supported. Confirm an operator recovery path before continuing.';
 
   constructor() {
     super();

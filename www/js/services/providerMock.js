@@ -402,12 +402,6 @@ export class ProviderMock {
     // Simulate health check
     return { ok: true };
   }
-  async saveConfig(config) {
-    this.logCall('saveConfig', arguments);
-    // Simulate saving config data
-    this.config = { ...config, savedAt: new Date().toISOString() };
-    return { ok: true, email: config.email };
-  }
   async refreshTasks() {
     this.logCall('refreshTasks', arguments);
     return { ok: true, data: { status: 'completed' } };

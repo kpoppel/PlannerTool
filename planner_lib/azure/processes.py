@@ -70,6 +70,7 @@ class ProcessOperations:
                 'states': [
                     {'name': state.name, 'category': state.state_category, 'order': state.order}
                     for state in sorted(item.states or [], key=lambda state: state.order)
+                    if not state.hidden
                 ],
             }))
         result.sort(key=lambda entry: -entry[0])

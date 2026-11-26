@@ -221,6 +221,15 @@ def test_mock_enrichment_failure_aborts_instead_of_returning_partial_results():
                         'A\\Team', {}, project_id='plan')
 
 
+def test_mock_backends_supply_a_valid_mock_credential():
+    from planner_lib.azure.authentication import token_from_credential
+    from planner_lib.backend.mock import _MockBackendBase
+    backend = _MockBackendBase('org', catalogue_storage(['A']))
+    credential = backend._require_credential(None, 'fetch_task_context')
+    assert credential['kind'] == 'mock'
+    assert token_from_credential(credential)
+
+
 def test_fetch_tasks_returns_both_tasks(backend):
     result = backend.fetch_tasks(AREA, task_types=["Feature", "Epic"])
     ids = {t['id'] for t in result}

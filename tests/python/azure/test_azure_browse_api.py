@@ -1,6 +1,6 @@
 """Tests for the Azure browse API endpoints in planner_lib/azure/api.py.
 
-These endpoints allow any authenticated user with a PAT to browse Azure DevOps
+These endpoints allow any authenticated user with a delegated ADO credential to browse Azure DevOps
 projects and area paths without requiring admin privileges.
 
 The browse-live endpoints (/projects, /wikis, /wiki-pages) build a fresh live
@@ -50,23 +50,22 @@ class FakeAzureService:
         self._inner = inner_client
 
     @contextmanager
-    def connect(self, pat):
+    def connect(self, credential):
         yield self._inner
 
 
-def _register_azure_services(authenticated_client, pat='test-pat', inner_client=None):
+def _register_azure_services(authenticated_client, token='test-token', inner_client=None):
     """Register explicit session and Azure service stubs on the test client."""
     fake_client = inner_client or FakeAzureClient()
-    credential = None if not pat else {'kind': 'pat', 'token': pat, 'user_id': 'test-account'}
+    credential = None if not token else {'kind': 'bearer', 'token': token, 'user_id': 'test-account'}
     register_services_on_client(authenticated_client, {
         'session_manager': FakeSessionMgr(),
         'account_manager': SimpleNamespace(
             get_account_by_id=lambda user_id: {'email': 'user@example.com'},
-            pat_error=lambda email: None,
         ),
         'credential_provider': SimpleNamespace(get_credential=Mock(return_value=credential)),
         'credential_policy': SimpleNamespace(
-            credential_error=lambda user_id: 'pat_required' if credential is None else None,
+            authentication_failed=lambda credential: 'ado_credential_unusable',
         ),
         'azure_client': FakeAzureService(fake_client),
     })
@@ -77,7 +76,7 @@ def _register_azure_services(authenticated_client, pat='test-pat', inner_client=
 def _patch_live_client(fake_client):
     """Patch _live_client_or_raise to yield fake_client instead of a real ADO connection."""
     @contextmanager
-    def _fake_live(org_url, pat):
+    def _fake_live(org_url, credential):
         yield fake_client
 
     with patch('planner_lib.azure.api._live_client_or_raise', side_effect=_fake_live):
@@ -110,15 +109,15 @@ def test_browse_projects_returns_project_list(authenticated_client):
     provider.get_credential.assert_called_once_with('test-account')
 
 
-def test_browse_projects_missing_pat_uses_credential_policy(authenticated_client):
-    _register_azure_services(authenticated_client, pat=None)
+def test_browse_projects_missing_credential_uses_credential_policy(authenticated_client):
+    _register_azure_services(authenticated_client, token=None)
     resp = authenticated_client.get('/api/azure/projects?org_url=test-org', headers={'Accept': 'application/json'})
     assert resp.status_code == 403
-    assert resp.json()['error'] == 'pat_required'
+    assert resp.json()['error'] == 'ado_credential_unusable'
 
 
 def test_local_task_backend_does_not_bypass_live_wiki_credentials(authenticated_client):
-    _register_azure_services(authenticated_client, pat=None)
+    _register_azure_services(authenticated_client, token=None)
     register_services_on_client(authenticated_client, {'backend': SimpleNamespace(is_remote=False)})
 
     with patch('planner_lib.azure.api._live_client_or_raise') as connect:
@@ -127,7 +126,7 @@ def test_local_task_backend_does_not_bypass_live_wiki_credentials(authenticated_
         }, headers={'Accept': 'application/json'})
 
     assert response.status_code == 403
-    assert response.json()['error'] == 'pat_required'
+    assert response.json()['error'] == 'ado_credential_unusable'
     connect.assert_not_called()
 
 
@@ -151,11 +150,11 @@ def test_browse_area_paths_missing_project_param_returns_422(authenticated_clien
     assert resp.status_code == 422
 
 
-def test_browse_area_paths_missing_pat_uses_credential_policy(authenticated_client):
-    _register_azure_services(authenticated_client, pat=None)
+def test_browse_area_paths_missing_credential_uses_credential_policy(authenticated_client):
+    _register_azure_services(authenticated_client, token=None)
     resp = authenticated_client.get('/api/azure/area-paths?project=ProjectA', headers={'Accept': 'application/json'})
     assert resp.status_code == 403
-    assert resp.json()['error'] == 'pat_required'
+    assert resp.json()['error'] == 'ado_credential_unusable'
 
 
 def test_cache_refresh_uses_active_projects_and_rejects_archived_areas(authenticated_client):

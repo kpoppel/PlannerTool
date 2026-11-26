@@ -76,7 +76,7 @@ def main():
         help="Input JSON file to restore from.",
     )
     restore_parser.add_argument('--skip-accounts', action='store_true',
-                                help='Preserve current accounts, PATs, keys, and browser credentials')
+                                help='Preserve current accounts, keys, and browser credentials')
 
     args = parser.parse_args()
 

@@ -1,6 +1,7 @@
-ado_authentication: pat
+ado_authentication: disabled
 # Select backends in each instance's Admin > Data Sources, not in this file.
-# To connect the shared mock auth service, set ado_authentication: entra, uncomment
+# Live Azure DevOps requires ado_authentication: entra. To connect the shared mock auth
+# service, set ado_authentication: entra, uncomment
 # auth_services below and add auth_service: central to the desired instances.
 # https_hostname: planner.example.test
 # HTTPS defaults to public ACME (public DNS, inbound TCP 80/443, outbound DNS/HTTPS).
@@ -31,7 +32,7 @@ ado_authentication: pat
 # Alternatively, replace both certificate fields with:
 #       client_secret_file: /etc/plannertool/entra-client-secret
 # Keep credentials in mode-0600 files, not in this manifest. Never configure both methods.
-# Deployment preference: Entra certificate, then Entra app secret, then PATs.
+# Deployment preference: Entra certificate, then Entra app secret.
 # Generated registry and secrets are managed in deployment/.auth/ on --apply.
 # Match public_url to https_hostname and use your server's DNS name.
 # Mock identities are synthetic and publicly selectable: never use production data.
@@ -57,4 +58,4 @@ instances:
     external_database: /opt/shared/company-people-db.yaml
 
 # Environment variables (set these before running docker compose):
-# - PLANNER_SECRET_KEY: Required. Encryption key for PAT storage (generate with: openssl rand -base64 32)
+# - PLANNER_SECRET_KEY: Required. Encryption key for stored secrets such as broker grants (generate with: openssl rand -base64 32)

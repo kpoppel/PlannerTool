@@ -1,18 +1,24 @@
 # Authentication
 
-Deployment selects enrollment/PAT or external broker login/delegated ADO credentials.
-PlannerTool owns accounts, permissions and sessions; the broker owns upstream identity
+Deployment selects enrollment (account keys, no live Azure DevOps) or external broker
+login with delegated ADO credentials. Live Azure DevOps requires Entra sign-in; Azure
+DevOps personal access tokens (PATs) are no longer supported. PlannerTool owns accounts, permissions and sessions; the broker owns upstream identity
 verification and token renewal. Backend selection remains in **Admin > Data Sources**.
 See [deployment](DEPLOYMENT.md) for manifest and local development configuration.
 
 Revision 44 is the single upgrade from dev: it initializes policy and identity metadata
-and expires pre-policy sessions. Accounts, permissions, PATs, enrollment and user data
+and expires pre-policy sessions. Accounts, permissions, enrollment and user data
 are preserved. Login-source or broker-authority changes advance the policy epoch once;
 unchanged restarts do not. Broker authority is its public URL, mode and protocol.
 Each instance has a distinct protected service secret and exact registered callback.
 Mock links are discarded on authority changes. Intermediate branch schemas are unsupported.
 Startup never seeds accounts, replaces backend settings, purges credentials or installs
 network isolation. Physical copies need the original encryption key to read credentials.
+
+Revision 49 removes PAT authentication. It purges any stored `pat` and `pat_invalid`
+fields from account records unread and rewrites the authentication policy's
+`backend_credentials` value `pat` to `none` (values are now `none|delegated`). Accounts
+are stored as `{account_id, email, permissions}`.
 
 ## External Accounts
 
@@ -61,8 +67,8 @@ refreshes remain credential-gated.
 Before first adoption, stop all older processes and retain an independent full
 backup if older-binary recovery is required. Server startup owns upgrades; see
 [MIGRATIONS.md](MIGRATIONS.md). Successful upgrades retain no predecessor. Migration
-0031 marks existing accounts unenrolled without changing their IDs, permissions,
-or encrypted Azure PATs. Existing sessions do not authenticate after the upgrade.
+0031 marks existing accounts unenrolled without changing their IDs or permissions.
+Existing sessions do not authenticate after the upgrade.
 
 Migration 0032 moves saved views and scenarios from email ownership to stable
 account IDs and invalidates legacy email-bound sessions. Email remains the
@@ -93,10 +99,11 @@ enrolled, email and name alone can never authenticate that account again.
 
 On a fresh installation, the first enrolled account becomes administrator and
 is redirected to admin configuration. New installations default to the synthetic
-generator mock for demo use; registration and demo administration require no ADO
-PAT. Existing installations retain their configured backend. To use live Azure
-DevOps, the administrator selects the live backend and organization in Data
-Sources and enters their PAT in account configuration. Do not publish the service to users until
+generator mock for demo use; registration and demo administration require no Azure
+DevOps credential. Existing installations retain their configured backend. Live Azure
+DevOps requires an Entra deployment (`ado_authentication: entra`); the administrator
+then selects the live backend and organization in Data Sources. Without Entra, use
+the mock/generator, static or Local backends. Do not publish the service to users until
 the administrator completes configuration. Initial admin claiming happens once,
 not whenever the installation happens to have no administrators.
 
@@ -119,7 +126,7 @@ Neither page contains credentials or changes acknowledgement state.
 authenticated account. `POST /api/auth/release-notes` accepts `{releaseId}` for
 the published release only. Ownership comes from the session account ID, never
 the request body. Both responses are non-cacheable; these account self-service
-routes remain available without a working ADO PAT. The separate
+routes remain available without a working ADO credential. The separate
 `release_acknowledgements` namespace stores the last acknowledged release by
 account ID and is cleared with account deletion. Missing records mean unread;
 no authentication schema upgrade is required. Full filesystem backups include
@@ -134,8 +141,9 @@ Enrollment and save-key screens retain a contextual enrollment-help link.
 
 ### Deployment Authentication Policy
 
-The manifest requires `ado_authentication: disabled|pat|entra`. Connected instances
-use broker login under `entra`; other instances retain enrollment. Generated
+The manifest requires `ado_authentication: disabled|entra`; the former value `pat` is
+rejected at startup. Connected instances use broker login under `entra`; `disabled`
+instances retain enrollment and cannot use live ADO. Generated
 `PLANNER_ADO_AUTHENTICATION` rejects live ADO/wiki configuration when disabled or
 when Entra is required but disconnected, at startup, save and import. Backend saves
 cannot change mode, epoch, sessions or credentials. Per-instance `backend`,
@@ -151,9 +159,9 @@ end in `@identity.invalid`; contact details come from the identity link.
 
 Each login owns a binding and encrypted grant. Acquisition checks acting UUID,
 session, epoch, authority, resource, token kind and expiry. SDK/wiki authentication
-is explicitly Basic or Bearer; task refresh revalidates authority transactionally
-before publication. Credentials are never borrowed across users or switched to PAT
-on failure; deleted accounts cannot renew.
+is explicitly Bearer; task refresh revalidates authority transactionally
+before publication. Credentials are never borrowed across users; deleted accounts
+cannot renew.
 
 The live broker uses MSAL authorization-code flow with PKCE, a browser-bound
 `form_post` callback and encrypted persistent caches. Verified tenant, audience and
@@ -164,9 +172,9 @@ and ADO renewal require tenant-backed acceptance, not mock tests.
 
 ### Frontend Adapter Contract
 
-Planner and administration share one discovered broker client. PAT/local mode keeps
-enrollment and PAT controls; broker capabilities hide those, device/key management,
-manual account creation and self-deletion. Routes below are relative to the instance
+Planner and administration share one discovered broker client. Local mode
+(`{mode: 'local'}`) keeps enrollment controls; broker capabilities hide enrollment,
+device/key management, manual account creation and self-deletion. Routes below are relative to the instance
 API URL, including its subpath:
 
 | Operation | Request | Successful response |
@@ -195,11 +203,11 @@ Failures use `{error: code}`:
 | HTTP | Code | Permitted recovery |
 | --- | --- | --- |
 | 401 | `session_expired`, `invalid_session` | Login; safe reads may be retried once for the same account |
+| 403 | `ado_credential_required` | None; the route needs live ADO but the deployment issues no delegated credential (no Entra login) |
 | 409 | `interaction_required` | Explicit reauthentication; no automatic login or request replay |
 | 403 | `access_denied` | None; do not loop through login |
 | 403 | `ado_credential_unusable` | None; fake ADO authority cannot be repaired through login |
 | 503 | `auth_unavailable`, `auth_configuration_error` | None; retry later or repair configuration |
-| 403 | `pat_required`, `pat_invalid` | Explicit PAT repair in a PAT-capable composition only |
 
 Unknown/mismatched decisions fail closed. Recovery is single-flight per client.
 Same-account repair preserves drafts; changed/previously unknown identity clears
@@ -208,47 +216,43 @@ Enrollment applies the same boundary for changed email. Only GET/HEAD can replay
 automatically, once after session recovery for the same account; `{safeRead: false}`
 disables that too. Writes, backend denials and observer errors never replay.
 
-PATs are required only when the live Azure DevOps backend is selected. Enrollment
-and User Management require a PAT for each new live-ADO account. Selecting live
-ADO also activates this requirement for existing accounts. The server checks
-the submitted PAT against the configured organization before saving it. Missing
-and rejected credentials return HTTP 400 `pat_required` or `pat_invalid` without
-creating an account, rotating its account key, or overwriting its stored PAT.
-Validation outages return HTTP 503 `backend_unavailable` instead.
+Live Azure DevOps uses only delegated Entra credentials. Enrollment and User
+Management never prompt for or store an Azure DevOps credential, and there is no
+credential configuration endpoint or dialog. Without Entra, the server runs the
+mock/generator, static or Local backends only.
 
 Only operations that need Azure DevOps request credentials. Local updates,
-including account-key resets and permission changes, do not require a valid PAT.
-The credential policy owns PAT acquisition and withholds missing or rejected
-credentials without blocking cached reads. Actual ADO operations return HTTP 403
-`pat_required` or `pat_invalid` through the central backend error handler.
-Both frontends post a deduplicated
-notification with an action to open the cancellable **Set your Azure DevOps PAT**
-dialog. The failed request does not wait for repair or replay after it. Account
-identity, enrollment, session renewal, credential configuration, sign-out,
-account deletion and authorized local administration remain reachable. Remote
-administration operations still require the acting account's credential. A PAT
-rejection does not send an authenticated user back to enrollment.
+including account-key resets and permission changes, do not. Missing credentials
+do not block cached reads. A route that needs live ADO without a delegated
+credential returns HTTP 403 `ado_credential_required`; an unusable credential
+returns HTTP 403 `ado_credential_unusable`. The failed request is not replayed.
+Account identity, enrollment, session renewal, sign-out, account deletion and
+authorized local administration remain reachable. Remote administration operations
+still require the acting account's credential. A credential rejection does not
+send an authenticated user back to enrollment.
 
 Saving, updating and deleting views, scenarios, groups, local events and local
-event categories do not require or load a PAT, including when live ADO is the
-work-item backend and the account's PAT is missing or rejected. Session, ownership
-and validation checks still apply. Wiki-backed events retain their credential
-requirement independently of local event storage.
+event categories do not require or acquire an ADO credential, including when live
+ADO is the work-item backend. Session, ownership and validation checks still apply.
+Wiki-backed events retain their credential requirement independently of local
+event storage.
 
 Browse calls, administration and request-triggered cache refreshes use only the
-acting account's PAT. Failed background refreshes retain the shared snapshot and
-report credential failures only to the initiating account. Another user's valid
-credential is never borrowed. PATs are encrypted at rest, entered in masked
-fields, and never persisted in browser preferences or exposed in error messages.
+acting account's delegated credential. Failed background refreshes retain the
+shared snapshot and report credential failures only to the initiating account; a
+rejected credential produces the `tasks_stale_credential_rejected` stale warning.
+Another user's valid credential is never borrowed. Broker grants are encrypted at
+rest with `PLANNER_SECRET_KEY`; access tokens are never persisted in browser
+preferences or exposed in error messages.
 
 ## Code Ownership
 
 `EnrollmentLoginAdapter`/`BrokerLoginAdapter` establish identity; `SessionManager`
 validates UUID, source, epoch and device/binding once per request. Remote consumers
-use `PatCredentialPolicy`/`DelegatedCredentialProvider`; local/static/mock work does
-not acquire user credentials. `AccountManager` owns PAT storage and comparison-based
-rejection so failures cannot reject a replacement PAT. Azure authentication selects
-Basic/Bearer by explicit kind, never token syntax. `BackendAuthError` carries the
+use `DelegatedCredentialProvider` under Entra; other deployments use
+`NoRemoteCredentials`, which issues none. Local/static/mock work does not acquire
+user credentials. Live Azure authentication requires an explicit `bearer` kind,
+never inferred from token syntax. `BackendAuthError` carries the
 operation credential to the central HTTP handler. Both REST providers share
 `createAuthRecovery`; original errors and partial results remain available.
 
@@ -279,7 +283,8 @@ management includes editing and archiving existing projects, not just adding the
 Combine grants when a user maintains several areas. Workforce delegates can read
 the shared team/staffing/supplier catalogue, but writes to the other area are
 rejected by the server. Project managers can read the catalogue and iteration sets
-needed for project configuration. Backend browsing uses the current user's PAT.
+needed for project configuration. Backend browsing uses the current user's
+delegated credential.
 
 Full `admin` access includes every grant. Only full administrators can manage
 users or permissions, credentials and data sources, server/global settings,
@@ -326,20 +331,18 @@ promise to preserve activity history. No account schema migration is required.
 Generated credentials contain 256 bits of randomness. The server persists only
 their SHA-256 hashes, device IDs, and expiry dates in `account_auth`; plaintext
 credentials are carried in HTTP-only, SameSite=Lax cookies. Session identifiers
-are hashed in `auth_sessions`; records do not persist decrypted PATs. Browser
+are hashed in `auth_sessions`; records do not persist ADO tokens. Browser
 cookies are scoped to the installation's reverse-proxy root path.
 
 Authenticated handlers share a request-local identity context, so session/device
 idle-expiry updates occur once per request. Identity resolution itself never
-loads or decrypts a PAT. The live-ADO policy checks the account credential before
-protected data routes, excluding identity/configuration and authorized local
-administration. Remote consumers resolve credentials through the provider using
-the authenticated account UUID, never an identity supplied in the request body.
-Neither identities nor decrypted PATs
-are cached across requests or shared between users; later requests read current
-credentials. Each server worker reuses only the Fernet cryptographic setup for
-the configured encryption secret, replacing it if that secret changes. This does
-not re-encrypt existing PATs when rotating the secret.
+acquires an ADO token. Remote consumers resolve credentials through the provider
+using the authenticated account UUID, never an identity supplied in the request
+body. Neither identities nor access tokens are cached across requests or shared
+between users; later requests read current credentials. Each server worker reuses
+only the Fernet cryptographic setup for the configured encryption secret,
+replacing it if that secret changes. This does not re-encrypt existing broker
+grants when rotating the secret.
 
 Local/static and mock work-item operations do not acquire account credentials,
 including task reads, refreshes, publication, markers, history, and cost inputs.
@@ -347,21 +350,21 @@ Configured iteration snapshots are local reads. Sessions and permissions remain
 required. ADO mocks retain the live client's credential validation, connection
 lifecycle, and data-processing path, replacing only the SDK connection and its
 responses. Mock composition supplies an explicit synthetic credential instead
-of acquiring a user's PAT. Explicitly live project/wiki browsing and wiki-backed
+of acquiring a user's credential. Explicitly live project/wiki browsing and wiki-backed
 events still use the acting account's credential independently of the selected
 work-item backend.
 
 With remote task caching enabled, all registered users are assumed authorized
 for every configured project and share one complete task snapshot. A stale task
 read or explicit task refresh may start a background job using that request's
-credential. The credential exists only for the job lifetime; neither the PAT
+credential. The credential exists only for the job lifetime; neither the token
 nor the initiating account is persisted with the snapshot or refresh status.
 There is no unattended scheduler or retained last-active-user credential.
 Later requests resolve current credentials again. Application shutdown drains
 active task refresh work before closing storage.
 
 Before renewing cookies, middleware checks persisted session and device validity
-again without decrypting the PAT or refreshing idle expiry. Revocation during a
+again without acquiring an ADO token or refreshing idle expiry. Revocation during a
 handler therefore prevents cookie renewal.
 
 The board fetches missing plans' baseline groups in one request and deduplicates
@@ -383,10 +386,9 @@ server restart silently renews a session from a valid browser credential. After
 use **Enrollment** with the account email and current account key. There are no
 pairing codes or separate Recovery mode. Successful enrollment consumes the key
 and displays its replacement; save it before continuing. A rate-limited,
-non-cached `POST /api/auth/enrollment-status` reports `requiresKey` and `requiresPat`;
-it does not enroll, issue credentials, or rotate a key. The modal shows Real name
-for first enrollment, Account key for enrolled accounts, and a masked PAT field
-when live ADO is selected.
+non-cached `POST /api/auth/enrollment-status` returns `{requiresKey}`; it does not
+enroll, issue credentials, or rotate a key. The modal shows Real name for first
+enrollment and Account key for enrolled accounts.
 Other enrolled browsers
 retain access. Configuration can revoke individual browsers and active sessions.
 
@@ -450,7 +452,7 @@ PY
 Stop the server and run from the repository root with `DATA_DIR` set to the active
 installation root and its existing encryption key. The coordinator resolves and
 validates the selected generation rather than opening a new legacy cache. This revokes every device and session
-for the selected account but preserves its account ID, name, PAT, and permissions.
+for the selected account but preserves its account ID, name, and permissions.
 The key is printed only to the local terminal for trusted handoff. Keep it outside
 the repository and logs. Open the planner, use Enrollment, and save the next key
 shown after successful enrollment.
@@ -459,7 +461,7 @@ shown after successful enrollment.
 
 Choose **Delete account** in Configuration or in the account-access dialog.
 The current account key and explicit confirmation are required, even without a
-remembered browser. Deletion removes the account, encrypted PAT, authentication,
+remembered browser. Deletion removes the account, authentication,
 all sessions, owned saved views/scenarios, and register entries transactionally.
 It does not issue a replacement key. The final administrator cannot be deleted.
 Administrator deletion uses the same cleanup. Reusing an email creates a new
@@ -473,7 +475,7 @@ retention management; deletion does not remove shared configuration or Azure dat
 ## Backup and restore
 
 Logical backups include the schema revision, not schema state or generation pointers.
-They exclude PATs, account keys, remembered devices, sessions, authentication policy,
+They exclude account keys, remembered devices, sessions, authentication policy,
 external links and grants. Credential-bearing or incompatible imports are rejected
 before writes; live restore does not migrate historical formats.
 
@@ -509,6 +511,5 @@ its configuration. A startup `POST /api/session` from an unenrolled browser
 should return 401 and open enrollment, not a cross-origin 403.
 
 Clients must no longer create sessions from an email or use X-Session-Id. Browser
-session renewal is `POST /api/session` with the remembered-device cookie. PAT
-updates through `POST /api/config` require a session and the authenticated email.
-The legacy `POST /admin/v1/setup` endpoint is retired.
+session renewal is `POST /api/session` with the remembered-device cookie. The
+former PAT endpoint `POST /api/config` has been removed. The legacy `POST /admin/v1/setup` endpoint is retired.

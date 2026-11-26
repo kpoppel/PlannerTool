@@ -5,7 +5,7 @@ Covers:
   - StaticBackend: YAML loading, filtering
   - TaskRepository: read, write, list_markers, list_iterations, refresh
   - HistoryRepository: read with pagination and date filters
-    - PatCredentialPolicy: credential lookup
+    - NoRemoteCredentials: non-Entra deployments issue no credentials
 """
 import pytest
 from collections.abc import Iterator
@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
+from planner_lib.backend.port import ADO_CAPABILITIES
 from tests.fakes.fake_backend import FakeBackend, FakeCredentialProvider
 from planner_lib.domain.tasks import DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
@@ -47,7 +48,7 @@ def test_fake_backend_write_updates_in_memory():
                          'areaPath': 'P1\\TeamA', 'url': None,
                          '_inferred_start': False, '_inferred_end': False}
     backend.set_tasks('P1\\TeamA', [task])
-    cred = {'kind': 'pat', 'token': 'pat', 'user_id': 'user@test.com'}
+    cred = {'kind': 'bearer', 'token': 'pat', 'user_id': 'user@test.com'}
     result = backend.write_task(1, {'start': '2026-01-01'}, cred)
     assert result['ok'] is True
     assert result['updated'] == 1
@@ -64,7 +65,7 @@ def test_fake_backend_records_calls():
 
 def test_fake_backend_raise_on_write():
     backend = FakeBackend(raise_on_write=True)
-    cred = {'kind': 'pat', 'token': 'pat', 'user_id': 'u'}
+    cred = {'kind': 'bearer', 'token': 'pat', 'user_id': 'u'}
     with pytest.raises(RuntimeError):
         backend.write_task(1, {}, cred)
 
@@ -87,108 +88,35 @@ def test_fake_credential_provider_returns_none_for_unknown():
 
 
 # ---------------------------------------------------------------------------
-# PatCredentialPolicy
+# NoRemoteCredentials (non-Entra deployments)
 # ---------------------------------------------------------------------------
 
-def test_credential_provider_wraps_account_manager():
-    from planner_lib.backend.credential import PatCredentialPolicy
+def test_no_remote_credentials_never_issue_a_credential():
+    from planner_lib.backend.credential import NoRemoteCredentials
 
-    account_mgr = MagicMock()
-    account_mgr.get_account_by_id.return_value = {'email': 'user@test.com'}
-    account_mgr.pat_error.return_value = None
-    account_mgr.load.return_value = {'ok': True, 'email': 'user@test.com', 'pat': 'secret-pat'}
-
-    provider = PatCredentialPolicy(account_mgr)
-    cred = provider.get_credential('11111111-1111-4111-8111-111111111111')
-
-    assert cred is not None
-    assert cred['token'] == 'secret-pat'
-    assert cred['user_id'] == '11111111-1111-4111-8111-111111111111'
-    account_mgr.get_account_by_id.assert_called_once_with('11111111-1111-4111-8111-111111111111')
-    account_mgr.load.assert_called_once_with('user@test.com')
+    assert NoRemoteCredentials().get_credential('11111111-1111-4111-8111-111111111111') is None
 
 
-def test_credential_provider_returns_none_when_no_pat():
-    from planner_lib.backend.credential import PatCredentialPolicy
+def test_no_remote_credentials_reject_an_unexpected_credential_without_leaking_it():
+    from planner_lib.backend.credential import NoRemoteCredentials
 
-    account_mgr = MagicMock()
-    account_mgr.get_account_by_id.return_value = {'email': 'user@test.com'}
-    account_mgr.pat_error.return_value = None
-    account_mgr.load.return_value = {'ok': True, 'email': 'user@test.com', 'pat': None}
-
-    provider = PatCredentialPolicy(account_mgr)
-    assert provider.get_credential('11111111-1111-4111-8111-111111111111') is None
-
-
-@pytest.mark.parametrize('error', ['pat_required', 'pat_invalid'])
-def test_credential_policy_does_not_load_unusable_pat(error):
-    from planner_lib.backend.credential import PatCredentialPolicy
-
-    accounts = MagicMock()
-    accounts.get_account_by_id.return_value = {'email': 'user@example.com'}
-    accounts.pat_error.return_value = error
-
-    assert PatCredentialPolicy(accounts).get_credential('account-id') is None
-    accounts.load.assert_not_called()
-
-
-def test_credential_provider_returns_none_on_load_exception():
-    from planner_lib.backend.credential import PatCredentialPolicy
-
-    account_mgr = MagicMock()
-    account_mgr.get_account_by_id.side_effect = KeyError('unknown account')
-
-    provider = PatCredentialPolicy(account_mgr)
-    assert provider.get_credential('22222222-2222-4222-8222-222222222222') is None
-
-
-@pytest.mark.parametrize('user_id,email', [
-    ('11111111-1111-4111-8111-111111111111', 'first@example.com'),
-    ('22222222-2222-4222-8222-222222222222', 'second@example.com'),
-])
-def test_pat_policy_resolves_only_the_acting_account(user_id, email):
-    from planner_lib.backend.credential import PatCredentialPolicy
-
-    accounts = MagicMock()
-    accounts.get_account_by_id.return_value = {'email': email}
-    accounts.pat_error.return_value = 'pat_required'
-    policy = PatCredentialPolicy(accounts)
-    credential = {'kind': 'pat', 'token': 'operation-pat', 'user_id': user_id}
-
-    assert policy.credential_error(user_id) == 'pat_required'
-    accounts.pat_error.assert_called_once_with(email)
-    assert policy.authentication_failed(credential) == 'pat_invalid'
-    accounts.reject_pat.assert_called_once_with(email, 'operation-pat')
-    assert accounts.get_account_by_id.call_args_list == [((user_id,),), ((user_id,),)]
-
-
-def test_pat_policy_does_not_reject_another_credential_kind():
-    from planner_lib.backend.credential import PatCredentialPolicy
-
-    accounts = MagicMock()
-    policy = PatCredentialPolicy(accounts)
-    credential = {'kind': 'unsupported', 'token': 'never-expose-this', 'user_id': 'account-id'}
+    credential = {'kind': 'bearer', 'token': 'never-expose-this', 'user_id': 'account-id'}
 
     with pytest.raises(ValueError) as error:
-        policy.authentication_failed(credential)
+        NoRemoteCredentials().authentication_failed(credential)
 
     assert credential['token'] not in str(error.value)
-    accounts.get_account_by_id.assert_not_called()
-    accounts.reject_pat.assert_not_called()
 
 
-def test_pat_policy_missing_credential_does_not_mutate_account():
-    from planner_lib.backend.credential import PatCredentialPolicy
+def test_no_remote_credentials_missing_credential_is_required():
+    from planner_lib.backend.credential import NoRemoteCredentials
 
-    accounts = MagicMock()
-    assert PatCredentialPolicy(accounts).authentication_failed(None) == 'pat_invalid'
-    accounts.reject_pat.assert_not_called()
-    accounts.load.assert_not_called()
+    assert NoRemoteCredentials().authentication_failed(None) == 'ado_credential_required'
 
 
 @pytest.mark.parametrize('status_code', [401, 403])
 @pytest.mark.parametrize('location', ['exception', 'response'])
-def test_auth_classification_preserves_status_without_changing_pat_semantics(status_code, location):
+def test_auth_classification_preserves_status(status_code, location):
     from types import SimpleNamespace
     from planner_lib.backend.errors import classify_ado_exception
 
@@ -250,7 +178,7 @@ def test_static_backend_write_raises():
     from planner_lib.backend.static import StaticBackend
     backend = StaticBackend('nofile.json', storage=catalogue_storage(["A"]))
     with pytest.raises(NotImplementedError):
-        backend.write_task(1, {}, {'kind': 'pat', 'token': 'x', 'user_id': 'u'})
+        backend.write_task(1, {}, {'kind': 'bearer', 'token': 'x', 'user_id': 'u'})
 
 
 def test_static_backend_invalidate_clears_cache(tmp_path):
@@ -297,6 +225,7 @@ def _canonical_task_repository(storage):
          'capacity': [{'team': 'G', 'capacity': 40}], 'parentId': 'parent', 'relations': []},
     ]
     backend = MagicMock()
+    backend.CAPABILITIES = ADO_CAPABILITIES
     backend.fetch_plan_tasks.return_value = features
     backend.fetch_task_context.return_value = features
     backend.write_task.return_value = {'updated': 1, 'errors': []}
@@ -306,7 +235,7 @@ def _canonical_task_repository(storage):
         {'id': 'plan', 'type': 'Plan', 'allocation_defaults': {'Plan': ['A', 'G']}},
     ]
     credentials = MagicMock()
-    credentials.get_credential.return_value = {'kind': 'pat', 'token': 'fixture-pat', 'user_id': 'fixture-user'}
+    credentials.get_credential.return_value = {'kind': 'bearer', 'token': 'fixture-pat', 'user_id': 'fixture-user'}
     repository = WorkforceTaskRepository(backend, projects, credentials,
                                          storage=storage, task_storage=storage)
     return repository, backend
@@ -467,7 +396,7 @@ def test_task_repository_passes_private_combined_seeds_to_context_before_project
          'backendData': {'source': 'linked'}},
     ]
     backend.fetch_task_context.return_value = context
-    credential = {'kind': 'pat', 'token': 'test', 'user_id': 'test'}
+    credential = {'kind': 'bearer', 'token': 'test', 'user_id': 'test'}
     repo = TaskRepository(backend, _make_project_service(projects), FakeCredentialProvider())
 
     private_context = repo._fetch_context(credential=credential)
@@ -683,6 +612,7 @@ def test_task_repository_write_preserves_backend_neutral_task_ids():
     from planner_lib.repository.task_repository import TaskRepository
 
     backend = MagicMock()
+    backend.CAPABILITIES = ADO_CAPABILITIES
     backend.write_task.return_value = {'ok': True, 'updated': 1, 'errors': []}
     credentials = FakeCredentialProvider('user@test.com', 'tok')
     repo = TaskRepository(backend, _make_project_service([]), credentials)
@@ -698,6 +628,7 @@ def test_task_repository_consumers_cannot_update_backend_metadata():
     from planner_lib.repository.task_repository import TaskRepository
 
     backend = MagicMock()
+    backend.CAPABILITIES = ADO_CAPABILITIES
     repo = TaskRepository(backend, _make_project_service([]),
                           FakeCredentialProvider('user@test.com', 'tok'))
 
@@ -821,7 +752,7 @@ def test_history_repository_reuses_operation_credential():
     backend = FakeBackend()
     backend.fetch_history = MagicMock(wraps=backend.fetch_history)
     provider = MagicMock()
-    credential = {'kind': 'pat', 'token': 'operation-pat', 'user_id': 'acting-account'}
+    credential = {'kind': 'bearer', 'token': 'operation-pat', 'user_id': 'acting-account'}
     repository = HistoryRepository(backend, provider)
 
     result = repository.read(tasks=[{'id': '42'}], user_id='acting-account',

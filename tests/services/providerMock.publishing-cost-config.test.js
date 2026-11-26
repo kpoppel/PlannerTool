@@ -41,10 +41,4 @@ describe('ProviderMock publishing, cost and configuration', () => {
     expect(out.length).to.be.greaterThan(0);
     expect(out[0]).to.have.property('id');
   });
-
-  it('saveConfig persists and returns ok', async () => {
-    const res = await prov.saveConfig({ email: 'x@y.z' });
-    expect(res.ok).to.equal(true);
-    expect(res.email).to.equal('x@y.z');
-  });
 });

@@ -8,33 +8,28 @@ afterEach(() => {
 });
 
 describe('User management', () => {
-  it('submits and clears the new account PAT only after saving', async () => {
+  it('submits and clears the new account only after saving', async () => {
     vi.spyOn(adminProvider, 'getUsers').mockResolvedValue({ ok: true, data: {
-      accounts: [], currentId: 'admin-id', requiresPat: true,
+      accounts: [], currentId: 'admin-id',
     } });
     const save = vi.spyOn(adminProvider, 'createUser').mockResolvedValue({ ok: false,
-      error: { code: 'pat_invalid', message: 'HTTP 400' } });
+      error: 'Account creation failed' });
     const element = document.createElement('admin-users');
     document.body.append(element);
     await vi.waitFor(() => expect(element.loading).toBe(false));
     await element.updateComplete;
     element._openAdd();
     await element.updateComplete;
-    const field = element.shadowRoot.querySelector('[data-pat="User"]');
-    expect(field.type).toBe('password');
+    expect(element.shadowRoot.querySelector('[data-pat]')).toBeNull();
     element.newUser = 'new@example.com';
-    field.value = 'target-user-fixture-pat';
-    field.dispatchEvent(new Event('input'));
     await element.addUser();
-    expect(save).toHaveBeenCalledWith('new@example.com', [],
-      'target-user-fixture-pat');
+    expect(save).toHaveBeenCalledWith('new@example.com', []);
     expect(element.newUser).toBe('new@example.com');
-    expect(element.error).toContain('PAT');
+    expect(element.error).toContain('Account creation failed');
     save.mockResolvedValue({ ok: true });
     await element.addUser();
     await element.updateComplete;
     expect(element.newUser).toBe('');
-    expect(element.newUserPat).toBe('');
     expect(element.dialog).toBe('');
   });
 
@@ -74,7 +69,7 @@ describe('User management', () => {
 
   async function mount(accounts) {
     vi.spyOn(adminProvider, 'getUsers').mockResolvedValue({ ok: true, data: {
-      accounts, currentId: 'self', requiresPat: false,
+      accounts, currentId: 'self',
     } });
     const element = document.createElement('admin-users');
     document.body.append(element);

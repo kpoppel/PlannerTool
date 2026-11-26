@@ -1,7 +1,6 @@
 """Typed configuration projections for the existing application documents."""
 
 from contextlib import ExitStack, contextmanager
-import sqlite3
 from threading import local
 
 from planner_lib.migrations.contracts import SchemaError
@@ -39,10 +38,14 @@ def _write_server(connection, value):
     ttls = cache.get('ttls', {})
     if not isinstance(ttls, dict) or any(type(minutes) is not int or minutes < 0 for minutes in ttls.values()):
         raise ValueError('Cache TTLs must be nonnegative whole minutes')
-    connection.execute('INSERT OR REPLACE INTO server_settings VALUES (1, ?, ?, ?, ?)',
+    connection.execute('INSERT INTO server_settings (singleton_id, server_name, log_level, log_level_present, '
+                       'cache_shape) VALUES (1, ?, ?, ?, ?) ON CONFLICT (singleton_id) DO UPDATE SET '
+                       'server_name = excluded.server_name, log_level = excluded.log_level, '
+                       'log_level_present = excluded.log_level_present, cache_shape = excluded.cache_shape',
                        (value.get('server_name'), value.get('log_level', 'INFO'),
                         'log_level' in value, int('cache' in value) + int('ttls' in cache)))
-    connection.execute('INSERT OR REPLACE INTO task_backend_selection VALUES (1, ?)',
+    connection.execute('INSERT INTO task_backend_selection (singleton_id, backend_id) VALUES (1, ?) '
+                       'ON CONFLICT (singleton_id) DO UPDATE SET backend_id = excluded.backend_id',
                        (value['task_backend_id'],))
     connection.execute('DELETE FROM server_feature_flags')
     flags = write_transport_options(connection, 'server', value['feature_flags'])
@@ -74,7 +77,10 @@ def _read_server(connection):
 
 def _write_ado(connection, value):
     _shape(value, ('transport',), ('organization_url', 'feature_flags'))
-    connection.execute("INSERT OR REPLACE INTO ado_settings VALUES ('ado', ?, ?, ?, ?)",
+    connection.execute("INSERT INTO ado_settings (backend_id, organization_url, transport, url_present, "
+                       "flags_present) VALUES ('ado', ?, ?, ?, ?) ON CONFLICT (backend_id) DO UPDATE SET "
+                       "organization_url = excluded.organization_url, transport = excluded.transport, "
+                       "url_present = excluded.url_present, flags_present = excluded.flags_present",
                        (value.get('organization_url', ''), value['transport'],
                         'organization_url' in value, 'feature_flags' in value))
     connection.execute("DELETE FROM backend_feature_flags WHERE backend_id = 'ado'")
@@ -155,7 +161,7 @@ class ConfigStorage(StorageBackend):
                 finally:
                     self._transaction.stack = None
                     self._transaction.connection = None
-        except sqlite3.IntegrityError as error:
+        except self.database.IntegrityError as error:
             raise ValueError(f'Configuration violates database constraints: {error}') from error
 
     @contextmanager
@@ -165,8 +171,7 @@ class ConfigStorage(StorageBackend):
         if connection is not None:
             yield connection
         else:
-            with self.database.connect() as connection:
-                connection.execute('BEGIN')
+            with self.database.read() as connection:
                 yield connection
 
     def load(self, namespace, key):

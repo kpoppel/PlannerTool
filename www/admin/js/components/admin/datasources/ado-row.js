@@ -50,6 +50,10 @@ export function renderAdoGroup(comp) {
           >
             ${transports.map((transport) => html`<option value=${`ado_${transport}`}
               .selected=${type === `ado_${transport}`}>${TRANSPORT_LABELS[transport]}</option>`)}
+            ${type === 'ado_live' && !transports.includes('live')
+              ? html`<option value="ado_live" disabled .selected=${true}>
+                  ${TRANSPORT_LABELS.live} (unavailable: requires Entra sign-in)</option>`
+              : ''}
           </select>
           ${renderAdoSubForm(comp, type, errs)}
         </div>
@@ -107,7 +111,7 @@ export function renderAdoSubForm(comp, type, errs) {
         <div class="field full" data-authentication-settings>
           <label>ADO authentication method</label>
           <div id="ado-authentication-status" role="status">
-            ${comp.authentication === null ? 'Personal Access Token' : 'Entra ID'}
+            ${comp.authentication === null ? 'Entra ID (broker not configured)' : 'Entra ID'}
           </div>
         </div>
         <div class="field full">

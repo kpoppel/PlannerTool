@@ -194,7 +194,7 @@ Unit tests are located in `tests/python/repository/test_history_api.py`:
 - API endpoint tests with various filters
 - History service deduplication logic
 - Pairing hint computation
-- Error handling (no PAT, missing data)
+- Error handling (no ADO credential, missing data)
 
 Run tests with:
 ```bash
@@ -207,13 +207,14 @@ The plugin requires these Azure DevOps API permissions:
 - Work Items: Read (to fetch revisions)
 - Project and Team: Read (to access project metadata)
 
-Ensure the Personal Access Token (PAT) used has these scopes enabled.
+Ensure the signed-in user's Azure DevOps account has these permissions; requests use
+that user's delegated Entra credential.
 
 ## Troubleshooting
 
 ### No history displayed
 - Check that the project has tasks with date changes in Azure DevOps
-- Verify PAT has work item read permissions
+- Verify the signed-in user has work item read permissions
 - Check browser console for API errors
 
 ### Cards not found

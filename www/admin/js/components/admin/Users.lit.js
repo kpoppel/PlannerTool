@@ -12,9 +12,6 @@ const PERMISSIONS = [
 const PAGE_SIZE = 12;
 
 function resultErrorMessage(result, fallback = 'Request failed') {
-  if (result.error && (result.error.code === 'pat_invalid' || result.error.code === 'pat_required')) {
-    return 'Enter a valid Azure DevOps PAT for the new account.';
-  }
   if (typeof result.error === 'string') return result.error;
   if (result.error && result.error.message) return result.error.message;
   return fallback;
@@ -116,8 +113,7 @@ export class AdminUsers extends LitElement {
   static properties = {
     authentication: { attribute: false },
     users: { type: Array }, loading: { type: Boolean }, error: { type: String },
-    newUser: { state: true }, newUserPat: { state: true }, requiresPat: { type: Boolean },
-    taskBackendId: { type: String },
+    newUser: { state: true },
     statusMsg: { state: true }, resetting: { state: true }, saving: { state: true },
     search: { state: true }, view: { state: true }, permissionFilter: { state: true },
     accessFilter: { state: true }, selected: { state: true }, pageIndex: { state: true },
@@ -135,9 +131,6 @@ export class AdminUsers extends LitElement {
     this.loading = false;
     this.error = '';
     this.newUser = '';
-    this.newUserPat = '';
-    this.requiresPat = false;
-    this.taskBackendId = 'ado';
     this.current = null;
     this.statusMsg = '';
     this.resetting = false;
@@ -166,10 +159,7 @@ export class AdminUsers extends LitElement {
   connectedCallback() { super.connectedCallback(); this.load(); }
 
   willUpdate() {
-    if (!this.enrollmentAvailable && this.dialog === 'add') {
-      this.dialog = '';
-      this.newUserPat = '';
-    }
+    if (!this.enrollmentAvailable && this.dialog === 'add') this.dialog = '';
   }
 
   async load() {
@@ -180,7 +170,6 @@ export class AdminUsers extends LitElement {
       if (!result.ok) throw new Error(resultErrorMessage(result, 'Failed to load users'));
       this.users = result.data.accounts.slice();
       this.current = result.data.currentId;
-      this.requiresPat = result.data.requiresPat === true;
       this.selected = new Set([...this.selected].filter((id) => this.users.some((user) => user.id === id)));
       this._clampPage();
     } catch (error) {
@@ -272,7 +261,6 @@ export class AdminUsers extends LitElement {
   _closeDialog() {
     if (this.busy) return;
     this.dialog = '';
-    this.newUserPat = '';
     this.error = '';
   }
 
@@ -317,7 +305,7 @@ export class AdminUsers extends LitElement {
 
   _openAdd() {
     if (!this.enrollmentAvailable) return;
-    this.newUser = ''; this.newUserPat = ''; this._openDialog('add');
+    this.newUser = ''; this._openDialog('add');
   }
 
   async addUser() {
@@ -328,8 +316,8 @@ export class AdminUsers extends LitElement {
     if (this.users.some((user) => user.email.toLowerCase() === email)) {
       this.error = 'User already exists'; return;
     }
-    if (await this._runMutation(() => adminProvider.createUser(email, [], this.newUserPat))) {
-      this.newUser = ''; this.newUserPat = ''; this.dialog = '';
+    if (await this._runMutation(() => adminProvider.createUser(email, []))) {
+      this.newUser = ''; this.dialog = '';
       this._clearFilters(); this.search = email; this.statusMsg = `Added ${email}.`;
     }
   }
@@ -549,9 +537,6 @@ export class AdminUsers extends LitElement {
           }}>
             <label class="field">Email<input type="email" required autocomplete="off"
               .value=${this.newUser} @input=${(event) => { this.newUser = event.target.value; }}></label>
-            ${this.taskBackendId === 'ado' && this.requiresPat && (this.authentication === null || this.authentication.state.capabilities.pat) ? html`<label class="field">Azure DevOps PAT<input type="password"
-              autocomplete="new-password" data-pat="User" required .value=${this.newUserPat}
-              @input=${(event) => { this.newUserPat = event.target.value; }}></label>` : ''}
             <p class="muted">Initial access: standard user</p>
           </form>` : ''}
           ${this.dialog === 'account' ? html`<p>${this.account.email}</p><div class="account-actions">

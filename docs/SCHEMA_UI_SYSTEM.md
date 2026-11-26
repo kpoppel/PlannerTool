@@ -36,7 +36,7 @@ www/admin/js/
 | Abstraction | Responsibility |
 |---|---|
 | `admin_schema.get_schema(config_type)` | Return a deep-copied static JSON Schema dict for a config type, or `None` if unknown (→ 404). Special-cases `'ado'` (dynamic) and `'events_config'`/`'system'` (static but requires explicit key routing). |
-| `admin_schema.enrich_projects_schema(...)` | Best-effort, in-place mutation of the `projects` schema to inject live Azure DevOps work-item types/states as `enum` values, using the caller's PAT. Silently no-ops on any failure — the static schema is always a valid fallback. |
+| `admin_schema.enrich_projects_schema(...)` | Best-effort, in-place mutation of the `projects` schema to inject live Azure DevOps work-item types/states as `enum` values, using the caller's delegated ADO credential. Silently no-ops on any failure — the static schema is always a valid fallback. |
 | `get_ado_schema()` / `get_merged_schema()` (`backend/registry.py`) | Builds the `ado` schema's `feature_flags` sub-schema by merging `config_schema()` from every registered backend class, so a new backend (e.g. Jira) automatically contributes its own flags without editing `schema.py`. |
 | `ConfigManager` (`config_manager.py`) | Pure storage CRUD: `get_config`/`save_config` against the diskcache `config` namespace, with automatic timestamped backup of the previous value (gated by the `manage_backup_snapshots` feature flag). **Has no awareness of JSON Schema** — it persists whatever dict/string it is given. |
 | `SchemaForm` (Lit component) | Generic recursive renderer: walks `schema.properties`, dispatches per JSON Schema `type` (`string`, `number`/`integer`, `boolean`, `enum`, `object`, `array`, `patternProperties`) to a field-renderer, tracks edits into a plain data object via dotted/bracket path parsing (`_updateValue`), and implements `validate()` (required/minLength/minimum/type checks) and `getData()` (recursively fills in schema `default`s for untouched keys). |
@@ -79,7 +79,7 @@ sequenceDiagram
     API-->>UI: {ok: true}
 ```
 
-1. **Schema fetch:** `GET /admin/v1/schema/{config_type}` → `admin_get_schema()` in `config_routes.py` → `admin_schema.get_schema()`. For `projects`, the route additionally calls `enrich_projects_schema()` using the caller's Azure PAT (from the session) to inject live work-item type/state enums — this is the one place schema content depends on runtime/session state rather than being purely static.
+1. **Schema fetch:** `GET /admin/v1/schema/{config_type}` → `admin_get_schema()` in `config_routes.py` → `admin_schema.get_schema()`. For `projects`, the route additionally calls `enrich_projects_schema()` using the caller's delegated Azure DevOps credential (from the session) to inject live work-item type/state enums — this is the one place schema content depends on runtime/session state rather than being purely static.
 2. **Data fetch:** `GET /admin/v1/{config_type}` reads the raw config value via `AdminService`/`ConfigManager` from diskcache. The two payloads (schema, data) are unrelated HTTP round-trips fetched in parallel by `BaseConfigComponent.loadConfig()`.
 3. **Render:** `SchemaForm` receives both as Lit properties and recursively renders. Arrays render as repeatable "array item" blocks with add/remove/drag-reorder controls; objects render as nested bordered sections; `patternProperties` render as dynamic key/value rows.
 4. **Edit tracking:** every input's change handler calls `_updateValue(path, value)`, which parses a path like `project_map[0].task_types` into property/index tokens and mutates the live `this.data` object in place (no diffing/patching — the whole object is the state).
@@ -96,7 +96,7 @@ sequenceDiagram
 
 - Workforce pricing reads a coherent current snapshot; there is no legacy person-rate cache.
 - `restore_backup` (full-system restore) triggers `admin_service.reload_config()`, which reloads all in-memory config-derived services after a restore.
-- `enrich_projects_schema` performs a live Azure DevOps API call (via the caller's PAT) on every `GET /admin/v1/schema/projects` — this is a per-request network call, not cached, and swallows all exceptions.
+- `enrich_projects_schema` performs a live Azure DevOps API call (via the caller's delegated credential) on every `GET /admin/v1/schema/projects` — this is a per-request network call, not cached, and swallows all exceptions.
 
 ## 4. Architectural Decisions & Trade-offs
 

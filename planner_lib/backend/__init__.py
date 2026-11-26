@@ -8,7 +8,7 @@ Provides the BackendPort protocol and concrete implementations:
 - MockGeneratorBackend — synthetic-data backend for tests / demo
 
 Credential handling is separated into CredentialProvider so the data
-path never carries raw PAT strings.
+path never carries stored account secrets.
 
 BackendRegistry (registry.py) is the single place to add or remove backends.
 """

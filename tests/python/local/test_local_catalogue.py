@@ -116,6 +116,52 @@ def test_invalid_documents_are_rejected_without_writing(catalogue, mutate, messa
     assert catalogue.read() == saved
 
 
+@pytest.mark.parametrize('mutate', [
+    lambda d: d['field_schemas'][0]['fields'].append(
+        {'field_id': ['f'], 'required': False, 'default': None, 'min': None, 'max': None, 'max_length': None}),
+    lambda d: d['processes'][0]['types'][0].update(workflow_id={'id': 'x'}),
+    lambda d: d['processes'][0]['types'][0].update(field_schema_id=['x']),
+    lambda d: d['workflows'][0]['states'].append(['x']),
+    lambda d: d['processes'][0]['parent_rules'].append({'parent': ['x'], 'child': 'y'}),
+])
+def test_non_string_references_are_validation_errors(catalogue, mutate):
+    saved = _starter(catalogue)
+    document = copy.deepcopy(saved)
+    mutate(document)
+    with pytest.raises(ValueError):
+        catalogue.save(document)
+    assert catalogue.read() == saved
+
+
+def test_names_resembling_temporary_rename_values_save(catalogue):
+    document = copy.deepcopy(_starter(catalogue))
+    document['workflows'][0]['name'] = '~1'
+    document['fields'] = [{'id': 'f-1', 'key': 'a', 'label': 'x', 'type': 'string', 'options': []},
+                          {'id': 'f-2', 'key': 'b', 'label': 'y', 'type': 'string', 'options': []}]
+    saved = catalogue.save(document)
+    document = copy.deepcopy(saved)
+    document['states'][0]['name'] = '~2'
+    document['processes'][0]['types'][0]['name'] = '~2'
+    document['fields'][0]['key'] = 'zz_pending_2'
+    assert catalogue.save(document) == {**document, 'revision': document['revision'] + 1}
+
+
+def test_document_order_round_trips_after_reordering(catalogue):
+    document = copy.deepcopy(_starter(catalogue))
+    document['fields'] = [{'id': f'f-{n}', 'key': f'k{n}', 'label': 'x', 'type': 'string', 'options': []}
+                          for n in range(3)]
+    document['field_schemas'].append({'id': 's-2', 'name': 'Second', 'fields': []})
+    document['workflows'].append({**copy.deepcopy(document['workflows'][0]), 'id': 'w-2', 'name': 'Second'})
+    document = copy.deepcopy(catalogue.save(document))
+    for key in ('fields', 'field_schemas', 'workflows'):
+        document[key].reverse()
+    workflow = document['workflows'][0]
+    workflow['transitions'].reverse()
+    workflow['from_any'] = [workflow['states'][1], workflow['states'][0]]
+    document['processes'][0]['parent_rules'].reverse()
+    assert catalogue.save(document) == {**document, 'revision': document['revision'] + 1}
+
+
 def test_definitions_used_by_tasks_cannot_be_removed(catalogue, database):
     saved = _starter(catalogue)
     story = saved['processes'][0]['types'][2]

@@ -64,7 +64,7 @@ export async function initializeAuthentication(apiUrl, {
     const response = await fetchImpl(`${apiUrl}/auth/config`, { credentials: 'same-origin' });
     const config = await response.json();
     if (!response.ok) throw Object.assign(new Error(config.error), { code: config.error });
-    if (config.mode === 'pat' || config.mode === 'local') return null;
+    if (config.mode === 'local') return null;
     if (config.mode !== 'broker') throw new Error('Unsupported authentication mode');
     const adapter = createBrokerHttpAdapter({ apiUrl, presentLogin,
       onLogout: state => {

@@ -8,6 +8,8 @@ import copy
 import pytest
 from unittest.mock import MagicMock, call, patch
 
+BEARER = {'kind': 'bearer', 'token': 'fixture-token', 'user_id': 'fixture-user'}
+
 
 # ===========================================================================
 # schema
@@ -186,13 +188,13 @@ class TestRefreshSingle:
 
 
 class TestRefreshAll:
-    def test_raises_value_error_on_missing_pat(self):
+    def test_raises_value_error_without_credential(self):
         from planner_lib.admin import area_mapping_service
         admin_svc = MagicMock()
         admin_svc.get_project_map.return_value = []
         admin_svc.get_config.return_value = {}
-        with pytest.raises(ValueError, match='PAT'):
-            area_mapping_service.refresh_all('', MagicMock(), admin_svc)
+        with pytest.raises(ValueError, match='credential'):
+            area_mapping_service.refresh_all(None, MagicMock(), admin_svc)
 
     def test_refresh_all_returns_ok(self):
         from planner_lib.admin import area_mapping_service
@@ -214,7 +216,7 @@ class TestRefreshAll:
         ]
         admin_svc.get_config.return_value = {}
 
-        result = area_mapping_service.refresh_all('pat', azure_svc, admin_svc)
+        result = area_mapping_service.refresh_all(BEARER, azure_svc, admin_svc)
 
         assert result['ok'] is True
         assert 'Proj\\Team' in result['results']
@@ -238,7 +240,7 @@ class TestRefreshAll:
         ]
         admin_svc.get_config.return_value = {}
 
-        area_mapping_service.refresh_all('pat', azure_svc, admin_svc)
+        area_mapping_service.refresh_all(BEARER, azure_svc, admin_svc)
 
         admin_svc.save_config_raw.assert_called_once()
         assert admin_svc.save_config_raw.call_args[0][0] == 'area_plan_map'

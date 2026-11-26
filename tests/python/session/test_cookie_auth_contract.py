@@ -61,17 +61,14 @@ def test_identity_request_skips_credentials_and_refreshes_expiry_once(client, mo
     accounts = container.get('account_manager')
     accounts.set_permissions(accounts.get_account_id('resolution@example.com'), ['admin'])
     save = Mock(wraps=storage.save)
-    load_account = Mock(wraps=accounts.load)
     provider = container.get('credential_provider')
     acquire = Mock(wraps=provider.get_credential)
     monkeypatch.setattr(storage, 'save', save)
-    monkeypatch.setattr(accounts, 'load', load_account)
     monkeypatch.setattr(provider, 'get_credential', acquire)
 
     response = client.get(path)
 
     assert response.status_code == 200
-    load_account.assert_not_called()
     acquire.assert_not_called()
     assert [call.args[0] for call in save.call_args_list].count('auth_sessions') == 1
     assert [call.args[0] for call in save.call_args_list].count('account_auth') == 1
@@ -88,16 +85,12 @@ def test_mock_task_refresh_does_not_acquire_credentials(client, monkeypatch):
     provider = container.get('credential_provider')
     acquire = Mock(side_effect=AssertionError('Local refresh must not acquire credentials'))
     monkeypatch.setattr(provider, 'get_credential', acquire)
-    accounts = container.get('account_manager')
-    load = Mock(wraps=accounts.load)
-    monkeypatch.setattr(accounts, 'load', load)
 
     response = client.post('/api/tasks/refresh')
 
     assert response.status_code == 202, response.text
     assert response.json() == {'status': 'completed'}
     acquire.assert_not_called()
-    load.assert_not_called()
 
 
 def test_session_post_rejects_email_only(client):
@@ -108,19 +101,19 @@ def test_session_post_rejects_email_only(client):
 
 
 def test_enrollment_status_is_read_only_and_distinguishes_unenrolled_accounts(client):
-    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.accounts.config import AccountIdentityPayload
 
     accounts = client.app.state.container.get('account_manager')
     storage = client.app.state.container.get('storage')
     response = client.post('/api/auth/enrollment-status', json={'email': 'unknown@example.com'})
     assert response.status_code == 200
-    assert response.json() == {'requiresKey': False, 'requiresPat': False}
+    assert response.json() == {'requiresKey': False}
     assert response.headers['cache-control'] == 'no-store'
     assert not storage.exists('accounts', 'unknown@example.com')
-    accounts.create_account(AccountCredentialsPayload(email='precreated@example.com'))
+    accounts.create_account(AccountIdentityPayload(email='precreated@example.com'))
     assert client.post('/api/auth/enrollment-status', json={
         'email': 'precreated@example.com',
-    }).json() == {'requiresKey': False, 'requiresPat': False}
+    }).json() == {'requiresKey': False}
     enrollment = client.post('/api/auth/enroll', json={
         'email': 'enrolled@example.com', 'name': 'Existing User',
     })
@@ -129,7 +122,7 @@ def test_enrollment_status_is_read_only_and_distinguishes_unenrolled_accounts(cl
     original = storage.load('account_auth', account_id)
     assert client.post('/api/auth/enrollment-status', json={
         'email': 'enrolled@example.com',
-    }).json() == {'requiresKey': True, 'requiresPat': False}
+    }).json() == {'requiresKey': True}
     assert storage.load('account_auth', account_id) == original
     assert client.post('/api/auth/enrollment-status', json={'email': 'invalid'}).status_code == 400
     assert client.post('/api/auth/enrollment-status', json={
@@ -163,9 +156,7 @@ def test_enrollment_session_and_second_device(client):
     }).status_code == 401
 
 
-def test_first_enrollment_claims_admin_and_preserves_profile_contract(client, monkeypatch):
-    from unittest.mock import Mock
-
+def test_first_enrollment_claims_admin_and_preserves_profile_contract(client):
     enrollment = client.post('/api/auth/enroll', json={
         'email': 'first-admin@example.com', 'name': 'First Administrator',
     })
@@ -176,22 +167,16 @@ def test_first_enrollment_claims_admin_and_preserves_profile_contract(client, mo
     account_id = accounts.get_account_id('first-admin@example.com')
     assert accounts.get_account_by_id(account_id)['permissions'] == ['admin']
 
-    load_account = Mock(wraps=accounts.load)
-    monkeypatch.setattr(accounts, 'load', load_account)
     profile = client.get('/api/auth/me').json()
     assert set(profile) == {
-        'email', 'name', 'patRequired', 'patError', 'permissions',
-        'currentDeviceId', 'devices',
+        'email', 'name', 'permissions', 'currentDeviceId', 'devices',
     }
     assert profile['email'] == 'first-admin@example.com'
     assert profile['name'] == 'First Administrator'
-    assert profile['patRequired'] is False
-    assert profile['patError'] is None
     assert profile['permissions'] == ['admin']
     assert len(profile['devices']) == 1
     assert profile['currentDeviceId'] == profile['devices'][0]['id']
     assert isinstance(profile['devices'][0]['expires'], (int, float))
-    load_account.assert_not_called()
 
 
 def test_profile_uses_login_adapter_projection_for_authenticated_uuid(client, monkeypatch):
@@ -214,44 +199,10 @@ def test_profile_uses_login_adapter_projection_for_authenticated_uuid(client, mo
 
     assert response.status_code == 200
     assert response.json() == {
-        'email': 'profile@example.com', 'name': 'Adapter Name',
-        'patRequired': False, 'patError': None, 'permissions': ['admin'],
+        'email': 'profile@example.com', 'name': 'Adapter Name', 'permissions': ['admin'],
         'currentDeviceId': None, 'devices': [],
     }
     projection.assert_called_once_with(account_id)
-
-
-@pytest.mark.parametrize('stored_pat,rejected,error', [
-    (None, False, 'pat_required'),
-    ('opaque-encrypted-pat', False, None),
-    ('opaque-encrypted-pat', True, 'pat_invalid'),
-])
-def test_live_ado_profile_does_not_load_pat(client, monkeypatch, stored_pat, rejected, error):
-    from unittest.mock import Mock
-
-    assert client.post('/api/auth/enroll', json={
-        'email': 'profile@example.com', 'name': 'Profile User',
-    }).status_code == 200
-    accounts = client.app.state.container.get('account_manager')
-    storage = client.app.state.container.get('storage')
-    record = storage.load('accounts', 'profile@example.com')
-    storage.save('accounts', 'profile@example.com', {
-        **record, 'pat': stored_pat, 'pat_invalid': rejected,
-    })
-    storage.save(
-        'config', 'ado_config', {'organization_url': 'ExampleOrg', 'feature_flags': {},
-                                 'transport': 'live'},
-    )
-    load_account = Mock(wraps=accounts.load)
-    monkeypatch.setattr(accounts, 'load', load_account)
-    decrypt = Mock(side_effect=AssertionError('Profile must not decrypt credentials'))
-    monkeypatch.setattr('planner_lib.accounts.config._get_fernet', decrypt)
-
-    response = client.get('/api/auth/me')
-    assert response.status_code == 200
-    assert response.json()['patError'] == error
-    load_account.assert_not_called()
-    decrypt.assert_not_called()
 
 
 def test_auth_cookies_keep_subpath_scope(client):
@@ -307,11 +258,11 @@ def test_cross_origin_writes_rejected(client):
 
 
 def test_migrated_admin_can_enroll_through_same_origin_proxy(client):
-    from planner_lib.accounts.config import AccountCredentialsPayload
+    from planner_lib.accounts.config import AccountIdentityPayload
 
     accounts = client.app.state.container.get('account_manager')
     storage = client.app.state.container.get('storage')
-    accounts.create_account(AccountCredentialsPayload(email='upgrade@example.com'))
+    accounts.create_account(AccountIdentityPayload(email='upgrade@example.com'))
     account_id = accounts.get_account_id('upgrade@example.com')
     accounts.set_permissions(account_id, ['admin'])
     storage.save('account_auth', account_id, {'enrolled': False})
@@ -437,12 +388,11 @@ def test_self_service_delete_without_device_and_removed_routes(client):
         assert route not in client.app.openapi()['paths']
 
 
-def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monkeypatch):
+def test_context_is_request_local_and_reads_new_credential_on_next_request(client, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from unittest.mock import Mock
     from fastapi.testclient import TestClient
     from starlette.requests import Request
-    from planner_lib.accounts.config import AccountCredentialsPayload
     from planner_lib.middleware.session import get_session_credential_from_request
 
     assert client.post('/api/auth/enroll', json={
@@ -454,15 +404,17 @@ def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monk
         }).status_code == 200
         container = client.app.state.container
         accounts = container.get('account_manager')
-        accounts.update_credentials(AccountCredentialsPayload(email='first@example.com', pat='first-pat'))
-        accounts.update_credentials(AccountCredentialsPayload(email='second@example.com', pat='second-pat'))
+        tokens = {
+            accounts.get_account_id('first@example.com'): 'first-token',
+            accounts.get_account_id('second@example.com'): 'second-token',
+        }
         sessions = container.get('session_manager')
         resolve_context = Mock(wraps=sessions.get)
         monkeypatch.setattr(sessions, 'get', resolve_context)
-        load_account = Mock(wraps=accounts.load)
-        monkeypatch.setattr(accounts, 'load', load_account)
         provider = container.get('credential_provider')
-        acquire = Mock(wraps=provider.get_credential)
+        acquire = Mock(side_effect=lambda user_id: {
+            'kind': 'bearer', 'token': tokens[user_id], 'user_id': user_id,
+        })
         monkeypatch.setattr(provider, 'get_credential', acquire)
 
         def make_request(browser):
@@ -474,31 +426,29 @@ def test_context_is_request_local_and_reads_new_pat_on_next_request(client, monk
         second_request = make_request(other)
         second = get_session_context_from_request(second_request)
         assert get_session_context_from_request(first_request) is first
-        assert 'pat' not in first
-        assert 'pat' not in second
-        load_account.assert_not_called()
+        assert 'token' not in first
+        assert 'token' not in second
         acquire.assert_not_called()
         with ThreadPoolExecutor(max_workers=2) as workers:
             first, second = list(workers.map(
                 get_session_credential_from_request, [first_request, second_request],
             ))
         assert get_session_credential_from_request(first_request) is first
-        assert first == {'kind': 'pat', 'token': 'first-pat',
-                 'user_id': accounts.get_account_id('first@example.com')}
-        assert second == {'kind': 'pat', 'token': 'second-pat',
-                  'user_id': accounts.get_account_id('second@example.com')}
+        assert first == {'kind': 'bearer', 'token': 'first-token',
+                         'user_id': accounts.get_account_id('first@example.com')}
+        assert second == {'kind': 'bearer', 'token': 'second-token',
+                          'user_id': accounts.get_account_id('second@example.com')}
         assert first['user_id'] != second['user_id']
         assert resolve_context.call_count == 2
-        assert load_account.call_count == 2
         assert sorted(call.args[0] for call in acquire.call_args_list) == sorted([
             first['user_id'], second['user_id'],
         ])
 
-        accounts.update_credentials(AccountCredentialsPayload(email='first@example.com', pat='updated-pat'))
-        assert get_session_credential_from_request(make_request(client))['token'] == 'updated-pat'
-        assert get_session_credential_from_request(second_request)['token'] == 'second-pat'
+        tokens[first['user_id']] = 'updated-token'
+        assert get_session_credential_from_request(make_request(client))['token'] == 'updated-token'
+        assert get_session_credential_from_request(second_request)['token'] == 'second-token'
         assert resolve_context.call_count == 3
-        assert load_account.call_count == 3
+        assert acquire.call_count == 3
 
 
 @pytest.mark.parametrize('mutation', ['revoke', 'reset', 'delete'])

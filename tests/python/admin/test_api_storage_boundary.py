@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 from fastapi import HTTPException
 
-from planner_lib.accounts.config import AccountCredentialsPayload
+from planner_lib.accounts.config import AccountIdentityPayload
 from planner_lib.admin import api as admin_api
 
 
@@ -86,7 +86,7 @@ def test_admin_delete_user_returns_not_found_for_missing_storage_key(client, mon
     }).status_code == 200
     accounts = client.app.state.container.get('account_manager')
     accounts.set_permissions(accounts.get_account_id('deletion@example.com'), ['admin'])
-    target = accounts.create_account(AccountCredentialsPayload(email='target@example.com'))
+    target = accounts.create_account(AccountIdentityPayload(email='target@example.com'))
     failed_delete = Mock(side_effect=KeyError(target['id']))
     monkeypatch.setattr(accounts, 'delete_account', failed_delete)
 

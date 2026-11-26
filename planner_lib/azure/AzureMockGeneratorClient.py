@@ -40,7 +40,7 @@ It can also be used standalone::
 
     storage = create_storage(data_dir='data')
     client = AzureMockGeneratorClient('my-org', storage=storage, data_dir='data')
-    with client.connect({'kind': 'pat', 'token': 'dummy-pat', 'user_id': 'example'}) as c:
+    with client.connect({'kind': 'mock', 'token': 'mock-token', 'user_id': 'example'}) as c:
         teams = c.get_all_teams('MyProject')
 """
 from __future__ import annotations
@@ -1498,7 +1498,7 @@ class _GeneratedConnection:
 class AzureMockGeneratorClient(AzureClient):
     """Extends ``AzureClient`` with a fully generated Azure DevOps dataset.
 
-    Overrides only ``_connect_with_pat`` to install a ``_GeneratedConnection``
+    Overrides only ``_connect_mock`` to install a ``_GeneratedConnection``
     instead of the real SDK ``Connection``.  Every other method runs unchanged
     from ``AzureClient``.
 
@@ -1538,7 +1538,7 @@ class AzureMockGeneratorClient(AzureClient):
         self._config_dict: Optional[dict] = cfg or None
         self._dataset: Optional[AzureDataset] = None
 
-    def _connect_with_pat(self, pat: str) -> None:
+    def _connect_mock(self) -> None:
         """Override: inject a _GeneratedConnection instead of the real SDK."""
         if self._connected:
             return

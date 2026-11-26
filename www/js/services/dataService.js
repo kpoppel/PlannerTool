@@ -26,11 +26,11 @@ class DataService {
   async getTaskEditor() {
     return this.providers['rest'].getTaskEditor();
   }
-  async createLocalTask(payload) {
-    return this.providers['rest'].createLocalTask(payload);
+  async createTask(payload) {
+    return this.providers['rest'].createTask(payload);
   }
-  async deleteLocalTask(id, revision) {
-    return this.providers['rest'].deleteLocalTask(id, revision);
+  async deleteTask(id, revision) {
+    return this.providers['rest'].deleteTask(id, revision);
   }
   async getCapabilities() {
     return this.providers['mock'].getCapabilities();
@@ -38,9 +38,6 @@ class DataService {
   // Configuration and local preferences
   async getConfig() {
     return this.providers['mock'].getConfig();
-  }
-  async saveConfig(account) {
-    return this.providers['rest'].saveConfig(account);
   }
   async signOut() {
     await this.providers['rest'].signOut();

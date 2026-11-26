@@ -2,12 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { showAuthDialog, showAccountKeyDialog } from '../../www/js/components/AuthDialog.lit.js';
 import '../../www/admin/js/components/admin/Users.lit.js';
 import { adminProvider } from '../../www/admin/js/services/providerREST.js';
-import { store } from '../../www/js/application/store.js';
-import { createUiCommands, NotificationActionIds } from '../../www/js/application/commands/uiCommands.js';
-import { bus } from '../../www/js/core/EventBus.js';
 import { AUTH_SCENARIOS, createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/mockAuth.js';
-
-const uiCommands = createUiCommands(store, bus);
 
 describe('isolated authentication scenarios', () => {
   it('does not claim a local session is active after signed-out sign-in fails', async () => {
@@ -41,20 +36,19 @@ describe('isolated authentication scenarios', () => {
     status.remove();
   });
   it.each([
-    ['entra_signed_out', 'Signed out', false],
-    ['entra_signed_in', 'Connected', false],
-    ['session_expired', 'session has expired', false],
-    ['interaction_required', 'requires reauthentication', false],
-    ['access_denied', 'access denied', false],
-    ['unavailable', 'service unavailable', false],
-  ])('presents %s with only the permitted recovery controls', async (scenario, message, pat) => {
+    ['entra_signed_out', 'Signed out'],
+    ['entra_signed_in', 'Connected'],
+    ['session_expired', 'session has expired'],
+    ['interaction_required', 'requires reauthentication'],
+    ['access_denied', 'access denied'],
+    ['unavailable', 'service unavailable'],
+  ])('presents %s with only the permitted recovery controls', async (scenario, message) => {
     const model = createMockAuth(scenario);
     const status = document.createElement('auth-status');
     status.authentication = model;
     document.body.append(status);
     await status.updateComplete;
     expect(status.shadowRoot.textContent).toContain(message);
-    expect(status.shadowRoot.querySelector('#previewPat') !== null).toBe(pat);
     const buttons = [...status.shadowRoot.querySelectorAll('button')];
     if (scenario === 'access_denied' || scenario === 'unavailable') {
       expect(buttons).toHaveLength(0);
@@ -109,7 +103,7 @@ describe('isolated authentication scenarios', () => {
 
   it('retains admin permissions and removal without enrollment or key reset', async () => {
     vi.spyOn(adminProvider, 'getUsers').mockResolvedValue({ ok: true, data: {
-      currentId: 'admin', requiresPat: true, accounts: [
+      currentId: 'admin', accounts: [
         { id: 'admin', email: 'admin@example.com', permissions: ['admin'], lastActive: null },
         { id: 'user', email: 'user@example.com', permissions: [], lastActive: null },
       ],
@@ -130,7 +124,7 @@ describe('isolated authentication scenarios', () => {
     const reset = vi.spyOn(adminProvider, 'resetAccountAccess');
     await users.resetAccess(users.account);
     expect(reset).not.toHaveBeenCalled();
-    model.select('pat_current');
+    model.select('local');
     await users.updateComplete;
     expect(users.shadowRoot.textContent).toContain('Reset access');
     expect(users.users[1].permissions).toEqual([]);
@@ -138,12 +132,11 @@ describe('isolated authentication scenarios', () => {
 
   it('switches capabilities without a network or browser session', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch');
-    const model = createMockAuth('pat_current');
+    const model = createMockAuth('local');
     const changed = vi.fn();
     const unsubscribe = model.subscribe(changed);
     for (const name of Object.keys(AUTH_SCENARIOS)) model.select(name);
     expect(changed).toHaveBeenCalledTimes(Object.keys(AUTH_SCENARIOS).length);
-    expect(model.state.capabilities.pat).toBe(false);
     expect(model.state.capabilities.enrollment).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
     expect(document.cookie).toBe('');
@@ -162,7 +155,7 @@ describe('isolated authentication scenarios', () => {
     expect(model.state.status).toBe('signed_out');
   });
 
-  it('uses the injected Entra sign-in boundary without enrollment or PAT prompts', async () => {
+  it('uses the injected Entra sign-in boundary without enrollment prompts', async () => {
     const model = createMockAuth('entra_signed_out');
     const fetch = vi.spyOn(globalThis, 'fetch');
     const completion = showAuthDialog('/prefix/api', model);
@@ -183,7 +176,6 @@ describe('isolated authentication scenarios', () => {
 
 afterEach(() => {
   document.querySelectorAll('auth-dialog').forEach((dialog) => dialog.remove());
-  document.querySelectorAll('set-pat').forEach((dialog) => dialog.remove());
   document.querySelectorAll('admin-users').forEach((component) => component.remove());
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -233,71 +225,6 @@ describe('account enrollment dialog', () => {
     else window.IS_VITE_DEV = originalIsViteDev;
   });
 
-  it('saves a masked PAT through the shared repair screen', async () => {
-    const { showSetPat } = await import('../../www/js/components/SetPat.lit.js');
-    uiCommands.addNotification({
-      source: 'Authentication', code: 'pat_required', severity: 'warning',
-      message: 'A PAT is required.', actionId: NotificationActionIds.SET_PAT,
-    });
-    const fetch = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ email: 'owner@example.com' })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
-    vi.stubGlobal('fetch', fetch);
-    const complete = showSetPat('/dev/api', 'pat_required');
-    expect(showSetPat('/dev/api', 'pat_required')).toBe(complete);
-    const screen = document.querySelector('set-pat');
-    await screen.ready;
-    await screen.updateComplete;
-    const input = screen.renderRoot.querySelector('input');
-    expect(input.type).toBe('password');
-    input.value = 'fixture-pat';
-    await screen._onSave(new Event('submit'));
-    await expect(complete).resolves.toBe(true);
-    expect(fetch.mock.calls[1][0]).toBe('/dev/api/config');
-    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
-      email: 'owner@example.com', pat: 'fixture-pat',
-    });
-    expect(input.value).toBe('');
-    expect(store.getState().notifications.some(
-      (entry) => entry.actionId === NotificationActionIds.SET_PAT,
-    )).toBe(false);
-    expect(document.querySelector('set-pat')).toBeNull();
-  });
-
-  it('lets the user cancel PAT repair without saving', async () => {
-    const { showSetPat } = await import('../../www/js/components/SetPat.lit.js');
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ email: 'owner@example.com' })));
-    vi.stubGlobal('fetch', fetchImpl);
-    const complete = showSetPat('/api', 'pat_required');
-    const screen = document.querySelector('set-pat');
-    await screen.ready;
-    await screen.updateComplete;
-
-    screen.renderRoot.querySelector('button[type="button"]').click();
-
-    await expect(complete).resolves.toBe(false);
-    expect(document.querySelector('set-pat')).toBeNull();
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the PAT screen open when ADO rejects the supplied token', async () => {
-    const { showSetPat } = await import('../../www/js/components/SetPat.lit.js');
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ email: 'owner@example.com' })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'pat_invalid' }), { status: 400 })));
-    showSetPat('/api', 'pat_invalid');
-    const screen = document.querySelector('set-pat');
-    await screen.ready;
-    await screen.updateComplete;
-    screen.renderRoot.querySelector('input').value = 'revoked-fixture-pat';
-    await screen._onSave(new Event('submit'));
-    await screen.updateComplete;
-    expect(screen.renderRoot.textContent).toContain('invalid or expired');
-    expect(document.querySelector('set-pat')).toBe(screen);
-    expect(screen.busy).toBe(false);
-  });
-
   it('shows only one Enroll button in enrollment mode', async () => {
     showAuthDialog('/api');
     const dialog = document.querySelector('auth-dialog');
@@ -308,9 +235,9 @@ describe('account enrollment dialog', () => {
     expect(enrollButtons[0].type).toBe('submit');
   });
 
-  it('requests a masked PAT for live ADO enrollment and sends it only to enrollment', async () => {
+  it('sends only email, name and account key to enrollment', async () => {
     const fetch = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ requiresKey: false, requiresPat: true })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ requiresKey: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ accountKey: 'next-key' })));
     vi.stubGlobal('fetch', fetch);
     showAuthDialog('/api');
@@ -319,14 +246,12 @@ describe('account enrollment dialog', () => {
     dialog.renderRoot.querySelector('#email').value = 'owner@example.com';
     await dialog._checkEnrollment();
     await dialog.updateComplete;
-    const input = dialog.renderRoot.querySelector('#pat');
-    expect(input.type).toBe('password');
-    expect(input.required).toBe(true);
-    input.value = 'fixture-pat';
+    expect(dialog.renderRoot.querySelectorAll('input[type="password"]')).toHaveLength(0);
     dialog.renderRoot.querySelector('#name').value = 'Owner';
     await dialog._submit(new Event('submit'));
-    expect(JSON.parse(fetch.mock.calls[1][1].body).pat).toBe('fixture-pat');
-    expect(localStorage.getItem('az_planner:user_prefs:v1')).not.toContain('fixture-pat');
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+      email: 'owner@example.com', name: 'Owner', accountKey: '',
+    });
   });
 
   it('shows real name but no account key before first enrollment', async () => {
@@ -342,7 +267,7 @@ describe('account enrollment dialog', () => {
 
   it('switches to the required account key for an enrolled email', async () => {
     const fetch = vi.fn().mockResolvedValue({
-      ok: true, json: async () => ({ requiresKey: true, requiresPat: true }),
+      ok: true, json: async () => ({ requiresKey: true }),
     });
     vi.stubGlobal('fetch', fetch);
     showAuthDialog('/dev/api');
@@ -353,7 +278,6 @@ describe('account enrollment dialog', () => {
     await dialog.updateComplete;
     expect(dialog.renderRoot.querySelector('#name')).toBeNull();
     expect(dialog.renderRoot.querySelector('#accountKey').required).toBe(true);
-    expect(dialog.renderRoot.querySelector('#pat')).toBeNull();
     expect(fetch).toHaveBeenCalledWith('/dev/api/auth/enrollment-status', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ email: 'existing@example.com' }),
     }));

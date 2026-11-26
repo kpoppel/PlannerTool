@@ -4,10 +4,9 @@ export const AUTH_DECISIONS = Object.freeze({
   interaction_required: { status: 409, action: 'reauthenticate' },
   access_denied: { status: 403, action: 'none' },
   ado_credential_unusable: { status: 403, action: 'none' },
+  ado_credential_required: { status: 403, action: 'none' },
   auth_unavailable: { status: 503, action: 'none' },
   auth_configuration_error: { status: 503, action: 'none' },
-  pat_required: { status: 403, action: 'set_pat' },
-  pat_invalid: { status: 403, action: 'set_pat' },
 });
 
 export async function resetAccountContext(_context) {
@@ -34,7 +33,8 @@ export function createAuthClient({ adapter, initialState, instance, onAccountCha
     async handleDecision(code) {
       const decision = AUTH_DECISIONS[code];
       if (decision === undefined) throw new Error(`Unknown authentication decision: ${code}`);
-      if (code === 'ado_credential_unusable') return;
+      // Credential codes describe Azure DevOps access, not the planner session state.
+      if (code === 'ado_credential_unusable' || code === 'ado_credential_required') return;
       const status = code === 'auth_unavailable' || code === 'auth_configuration_error'
         ? 'unavailable' : code === 'invalid_session' ? 'session_expired' : code;
       await apply({ ...state, status,

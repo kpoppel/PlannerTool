@@ -8,11 +8,10 @@ from planner_lib.middleware.session import (
     get_session_credential_from_request,
 )
 from planner_lib.services.resolver import resolve_service
-from planner_lib.backend.port import (
-    BatchTaskBackend, DiagnosticBackend, TaskCreationBackend, TaskDeletionBackend, TaskEditorBackend,
-)
+from planner_lib.backend.port import DiagnosticBackend
 from planner_lib.backend.errors import BackendConfigError, BackendDecisionError, BackendUnavailableError
 from planner_lib.domain.tasks import TaskConflictError
+from planner_lib.repository.task_repository import TaskOperationNotSupported
 import logging
 
 router = APIRouter()
@@ -146,21 +145,22 @@ async def api_markers(request: Request):
 @router.get('/tasks/editor')
 @require_session
 async def api_task_editor(request: Request):
-    backend = resolve_service(request, 'backend')
-    if not isinstance(backend, TaskEditorBackend):
-        raise HTTPException(405, detail={'error': 'task_editor_not_supported'})
-    return await asyncio.to_thread(backend.task_editor_metadata)
+    task_repo = resolve_service(request, 'task_repository')
+    try:
+        return await asyncio.to_thread(task_repo.editor_metadata)
+    except TaskOperationNotSupported as exc:
+        raise HTTPException(405, detail={'error': 'task_editor_not_supported'}) from exc
 
 
 @router.post('/tasks/create', status_code=201)
 @require_session
 async def api_task_create(request: Request, payload: dict = Body(...)):
-    backend = resolve_service(request, 'backend')
-    if not isinstance(backend, TaskCreationBackend):
-        raise HTTPException(405, detail={'error': 'task_creation_not_supported'})
+    task_repo = resolve_service(request, 'task_repository')
     account_id = get_session_context_from_request(request)['account_id']
     try:
-        return await asyncio.to_thread(backend.create_task, payload, account_id)
+        return await asyncio.to_thread(task_repo.create, payload, account_id)
+    except TaskOperationNotSupported as exc:
+        raise HTTPException(405, detail={'error': 'task_creation_not_supported'}) from exc
     except ValueError as exc:
         raise HTTPException(422, detail={'error': 'invalid_task', 'message': str(exc)}) from exc
 
@@ -179,9 +179,7 @@ async def _write_task_updates(request: Request, updates: list[dict]):
     try:
         result = await asyncio.to_thread(task_repo.write, updates, user_id=account_id)
     except ValueError as exc:
-        backend = resolve_service(request, 'backend')
-        code = 'invalid_task' if isinstance(backend, BatchTaskBackend) else 'invalid_allocation'
-        raise HTTPException(status_code=422, detail={'error': code, 'message': str(exc)}) from exc
+        raise HTTPException(status_code=422, detail={'error': 'invalid_task', 'message': str(exc)}) from exc
     except BackendUnavailableError as exc:
         raise HTTPException(status_code=503, detail={'error': 'backend_unavailable', 'message': 'Publication requires the complete task forest'}) from exc
     except BackendConfigError as exc:
@@ -208,7 +206,7 @@ async def _write_task_updates(request: Request, updates: list[dict]):
 async def api_task_capacity(request: Request, task_id: str, payload: list[dict] = Body(...)):
     backend = resolve_service(request, 'backend')
     update = {'id': task_id, 'capacity': payload}
-    if isinstance(backend, BatchTaskBackend):
+    if 'field_merge' in backend.CAPABILITIES:
         task_repo = resolve_service(request, 'task_repository')
         tasks = await asyncio.to_thread(task_repo.read)
         task = next((entry for entry in tasks if entry['id'] == task_id), None)
@@ -218,20 +216,20 @@ async def api_task_capacity(request: Request, task_id: str, payload: list[dict] 
     return await _write_task_updates(request, [update])
 
 
-@router.delete('/tasks/{task_id}', status_code=204)
+@router.delete('/tasks/{task_id}')
 @require_session
 async def api_task_delete(request: Request, task_id: str, revision: int):
-    backend = resolve_service(request, 'backend')
-    if not isinstance(backend, TaskDeletionBackend):
-        raise HTTPException(405, detail={'error': 'task_deletion_not_supported'})
+    task_repo = resolve_service(request, 'task_repository')
     account_id = get_session_context_from_request(request)['account_id']
     try:
-        await asyncio.to_thread(backend.delete_task, task_id, revision, account_id)
+        await asyncio.to_thread(task_repo.delete, task_id, revision, account_id)
+    except TaskOperationNotSupported as exc:
+        raise HTTPException(405, detail={'error': 'task_deletion_not_supported'}) from exc
     except TaskConflictError as exc:
         raise HTTPException(409, detail={'error': 'task_conflict', 'conflicts': exc.conflicts}) from exc
     except ValueError as exc:
         raise HTTPException(422, detail={'error': 'invalid_task', 'message': str(exc)}) from exc
-    return Response(status_code=204)
+    return {'ok': True}
 
 
 @router.get('/iterations')
@@ -319,7 +317,7 @@ async def api_history_tasks(request: Request):
 
         credential, account_id = _get_credential(request)
         if resolve_service(request, 'backend').is_remote and credential is None:
-            raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
+            raise HTTPException(status_code=403, detail={'error': 'ado_credential_required', 'message': 'Azure DevOps sign-in required'})
 
         # Get query parameters
         project_id = request.query_params.get('project')

@@ -47,7 +47,7 @@ async def api_config_tasks(request: Request):
     backend = resolve_service(request, 'backend')
     credential = get_session_credential_from_request(request, backend=backend)
     if backend.is_remote and credential is None:
-        raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
+        raise HTTPException(status_code=403, detail={'error': 'ado_credential_required', 'message': 'Azure DevOps sign-in required'})
     return _deprecated_response(await asyncio.to_thread(task_repo.read, credential=credential))
 
 

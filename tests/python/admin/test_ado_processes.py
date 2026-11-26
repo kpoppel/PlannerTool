@@ -35,7 +35,7 @@ def setup(monkeypatch):
                 'session_manager': SimpleNamespace(get=lambda sid: {
                     'email': 'acting@example.test', 'account_id': 'acting-account'}),
                 'credential_provider': SimpleNamespace(get_credential=MagicMock(return_value={
-                    'kind': 'pat', 'token': 'acting-pat', 'user_id': 'acting-account'}))}
+                    'kind': 'bearer', 'token': 'acting-pat', 'user_id': 'acting-account'}))}
     app = FastAPI()
     app.state.container = SimpleNamespace(get=lambda name: services[name])
     app.include_router(admin_api.router)
@@ -60,7 +60,7 @@ def test_plan_refresh_counts_presented_items_with_acting_credentials(setup):
     assert response.json()['plan_id'] == 'plan'
     assert response.json()['item_count'] == 2
     assert response.json()['completed_at']
-    repository.rebuild_now.assert_called_once_with({'kind': 'pat', 'token': 'acting-pat', 'user_id': 'acting-account'})
+    repository.rebuild_now.assert_called_once_with({'kind': 'bearer', 'token': 'acting-pat', 'user_id': 'acting-account'})
     client.app.state.container.get('credential_provider').get_credential.assert_called_once_with(
         'acting-account')
 
@@ -254,7 +254,7 @@ def test_catalogue_get_save_and_refresh_with_acting_pat(setup):
     response = client.post('/admin/v1/ado-processes/refresh')
     assert response.status_code == 200
     azure.connect.assert_called_once_with({
-        'kind': 'pat',
+        'kind': 'bearer',
         'token': 'acting-pat',
         'user_id': 'acting-account',
     })
@@ -356,7 +356,7 @@ def test_resolve_loads_only_selected_process_and_preserves_unrelated_metadata(se
     assert store.load('config', 'ado_processes')['processes'][0] == catalogue()['processes'][0]
     connected.get_process_types.assert_called_once_with('scrum')
     azure.connect.assert_called_once_with({
-        'kind': 'pat',
+        'kind': 'bearer',
         'token': 'acting-pat',
         'user_id': 'acting-account',
     })
@@ -496,7 +496,9 @@ def test_resolve_from_empty_catalogue_with_sdk_mocks(setup, tmp_path, backend):
     store.save('config', 'global_settings', {
         'schema_version': 2, 'process_order': [], 'type_tiers': {},
     })
-    azure.connect.side_effect = mock.connect
+    # AzureService substitutes the mock credential for mock transports.
+    from planner_lib.azure.AzureMockClient import _MOCK_CREDENTIAL
+    azure.connect.side_effect = lambda credential: mock.connect(_MOCK_CREDENTIAL)
     response = client.post('/admin/v1/ado-processes/resolve', json={'project': 'MyProject'})
     assert response.status_code == 200
     process = response.json()['content']

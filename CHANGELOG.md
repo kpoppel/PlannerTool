@@ -17,8 +17,9 @@ Template - do not change :
 ### Added
 - Read and create local tasks from configured projects, workflows and field schemas, including scheduling presets, plan markers and task history.
 - Edit and soft-delete local tasks, and publish scenario changes and relationships atomically. Independent edits merge; overlapping changes are shown for review before retrying.
-- Restart the managed server from Data Sources after saving a switch between Azure DevOps and local tasks.
+- Restart the managed server from Data Sources after saving a switch between Azure DevOps and local tasks; with other launchers (such as the development server) the switch is saved and takes effect after a manual restart.
 - Configure Local projects, task types, field schemas, workflows, iterations, and plan markers in the Local admin hub. Create tasks from the Plan menu and edit or delete source tasks from Details.
+- Create, edit (title, description, state) and delete Azure DevOps work items from the same task editor, with a revision check before changes and deleted items moved to the ADO recycle bin.
 - Add whole-hour allocation entry alongside Percent and Man-days, using each team or group's workforce project-hour budget in task details and the portfolio table, with effort preserved when scheduling changes.
 - Add a read-only Cone of Uncertainty tool with three configurable forecast scopes, browser-saved duration uncertainty preferences, and shaded task finish ranges for communicating long-range planning assumptions. Compact rows use task-board type icons and follow the task sort setting, ordering by rank or latest forecast finish. Show global and selected-plan events from the configured local or ADO/wiki source as labeled date lines and range bands.
 - Show display-only Virtual rows and timeline cards for selected teams' effective commitments held in other loaded plans, respecting task-type filters, with source details, source-plan attribution and no virtual editing actions.
@@ -28,13 +29,14 @@ Template - do not change :
 - Add manifest-managed auth registration and per-instance secrets in the existing Compose deployment workflow.
 - Support public ACME, company-supplied TLS or Caddy's internal CA, with public root export, trusted hostname verification and actionable startup diagnostics.
 - Support broker-connected local development with localhost HTTPS, instance-prefixed callbacks and a protected authentication env file.
-- Support Entra application certificates with protected PEM certificate/key files and SHA-256 client assertions in broker and Compose configuration; recommend certificates over application secrets and PATs while retaining both alternatives.
+- Support Entra application certificates with protected PEM certificate/key files and SHA-256 client assertions in broker and Compose configuration; recommend certificates over application secrets while retaining both alternatives.
 - Add offline credential preflight and actionable setup guidance to the development launcher and broker container, rejecting invalid, expired or mismatched application certificates before startup.
 
 ### Changed
 - Select the task backend explicitly and, for Azure DevOps, its transport (live, synthetic generator, fixture replay or static file) instead of priority-ordered feature flags. Existing selections migrate unchanged, and settings of inactive backends and transports are retained.
 - Keep a relational planner database with each data generation, validated, upgraded, backed up and restored together with the existing configuration store. Remove the unused Stand-alone Mode flag.
 - Store backend selection, ADO settings and plans, catalogue display settings, and iteration presets in the relational database without changing their API formats. Logical restore validates a complete generation before activation and requires a server restart.
+- Offer task authoring by the active backend's declared capabilities instead of its identity, apply workforce allocation rules identically for every backend, and keep Local catalogue and plan order explicit in the database (revision 4). Local definitions remain editable while Azure DevOps is active.
 - Show Task Types first and State second in Task Filters, followed by the remaining selectors.
 - Show the active tool's name in the Tools menu button, or the number of active tools when several are selected.
 - Fit a persistent View context overview to the load graph's height, with Plan/Team focus controls, team drill-down, and type/state choices that stay visible when off. Keep advanced-filter indicators and quick cycling visible with detailed choices in the menu. Place task search beside the Tasks heading without an empty strip below the graph or timeline header.
@@ -48,13 +50,17 @@ Template - do not change :
 - Use compact-height cards in Normal and Packed layouts, showing type icon, ID, allocation bars and right-aligned closed/total descendant counts. Fill each card with a pastel project color in proportion to completed descendants, keep swimlane tints faint to distinguish that progress, and hide whole fields from right to left when space runs out. Migrate saved Compact views to Normal in revision 45.
 - Keep swimlane tags on the timeline rather than over the task column, at each lane's top or pinned below the timeline header while that lane scrolls off-screen.
 - Group Azure DevOps administration in its own hub, including read-only deployment authentication information. Data Sources retains backend selection and shared settings.
-- Share authentication discovery, status and typed recovery across planner and administration; broker mode hides PAT, enrollment and device/key controls.
+- Share authentication discovery, status and typed recovery across planner and administration; broker mode hides enrollment and device/key controls.
 - Build/start source-declared app and broker services together, honoring pinned images, protected environment files and project names. Both images receive version and latest tags from the build script.
 - Upgrade from dev in revision 44, preserving accounts, permissions and credentials while expiring pre-policy sessions.
 - Exclude credentials and broker authority from logical backups. Enrollment account restore needs fresh operator-reset keys; Entra accounts cannot be replaced.
+- Remove Azure DevOps personal access token (PAT) authentication. Live Azure DevOps requires Entra sign-in with delegated credentials; `ado_authentication: pat` is rejected at startup, revision 49 purges stored PATs, and the PAT configuration UI and `POST /api/config` are gone. Data Sources offers the live Azure DevOps transport and Azure DevOps wiki events only when Entra sign-in is configured. Developer scripts use Azure CLI or `AZURE_DEVOPS_TOKEN` Bearer tokens.
+- Servers whose saved live Azure DevOps selection needs Entra sign-in they do not use still start: Data Sources shows that transport as unavailable so an administrator can switch it, and Azure DevOps requests report that Entra sign-in is required instead of prompting for a new session.
 
 ### Fixed
 - Return a retryable error instead of a server error when concurrent Local writes exceed the database lock timeout.
+- Reject malformed Local catalogue references as validation errors, and save names that previously collided with temporary rename values.
+- Return JSON when deleting a task.
 - Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
 - Keep type-filtered tasks hidden instead of turning selected-plan work into virtual context; deselecting all task types clears task rows and cards without changing calculated team demand.
 - Render the task list when restored views include context-only tasks without a configured owning plan.
@@ -62,7 +68,7 @@ Template - do not change :
 - Keep task grouping responsive by applying subtree assignments together and reusing allocation calculations when only membership changes.
 - Restore visible task cards immediately after closing a fullscreen plugin.
 - Show team names in Cost estimate warnings and speed up Cost loading for plans with many tasks.
-- Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
+- Keep local administration, local/mock work and cached reads independent of delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
 - Load Help documents and images correctly when the development server runs under an instance sub-path.
 - Clear old sessions atomically when authentication policy changes so later restarts do not reject stale source-bound sessions.
 - Stop Vite itself during development-launcher cleanup so failed starts do not leave the browser port occupied.
@@ -70,7 +76,6 @@ Template - do not change :
 - Preserve the last complete task snapshot across remote failures and configuration changes, with explicit warnings; recheck delegated authority before publishing refreshed data.
 - Prevent automatic write replay, preserve partial results and reject stale responses/drafts after account changes.
 - Report expired/replayed handoffs as invalid sessions and preserve local logout when remote cleanup fails.
-- Read PAT status without acquiring/decrypting credentials; live operations use only the acting account's credential.
 - Reload changed Caddy configuration before TLS checks and fail clearly on nontransient CA export errors.
 
 ## [v5.1.0] - 2026-10-26

@@ -165,7 +165,8 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
         unavailable_team = client.put(f"/api/tasks/{task['id']}/capacity", json=[{'team': 'unknown', 'capacity': 50}])
         assert unavailable_team.status_code == 422
         assert client.delete(f"/api/tasks/{other['id']}", params={'revision': 1}).status_code == 409
-        assert client.delete(f"/api/tasks/{other['id']}", params={'revision': 2}).status_code == 204
+        deleted = client.delete(f"/api/tasks/{other['id']}", params={'revision': 2})
+        assert deleted.status_code == 200 and deleted.json() == {'ok': True}
         remaining = client.get('/api/tasks').json()
         assert len(remaining) == 1 and remaining[0]['relations'] == [] and remaining[0]['state'] == 'Refine'
         assert remaining[0]['capacity'] == allocation

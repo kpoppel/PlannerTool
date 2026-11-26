@@ -321,7 +321,7 @@ def test_iteration_browse_connects_fetches_and_closes_on_same_worker(azure_fails
         @contextmanager
         def connect(self, credential):
             assert credential == {
-                'kind': 'pat',
+                'kind': 'bearer',
                 'token': 'test-pat',
                 'user_id': 'test-account-id',
             }

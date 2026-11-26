@@ -58,11 +58,8 @@ describe('ProviderMock', () => {
     expect(Array.isArray(projs)).to.equal(true);
   });
 
-  it('checkHealth and saveConfig behave', async () => {
+  it('checkHealth behaves', async () => {
     const h = await pm.checkHealth();
     expect(h.ok).to.equal(true);
-    const s = await pm.saveConfig({ email: 'x@y.z' });
-    expect(s.ok).to.equal(true);
-    expect(s.email).to.equal('x@y.z');
   });
 });

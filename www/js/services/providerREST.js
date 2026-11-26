@@ -7,7 +7,7 @@ import { ok, fail } from './result.js';
 import { store } from '../application/store.js';
 import { createUiCommands } from '../application/commands/uiCommands.js';
 import { isMutableScenario } from '../application/shared/scenarioMutations.js';
-import { clearPatRecoveryNotifications, createAuthRecovery } from './authRecovery.js';
+import { createAuthRecovery } from './authRecovery.js';
 import { resetAccountContext } from './authClient.js';
 
 const uiCommands = createUiCommands(store, bus);
@@ -68,7 +68,6 @@ export class ProviderREST extends RestProviderBase {
     const response = await this._fetch('/api/auth/logout', { method: 'POST' }, 0, false);
     if (!response.ok) throw new Error(`Sign out failed: ${response.status}`);
     this._accountEmail = null;
-    clearPatRecoveryNotifications();
     bus.emit(SessionEvents.CHANGED);
   }
 
@@ -83,7 +82,6 @@ export class ProviderREST extends RestProviderBase {
         ? error.detail : `Account deletion failed: ${response.status}`);
     }
     this._accountEmail = null;
-    clearPatRecoveryNotifications();
     bus.emit(SessionEvents.CHANGED);
   }
 
@@ -117,7 +115,6 @@ export class ProviderREST extends RestProviderBase {
         await this._onAccountChanged({ previous: this._accountEmail, next: account.email });
       }
       this._accountEmail = account.email;
-      clearPatRecoveryNotifications();
       bus.emit(SessionEvents.CHANGED);
     }
     const { ProviderLocalStorage } = await import('./providerLocalStorage.js');
@@ -302,13 +299,13 @@ export class ProviderREST extends RestProviderBase {
     return this._requestJson('/api/tasks/editor');
   }
 
-  async createLocalTask(payload) {
+  async createTask(payload) {
     return this._requestJson('/api/tasks/create', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
   }
 
-  async deleteLocalTask(id, revision) {
+  async deleteTask(id, revision) {
     return this._requestJson(`/api/tasks/${encodeURIComponent(id)}?revision=${encodeURIComponent(revision)}`, {
       method: 'DELETE',
     });
@@ -331,14 +328,6 @@ export class ProviderREST extends RestProviderBase {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(capacity),
-    });
-  }
-
-  async saveConfig(config) {
-    return this._requestJson('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
     });
   }
 

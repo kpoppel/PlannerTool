@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 class _MockBackendBase(AzureDevOpsBackend):
     """Shared helpers for both mock backends."""
 
+    # The fixture and generator clients replay reads and field patches only.
+    CAPABILITIES = frozenset({'task_read', 'task_publish', 'history', 'markers', 'remote_discovery'})
     is_remote = False
 
     def __init__(self, organization_url, storage, team_repository=None, capacity_service=None, local_backend=None):
@@ -49,7 +51,7 @@ class _MockBackendBase(AzureDevOpsBackend):
         return self._client
 
     def _require_credential(self, credential, op):
-        return 'mock-pat'
+        return credential if credential is not None else _MOCK_CREDENTIAL
 
     def fetch_plan_tasks(
         self,
@@ -65,15 +67,6 @@ class _MockBackendBase(AzureDevOpsBackend):
             credential=credential,
         )
         return [{**task, 'project': plan['id']} for task in tasks]
-
-    def fetch_task_context(
-        self,
-        seeds: List[BackendTask],
-        credential: Optional[BackendCredential] = None,
-    ) -> List[BackendTask]:
-        """Apply the live catalogue/discovery contract to the deterministic SDK."""
-        acting = credential if credential is not None else _MOCK_CREDENTIAL
-        return super().fetch_task_context(seeds, credential=acting)
 
     def _build_type_canonical(self) -> Dict[str, str]:
         return super()._build_type_canonical()

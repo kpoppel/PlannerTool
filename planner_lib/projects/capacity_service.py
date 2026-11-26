@@ -83,6 +83,16 @@ class CapacityService:
 
         return "\n".join(lines)
 
+    @staticmethod
+    def keep_block(current: str, proposed: str) -> str:
+        """Use *proposed* as the description body while keeping *current*'s capacity block."""
+        pattern = re.compile(r"\[PlannerTool Team Capacity\].*?\[/PlannerTool Team Capacity\]", flags=re.S)
+        body = pattern.sub('', proposed).rstrip('\n')
+        block = pattern.search(current)
+        if block is None:
+            return body
+        return f'{body}\n{block.group(0)}' if body else block.group(0)
+
     def update_description(self, description: str, capacity_list: List[dict], cfg: dict) -> str:
         pattern = r"\[PlannerTool Team Capacity\].*?\[/PlannerTool Team Capacity\]"
         retained = []

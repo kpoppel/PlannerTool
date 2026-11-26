@@ -13,9 +13,6 @@ export const OTHER_MOCK_ACCOUNT = Object.freeze({
 });
 
 export const AUTH_SCENARIOS = Object.freeze({
-  pat_current: { mode: 'pat', status: 'connected' },
-  pat_missing: { mode: 'pat', status: 'pat_required' },
-  pat_invalid: { mode: 'pat', status: 'pat_invalid' },
   local: { mode: 'local', status: 'connected' },
   entra_signed_out: { mode: 'broker', status: 'signed_out' },
   entra_signed_in: { mode: 'broker', status: 'connected' },
@@ -42,7 +39,7 @@ export function createMockAuth(scenario, options = {}) {
       state = Object.freeze({
         mode, status, account: signedIn ? MOCK_ACCOUNT : null,
         capabilities: Object.freeze({
-          pat: mode === 'pat', enrollment: mode !== 'broker',
+          enrollment: mode !== 'broker',
           reauthenticate: mode === 'broker' && status === 'interaction_required',
           logout: signedIn, deleteAccount: mode !== 'broker' && signedIn,
         }),

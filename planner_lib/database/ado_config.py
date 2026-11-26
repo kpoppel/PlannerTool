@@ -131,7 +131,9 @@ def read_display(connection):
 
 
 def write_area_mappings(connection, value):
-    connection.execute('INSERT OR REPLACE INTO area_mapping_settings VALUES (1, ?)', (value.get('last_update'),))
+    connection.execute('INSERT INTO area_mapping_settings (singleton_id, last_update) VALUES (1, ?) '
+                       'ON CONFLICT (singleton_id) DO UPDATE SET last_update = excluded.last_update',
+                       (value.get('last_update'),))
     connection.execute('DELETE FROM area_mapping_projects')
     for position, (project, entry) in enumerate(value.items()):
         if project == 'last_update':

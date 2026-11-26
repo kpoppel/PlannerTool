@@ -38,6 +38,8 @@ def test_process_catalogue_client_normalizes_projects_types_and_backlogs():
         ProcessWorkItemType(reference_name='Feature', name='Feature', states=[
             WorkItemStateResultModel(name='Closed', state_category='Completed', order=4),
             WorkItemStateResultModel(name='New', state_category='Proposed', order=1),
+            # Inherited states hidden by the custom process are reported alongside their replacements.
+            WorkItemStateResultModel(name='Closed', state_category='Completed', order=7, hidden=True),
         ], behaviors=[WorkItemTypeBehavior(behavior=WorkItemBehaviorReference(id='Features'))]),
         ProcessWorkItemType(reference_name='Story', name='User Story', states=[], behaviors=[
             WorkItemTypeBehavior(behavior=WorkItemBehaviorReference(id='System.RequirementBacklogBehavior'))]),
@@ -75,8 +77,10 @@ def test_process_catalogue_requires_acting_connection(method, args):
     ({'token': 'secret', 'user_id': 'user'}, 'Unsupported backend credential kind'),
     ({'kind': 'oauth', 'token': 'secret', 'user_id': 'user'},
      'Unsupported backend credential kind'),
-    ({'kind': 'pat', 'token': '', 'user_id': 'user'}, 'non-empty token'),
-    ({'kind': 'pat', 'token': 'secret', 'user_id': ''}, 'user ID'),
+    ({'kind': 'pat', 'token': 'secret', 'user_id': 'user'},
+     'Unsupported backend credential kind'),
+    ({'kind': 'bearer', 'token': '', 'user_id': 'user'}, 'non-empty token'),
+    ({'kind': 'bearer', 'token': 'secret', 'user_id': ''}, 'user ID'),
     (None, 'must be a mapping'),
 ])
 def test_connect_rejects_malformed_or_unsupported_credentials(credential, message):
@@ -100,58 +104,56 @@ def test_mock_service_uses_shared_client_connection_with_synthetic_credential(tr
     connect.assert_called_once_with(service._client, _MOCK_CREDENTIAL)
 
 
-def test_connect_uses_shared_pat_authentication_builder():
+def test_connect_uses_shared_authentication_builder():
     client = AzureClient('org', DummyStorage())
     authentication = object()
-    credential = {'kind': 'pat', 'token': 'private-pat', 'user_id': 'user'}
+    credential = {'kind': 'bearer', 'token': 'private-token', 'user_id': 'user'}
 
-    with patch('planner_lib.azure.AzureClient.azure_devops_pat_authentication',
+    with patch('planner_lib.azure.AzureClient.azure_devops_authentication',
                return_value=authentication) as build_authentication, \
             patch('azure.devops.connection.Connection') as connection:
         with client.connect(credential):
             pass
 
-    build_authentication.assert_called_once_with('private-pat')
+    build_authentication.assert_called_once_with(credential, None)
     connection.assert_called_once_with(
         base_url='https://dev.azure.com/org',
         creds=authentication,
     )
 
 
-@pytest.mark.parametrize('connection_kind', ['operation', 'pat_validation'])
+def test_live_client_refuses_mock_credentials_before_connection():
+    client = AzureClient('org', DummyStorage())
+    credential = {'kind': 'mock', 'token': 'synthetic', 'user_id': 'user'}
+    with patch('azure.devops.connection.Connection') as connection:
+        with pytest.raises(ValueError, match='mock credential'):
+            with client.connect(credential):
+                pass
+    connection.assert_not_called()
+
+
 @pytest.mark.parametrize('failure_at', ['connect', 'operation'])
-def test_auth_failure_retains_operation_context_and_closes_connection(connection_kind, failure_at):
+def test_auth_failure_retains_operation_context_and_closes_connection(failure_at):
     from planner_lib.backend.errors import BackendAuthError
 
     client = AzureClient('org', DummyStorage())
-    credential = {'kind': 'pat', 'token': 'private-pat', 'user_id': 'acting-account'}
+    credential = {'kind': 'bearer', 'token': 'private-token', 'user_id': 'acting-account'}
     failure = RuntimeError('403 Forbidden')
     failure.status_code = 403
     with patch('azure.devops.connection.Connection') as connection:
         if failure_at == 'connect':
             connection.side_effect = failure
-        context = (client.connect(credential) if connection_kind == 'operation'
-                   else client.connect_pat(credential['token']))
+        context = client.connect(credential)
         with pytest.raises(BackendAuthError) as raised:
             with context:
                 raise failure
 
     assert raised.value.status_code == 403
-    assert raised.value.credential == (credential if connection_kind == 'operation' else None)
+    assert raised.value.credential == credential
     assert credential['token'] not in str(raised.value)
     assert credential['token'] not in repr(raised.value)
     assert client.conn is None
     assert client._connected is False
-
-
-def test_shared_pat_authentication_uses_basic_auth_with_empty_username():
-    from planner_lib.azure.authentication import azure_devops_pat_authentication
-
-    with patch('msrest.authentication.BasicAuthentication') as basic_authentication:
-        result = azure_devops_pat_authentication('private-pat')
-
-    assert result is basic_authentication.return_value
-    basic_authentication.assert_called_once_with('', 'private-pat')
 
 
 def test_connect_uses_explicit_bearer_authentication_with_installed_sdk():
@@ -250,7 +252,7 @@ def test_recorded_mock_process_catalogue():
     from planner_lib.azure.AzureMockClient import AzureMockClient
     from planner_lib.storage import create_storage
     client = AzureMockClient('org', create_storage(backend='memory'))
-    with client.connect({'kind': 'pat', 'token': 'fixture-pat', 'user_id': 'test'}):
+    with client.connect({'kind': 'bearer', 'token': 'fixture-pat', 'user_id': 'test'}):
         processes = client.list_processes()
         process = next(item for item in processes if 'MyProject' in item['projects'])
         assert process['parent_name'] == 'Agile'
@@ -506,21 +508,21 @@ def test_overlapping_connection_contexts_do_not_disconnect_each_other():
     first_closed = threading.Event()
     errors = []
 
-    def connect_for_test(_pat):
+    def connect_for_test(_authentication):
         client.conn = make_dummy_conn_for_projects()
         client._connected = True
 
-    client._connect_with_pat = connect_for_test
+    client._connect_with_authentication = connect_for_test
 
     def first_request():
-        with client.connect({'kind': 'pat', 'token': 'first-pat', 'user_id': 'test'}):
+        with client.connect({'kind': 'bearer', 'token': 'first-token', 'user_id': 'test'}):
             first_connected.set()
             second_connected.wait(timeout=1)
         first_closed.set()
 
     def second_request():
         first_connected.wait(timeout=1)
-        with client.connect({'kind': 'pat', 'token': 'second-pat', 'user_id': 'test'}) as connected_client:
+        with client.connect({'kind': 'bearer', 'token': 'second-token', 'user_id': 'test'}) as connected_client:
             second_connected.set()
             first_closed.wait(timeout=1)
             try:
@@ -907,7 +909,7 @@ def test_backend_context_composes_real_traversal_and_domain_enrichment(through_r
         seed['sourcePlanIds'] = [plan_id]
         seeds.append(seed)
 
-    credential = {'kind': 'pat', 'token': 'test', 'user_id': 'test'}
+    credential = {'kind': 'bearer', 'token': 'test', 'user_id': 'test'}
     if through_repository:
         from planner_lib.repository.task_repository import TaskRepository
 
@@ -1366,7 +1368,7 @@ class TestAzureMockClientPersistence:
         assert svc._client._persist_enabled is False
 
     # ------------------------------------------------------------------
-    # Empty PAT
+    # Missing credential
     # ------------------------------------------------------------------
 
     @pytest.mark.parametrize('credential', [None, '', {}])

@@ -7,7 +7,6 @@ export class AuthDialog extends LitElement {
     authentication: { attribute: false },
     deleting: { type: Boolean },
     requiresKey: { type: Boolean },
-    requiresPat: { type: Boolean },
     checkingEmail: { type: Boolean },
     error: { type: String },
     accountKey: { type: String },
@@ -98,7 +97,6 @@ export class AuthDialog extends LitElement {
     this.deleting = false;
     this.standaloneDeletion = false;
     this.requiresKey = false;
-    this.requiresPat = false;
     this.checkingEmail = false;
     this._emailCheckId = 0;
     this.error = '';
@@ -169,9 +167,6 @@ export class AuthDialog extends LitElement {
             ${this.requiresKey || this.deleting
               ? html`<label for="accountKey">Account key</label><input id="accountKey" type="password" autocomplete="off" ?disabled=${this.busy} required />`
               : ''}
-            ${this.requiresPat && !this.deleting
-              ? html`<label for="pat">Azure DevOps PAT</label><input id="pat" type="password" autocomplete="off" ?disabled=${this.busy} required />`
-              : ''}
             <p class="error" role="alert">${this.error}</p>
             <div class="actions">
               <button type="submit" ?disabled=${this.busy || this.checkingEmail}>${this.deleting ? 'Delete account' : 'Enroll'}</button>
@@ -207,10 +202,7 @@ export class AuthDialog extends LitElement {
       });
       if (!response.ok) throw new Error(`Account lookup failed: ${response.status}`);
       const result = await response.json();
-      if (checkId === this._emailCheckId) {
-        this.requiresKey = result.requiresKey;
-        this.requiresPat = result.requiresKey !== true && result.requiresPat === true;
-      }
+      if (checkId === this._emailCheckId) this.requiresKey = result.requiresKey;
     } catch (error) {
       if (checkId === this._emailCheckId) {
         this.error = 'Could not check account access. Check your email and try again.';
@@ -240,11 +232,10 @@ export class AuthDialog extends LitElement {
     const email = this.renderRoot.querySelector('#email').value.trim();
     const accountKey = this.requiresKey || this.deleting
       ? this.renderRoot.querySelector('#accountKey').value.trim() : '';
-    if (this.deleting && !window.confirm(`Delete ${email}, its saved views and scenarios, PAT, and access from every browser? This cannot be undone except by restoring a retained backup.`)) return;
+    if (this.deleting && !window.confirm(`Delete ${email}, its saved views and scenarios, and access from every browser? This cannot be undone except by restoring a retained backup.`)) return;
     const name = this.requiresKey || this.deleting
       ? '' : this.renderRoot.querySelector('#name').value.trim();
     const payload = { email, name, accountKey };
-    if (this.requiresPat && !this.deleting) payload.pat = this.renderRoot.querySelector('#pat').value;
     this.busy = true;
     try {
       if (this.deleting) {
@@ -259,15 +250,6 @@ export class AuthDialog extends LitElement {
       });
       if (!response.ok) {
         this.accountEmail = email;
-        if (response.status === 400) {
-          const result = await response.json();
-          if (!this.requiresKey && (result.error === 'pat_required' || result.error === 'pat_invalid')) {
-            this.requiresPat = true;
-            this.error = result.error === 'pat_required'
-              ? 'Enter your Azure DevOps PAT.' : 'Your Azure DevOps PAT is invalid or expired.';
-            return;
-          }
-        }
         if (response.status === 409) this.requiresKey = true;
         this.error = response.status === 409
           ? 'Enter the current account key to enroll this browser.'
@@ -276,8 +258,6 @@ export class AuthDialog extends LitElement {
         return;
       }
       const result = await response.json();
-      const patInput = this.renderRoot.querySelector('#pat');
-      if (patInput !== null) patInput.value = '';
       this.accountEmail = email;
       this.initialSetup = result.initialSetup === true;
       this.accountKey = result.accountKey;

@@ -4,7 +4,8 @@ Load top 10 tasks for each team entry from the teams config (schema v2)
 using planner_lib.azure.AzureClient.
 
 Usage:
-  - Set env `AZURE_DEVOPS_PAT` and optionally `AZURE_DEVOPS_PROJECT` to avoid prompts
+  - Sign in with `az login` (or set `AZURE_DEVOPS_TOKEN` to a Bearer token) and optionally
+    set `AZURE_DEVOPS_PROJECT` to avoid prompts
   - Run from repository root:
       python scripts/load_team_tasks.py --organization MyCompany --project MyProject
       python scripts/load_team_tasks.py --organization MyCompany --project MyProject --area-path "MyProject\\TeamA\\Teams\\SubTeamA"
@@ -19,7 +20,6 @@ from typing import List, Sequence
 from urllib.parse import urlparse
 
 import yaml
-from getpass import getpass
 
 # Allow importing planner_lib without installing the package
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -223,11 +223,7 @@ def main(argv: Sequence[str] | None = None):
         print("No organization supplied. Use --organization or set azure_devops_organization in config.")
         sys.exit(2)
 
-    pat = os.environ.get("AZURE_DEVOPS_PAT") or getpass("Azure DevOps PAT (input hidden): ")
     project = resolve_project(args.project)
-    if not pat:
-        print("No PAT supplied")
-        sys.exit(2)
     if not project:
         print("No project supplied")
         sys.exit(2)
@@ -248,7 +244,8 @@ def main(argv: Sequence[str] | None = None):
         sys.exit(0)
 
     # Keep all ADO calls inside the connected context.
-    with client_mgr.connect_pat(pat) as client:
+    from scripts.ado_token import ado_bearer_credential
+    with client_mgr.connect(ado_bearer_credential()) as client:
         wit_client = client.wit_client
 
         for entry in entries:

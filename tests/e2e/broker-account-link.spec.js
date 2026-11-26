@@ -11,7 +11,7 @@ async function mountAccount(page) {
     store.setState(createInitialAppState(), true);
     const state = { mode: 'broker', status: 'signed_in',
       account: { uuid: 'fresh-identity', name: 'New Entra User', email: '' },
-      capabilities: { pat: false, enrollment: false, logout: true, deleteAccount: false,
+      capabilities: { enrollment: false, logout: true, deleteAccount: false,
         reauthenticate: false, linkAccount: true } };
     const authentication = createAuthClient({ initialState: state, instance: '/',
       adapter: createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl: fetch,
@@ -29,7 +29,7 @@ test('desktop Configuration links the existing account and reloads the account c
     requests.push(route.request().postDataJSON());
     await route.fulfill({ json: { mode: 'broker', status: 'signed_in',
       account: { uuid: 'existing-owner', name: 'Existing Owner', email: 'owner@example.test' },
-      permissions: ['admin'], capabilities: { pat: false, enrollment: false, logout: true,
+      permissions: ['admin'], capabilities: { enrollment: false, logout: true,
         deleteAccount: false, reauthenticate: false, linkAccount: false } } });
   });
   await mountAccount(page);

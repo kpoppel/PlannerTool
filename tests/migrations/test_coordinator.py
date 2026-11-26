@@ -323,14 +323,12 @@ handle.close()
             worker.communicate(timeout=10)
 
 
-def test_upgrade_preserves_credentials_ownership_and_saved_data(tmp_path):
-    from planner_lib.accounts.config import _encrypt_pat, _decrypt_pat
+def test_upgrade_preserves_ownership_and_saved_data_and_purges_pats(tmp_path):
     from uuid import UUID
 
     seed_legacy(tmp_path)
     source = DiskCacheStorage(tmp_path / 'cache')
-    encrypted = _encrypt_pat('isolated-azure-token')
-    account = {'email': 'owner@example.test', 'pat': encrypted, 'permissions': ['admin']}
+    account = {'email': 'owner@example.test', 'pat': 'legacy-encrypted-pat', 'permissions': ['admin']}
     source.save('accounts', 'owner@example.test', account)
     source.save('views', 'owner@example.test_item', {'viewOptions': {'expandParentChild': True}})
     source.save('views', 'view_register', {'owner@example.test_item': {
@@ -348,8 +346,8 @@ def test_upgrade_preserves_credentials_ownership_and_saved_data(tmp_path):
         migrated = handle.storage.load('accounts', 'owner@example.test')
         account_id = migrated['account_id']
         assert str(UUID(account_id)) == account_id
-        assert migrated == {**account, 'account_id': account_id}
-        assert _decrypt_pat(migrated['pat']) == 'isolated-azure-token'
+        assert migrated == {'email': 'owner@example.test', 'permissions': ['admin'], 'account_id': account_id}
+        assert 'legacy-encrypted-pat' not in str(migrated)
         assert handle.storage.load('account_auth', account_id) == {'enrolled': False}
         assert handle.storage.load('views', account_id + '_item')['viewOptions']['context'] == {
             'parent': True, 'child': True, 'dependency': False, 'otherAllocations': False,

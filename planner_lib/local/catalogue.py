@@ -7,7 +7,6 @@ or plans still reference cannot be removed without an explicit reassignment.
 from __future__ import annotations
 
 import re
-import sqlite3
 from datetime import date
 from typing import Any, Dict, List
 from uuid import uuid4
@@ -52,6 +51,10 @@ def _name(value, label):
 def _unique(values, label):
     folded = [value.casefold() if isinstance(value, str) else value for value in values]
     _require(len(folded) == len(set(folded)), f'Duplicate {label}')
+
+
+def _member(value, identities, message):
+    _require(isinstance(value, str) and value in identities, message)
 
 
 def _typed_default(value, field):
@@ -121,8 +124,8 @@ def validate_catalogue(document: Any) -> Dict[str, Any]:
         entries = []
         for entry in item['fields']:
             _keys(entry, {'field_id', 'required', 'default', 'min', 'max', 'max_length'}, 'Field schema entry')
-            field = fields_by_id.get(entry['field_id'])
-            _require(field is not None, f'Unknown field in schema: {entry["field_id"]!r}')
+            _member(entry['field_id'], fields_by_id, f'Unknown field in schema: {entry["field_id"]!r}')
+            field = fields_by_id[entry['field_id']]
             _require(type(entry['required']) is bool, 'Field schema required must be true or false')
             numeric = field['type'] in ('integer', 'number')
             for bound in ('min', 'max'):
@@ -147,7 +150,8 @@ def validate_catalogue(document: Any) -> Dict[str, Any]:
         name = _name(item['name'], 'Workflow')
         members = item['states']
         _require(isinstance(members, list) and members, f'Workflow {name} needs states')
-        _require(all(member in state_ids for member in members), f'Workflow {name} uses unknown states')
+        for member in members:
+            _member(member, state_ids, f'Workflow {name} uses unknown states')
         _unique(members, f'states in workflow {name}')
         _require(item['initial'] in members, f'Workflow {name} needs one initial state among its states')
         transitions = []
@@ -180,8 +184,8 @@ def validate_catalogue(document: Any) -> Dict[str, Any]:
             _keys(entry, {'id', 'name', 'backlog_level', 'tier', 'workflow_id', 'field_schema_id'}, 'Task type')
             _require(entry['backlog_level'] in BACKLOG_LEVELS, f'Unknown backlog level: {entry["backlog_level"]!r}')
             _require(type(entry['tier']) is int and entry['tier'] >= 0, 'Type tier must be an integer >= 0')
-            _require(entry['workflow_id'] in workflow_ids, 'Each task type needs an existing workflow')
-            _require(entry['field_schema_id'] in schema_ids, 'Each task type needs an existing field schema')
+            _member(entry['workflow_id'], workflow_ids, 'Each task type needs an existing workflow')
+            _member(entry['field_schema_id'], schema_ids, 'Each task type needs an existing field schema')
             types.append({**entry, 'id': _identity(entry['id'], 'Task type'), 'name': _name(entry['name'], 'Task type')})
         _unique([entry['name'] for entry in types], f'type names in process {name}')
         local_types = {entry['id'] for entry in types}
@@ -189,8 +193,8 @@ def validate_catalogue(document: Any) -> Dict[str, Any]:
         rules = []
         for rule in item['parent_rules']:
             _keys(rule, {'parent', 'child'}, 'Parent rule')
-            _require(rule['parent'] in local_types and rule['child'] in local_types,
-                     f'Parent rules in {name} must use its own types')
+            for end in ('parent', 'child'):
+                _member(rule[end], local_types, f'Parent rules in {name} must use its own types')
             _require(rule['parent'] != rule['child'], 'A type cannot be its own parent')
             rules.append({'parent': rule['parent'], 'child': rule['child']})
         _unique([(rule['parent'], rule['child']) for rule in rules], f'parent rules in process {name}')
@@ -240,12 +244,8 @@ class LocalCatalogue:
             "SELECT revision FROM document_revisions WHERE document = 'local_catalogue'").fetchone()[0]
 
     def read(self) -> Dict[str, Any]:
-        with self._database.connect() as connection:
-            connection.execute('BEGIN')
-            try:
-                return self._read(connection)
-            finally:
-                connection.execute('ROLLBACK')
+        with self._database.read() as connection:
+            return self._read(connection)
 
     def _read(self, connection) -> Dict[str, Any]:
         local = (LOCAL_BACKEND_ID,)
@@ -253,14 +253,14 @@ class LocalCatalogue:
                   for row in connection.execute(
                       'SELECT * FROM states WHERE backend_id = ? ORDER BY display_order', local)]
         fields = []
-        for row in connection.execute('SELECT * FROM field_definitions WHERE backend_id = ? ORDER BY rowid', local):
+        for row in connection.execute('SELECT * FROM field_definitions WHERE backend_id = ? ORDER BY position', local):
             options = [option[0] for option in connection.execute(
                 'SELECT option_value FROM field_enum_options WHERE field_id = ? ORDER BY position', (row['field_id'],))]
             fields.append({'id': row['field_id'], 'key': row['field_key'], 'label': row['label'],
                            'type': row['value_type'], 'options': options})
         types_by_field = {field['id']: field['type'] for field in fields}
         schemas = []
-        for row in connection.execute('SELECT * FROM field_schemas WHERE backend_id = ? ORDER BY rowid', local):
+        for row in connection.execute('SELECT * FROM field_schemas WHERE backend_id = ? ORDER BY position', local):
             entries = [{
                 'field_id': entry['field_id'], 'required': bool(entry['required']),
                 'default': _default_value(entry, types_by_field[entry['field_id']]),
@@ -269,7 +269,7 @@ class LocalCatalogue:
                 'SELECT * FROM field_schema_fields WHERE schema_id = ? ORDER BY position', (row['schema_id'],))]
             schemas.append({'id': row['schema_id'], 'name': row['name'], 'fields': entries})
         workflows = []
-        for row in connection.execute('SELECT * FROM workflows WHERE backend_id = ? ORDER BY rowid', local):
+        for row in connection.execute('SELECT * FROM workflows WHERE backend_id = ? ORDER BY position', local):
             key = (row['workflow_id'],)
             members = list(connection.execute(
                 'SELECT state_id, is_initial FROM workflow_states WHERE workflow_id = ? ORDER BY position', key))
@@ -279,9 +279,9 @@ class LocalCatalogue:
                 'initial': next(member['state_id'] for member in members if member['is_initial']),
                 'transitions': [{'from': t['from_state_id'], 'to': t['to_state_id']} for t in connection.execute(
                     'SELECT from_state_id, to_state_id FROM workflow_transitions WHERE workflow_id = ? '
-                    'ORDER BY rowid', key)],
+                    'ORDER BY position', key)],
                 'from_any': [t[0] for t in connection.execute(
-                    'SELECT to_state_id FROM workflow_any_transitions WHERE workflow_id = ? ORDER BY rowid', key)],
+                    'SELECT to_state_id FROM workflow_any_transitions WHERE workflow_id = ? ORDER BY position', key)],
             })
         processes = []
         for row in connection.execute(
@@ -299,7 +299,7 @@ class LocalCatalogue:
                 'WHERE t.process_id = ? ORDER BY d.tier, d.position', key)]
             rules = [{'parent': rule[0], 'child': rule[1]} for rule in connection.execute(
                 'SELECT r.parent_type_id, r.child_type_id FROM task_type_parent_rules r '
-                'JOIN task_types t ON t.type_id = r.parent_type_id WHERE t.process_id = ? ORDER BY r.rowid', key)]
+                'JOIN task_types t ON t.type_id = r.parent_type_id WHERE t.process_id = ? ORDER BY r.position', key)]
             processes.append({'id': row['process_id'], 'name': row['name'], 'types': types, 'parent_rules': rules})
         return {'revision': self._revision(connection), 'states': states, 'fields': fields,
                 'field_schemas': schemas, 'workflows': workflows, 'processes': processes}
@@ -313,7 +313,7 @@ class LocalCatalogue:
                 self._apply(connection, catalogue)
                 connection.execute(
                     "UPDATE document_revisions SET revision = revision + 1 WHERE document = 'local_catalogue'")
-        except sqlite3.IntegrityError as error:
+        except self._database.IntegrityError as error:
             raise CatalogueInUseError(
                 'A removed definition is still used by tasks or plans; reassign them first') from error
         return self.read()
@@ -339,13 +339,19 @@ class LocalCatalogue:
             'JOIN processes p ON p.process_id = t.process_id WHERE p.backend_id = ?)',
         ):
             connection.execute(statement, (local,))
-        # Free unique names so renames and swaps cannot collide before removals.
-        for table, column in (('states', 'name'), ('field_schemas', 'name'),
-                              ('workflows', 'name'), ('processes', 'name')):
-            connection.execute(f"UPDATE {table} SET {column} = '~' || rowid WHERE backend_id = ?", (local,))
-        connection.execute("UPDATE field_definitions SET field_key = 'zz_pending_' || rowid WHERE backend_id = ?",
-                           (local,))
-        connection.execute("UPDATE task_types SET name = '~' || rowid WHERE process_id IN "
+        # Free unique names so renames and swaps cannot collide before removals. Stored names are
+        # stripped, so a leading space never matches a saved value.
+        for table, column, key in (('states', 'name', 'state_id'), ('field_schemas', 'name', 'schema_id'),
+                                   ('workflows', 'name', 'workflow_id'), ('processes', 'name', 'process_id')):
+            connection.execute(f"UPDATE {table} SET {column} = ' ' || {key} WHERE backend_id = ?", (local,))
+        existing = list(connection.execute(
+            'SELECT field_id, field_key FROM field_definitions WHERE backend_id = ?', (local,)))
+        taken = {field['key'] for field in catalogue['fields']} | {row['field_key'] for row in existing}
+        spare = (key for key in (f'pending_{n}' for n in range(len(taken) + len(existing))) if key not in taken)
+        for row in existing:
+            connection.execute('UPDATE field_definitions SET field_key = ? WHERE field_id = ?',
+                               (next(spare), row['field_id']))
+        connection.execute("UPDATE task_types SET name = ' ' || type_id WHERE process_id IN "
                            "(SELECT process_id FROM processes WHERE backend_id = ?)", (local,))
 
         for position, state in enumerate(catalogue['states']):
@@ -353,36 +359,42 @@ class LocalCatalogue:
                 'INSERT INTO states VALUES (?, ?, ?, ?, ?) ON CONFLICT (state_id) DO UPDATE SET '
                 'name = excluded.name, category = excluded.category, display_order = excluded.display_order',
                 (state['id'], local, state['name'], state['category'], position))
-        for field in catalogue['fields']:
+        for position, field in enumerate(catalogue['fields']):
             connection.execute(
-                'INSERT INTO field_definitions VALUES (?, ?, ?, ?, ?) ON CONFLICT (field_id) DO UPDATE SET '
-                'field_key = excluded.field_key, label = excluded.label, value_type = excluded.value_type',
-                (field['id'], local, field['key'], field['label'], field['type']))
+                'INSERT INTO field_definitions (field_id, backend_id, field_key, label, value_type, position) '
+                'VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (field_id) DO UPDATE SET '
+                'field_key = excluded.field_key, label = excluded.label, value_type = excluded.value_type, '
+                'position = excluded.position',
+                (field['id'], local, field['key'], field['label'], field['type'], position))
             for position, option in enumerate(field['options']):
                 connection.execute('INSERT INTO field_enum_options VALUES (?, ?, ?)', (field['id'], option, position))
         types_by_field = {field['id']: field['type'] for field in catalogue['fields']}
-        for schema in catalogue['field_schemas']:
+        for order, schema in enumerate(catalogue['field_schemas']):
             connection.execute(
-                'INSERT INTO field_schemas VALUES (?, ?, ?) ON CONFLICT (schema_id) DO UPDATE SET name = excluded.name',
-                (schema['id'], local, schema['name']))
+                'INSERT INTO field_schemas (schema_id, backend_id, name, position) VALUES (?, ?, ?, ?) '
+                'ON CONFLICT (schema_id) DO UPDATE SET name = excluded.name, position = excluded.position',
+                (schema['id'], local, schema['name'], order))
             for position, entry in enumerate(schema['fields']):
                 text, integer, real = _default_columns(entry['default'], types_by_field[entry['field_id']])
                 connection.execute(
                     'INSERT INTO field_schema_fields VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     (schema['id'], entry['field_id'], position, int(entry['required']), text, integer, real,
                      entry['min'], entry['max'], entry['max_length']))
-        for workflow in catalogue['workflows']:
+        for order, workflow in enumerate(catalogue['workflows']):
             connection.execute(
-                'INSERT INTO workflows VALUES (?, ?, ?) ON CONFLICT (workflow_id) DO UPDATE SET name = excluded.name',
-                (workflow['id'], local, workflow['name']))
+                'INSERT INTO workflows (workflow_id, backend_id, name, position) VALUES (?, ?, ?, ?) '
+                'ON CONFLICT (workflow_id) DO UPDATE SET name = excluded.name, position = excluded.position',
+                (workflow['id'], local, workflow['name'], order))
             for position, state_id in enumerate(workflow['states']):
                 connection.execute('INSERT INTO workflow_states VALUES (?, ?, ?, ?)',
                                    (workflow['id'], state_id, position, int(state_id == workflow['initial'])))
-            for transition in workflow['transitions']:
-                connection.execute('INSERT INTO workflow_transitions VALUES (?, ?, ?)',
-                                   (workflow['id'], transition['from'], transition['to']))
-            for state_id in workflow['from_any']:
-                connection.execute('INSERT INTO workflow_any_transitions VALUES (?, ?)', (workflow['id'], state_id))
+            for position, transition in enumerate(workflow['transitions']):
+                connection.execute('INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, '
+                                   'position) VALUES (?, ?, ?, ?)',
+                                   (workflow['id'], transition['from'], transition['to'], position))
+            for position, state_id in enumerate(workflow['from_any']):
+                connection.execute('INSERT INTO workflow_any_transitions (workflow_id, to_state_id, position) '
+                                   'VALUES (?, ?, ?)', (workflow['id'], state_id, position))
         for order, process in enumerate(catalogue['processes']):
             connection.execute(
                 'INSERT INTO processes VALUES (?, ?, ?) ON CONFLICT (process_id) DO UPDATE SET name = excluded.name',
@@ -400,8 +412,9 @@ class LocalCatalogue:
                 connection.execute('INSERT INTO task_type_workflows VALUES (?, ?)', (entry['id'], entry['workflow_id']))
                 connection.execute('INSERT INTO task_type_field_schemas VALUES (?, ?)',
                                    (entry['id'], entry['field_schema_id']))
-            for rule in process['parent_rules']:
-                connection.execute('INSERT INTO task_type_parent_rules VALUES (?, ?)', (rule['parent'], rule['child']))
+            for position, rule in enumerate(process['parent_rules']):
+                connection.execute('INSERT INTO task_type_parent_rules (parent_type_id, child_type_id, position) '
+                                   'VALUES (?, ?, ?)', (rule['parent'], rule['child'], position))
 
         self._delete_absent(connection, 'task_types', 'type_id', type_ids,
                             'type_id IN (SELECT t.type_id FROM task_types t JOIN processes p '

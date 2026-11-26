@@ -99,8 +99,8 @@ def test_fresh_initialization_is_current_without_upgrades(tmp_path):
 
 
 def test_authentication_upgrade_preserves_accounts_and_expires_pre_policy_sessions(tmp_path):
-    from planner_lib.migrations.revisions import upgrade_44
-    from planner_lib.session.policy import initial_authentication
+    from planner_lib.migrations.revisions import upgrade_44, upgrade_49
+    from planner_lib.session.policy import initial_authentication, validate_authentication
     from planner_lib.session.identity import validate_identity_records
 
     storage = DiskCacheStorage(tmp_path / 'cache')
@@ -111,13 +111,19 @@ def test_authentication_upgrade_preserves_accounts_and_expires_pre_policy_sessio
         storage.save('auth_sessions', 'old-session', {'account_id': 'existing-admin'})
         upgrade_44(storage)
         assert not list(storage.list_keys('auth_sessions'))
-        assert storage.load('config', 'authentication') == initial_authentication()
+        policy = storage.load('config', 'authentication')
+        assert policy == {**initial_authentication(), 'backend_credentials': 'pat'}
+        validate_authentication(policy, 44)
         assert storage.load('accounts', 'admin@example.test') == account
         assert storage.load('account_auth', 'existing-admin') == {'enrolled': True}
         assert storage.load('system', 'legacy_email_claims') == {'initialized': False, 'accounts': []}
         assert storage.load('system', 'broker_authority') is None
         assert not list(storage.list_keys('external_identities'))
         validate_identity_records(storage)
+        upgrade_49(storage)
+        assert storage.load('config', 'authentication') == initial_authentication()
+        assert storage.load('accounts', 'admin@example.test') == {
+            'account_id': 'existing-admin', 'permissions': ['admin']}
     finally:
         storage.close()
 

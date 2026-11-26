@@ -17,13 +17,13 @@ const _modalImports = {
   './ViewDeleteModal.lit.js': () => import('./ViewDeleteModal.lit.js'),
 };
 
-export async function openLocalTaskEditor({ task = null, planId = '', refresh, readTask }) {
-  await import('./LocalTaskEditor.lit.js');
+export async function openTaskEditor({ task = null, planId = '', canDelete = false, refresh, readTask }) {
+  await import('./TaskEditor.lit.js');
   const dialog = document.createElement('dialog');
   dialog.style.cssText = 'width:min(520px, 85vw);max-height:85vh;padding:20px;border:1px solid #cbd5e1;border-radius:8px';
   const heading = document.createElement('h2');
-  heading.id = 'local-task-dialog-heading';
-  heading.textContent = task === null ? 'Create Local Task' : 'Edit Local Task';
+  heading.id = 'task-dialog-heading';
+  heading.textContent = task === null ? 'Create Task' : 'Edit Task';
   dialog.setAttribute('aria-labelledby', heading.id);
   const notice = document.createElement('p');
   notice.setAttribute('role', 'status');
@@ -31,8 +31,8 @@ export async function openLocalTaskEditor({ task = null, planId = '', refresh, r
   close.textContent = 'Close';
   close.addEventListener('click', () => dialog.close());
   const createEditor = (current) => {
-    const editor = document.createElement('local-task-editor');
-    Object.assign(editor, { task: current, planId });
+    const editor = document.createElement('task-editor');
+    Object.assign(editor, { task: current, planId, canDelete });
     editor.addEventListener('task-committed', async () => {
       editor.inert = true;
       notice.textContent = 'Refreshing tasks...';
@@ -97,10 +97,9 @@ const _createModal = async (
   return { el, cleanup };
 };
 
-export const openConfigModal = async ({ parent = document.body, taskBackendId = '' } = {}) => {
+export const openConfigModal = async ({ parent = document.body } = {}) => {
   const { el, cleanup } = await _createModal('./ConfigModal.lit.js', 'config-modal', {
     parent,
-    attrs: { taskBackendId },
     autoOpen: true,
   });
   return new Promise((resolve) => {

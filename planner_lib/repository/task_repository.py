@@ -41,6 +41,14 @@ from planner_lib.storage.base import StorageBackend
 logger = logging.getLogger(__name__)
 
 
+def _without_workforce_rules(originals, resulting):
+    """A plain task repository composes no workforce validation."""
+
+
+class TaskOperationNotSupported(Exception):
+    """The active task backend does not declare the requested capability."""
+
+
 class TaskRepository:
     """Application-layer repository for work-item (task) data.
 
@@ -202,23 +210,18 @@ class TaskRepository:
         """
         if not updates:
             return {'updated': 0, 'errors': []}
-
+        self._require_publication()
 
         credential = self._credential_provider.get_credential(user_id) if self._backend.is_remote else None
         if self._backend.is_remote and credential is None:
             return {'updated': 0, 'errors': ['No credential available for user']}
 
         if isinstance(self._backend, BatchTaskBackend):
-            if any('backendData' in update for update in updates):
-                raise ValueError('backendData is private to the backend')
-            return self._backend.write_tasks(updates, credential, actor_id=user_id)
-
-        write_task = getattr(self._backend, 'write_task', None)
-        if not callable(write_task):
-            return {'updated': 0, 'errors': ['Task updates are not supported by the active backend']}
+            return self._write_batch(updates, credential, user_id, _without_workforce_rules)
 
         total_updated = 0
         all_errors: List[str] = []
+        conflicts: List[dict] = []
 
         for update in updates:
             try:
@@ -229,13 +232,52 @@ class TaskRepository:
                 if task_id is None or task_id == '':
                     all_errors.append(f"Invalid task id: {update!r}")
                     continue
-                result: WriteResult = write_task(str(task_id), update, credential)
+                result: WriteResult = self._backend.write_task(str(task_id), update, credential)
                 total_updated += result.get('updated', 0)
                 all_errors.extend(result.get('errors') or [])
+                if 'conflicts' in result:
+                    conflicts.extend(result['conflicts'])
             except Exception as exc:
                 all_errors.append(f"Task {update.get('id', '?')}: {exc}")
 
+        if conflicts:
+            return {'updated': total_updated, 'errors': all_errors, 'conflicts': conflicts}
         return {'updated': total_updated, 'errors': all_errors}
+
+    def _authoring_credential(self, capability, user_id):
+        if capability not in self._backend.CAPABILITIES:
+            raise TaskOperationNotSupported(capability)
+        if not self._backend.is_remote:
+            return None
+        credential = self._credential_provider.get_credential(user_id)
+        if credential is None:
+            raise BackendAuthError('No credential available for task authoring')
+        return credential
+
+    def create(self, payload: dict, user_id: str) -> DomainTask:
+        """Create one task in the active backend on behalf of *user_id*."""
+        credential = self._authoring_credential('task_create', user_id)
+        task = self._backend.create_task(payload, user_id, credential)
+        return {key: value for key, value in task.items() if key != 'backendData'}
+
+    def delete(self, task_id: str, revision: int, user_id: str) -> None:
+        """Delete the reviewed revision of one task in the active backend."""
+        credential = self._authoring_credential('task_delete', user_id)
+        self._backend.delete_task(task_id, revision, user_id, credential)
+
+    def editor_metadata(self) -> dict:
+        if 'task_edit' not in self._backend.CAPABILITIES and 'task_create' not in self._backend.CAPABILITIES:
+            raise TaskOperationNotSupported('task_edit')
+        return self._backend.task_editor_metadata()
+
+    def _require_publication(self):
+        if 'task_publish' not in self._backend.CAPABILITIES:
+            raise ValueError('Task updates are not supported by the active task backend')
+
+    def _write_batch(self, updates, credential, user_id, validate):
+        if any('backendData' in update for update in updates):
+            raise ValueError('backendData is private to the backend')
+        return self._backend.write_tasks(updates, credential, actor_id=user_id, validate=validate)
 
     def refresh(self, project_id: Optional[str] = None, user_id: Optional[str] = None) -> dict:
         """Invalidate cache and force a live re-fetch for a project.
@@ -297,22 +339,43 @@ class WorkforceTaskRepository(TaskRepository):
         """Validate the entire authored batch before issuing the first external mutation."""
         if not updates:
             return {'updated': 0, 'errors': []}
+        self._require_publication()
         credential = self._credential_provider.get_credential(user_id) if self._backend.is_remote else None
         if self._backend.is_remote and credential is None:
             raise BackendAuthError('No credential available for publication')
         with self._storage.transaction(), self._task_storage.transaction():
-            if not self._backend.is_remote and isinstance(self._backend, BatchTaskBackend):
-                return super().write(updates, user_id)
             catalogue = TeamCatalogue(self._storage.load('config', 'teams'))
             definitions = catalogue.definitions()
             projects = self._project_service.list_projects()
             defaults = {} if not projects else projects[0]['allocation_defaults']
+            memberships = {
+                entry['id']: entry['group_id'] for entry in definitions
+                if entry['kind'] == 'team' and entry['group_id'] is not None
+            }
+
+            def validate_capacity(original, capacity):
+                availability = project_allocation_availability(original, projects, definitions, defaults)
+                validate_allocation_change(availability, capacity)
+
+            def validate_forest(tasks):
+                conflicts = allocation_conflicts(tasks, memberships)
+                if conflicts:
+                    raise ValueError(f'Allocation conflict: {conflicts}')
+
+            if isinstance(self._backend, BatchTaskBackend):
+                def validate(originals, resulting):
+                    for update in updates:
+                        if 'capacity' in update:
+                            validate_capacity(originals[str(update['id'])], update['capacity'])
+                    validate_forest(resulting)
+
+                return self._write_batch(updates, credential, user_id, validate)
+
             originals = {str(task['id']): task for task in self.read(credential=credential)}
             candidate = {identity: dict(task) for identity, task in originals.items()}
             seen: set[str] = set()
-            editable = {'id', 'capacity', 'start', 'end', 'state', 'iterationPath', 'tags', 'relations'}
-            if isinstance(self._backend, BatchTaskBackend):
-                editable.add('base')
+            editable = {'id', 'capacity', 'start', 'end', 'state', 'iterationPath', 'tags', 'relations',
+                        'title', 'description', 'base'}
             for update in updates:
                 identity = str(update['id'])
                 if identity in seen or identity not in originals:
@@ -322,8 +385,7 @@ class WorkforceTaskRepository(TaskRepository):
                 seen.add(identity)
                 original = originals[identity]
                 if 'capacity' in update:
-                    availability = project_allocation_availability(original, projects, definitions, defaults)
-                    validate_allocation_change(availability, update['capacity'])
+                    validate_capacity(original, update['capacity'])
                 candidate[identity].update({key: value for key, value in update.items() if key != 'base'})
                 if 'state' in update:
                     display = projects[0]['work_item_display']
@@ -340,12 +402,6 @@ class WorkforceTaskRepository(TaskRepository):
                     for relation in update['relations']:
                         if relation['type'] in ('Parent', 'Child') and str(relation['id']) not in candidate:
                             raise ValueError('Cannot publish hierarchy links without loaded context')
-            memberships = {
-                entry['id']: entry['group_id'] for entry in definitions
-                if entry['kind'] == 'team' and entry['group_id'] is not None
-            }
-            conflicts = allocation_conflicts(list(candidate.values()), memberships)
-            if conflicts:
-                raise ValueError(f'Allocation conflict: {conflicts}')
+            validate_forest(list(candidate.values()))
             return super().write(updates, user_id)
 

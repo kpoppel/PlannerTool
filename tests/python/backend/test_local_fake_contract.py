@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from planner_lib.backend.catalogue import AdoCatalogue
 from planner_lib.backend.port import (
     TASK_CAPABILITIES, BatchTaskBackend, CatalogueBackend, TaskBackend,
 )
@@ -34,9 +33,11 @@ class _LocalFake:
     def write_task(self, task_id, updates, credential):
         raise AssertionError('Batch backends must not receive per-task writes')
 
-    def write_tasks(self, updates, credential, *, actor_id):
+    def write_tasks(self, updates, credential, *, actor_id, validate):
+        originals = {identity: dict(task) for identity, task in self.tasks.items()}
         for update in updates:
             self.tasks[update['id']].update({k: v for k, v in update.items() if k not in ('id', 'base')})
+        validate(originals, list(self.tasks.values()))
         return {'updated': len(updates), 'errors': [], 'conflicts': []}
 
     def invalidate_cache(self):
@@ -65,7 +66,26 @@ def test_local_fake_satisfies_backend_neutral_protocols():
     assert isinstance(fake, BatchTaskBackend)
     assert isinstance(fake, CatalogueBackend)
     assert fake.CAPABILITIES <= TASK_CAPABILITIES
-    assert isinstance(AdoCatalogue(None), CatalogueBackend)
+
+
+@pytest.mark.parametrize('cls', _transport_classes(), ids=lambda cls: cls.__name__)
+def test_every_task_backend_owns_its_catalogue(cls):
+    from planner_lib.backend.local import LocalTaskBackend
+    assert issubclass(cls, CatalogueBackend)
+    assert issubclass(LocalTaskBackend, CatalogueBackend)
+
+
+def test_task_backends_do_not_depend_on_workforce_rules():
+    import ast
+    import pathlib
+
+    import planner_lib
+    root = pathlib.Path(planner_lib.__file__).parent
+    for path in (root / 'local' / 'tasks.py', root / 'backend' / 'local.py'):
+        imported = {node.module for node in ast.walk(ast.parse(path.read_text()))
+                    if isinstance(node, ast.ImportFrom)}
+        assert not imported & {'planner_lib.cost.allocation_rule', 'planner_lib.domain.allocation_availability',
+                               'planner_lib.domain.teams'}, path
 
 
 def test_local_fake_reads_and_publishes_through_the_shared_repository():

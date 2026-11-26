@@ -50,6 +50,18 @@ External config mounts alone are fresh. An existing cache without verifiable
 metadata or legacy evidence is never treated as empty. A current generation is
 opened without copying or rewriting schema metadata. Newer schemas are rejected.
 
+### Revision 49 PAT removal
+
+`0049.remove-ado-personal-access-tokens` removes Azure DevOps personal access token
+authentication. It purges any stored `pat` and `pat_invalid` fields from account
+records without reading them and rewrites the authentication policy's
+`backend_credentials` value `pat` to `none` (values are now `none|delegated`).
+Accounts are stored as `{account_id, email, permissions}`; IDs, permissions,
+enrollment credentials and user data are preserved. Revision-49 validation rejects
+accounts that still hold either field. Live Azure DevOps afterwards requires Entra
+sign-in; see [Authentication](AUTHENTICATION.md). Physical backups taken earlier
+may still contain encrypted PATs.
+
 ### Revision 45 Feature Cards
 
 `0045.compact-feature-cards` replaces the old Normal and Compact card sizes with
@@ -62,9 +74,10 @@ legacy records.
 ### Revision 44 Authentication Policy
 
 `0044.authentication-policy-and-external-identities` is the single upgrade from
-revision 43. It initializes enrollment/PAT policy, external identity metadata,
+revision 43. It initializes enrollment policy, external identity metadata,
 one-time existing-account claims and broker authority. Pre-policy sessions expire;
-accounts, permissions, encrypted PATs, enrollment credentials and user data remain.
+accounts, permissions, enrollment credentials and user data remain (revision 49
+later purges stored PATs).
 Existing remembered browsers can renew enrollment sessions. Deploy the application,
 browser assets and broker together.
 
@@ -263,6 +276,15 @@ serving the previous generation. Authentication policy, credentials and login
 authority are not imported from logical backups. Use offline full restore for
 generation-level recovery, including credentials.
 
+## Planner database 0004: Local document order
+
+`0004.local-document-order` (SQLite schema 4) adds a non-negative `position` column
+to `field_definitions`, `field_schemas`, `workflows`, `workflow_transitions`,
+`workflow_any_transitions`, `task_type_parent_rules`, `plan_task_types` and
+`plan_markers`, populated from the previous row order. Ordered lists no longer
+depend on SQLite rowid order. Like every pending database migration, it stages a
+new generation.
+
 `cache/` includes SQLite files, required sidecars, and external DiskCache value
 files. All namespaces in it are copied: retained configuration and snapshots, accounts,
 authentication, sessions, scenarios, views/registers, groups, events, and other
@@ -381,10 +403,11 @@ plugin config and the revision-34 packed-mode preference. Unversioned or older
 payloads are rejected before writes; live handlers never migrate them. Selective
 restores preserve schema state and forward the revision even without accounts.
 
-Revision-46 logical exports exclude PATs, enrollment keys/devices, active auth
-policy, sessions, external links, grants and transition authority. The old
-plaintext-PAT marker and credential-bearing imports are rejected. Account records
-are exported with `pat: null` and `{enrolled: false}` metadata, preserving UUIDs
+Logical exports exclude enrollment keys/devices, active auth policy, sessions,
+external links, grants and transition authority. Credential-bearing imports,
+including account records with `pat` or `pat_invalid` fields, are rejected. Account
+records are exported as `{account_id, email, permissions}` with `{enrolled: false}`
+authentication metadata, preserving UUIDs
 and permissions. Restore installs fresh unknown enrollment hashes and no devices,
 requiring explicit operator reset rather than allowing public account claiming.
 Entra account replacement is rejected. Physical backups remain independent and

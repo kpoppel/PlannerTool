@@ -2,7 +2,7 @@
 
 import pytest
 
-from planner_lib.accounts.config import AccountCredentialsPayload, AccountManager
+from planner_lib.accounts.config import AccountIdentityPayload, AccountManager
 from planner_lib.middleware.session import SessionManager
 from planner_lib.storage.memory_backend import MemoryStorage
 
@@ -34,7 +34,7 @@ def test_session_binding_can_validate_without_enrollment_storage(monkeypatch):
 
     storage = MemoryStorage()
     accounts = AccountManager(storage)
-    account_id = accounts.create_account(AccountCredentialsPayload(email='bound@example.com'))['id']
+    account_id = accounts.create_account(AccountIdentityPayload(email='bound@example.com'))['id']
     storage.delete('account_auth', account_id)
     binding = Mock()
     binding.validate.return_value = True
@@ -61,7 +61,7 @@ def test_unbound_session_validates_its_enrollment_binding():
 
     storage = MemoryStorage()
     accounts = AccountManager(storage)
-    account_id = accounts.create_account(AccountCredentialsPayload(email='local@example.com'))['id']
+    account_id = accounts.create_account(AccountIdentityPayload(email='local@example.com'))['id']
     storage.delete('account_auth', account_id)
     binding = Mock()
     binding.validate.return_value = True
@@ -81,7 +81,7 @@ def test_source_and_epoch_mismatches_fail_closed():
 
     storage = MemoryStorage()
     accounts = AccountManager(storage)
-    accounts.create_account(AccountCredentialsPayload(email='epoch@example.test'))
+    accounts.create_account(AccountIdentityPayload(email='epoch@example.test'))
     settings = initial_authentication()
     storage.save('config', 'authentication', settings)
     sessions = SessionManager(accounts, storage, auth_policy=SessionPolicy(storage))
@@ -102,7 +102,7 @@ def test_remote_grant_health_does_not_control_application_expiry(monkeypatch, re
 
     storage = MemoryStorage()
     accounts = AccountManager(storage)
-    account = accounts.create_account(AccountCredentialsPayload(email='separate@example.test'))
+    account = accounts.create_account(AccountIdentityPayload(email='separate@example.test'))
     storage.save('config', 'authentication', {
         'version': 1, 'selected': 'entra', 'active': 'entra',
         'backend_credentials': 'delegated', 'epoch': 1,
@@ -136,7 +136,7 @@ def test_revision_44_invalidates_sessions_but_preserves_accounts():
 
     storage = MemoryStorage()
     accounts = AccountManager(storage)
-    account = accounts.create_account(AccountCredentialsPayload(email='upgrade@example.test'))
+    account = accounts.create_account(AccountIdentityPayload(email='upgrade@example.test'))
     sid = SessionManager(accounts, storage).create('upgrade@example.test')
     assert sid
     upgrade_44(storage)
@@ -148,7 +148,7 @@ def test_revision_44_invalidates_sessions_but_preserves_accounts():
 def test_last_active_survives_session_expiration_and_is_not_updated_by_validity_checks(monkeypatch):
     storage = MemoryStorage()
     accounts = AccountManager(storage)
-    account_id = accounts.create_account(AccountCredentialsPayload(email='active@example.com'))['id']
+    account_id = accounts.create_account(AccountIdentityPayload(email='active@example.com'))['id']
     sessions = SessionManager(accounts, storage)
     monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: 1000.0)
     session_id = sessions.create('active@example.com')
@@ -172,7 +172,7 @@ def test_last_active_survives_session_expiration_and_is_not_updated_by_validity_
 def test_activity_updates_are_coalesced_without_losing_later_activity(monkeypatch):
     storage = MemoryStorage()
     accounts = AccountManager(storage)
-    accounts.create_account(AccountCredentialsPayload(email='active@example.com'))
+    accounts.create_account(AccountIdentityPayload(email='active@example.com'))
     sessions = SessionManager(accounts, storage)
     monkeypatch.setattr('planner_lib.middleware.session.time.time', lambda: 1000.0)
     session_id = sessions.create('active@example.com')

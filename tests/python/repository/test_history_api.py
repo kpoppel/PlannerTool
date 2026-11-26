@@ -102,7 +102,7 @@ def _make_fake_session_manager(authenticated_client):
     register_service_on_client(authenticated_client, 'account_manager',
                                SimpleNamespace(pat_error=lambda email: None))
     register_service_on_client(authenticated_client, 'credential_provider', SimpleNamespace(
-        get_credential=lambda user_id: {'kind': 'pat', 'token': 'test-token', 'user_id': user_id},
+        get_credential=lambda user_id: {'kind': 'bearer', 'token': 'test-token', 'user_id': user_id},
     ))
     register_service_on_client(authenticated_client, 'backend', SimpleNamespace(is_remote=True))
     class FakeSessionMgr:
@@ -223,19 +223,17 @@ def test_history_api_pagination(authenticated_client):
 
 
 @pytest.mark.parametrize('remote', [False, True])
-def test_history_api_no_pat(authenticated_client, remote):
+def test_history_api_without_credential(authenticated_client, remote):
     """Only a remote history source requires credentials."""
     from fastapi.testclient import TestClient
     from types import SimpleNamespace
 
-    # Credentials belong to the account manager, not the session identity.
-    class NoPATSessionMgr:
+    # Credentials belong to the credential provider, not the session identity.
+    class NoCredentialSessionMgr:
         def get(self, sid):
             return {'account_id': 'test-account-id', 'email': 'test@example.com'}
 
-    register_service_on_client(authenticated_client, 'session_manager', NoPATSessionMgr())
-    register_service_on_client(authenticated_client, 'account_manager',
-                               SimpleNamespace(pat_error=lambda email: None))
+    register_service_on_client(authenticated_client, 'session_manager', NoCredentialSessionMgr())
     register_service_on_client(authenticated_client, 'credential_provider',
                                SimpleNamespace(get_credential=lambda user_id: None))
     register_service_on_client(authenticated_client, 'backend', SimpleNamespace(is_remote=remote))
@@ -247,7 +245,9 @@ def test_history_api_no_pat(authenticated_client, remote):
                    cookies=authenticated_client.cookies)
     r = c.get('/api/history/tasks')
 
-    assert r.status_code == (401 if remote else 200)
+    assert r.status_code == (403 if remote else 200)
+    if remote:
+        assert r.json()['error'] == 'ado_credential_required'
 
 
 def test_history_repository_preserves_opaque_task_id():

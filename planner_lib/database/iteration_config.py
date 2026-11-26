@@ -2,11 +2,13 @@
 
 from planner_lib.domain.iteration_sets import iteration_preset_id, validate_iteration_sets
 
+from .planner_database import defer_foreign_keys
+
 
 def write_iterations(connection, value):
     if validate_iteration_sets(value) != value:
         raise ValueError('Iteration sets require the canonical wire document')
-    connection.execute('PRAGMA defer_foreign_keys=ON')
+    defer_foreign_keys(connection)
     connection.execute('DELETE FROM iteration_sets')
     for position, item in enumerate(value['iteration_sets']):
         set_id = item['id']

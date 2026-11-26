@@ -70,18 +70,24 @@ def test_local_backend_does_not_require_ado_transport():
 
 def test_describe_backends_reports_identity_and_capabilities():
     from planner_lib.backend.port import TASK_CAPABILITIES
-    ado, local = describe_backends()
+    ado, local = describe_backends(live_ado=True)
     assert ado['id'] == 'ado'
     assert ado['available'] is True
     assert ado['transports'] == ['live', 'mock_generator', 'mock_fixture', 'static']
     assert ado['configuration_schema']['properties']['transport']['enum'] == ado['transports']
     assert set(ado['capabilities']) <= TASK_CAPABILITIES
-    assert 'task_create' not in ado['capabilities']
+    assert {'task_create', 'task_edit', 'task_delete'} <= set(ado['capabilities'])
     assert local['id'] == 'local'
     assert local['available'] is True
     assert local['configuration_schema']['properties'] == {}
     assert set(local['capabilities']) <= TASK_CAPABILITIES
     assert 'task_create' in local['capabilities']
+
+
+def test_describe_backends_omits_live_ado_without_entra():
+    ado, _local = describe_backends(live_ado=False)
+    assert ado['transports'] == ['mock_generator', 'mock_fixture', 'static']
+    assert ado['configuration_schema']['properties']['transport']['enum'] == ado['transports']
 
 
 # ---------------------------------------------------------------------------

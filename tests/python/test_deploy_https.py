@@ -56,7 +56,7 @@ def test_deploy_builds_all_images_and_configured_sources(tmp_path, monkeypatch, 
 
     manifest = tmp_path / 'instances.yml'
     manifest.write_text(yaml.safe_dump({
-        'ado_authentication': 'pat',
+        'ado_authentication': 'disabled',
         'instances': [{'name': 'planning', 'image': 'plannertool:pinned',
                    'build_from_source': build_from_source}],
     }))
@@ -169,7 +169,7 @@ def test_https_start_failure_reports_certificate_diagnostics(tmp_path, monkeypat
 
     manifest = tmp_path / 'instances.yml'
     manifest.write_text(
-        'ado_authentication: pat\nhttps_hostname: planner.example.com\n'
+        'ado_authentication: disabled\nhttps_hostname: planner.example.com\n'
         'instances:\n  - name: planning\n    image: plannertool:test\n'
     )
     env_file = tmp_path / 'protected.env'
@@ -377,7 +377,7 @@ def test_private_https_start_uses_selected_trust_without_acme(mode, tls_files, t
     settings = {'mode': 'internal'} if mode == 'internal' else tls_files
     manifest = tmp_path / 'instances.yml'
     manifest.write_text(yaml.safe_dump({
-        'ado_authentication': 'pat', 'https_hostname': 'planner.example.test', 'https_tls': settings,
+        'ado_authentication': 'disabled', 'https_hostname': 'planner.example.test', 'https_tls': settings,
         'instances': [{'name': 'planning', 'image': 'plannertool:test'}],
     }))
     output = tmp_path / 'deployment'
@@ -450,7 +450,7 @@ def test_duplicate_names_rejected():
 
 
 @pytest.mark.parametrize('mode,valid', [
-    ('pat', True), ('entra', True), ('disabled', True), (None, False),
+    ('pat', False), ('entra', True), ('disabled', True), (None, False),
 ])
 def test_deployment_owns_credential_mode_not_backend_selection(mode, valid):
     from deploy_auth import validate_deployment_policy

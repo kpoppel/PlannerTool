@@ -37,7 +37,7 @@ from planner_lib.backend.port import (
 )
 from planner_lib.domain.allocation_availability import validate_project_availability
 from planner_lib.domain.projects import DomainProject
-from planner_lib.backend.catalogue import active_catalogue
+from planner_lib.azure.catalogue import work_item_display
 from planner_lib.domain.teams import DomainTeam, TeamCatalogue
 from planner_lib.storage.base import StorageBackend
 
@@ -106,7 +106,7 @@ class ConfigBackend(
         self,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainProject]:
-        """Return active configured projects in frontend-ready shape."""
+        """Return active configured ADO plans in frontend-ready shape (Local plans are projected by LocalTaskBackend)."""
         cfg = self._storage.load("config", "projects") or {}
         project_map = self._configured_project_map()
         if not project_map:
@@ -116,7 +116,10 @@ class ConfigBackend(
             type_name: index for index, type_name in enumerate(cfg['container_types'])
         }
 
-        display = active_catalogue(self._storage).work_item_display()
+        display = work_item_display(
+            self._storage.load('config', 'ado_processes'),
+            self._storage.load('config', 'global_settings'),
+        )
 
         return [
             DomainProject(

@@ -3,7 +3,7 @@ import hashlib
 import json
 import re
 
-from planner_lib.accounts.config import AccountCredentialsPayload, _is_valid_email
+from planner_lib.accounts.config import AccountIdentityPayload, _is_valid_email
 from planner_lib.migrations.contracts import SchemaError
 
 
@@ -155,7 +155,7 @@ class ExternalIdentityLinks:
                 permissions = (['admin'] if self.settings.upstream_mode == 'entra'
                                and not self.accounts.list_accounts() else [])
                 created = self.accounts.create_account(
-                    AccountCredentialsPayload(email=internal_email), permissions=permissions)
+                    AccountIdentityPayload(email=internal_email), permissions=permissions)
                 if not created['ok']:
                     raise AuthFailure('auth_configuration_error')
                 target = created['id']

@@ -1,4 +1,4 @@
-"""PAT and delegated credential policies for remote backend operations."""
+"""Credential policies for remote backend operations."""
 from __future__ import annotations
 
 import logging
@@ -12,46 +12,16 @@ from planner_lib.backend.port import BackendCredential
 logger = logging.getLogger(__name__)
 
 
-class PatCredentialPolicy:
-    """Own the current PAT requirement and rejection semantics."""
-
-    def __init__(self, account_manager) -> None:
-        self._account_manager = account_manager
-
-    @staticmethod
-    def requires_credential(storage) -> bool:
-        from planner_lib.backend.selection import uses_live_ado
-
-        if not storage.exists('config', 'ado_config'):
-            return False
-        return uses_live_ado(storage.load('config', 'server_config'),
-                             storage.load('config', 'ado_config'))
-
-    def credential_error(self, user_id: str) -> str | None:
-        email = self._account_manager.get_account_by_id(user_id)['email']
-        return self._account_manager.pat_error(email)
+class NoRemoteCredentials:
+    """Non-Entra deployments issue no ADO credentials; only local and mock backends run."""
 
     def get_credential(self, user_id: str) -> Optional[BackendCredential]:
-        try:
-            email = self._account_manager.get_account_by_id(user_id)['email']
-            if self._account_manager.pat_error(email):
-                return None
-            account = self._account_manager.load(email)
-        except KeyError as exc:
-            logger.warning("CredentialProvider: failed to load account for '%s': %s", user_id, exc)
-            return None
-        token = account['pat']
-        if not token:
-            return None
-        return BackendCredential(kind='pat', token=token, user_id=user_id)
+        return None
 
     def authentication_failed(self, credential: Optional[BackendCredential]) -> str:
         if credential is not None:
-            if credential['kind'] != 'pat':
-                raise ValueError('PAT policy cannot reject an unsupported credential kind')
-            email = self._account_manager.get_account_by_id(credential['user_id'])['email']
-            self._account_manager.reject_pat(email, credential['token'])
-        return 'pat_invalid'
+            raise ValueError('Non-Entra deployments never issue backend credentials')
+        return 'ado_credential_required'
 
 
 class DelegatedCredentialProvider:
@@ -135,10 +105,6 @@ class DelegatedCredentialProvider:
         with self.storage.transaction():
             self.validate(credential)
             yield
-
-
-    def credential_error(self, user_id):
-        return None
 
     def authentication_failed(self, credential):
         if credential is not None and credential['kind'] != 'bearer':

@@ -25,6 +25,8 @@
 import { html } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../../services/providerREST.js';
 
+const ADO_CREDENTIAL_ERRORS = ['ado_credential_required', 'ado_credential_unusable'];
+
 function resultErrorMessage(result, fallback = 'Request failed') {
   if (result?.error?.message) return result.error.message;
   if (typeof result?.error === 'string') return result.error;
@@ -36,7 +38,7 @@ function resultErrorMessage(result, fallback = 'Request failed') {
 // ------------------------------------------------------------------
 
 /**
- * Fetch the list of ADO projects available to the configured PAT.
+ * Fetch the list of ADO projects available to the signed-in Azure DevOps credential.
  * @param {DataSources} comp
  */
 export async function fetchProjects(comp) {
@@ -46,10 +48,9 @@ export async function fetchProjects(comp) {
   try {
     const res = await adminProvider.browseAzureProjects(comp._wikiOrgUrl);
     if (!res?.ok) {
-      const errorMessage = resultErrorMessage(res);
-      comp._projectsError = errorMessage.includes('PAT')
-        ? 'A Personal Access Token is required. Set it in your account settings.'
-        : `Could not load projects: ${errorMessage}`;
+      comp._projectsError = ADO_CREDENTIAL_ERRORS.includes(res.error.code)
+        ? 'An Azure DevOps credential is required. Sign in with Entra ID and try again.'
+        : `Could not load projects: ${resultErrorMessage(res)}`;
     } else {
       comp._projects = res.data?.projects || [];
     }
@@ -171,7 +172,9 @@ export async function fetchWikiPages(comp, project, wikiId) {
  */
 export function renderPlanEventsRow(comp) {
   const isWiki = comp._eventsBackend === 'ado_wiki';
-  const canBrowse = comp._activeTaskBackendId === 'ado';
+  // The wiki needs live Azure DevOps, which the server offers only with Entra credentials.
+  const ado = comp._taskBackends.find((entry) => entry.id === 'ado');
+  const canBrowse = comp._activeTaskBackendId === 'ado' && ado.transports.includes('live');
   const errs   = comp._validationErrors;
 
   return html`

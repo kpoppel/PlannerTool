@@ -3,6 +3,13 @@
 Connections are short-lived and per operation. Every connection enables
 foreign keys and a bounded busy timeout; write transactions use
 ``BEGIN IMMEDIATE`` so validation and writes commit atomically.
+
+This module is the SQLite adapter: it alone imports the driver and issues
+PRAGMAs and transaction statements. Callers write portable SQL (qmark
+parameters, ``ON CONFLICT`` upserts, explicit order columns, integer
+booleans compared with ``= 1``), use ``read()`` / ``write()`` for transactions,
+catch ``database.IntegrityError`` and call ``defer_foreign_keys()``. Migration
+DDL is dialect-specific by nature; another database needs its own migrations.
 """
 from __future__ import annotations
 
@@ -33,8 +40,15 @@ def database_path(cache_directory: Path) -> Path:
     return Path(cache_directory).parent / DATABASE_NAME
 
 
+def defer_foreign_keys(connection):
+    """Check foreign keys at commit for the rest of the current write transaction."""
+    connection.execute('PRAGMA defer_foreign_keys=ON')
+
+
 class PlannerDatabase:
     """A ``planner.sqlite`` confined to an installation root."""
+
+    IntegrityError = sqlite3.IntegrityError
 
     def __init__(self, path, *, root):
         path = Path(path).absolute()
@@ -99,6 +113,16 @@ class PlannerDatabase:
             yield connection
         finally:
             connection.close()
+
+    @contextmanager
+    def read(self):
+        """One consistent read snapshot; nothing it does is committed."""
+        with self.connect() as connection:
+            connection.execute('BEGIN')
+            try:
+                yield connection
+            finally:
+                connection.execute('ROLLBACK')
 
     @contextmanager
     def write(self):

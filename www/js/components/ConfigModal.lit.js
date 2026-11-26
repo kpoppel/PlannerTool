@@ -11,7 +11,6 @@ import { getAuthentication } from '../services/authStartup.js';
 class ConfigModal extends LitElement {
   static properties = {
     authentication: { attribute: false },
-    taskBackendId: { type: String },
     open: { type: Boolean },
     _signingOut: { state: true },
     _linking: { state: true },
@@ -21,7 +20,6 @@ class ConfigModal extends LitElement {
   constructor() {
     super();
     this.authentication = getAuthentication();
-    this.taskBackendId = '';
     new AuthPresentationController(this);
     this.open = false;
     this._signingOut = false;
@@ -123,7 +121,7 @@ class ConfigModal extends LitElement {
 
   render() {
     const capabilities = this.authentication === null
-      ? { pat: true, enrollment: true, logout: true, deleteAccount: true }
+      ? { enrollment: true, logout: true, deleteAccount: true }
       : this.authentication.state.capabilities;
     return html`
       <modal-lit wide>
@@ -203,10 +201,6 @@ class ConfigModal extends LitElement {
               <button type="button" id="linkAccountBtn" class="btn" ?disabled=${this._linking}
                 @click=${this._onLinkAccount}>${this._linking ? 'Linking...' : 'Link account'}</button>
               <div class="status" role="status">${this._linkError}</div>
-            </div>` : ''}
-            ${this.taskBackendId !== 'local' && capabilities.pat ? html`<div class="form-row">
-              <label for="configPat">Personal Access Token (PAT)</label>
-              <input type="password" id="configPat" placeholder="••••••••" />
             </div>` : ''}
             ${capabilities.enrollment ? html`<div class="form-row">
               <label>Remembered browsers</label>
@@ -320,37 +314,14 @@ class ConfigModal extends LitElement {
       saveBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         const email = emailInput.value.trim();
-        const patInput = this._qs('#configPat');
-        const pat = patInput === null ? '' : patInput.value;
         const autosaveInterval = Number(autosaveInput.value);
         const characterShortcutsEnabled = this._qs('#letterShortcuts').checked;
-        // Client-side PAT format guard: disallow whitespace and require
-        // printable non-space ASCII characters. Accept empty string to
-        // indicate "preserve existing" behaviour.
-        const PAT_RE = /^[\x21-\x7E]+$/;
-        if (pat && !PAT_RE.test(pat)) {
-          status.textContent = 'Invalid PAT format. Remove spaces or control characters.';
-          return;
-        }
         if (email) await dataService.setLocalPref('user.email', email);
         await dataService.setLocalPref('autosave.interval', autosaveInterval);
         await dataService.setLocalPref('keyboard.letters', characterShortcutsEnabled);
         bus.emit(ConfigEvents.UPDATED, { email, characterShortcutsEnabled });
         const allocationResult = await cmd.data.setAllocationUnit(this._qs('#allocationUnit').value);
-        let patText = '';
-        if (pat) patText = 'Access token updated.';
-        try {
-          const res = this.authentication === null
-            ? await dataService.saveConfig({ email, pat }) : { ok: true };
-          if (patInput !== null) patInput.value = '';
-          if (res && res.ok) {
-            status.textContent = 'Configuration saved. ' + patText;
-          } else {
-            status.textContent = 'Configuration saved locally, but server save failed.';
-          }
-        } catch (err) {
-          status.textContent = 'Configuration saved locally, but server save failed.';
-        }
+        status.textContent = 'Configuration saved.';
         this._qs('#retryStaffingBtn').hidden = allocationResult.ok;
         if (!allocationResult.ok) {
           status.textContent += ' Could not load staffing. Man-day edits and effort-preserving resizing are unavailable.';
@@ -372,9 +343,7 @@ class ConfigModal extends LitElement {
         innerModal.addEventListener('modal-close', () => this.remove());
         innerModal.open = true;
         await innerModal.updateComplete;
-        const patInput = this._qs('#configPat');
-        if (patInput !== null) patInput.focus();
-        else autosaveInput.focus();
+        autosaveInput.focus();
       });
   }
 

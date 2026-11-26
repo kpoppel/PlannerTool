@@ -13,7 +13,7 @@ BASELINE_REVISION = 24
 # Startup (including dev-server reload) applies pending revisions before serving HTTP.
 # Never rewrite applied revisions or ledger entries: edits do not rerun an upgrade.
 # Use a new revision for further changes, or isolated pre-upgrade data to test iterations.
-TARGET_REVISION = 48
+TARGET_REVISION = 49
 CORE_CONFIGURATION_REVISION = 48
 MIGRATION_IDS = {
     26: '0026.migrate-ttl-cache-to-remote-cache-storage',
@@ -39,7 +39,10 @@ MIGRATION_IDS = {
     46: '0046.task-backend-selection',
     47: '0047.generation-planner-database',
     48: '0048.normalized-core-configuration',
+    49: '0049.remove-ado-personal-access-tokens',
 }
+# From this revision accounts hold no ADO credentials and non-Entra policies use none.
+NO_PAT_REVISION = 49
 # From this revision each generation owns a valid planner.sqlite beside its cache.
 PLANNER_DATABASE_REVISION = 47
 

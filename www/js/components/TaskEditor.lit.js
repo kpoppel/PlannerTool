@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing } from '/static/js/vendor/lit.js';
 import { dataService } from '../services/dataService.js';
 
-const EDIT_FIELDS = ['title', 'description', 'state', 'customFields'];
+const BASE_FIELDS = ['title', 'description', 'state'];
 const numberTypes = ['integer', 'number'];
 const sameValue = (left, right) => left === right;
 const displayValue = (value) => value === null ? '(empty)' : JSON.stringify(value);
@@ -14,8 +14,8 @@ function choice(name, entries, value, set, placeholder = 'Select') {
   </select>`;
 }
 
-export class LocalTaskEditor extends LitElement {
-  static properties = { task: { attribute: false }, planId: { type: String },
+export class TaskEditor extends LitElement {
+  static properties = { task: { attribute: false }, planId: { type: String }, canDelete: { type: Boolean },
     metadata: { state: true }, draft: { state: true }, busy: { state: true },
     error: { state: true }, conflicts: { state: true } };
 
@@ -33,6 +33,7 @@ export class LocalTaskEditor extends LitElement {
     super();
     this.task = null;
     this.planId = '';
+    this.canDelete = false;
     this.metadata = null;
     this.draft = null;
     this.busy = false;
@@ -61,7 +62,7 @@ export class LocalTaskEditor extends LitElement {
         const process = this.metadata.catalogue.processes.find((entry) => entry.id === this.task.process_id);
         const type = process.types.find((entry) => entry.name === this.task.type);
         this.draft = { project: this.task.project, typeId: type.id,
-          ...Object.fromEntries(EDIT_FIELDS.map((field) => [field, this.task[field]])) };
+          ...Object.fromEntries(this._editFields(type).map((field) => [field, this.task[field]])) };
       }
     } catch (error) { this.error = error.message; }
     finally { this.busy = false; }
@@ -70,6 +71,15 @@ export class LocalTaskEditor extends LitElement {
   get _types() {
     return this.metadata.catalogue.processes.flatMap((process) => process.types
       .map((type) => ({ ...type, name: `${process.name} / ${type.name}` })));
+  }
+
+  _schema(type) {
+    return this.metadata.catalogue.field_schemas.find((entry) => entry.id === type.field_schema_id);
+  }
+
+  /** Custom fields exist only for types whose field schema defines any. */
+  _editFields(type) {
+    return this._schema(type).fields.length > 0 ? [...BASE_FIELDS, 'customFields'] : BASE_FIELDS;
   }
 
   _choosePlan(project) {
@@ -120,11 +130,11 @@ export class LocalTaskEditor extends LitElement {
   }
 
   _typeFields(type) {
-    const { states, workflows, fields, field_schemas: schemas } = this.metadata.catalogue;
+    const { states, workflows, fields } = this.metadata.catalogue;
     const workflow = workflows.find((entry) => entry.id === type.workflow_id);
-    const schema = schemas.find((entry) => entry.id === type.field_schema_id);
+    const schema = this._schema(type);
     const current = this.task === null ? workflow.initial
-      : states.find((entry) => entry.name === this.task.state).id;
+      : workflow.states.find((id) => states.find((entry) => entry.id === id).name === this.task.state);
     const allowed = new Set([current, ...workflow.from_any,
       ...workflow.transitions.filter((edge) => edge.from === current).map((edge) => edge.to)]);
     const stateOptions = workflow.states.filter((id) => allowed.has(id))
@@ -137,7 +147,8 @@ export class LocalTaskEditor extends LitElement {
   }
 
   _changes() {
-    return EDIT_FIELDS.filter((field) => {
+    const type = this._types.find((entry) => entry.id === this.draft.typeId);
+    return this._editFields(type).filter((field) => {
       if (field !== 'customFields') return !sameValue(this.draft[field], this.task[field]);
       const before = this.task.customFields;
       const after = this.draft.customFields;
@@ -164,7 +175,7 @@ export class LocalTaskEditor extends LitElement {
     event.preventDefault();
     if (this.busy || this.conflicts.length > 0) return;
     if (this.task === null) {
-      await this._run(() => dataService.createLocalTask(this.draft));
+      await this._run(() => dataService.createTask(this.draft));
       return;
     }
     const keys = this._changes();
@@ -178,7 +189,7 @@ export class LocalTaskEditor extends LitElement {
 
   _delete() {
     if (this.busy || this.conflicts.length > 0 || !window.confirm(`Delete "${this.task.title}"?`)) return;
-    return this._run(() => dataService.deleteLocalTask(this.task.id, this.task.revision));
+    return this._run(() => dataService.deleteTask(this.task.id, this.task.revision));
   }
 
   render() {
@@ -208,10 +219,10 @@ export class LocalTaskEditor extends LitElement {
       </div>` : nothing}
       <footer><button ?disabled=${this.busy || this.conflicts.length > 0 || type === undefined}>
         ${this.task === null ? 'Create task' : 'Save task'}</button>
-        ${this.task === null ? nothing : html`<button type="button"
+        ${this.task === null || !this.canDelete ? nothing : html`<button type="button"
           ?disabled=${this.busy || this.conflicts.length > 0} @click=${this._delete}>Delete task</button>`}
       </footer></form>`;
   }
 }
 
-customElements.define('local-task-editor', LocalTaskEditor);
+customElements.define('task-editor', TaskEditor);

@@ -13,7 +13,7 @@ Two lists side by side, each with a count badge:
 
 ## Managing accounts
 
-- Add an account by entering an email address and clicking **Add User** or **Add Admin** (Enter also works). If the server requires it, a PAT field for the new account appears.
+- Add an account by entering an email address and clicking **Add User** or **Add Admin** (Enter also works).
 - Promote a user with **Make Admin**; demote an administrator with **Demote**.
 - **Remove** deletes an account immediately, without a confirmation step. You cannot remove or demote your own account.
 - **Reload** re-reads the account lists.
@@ -45,8 +45,8 @@ account-key modal before checking the save confirmation and continuing. Give
 the key to the account owner through a trusted channel.
 
 Reset revokes every remembered browser and active session for the account and
-invalidates its old account key. It preserves the account ID, name, permissions,
-and Azure PAT. The account owner should use **Enrollment** with the replacement
+invalidates its old account key. It preserves the account ID, name, and
+permissions. The account owner should use **Enrollment** with the replacement
 key and save the next key shown after enrollment.
 
 Resetting your own access signs you out. Save the key before confirming; the
@@ -60,7 +60,7 @@ Logical account restore excludes credentials and devices; restored enrollment
 accounts need fresh operator-issued keys. Arrange operator access before restore,
 including for administrators. Entra account replacement is rejected.
 Administrator Remove and self-service Delete account both remove the account,
-PAT, owned saved views/scenarios, and authentication. Retained backups and
+owned saved views/scenarios, and authentication. Retained backups and
 offline drafts on other browsers are outside that deletion.
 
 ## Notes

@@ -4,6 +4,7 @@ import { createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/mockAuth.js';
 
 const adoBackends = { active: 'ado', configured: 'ado', restart_available: false,
   instance_id: 'browser-fixture', backends: [{ id: 'ado', label: 'Azure DevOps', available: true,
+    transports: ['live', 'mock_generator', 'mock_fixture', 'static'],
     configuration_schema: { properties: { transport: { enum: ['live', 'mock_generator', 'mock_fixture', 'static'] } } },
   }] };
 
@@ -143,7 +144,7 @@ test('ADO authentication policy is read-only and excluded from connection saves'
   const editor = page.locator('admin-data-sources');
   const status = editor.locator('#ado-authentication-status');
   const backend = editor.locator('select.backend-select').first();
-  await expect(status).toHaveText('Personal Access Token');
+  await expect(status).toHaveText('Entra ID (broker not configured)');
   await expect(editor.locator('[data-authentication-settings] select')).toHaveCount(0);
   const initialAuthRequests = [...authRequests];
   for (const value of ['ado_mock_fixture', 'ado_mock_generator', 'ado_static']) {
@@ -151,12 +152,12 @@ test('ADO authentication policy is read-only and excluded from connection saves'
     await expect(status).toHaveCount(0);
   }
   await backend.selectOption('ado_live');
-  await expect(status).toHaveText('Personal Access Token');
+  await expect(status).toHaveText('Entra ID (broker not configured)');
   expect(saves).toEqual([]);
   expect(authRequests).toEqual(initialAuthRequests);
   await page.screenshot({ path: testInfo.outputPath('ado-authentication-policy-desktop.png'), fullPage: true });
   await page.reload();
-  await expect(status).toHaveText('Personal Access Token');
+  await expect(status).toHaveText('Entra ID (broker not configured)');
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(editor.locator('.status')).toHaveText('Saved.');
   const patPayloads = [...saves];
@@ -630,15 +631,12 @@ test('Shared header switches applications and opens Configuration under a proxy 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Configuration', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('menuitem', { name: 'Set or update Azure DevOps PAT', exact: true })).toBeFocused();
-  await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Server', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Configuration', exact: true }).click();
-  await expect(page.locator('config-modal #configPat')).toBeVisible();
-  await expect(page.locator('config-modal #configPat')).toBeFocused();
+  await expect(page.locator('config-modal #autosaveInterval')).toBeFocused();
   await page.locator('config-modal #closeConfigBtn').click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath('gear-administration-menu-desktop.png') });

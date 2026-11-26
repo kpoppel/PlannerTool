@@ -75,7 +75,7 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
 
   await page.getByRole('navigation', { name: 'Top menu' }).getByRole('button', { name: /^Plan(?:\s|$)/ }).click();
   await page.locator('plan-menu').getByRole('button', { name: 'Create task' }).click();
-  const createDialog = page.getByRole('dialog', { name: 'Create Local Task' });
+  const createDialog = page.getByRole('dialog', { name: 'Create Task' });
   await createDialog.getByLabel('Task type').selectOption(types[1].id);
   await createDialog.getByLabel('Title').fill('Browser task');
   const createdResponse = page.waitForResponse((response) => response.url().endsWith('/api/tasks/create'));
@@ -86,7 +86,7 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   await page.goto(`/${createdTask.url}`);
   const panel = page.locator('details-panel');
   await panel.getByRole('button', { name: 'Edit source task' }).click();
-  const editDialog = page.getByRole('dialog', { name: 'Edit Local Task' });
+  const editDialog = page.getByRole('dialog', { name: 'Edit Task' });
   await editDialog.getByLabel('State').selectOption('Refine');
   await editDialog.getByLabel('Description').fill('Edited in Chromium');
   await editDialog.getByRole('button', { name: 'Save task' }).click();
@@ -111,7 +111,7 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   await expect(sidebar.getByRole('button', { name: 'Local', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('button', { name: 'Azure DevOps', exact: true })).toHaveCount(0);
   await sidebar.getByRole('button', { name: 'Local', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Local Projects' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Plans', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Local plan' })).toBeVisible();
   await page.getByRole('button', { name: 'Catalogue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Local Catalogue' })).toBeVisible();

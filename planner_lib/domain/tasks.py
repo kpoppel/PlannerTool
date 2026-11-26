@@ -93,6 +93,8 @@ class WriteResult(TypedDict):
     ok: bool
     updated: int
     errors: List[str]
+    # Present when the reviewed base revision no longer matches; nothing was written.
+    conflicts: NotRequired[List['FieldConflict']]
 
 
 class UpdateBase(TypedDict):

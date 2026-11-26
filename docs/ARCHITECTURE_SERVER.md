@@ -184,7 +184,7 @@ on route handlers.
   device validation for sessions.
 - `CapacityService` calculates capacity from configured team data.
 - The ADO process catalogue owns project-to-process metadata, type imports and
-  synchronized display tiers; metadata loads use the acting user's PAT.
+  synchronized display tiers; metadata loads use the acting user's delegated credential.
 - `WorkforceCostService` prices anonymous supplier/profile staffing with separate
   internal/external accounting and non-charged group rollups.
 - `AdminService` handles privileged configuration, account, cache, backup, and
@@ -201,7 +201,7 @@ scenario/view backends, and event backends. `BackendPort` is the composite
 remote-data contract and deliberately excludes local configuration data.
 
 Remote operations receive a `BackendCredential` containing an explicit `kind`
-(`pat` or `bearer`), opaque `token` and authenticated account UUID as `user_id`.
+(`bearer`, or `mock` for mock backends), opaque `token` and authenticated account UUID as `user_id`.
 Cache-satisfied reads may not need a credential; local config
 and user-data operations never require one. Azure SDK lifecycle and calls stay
 behind the backend/Azure adapter boundary.
@@ -210,21 +210,21 @@ behind the backend/Azure adapter boundary.
 
 `get_session_context_from_request` resolves identity without a backend token.
 Remote routes use `get_session_credential_from_request`, backed by
-`PatCredentialPolicy` or `DelegatedCredentialProvider`; repositories use the same provider for
+`DelegatedCredentialProvider` under Entra, or `NoRemoteCredentials` otherwise (which
+issues none); repositories use the same provider for
 UUID-based acquisition. Credentials are request/operation scoped, including
 background refreshes, and are not persisted with shared snapshots.
 
-`PatCredentialPolicy` owns the current live-ADO requirement and PAT failure
-mapping; `AccountManager` owns validation, encrypted storage and rejection of the
-specific failed token. `BackendAuthError` carries operation context to the HTTP
-adapter without generic callers rejecting PATs. The shared Azure authentication
-factory selects PAT Basic or delegated Bearer authentication for SDK and wiki clients.
+Routes that need live ADO without a credential return 403 `ado_credential_required`;
+an unusable credential returns 403 `ado_credential_unusable`. `BackendAuthError`
+carries operation context to the HTTP adapter. The shared Azure authentication
+factory builds delegated Bearer authentication for SDK and wiki clients. Azure
+DevOps PATs are no longer supported.
 
 The planner and administration frontends share `createAuthRecovery`. The HTTP
 transport invokes injected recovery handlers: session 401 recovery retains the
-existing replay policy, while PAT 403 failures post an actionable notification
-without awaiting a dialog or replaying the request. Authorized local
-administration remains usable without a valid PAT.
+existing replay policy; backend credential failures are not replayed. Authorized
+local administration remains usable without an ADO credential.
 
 The external broker owns Entra verification and MSAL renewal. Local application
 sessions remain independent of delegated ADO authority. See
@@ -256,7 +256,7 @@ where configured.
   persistent remote-cache entries, invalidation, and background refresh.
 - Repositories translate backend capabilities into application operations.
 - `SessionManager` validates persisted sessions and device bindings without
-  loading PATs; request-local identity and credential resolution remain separate.
+  acquiring ADO tokens; request-local identity and credential resolution remain separate.
 
 ### Code-Level Construction Diagram
 

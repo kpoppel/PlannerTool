@@ -4,11 +4,8 @@ import math
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from planner_lib.cost.allocation_rule import allocation_conflicts
-from planner_lib.domain.allocation_availability import project_allocation_availability, validate_allocation_change
 from planner_lib.domain.iteration_sets import iteration_preset_id
 from planner_lib.domain.tasks import TaskConflictError
-from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.local.catalogue import _default_columns, _default_value, _is_date, _typed_default
 
 
@@ -58,10 +55,10 @@ class LocalTasks:
                 JOIN task_types AS types ON types.type_id = ?
                 JOIN processes USING (process_id)
                 JOIN task_type_workflows AS workflows ON workflows.type_id = types.type_id
-                JOIN workflow_states AS states ON states.workflow_id = workflows.workflow_id AND states.is_initial
+                JOIN workflow_states AS states ON states.workflow_id = workflows.workflow_id AND states.is_initial = 1
                 JOIN task_type_field_schemas AS schemas ON schemas.type_id = types.type_id
                 LEFT JOIN plan_iteration_sets AS presets ON presets.plan_id = plans.plan_id
-                WHERE plans.plan_id = ? AND plans.backend_id = 'local' AND NOT plans.archived
+                WHERE plans.plan_id = ? AND plans.backend_id = 'local' AND plans.archived = 0
                     AND processes.backend_id = plans.backend_id
                     AND (types.backlog_level = 'task' OR EXISTS (
                         SELECT 1 FROM plan_task_types WHERE plan_id = plans.plan_id AND type_id = types.type_id))
@@ -89,7 +86,7 @@ class LocalTasks:
             self._record_history(connection, task_id, 1, actor, timestamp, str(uuid4()), {}, changes)
             return task
 
-    def update_batch(self, edits, actor):
+    def update_batch(self, edits, actor, validate):
         timestamp, batch_id = datetime.now(timezone.utc).isoformat(), str(uuid4())
         if not isinstance(edits, list):
             raise ValueError('Local task updates must be a list')
@@ -143,14 +140,7 @@ class LocalTasks:
             if relations:
                 self._replace_relations(connection, relations)
             resulting = self._read(connection)
-            if any(fields.keys() & {'capacity', 'start', 'end', 'relations', 'iterationPath', 'state'}
-                   for fields in edits_by_id.values()):
-                definitions = TeamCatalogue(self._storage.load('config', 'teams')).definitions()
-                memberships = {entry['id']: entry['group_id'] for entry in definitions
-                               if entry['kind'] == 'team' and entry['group_id'] is not None}
-                conflicts = allocation_conflicts(resulting, memberships)
-                if conflicts:
-                    raise ValueError(f'Allocation conflict: {conflicts}')
+            validate(originals, resulting)
             for current in resulting:
                 original = originals[current['id']]
                 changes = {field: current[field] for field in sorted(EDIT_FIELDS - {'customFields'})
@@ -319,18 +309,10 @@ class LocalTasks:
             connection.executemany('INSERT INTO task_custom_values VALUES (?, ?, ?, ?, ?)',
                                    [(identity, *value) for value in values])
         if 'capacity' in fields:
-            definitions = TeamCatalogue(self._storage.load('config', 'teams')).definitions()
-            plan = connection.execute('SELECT kind, allocation_override, archived FROM plan_definitions WHERE plan_id = ?',
-                                      (row['plan_id'],)).fetchone()
-            owner = {'id': row['plan_id'], 'type': plan['kind']}
-            if plan['allocation_override']:
-                owner['allocatable_ids'] = [entry[0] for entry in connection.execute(
-                    'SELECT team_id FROM plan_allocatable_teams WHERE plan_id = ? ORDER BY position', (row['plan_id'],))]
-            defaults = self._storage.load('config', 'projects')['allocation_defaults']
-            availability = project_allocation_availability(current, [] if plan['archived'] else [owner],
-                                                           definitions, defaults)
             capacity = fields['capacity']
-            validate_allocation_change(availability, capacity)
+            if not isinstance(capacity, list) or not all(
+                    isinstance(entry, dict) and set(entry) == {'team', 'capacity'} for entry in capacity):
+                raise ValueError('capacity must be a list of {team, capacity}')
             connection.execute('DELETE FROM task_allocations WHERE task_id = ?', (identity,))
             connection.executemany('INSERT INTO task_allocations VALUES (?, ?, ?)',
                                    [(identity, entry['team'], entry['capacity']) for entry in capacity])
@@ -453,18 +435,16 @@ class LocalTasks:
         return values
 
     def read(self):
-        with self._database.connect() as connection:
-            connection.execute('BEGIN')
+        with self._database.read() as connection:
             return self._read(connection)
 
     def read_collection(self):
-        with self._database.connect() as connection:
-            connection.execute('BEGIN')
+        with self._database.read() as connection:
             selected = {}
             for row in connection.execute('''
                 SELECT plans.plan_id, types.process_id, types.name FROM plan_definitions AS plans
                 LEFT JOIN plan_task_types USING (plan_id) LEFT JOIN task_types AS types USING (type_id)
-                WHERE plans.backend_id = 'local' AND NOT plans.archived ORDER BY plans.display_order
+                WHERE plans.backend_id = 'local' AND plans.archived = 0 ORDER BY plans.display_order
             '''):
                 types = selected.setdefault(row['plan_id'], set())
                 if row['process_id'] is not None:

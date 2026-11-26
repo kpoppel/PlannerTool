@@ -7,7 +7,8 @@ SDK boundary, all caching, normalisation, and business logic in the
 planner_lib azure layer is fully exercised against the recorded data.
 
 Usage:
-    AZURE_DEVOPS_PAT=<pat> python scripts/record_azure_mock.py [options]
+    az login && python scripts/record_azure_mock.py [options]
+    (or set AZURE_DEVOPS_TOKEN to an Azure DevOps Bearer token)
 
 Options:
     --data-dir DIR       PlannerTool data directory (default: data)
@@ -395,7 +396,7 @@ def _build_wiql(area_path: str, task_types: Optional[List[str]], include_states:
 # Main recording logic
 # ---------------------------------------------------------------------------
 
-def record(data_dir: str, output_dir: str, with_history: bool, pat: str) -> None:
+def record(data_dir: str, output_dir: str, with_history: bool, credential: dict) -> None:
     from planner_lib.azure.AzureClient import AzureClient
     from azure.devops.v7_1.work_item_tracking.models import Wiql
     try:
@@ -431,7 +432,7 @@ def record(data_dir: str, output_dir: str, with_history: bool, pat: str) -> None
         'with_history': with_history,
     }
 
-    with native.connect_pat(pat) as c:
+    with native.connect(credential) as c:
         conn = c.conn
         core_client = conn.clients.get_core_client()
         work_client = conn.clients.get_work_client()
@@ -634,13 +635,10 @@ def main() -> None:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    pat = os.environ.get('AZURE_DEVOPS_PAT', '')
-    if not pat:
-        raise SystemExit("AZURE_DEVOPS_PAT environment variable must be set.")
-
+    from scripts.ado_token import ado_bearer_credential
     output_dir = args.output_dir or str(Path(args.data_dir) / 'azure_mock')
     record(data_dir=args.data_dir, output_dir=output_dir,
-           with_history=args.with_history, pat=pat)
+           with_history=args.with_history, credential=ado_bearer_credential())
 
 
 if __name__ == '__main__':

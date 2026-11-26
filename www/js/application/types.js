@@ -110,8 +110,7 @@
  *   firstSeenAt: number,
  *   lastSeenAt: number,
  *   count: number,
- *   unread: boolean,
- *   actionId?: string
+ *   unread: boolean
  * }} NotificationEntry
  */
 

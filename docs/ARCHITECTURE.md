@@ -678,12 +678,13 @@ Stable account IDs own user data and credentials. Email is an enrollment lookup
 and display attribute, not the persistent owner identity. Browser authentication
 uses HTTP-only `sessionId` and `plannerDevice` cookies. `/api/session` renews from
 an enrolled device; enrollment uses the generated account-key workflow. Credentials
-are persisted as hashes; account PATs remain encrypted at rest. Email-only sessions
-and `X-Session-Id` are unsupported.
+are persisted as hashes; Entra broker grants are encrypted at rest. Email-only sessions
+and `X-Session-Id` are unsupported. Live Azure DevOps uses delegated Entra Bearer
+tokens only; PATs are no longer supported.
 
 Identity and credential resolution are request-local and separate. Identity-only
-routes do not decrypt PATs. Credential-bearing operations resolve the current
-account PAT once per request; identities and decrypted PATs are not shared across
+routes do not acquire ADO tokens. Credential-bearing operations resolve the acting
+account's delegated credential per request; identities and tokens are not shared across
 requests or users. Azure client connections are worker-thread scoped. Middleware
 rechecks persisted device/session validity before renewing cookies, and cookie
 paths follow the installation root. Backend handlers enforce ordinary and admin

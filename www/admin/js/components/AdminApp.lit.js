@@ -251,7 +251,7 @@ export class AdminApp extends LitElement {
       case 'Data Sources':
         return html`<admin-data-sources></admin-data-sources>`;
       case 'Users':
-        return html`<admin-users .taskBackendId=${this.taskBackendId}></admin-users>`;
+        return html`<admin-users></admin-users>`;
       case 'Workforce':
         return html`<admin-workforce .permissions=${this.permissions}></admin-workforce>`;
       case 'Utilities':

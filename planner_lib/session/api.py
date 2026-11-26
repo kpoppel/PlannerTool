@@ -9,7 +9,6 @@ from planner_lib.services.resolver import resolve_service
 from planner_lib.session.auth import DEVICE_AGE
 from planner_lib.middleware.admin import require_admin_session
 from planner_lib.accounts.constants import AccountPermissions
-from planner_lib.accounts.config import CredentialValidationError
 
 router = APIRouter()
 CURRENT_RELEASE = 'v5.0.0'
@@ -35,9 +34,8 @@ async def authentication_config(request: Request, response: Response):
     response.headers['Cache-Control'] = 'no-store'
     if _is_entra(request):
         return {'mode': 'broker', 'capabilities': resolve_service(request, 'login_adapter').profile()['capabilities']}
-    accounts = resolve_service(request, 'account_manager')
-    return {'mode': 'pat' if accounts.requires_pat() else 'local', 'capabilities': {
-        'pat': accounts.requires_pat(), 'enrollment': True, 'reauthenticate': False,
+    return {'mode': 'local', 'capabilities': {
+        'enrollment': True, 'reauthenticate': False,
         'logout': True, 'deleteAccount': True}}
 
 
@@ -181,10 +179,10 @@ class EnrollmentEmail(BaseModel):
 
 
 class Enrollment(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     email: str
     name: str = ''
     accountKey: str = ''
-    pat: str | None = None
 
 
 class AccountDeletion(BaseModel):
@@ -223,19 +221,15 @@ async def enrollment_status(payload: EnrollmentEmail, response: Response, reques
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     response.headers['Cache-Control'] = 'no-store'
-    return {'requiresKey': requires_key,
-            'requiresPat': not requires_key
-            and resolve_service(request, 'account_manager').requires_pat()}
+    return {'requiresKey': requires_key}
 
 
 @router.post('/auth/enroll')
 async def enroll(payload: Enrollment, response: Response, request: Request):
     try:
         device, session, result = resolve_service(request, 'login_adapter').enroll(
-            payload.email, payload.name, payload.accountKey, payload.pat
+            payload.email, payload.name, payload.accountKey
         )
-    except CredentialValidationError as error:
-        raise HTTPException(status_code=400, detail={'error': error.code}) from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
     except PermissionError as error:
@@ -274,8 +268,6 @@ async def current_account(request: Request):
     accounts = resolve_service(request, 'account_manager')
     profile = resolve_service(request, 'login_adapter').profile(context['account_id'])
     return {'email': email, 'name': profile['name'],
-            'patRequired': accounts.requires_pat(),
-            'patError': resolve_service(request, 'credential_policy').credential_error(context['account_id']),
             'permissions': [permission for permission in AccountPermissions.ALL
                             if accounts.has_permission(email, permission)],
             'currentDeviceId': context['device_id'],

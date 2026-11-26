@@ -3,8 +3,6 @@ from collections import defaultdict, deque
 
 from planner_lib.backend.selection import LOCAL_BACKEND_ID
 from planner_lib.domain.tasks import TaskConflictError
-from planner_lib.local.catalogue import LocalCatalogue
-from planner_lib.local.plans import LocalPlans
 from planner_lib.local.tasks import LocalTasks
 
 
@@ -12,19 +10,21 @@ class LocalTaskBackend:
     BACKEND_ID = LOCAL_BACKEND_ID
     CAPABILITIES = frozenset({'task_read', 'task_create', 'task_publish', 'task_edit', 'task_delete',
                               'field_merge', 'relations_publish', 'history', 'markers', 'catalogue_edit'})
+    # The database is authoritative; a response cache would serve stale revisions.
+    CACHEABLE = False
     is_remote = False
 
     @classmethod
-    def build_from_flags(cls, flags, *, planner_database, storage, **services):
-        return cls(planner_database, storage)
+    def build_from_flags(cls, flags, *, planner_database, storage, local_catalogue, local_plans, **services):
+        return cls(planner_database, storage, local_catalogue, local_plans)
 
-    def __init__(self, database, storage):
+    def __init__(self, database, storage, catalogue, plans):
         self._storage = storage
-        self._catalogue = LocalCatalogue(database)
-        self._plans = LocalPlans(database, storage)
+        self._catalogue = catalogue
+        self._plans = plans
         self._tasks = LocalTasks(database, storage)
 
-    def create_task(self, payload, actor_id):
+    def create_task(self, payload, actor_id, credential):
         return self._tasks.create(payload, actor_id)
 
     def task_editor_metadata(self):
@@ -35,7 +35,7 @@ class LocalTaskBackend:
             {'id': plan['id'], 'name': plan['name'], 'typeIds': [*plan['task_types'], *task_level]}
             for plan in self.fetch_project_map()]}
 
-    def write_tasks(self, updates, credential, *, actor_id):
+    def write_tasks(self, updates, credential, *, actor_id, validate):
         edits = []
         for update in updates:
             base = update.get('base')
@@ -44,12 +44,12 @@ class LocalTaskBackend:
             edits.append({'id': update.get('id'), 'revision': base['revision'], 'before': base['fields'],
                           'fields': {field: value for field, value in update.items() if field not in {'id', 'base'}}})
         try:
-            tasks = self._tasks.update_batch(edits, actor_id)
+            tasks = self._tasks.update_batch(edits, actor_id, validate)
         except TaskConflictError as exc:
             return {'ok': False, 'updated': 0, 'errors': [], 'conflicts': exc.conflicts}
         return {'ok': True, 'updated': len(tasks), 'errors': [], 'conflicts': []}
 
-    def delete_task(self, task_id, revision, actor_id):
+    def delete_task(self, task_id, revision, actor_id, credential):
         self._tasks.delete(task_id, revision, actor_id)
 
     def fetch_history(self, work_item_id, credential=None):

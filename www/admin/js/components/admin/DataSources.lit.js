@@ -714,7 +714,8 @@ export class DataSources extends LitElement {
             <div>
               <strong>Server restart required.</strong>
               ${needsRestart ? 'Save your changes first.' : (this._restartAvailable
-                ? 'Restart the server to activate the saved backend.' : 'Restart is unavailable with this launcher.')}
+                ? 'Restart the server to activate the saved backend.'
+                : 'Restart the server process manually to activate the saved backend.')}
             </div>
           </div>` : ''}
 

@@ -80,22 +80,18 @@ def _make_task_repository():
     return TaskRepo()
 
 
-def _make_session_mgr(authenticated_client, pat='token', email='test@example.com', account_id='test-account-id'):
-    """Session identity stub with credentials persisted in the account manager."""
+def _make_session_mgr(authenticated_client, token='token', email='test@example.com', account_id='test-account-id'):
+    """Session identity stub with a Bearer credential provider."""
     from types import SimpleNamespace
-    from planner_lib.accounts.config import AccountCredentialsPayload
-    authenticated_client.app.state.container.get('account_manager').update_credentials(
-        AccountCredentialsPayload(email=email, pat=pat)
-    )
     register_service_on_client(authenticated_client, 'credential_provider', SimpleNamespace(
         get_credential=lambda user_id: (
-            {'kind': 'pat', 'token': pat, 'user_id': user_id} if pat else None
+            {'kind': 'bearer', 'token': token, 'user_id': user_id} if token else None
         ),
     ))
     register_service_on_client(authenticated_client, 'backend', SimpleNamespace(is_remote=True))
     register_service_on_client(authenticated_client, 'credential_policy', SimpleNamespace(
         credential_error=lambda user_id: None,
-        authentication_failed=lambda credential: 'pat_invalid',
+        authentication_failed=lambda credential: 'access_denied',
     ))
     class FakeSessionMgr:
         def get(self, sid):
@@ -127,8 +123,8 @@ def _make_backend_with_warning():
 
         def consume_diagnostics(self, user_id=None):
             return [{
-                'code': 'tasks_stale_invalid_pat',
-                'message': 'PAT is invalid or expired. Showing cached task data that may be out of date.',
+                'code': 'tasks_stale_credential_rejected',
+                'message': 'Azure DevOps rejected the credential. Showing cached task data that may be out of date.',
                 'severity': 'warning',
                 'user_id': user_id,
             }]
@@ -169,7 +165,7 @@ def test_tasks_publication_reports_allocation_validation_error(authenticated_cli
                         cookies=authenticated_client.cookies)
     response = client.post('/api/tasks', json=[{'id': 'item', 'capacity': []}])
     assert response.status_code == 422
-    assert response.json()['error'] == 'invalid_allocation'
+    assert response.json()['error'] == 'invalid_task'
 
 
 def test_teams_missing_service(authenticated_client, monkeypatch):
@@ -218,7 +214,7 @@ def test_tasks_list_and_project_param(authenticated_client):
     assert task_repo.last_read_args['project_id'] == '42'
 
 
-def test_tasks_returns_stale_data_with_pat_warning(authenticated_client):
+def test_tasks_returns_stale_data_with_credential_warning(authenticated_client):
     import json
 
     task_repo = _make_task_repository()
@@ -230,7 +226,7 @@ def test_tasks_returns_stale_data_with_pat_warning(authenticated_client):
     assert r.status_code == 200
     assert len(r.json()) == 2
     diagnostics = json.loads(r.headers['X-Backend-Diagnostics'])
-    assert diagnostics[0]['code'] == 'tasks_stale_invalid_pat'
+    assert diagnostics[0]['code'] == 'tasks_stale_credential_rejected'
 
 
 @pytest.mark.parametrize('code,status', [
@@ -282,6 +278,7 @@ def test_tasks_remote_auth_failure_serves_real_snapshot(
     authenticated_client, configuration_changed, code, status,
 ):
     import json
+    from contextlib import nullcontext
     from unittest.mock import Mock
     from planner_lib.backend.caching import CachingBackend
     from planner_lib.repository.task_repository import TaskRepository
@@ -300,11 +297,13 @@ def test_tasks_remote_auth_failure_serves_real_snapshot(
     projects.get_project_map.return_value = [{'id': '42', 'area_path': area}]
     provider = Mock()
     provider.get_credential.side_effect = AuthFailure(code, status)
-    backend = CachingBackend(inner, MemoryStorage())
+    provider.renew.side_effect = lambda credential: credential
+    provider.publication_guard.side_effect = lambda credential: nullcontext()
+    backend = CachingBackend(inner, MemoryStorage(), credential_provider=provider)
     repository = TaskRepository(backend, projects, provider)
     try:
         original = repository.read(credential={
-            'kind': 'pat', 'token': 'synthetic', 'user_id': 'test-account-id',
+            'kind': 'bearer', 'token': 'synthetic', 'user_id': 'test-account-id',
         })
         if configuration_changed:
             projects.get_project_map.return_value = [
@@ -362,7 +361,7 @@ def test_task_refresh_queues_work_without_reading_or_invalidating(authenticated_
     assert response.status_code == 202
     assert response.json() == {'status': 'queued'}
     assert repository.last_read_args is None
-    assert repository.last_refresh_credential == {'kind': 'pat', 'token': 'token', 'user_id': 'test-account-id'}
+    assert repository.last_refresh_credential == {'kind': 'bearer', 'token': 'token', 'user_id': 'test-account-id'}
     diagnostic, = json.loads(response.headers['X-Backend-Diagnostics'])
     assert diagnostic['code'] == 'task_refresh_requested'
     assert 'reload' in diagnostic['message'].lower()
@@ -396,19 +395,19 @@ def test_tasks_returns_every_diagnostic_without_private_metadata(authenticated_c
     backend.consume_diagnostics.assert_called_once_with(user_id='test-account-id')
 
 
-def test_tasks_invalid_pat_without_stale_returns_403(authenticated_client):
+def test_tasks_rejected_credential_without_stale_returns_403(authenticated_client):
     from planner_lib.backend.errors import BackendAuthError
 
     class TaskRepo:
         def read(self, project_id=None, credential=None):
-            raise BackendAuthError('invalid_pat')
+            raise BackendAuthError('unauthorized')
 
     register_service_on_client(authenticated_client, 'task_repository', TaskRepo())
     register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
 
     r = authenticated_client.get('/api/tasks')
     assert r.status_code == 403
-    assert r.json() == {'error': 'pat_invalid'}
+    assert r.json() == {'error': 'access_denied'}
 
 
 def test_tasks_backend_outage_without_stale_returns_503(authenticated_client):
@@ -478,7 +477,7 @@ def test_iterations_returns_set_id_keyed_payload(authenticated_client):
     task_repo = _make_task_repository()
 
     class AzureClientStub:
-        requires_pat = False
+        is_remote = False
 
     register_service_on_client(authenticated_client, 'iteration_repository', task_repo)
     register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))
@@ -506,7 +505,7 @@ def test_iterations_without_filter_returns_set_id_keyed_payload(authenticated_cl
     task_repo = _make_task_repository()
 
     class AzureClientStub:
-        requires_pat = False
+        is_remote = False
 
     register_service_on_client(authenticated_client, 'iteration_repository', task_repo)
     register_service_on_client(authenticated_client, 'session_manager', _make_session_mgr(authenticated_client))

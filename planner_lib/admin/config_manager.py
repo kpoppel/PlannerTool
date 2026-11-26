@@ -294,10 +294,7 @@ class ConfigManager:
         try:
             users: dict = {}
             for user_key in self._storage.list_keys('accounts'):
-                raw = self._storage.load('accounts', user_key)
-                users[user_key] = {key: value for key, value in raw.items()
-                                   if key not in ('pat', 'pat_invalid')}
-                users[user_key]['pat'] = None
+                users[user_key] = self._storage.load('accounts', user_key)
             backup_data["accounts"] = {"users": users}
         except Exception as e:
             logger.error("Failed to backup accounts: %s", e)
@@ -401,8 +398,10 @@ class ConfigManager:
                     and self._storage.load('config', 'authentication')['active'] == 'entra'):
                 raise ValueError('Entra account replacement requires independent operator recovery')
             self._validate_authentication(data)
-            if any(record.get('pat') for record in data['accounts']['users'].values()):
-                raise ValueError('Logical restore cannot import PAT authority; supply fresh credentials')
+            if any('pat' in record or 'pat_invalid' in record
+                   for record in data['accounts']['users'].values()):
+                raise ValueError('Account records cannot contain ADO personal access tokens; '
+                                 'PAT authentication was removed')
             if any(record != {'enrolled': False}
                    for record in data['authentication']['account_auth'].values()):
                 raise ValueError('Logical restore cannot import enrollment authority; enroll afresh')

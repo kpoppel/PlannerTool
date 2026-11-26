@@ -1,7 +1,7 @@
 import pytest
 from contextlib import closing
 
-from planner_lib.accounts.config import AccountManager, AccountCredentialsPayload
+from planner_lib.accounts.config import AccountManager
 from planner_lib.middleware.session import SessionManager
 from planner_lib.session.auth import AuthManager
 from planner_lib.storage.diskcache_backend import DiskCacheStorage
@@ -9,46 +9,18 @@ from planner_lib.storage.diskcache_backend import DiskCacheStorage
 LIVE_ADO = {'organization_url': 'example', 'feature_flags': {}, 'transport': 'live'}
 
 
-
-
-def test_live_ado_enrollment_requires_pat_without_creating_account(client, app):
-    storage = app.state.container.get('storage')
-    first = client.post('/api/auth/enroll', json={
-        'email': 'existing@example.com', 'name': 'Existing',
-    }).json()
-    storage.save('config', 'ado_config', LIVE_ADO)
-
-    status = client.post('/api/auth/enrollment-status', json={
-        'email': 'existing@example.com',
-    })
-    assert status.json() == {'requiresKey': True, 'requiresPat': False}
-    existing = client.post('/api/auth/enroll', json={
-        'email': 'existing@example.com', 'accountKey': first['accountKey'],
-    })
-    assert existing.status_code == 200
-
-    status = client.post('/api/auth/enrollment-status', json={'email': 'new@example.com'})
-    assert status.json() == {'requiresKey': False, 'requiresPat': True}
-    response = client.post('/api/auth/enroll', json={'email': 'new@example.com', 'name': 'New'})
-
-    assert response.status_code == 400
-    assert response.json()['error'] == 'pat_required'
-    assert not storage.exists('accounts', 'new@example.com')
-
-
-def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monkeypatch):
-    from planner_lib.azure.AzureClient import AzureClient
-    from fastapi.testclient import TestClient
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda self: [])
+def test_live_backend_without_delegated_credentials_gates_remote_apis_but_keeps_local_admin(
+    client, app,
+):
     response = client.post('/api/auth/enroll', json={'email': 'admin@example.com', 'name': 'Admin'})
     assert response.status_code == 200
     storage = app.state.container.get('storage')
     storage.save('config', 'ado_config', LIVE_ADO)
 
-    for path in ('/api/azure/area-paths?project=Example',):
+    for path in ('/api/azure/area-paths?project=Example', '/api/history/tasks', '/api/v1/server/tasks'):
         response = client.get(path)
         assert response.status_code == 403
-        assert response.json()['error'] == 'pat_required'
+        assert response.json()['error'] == 'ado_credential_required'
     assert client.get('/admin/v1/projects').status_code == 200
     assert client.get('/admin/v1/ado-processes').status_code == 200
     assert client.get('/admin/check').json() == {'ok': True, 'permissions': ['admin']}
@@ -56,55 +28,33 @@ def test_live_backend_switch_gates_apis_but_allows_pat_repair(client, app, monke
                  '/admin/v1/groups-config', '/admin/v1/system'):
         assert client.get(path).status_code == 200
     for path, content in (
-        ('/admin/v1/ado', LIVE_ADO),
         ('/admin/v1/events-config', {'event_backend': 'local'}),
         ('/admin/v1/groups-config', {'groups_backend': 'local'}),
-        ('/admin/v1/system', {'feature_flags': {}, 'task_backend_id': 'ado', 'cache': {'ttls': {}}}),
     ):
         assert client.post(path, json={'content': content}).status_code == 200
-
-    accounts = app.state.container.get('account_manager')
-    delegate = TestClient(app)
-    enrollment = delegate.post('/api/auth/enroll', json={
-        'email': 'delegate@example.com', 'name': 'Delegate', 'pat': 'delegate-pat',
-    })
-    assert enrollment.status_code == 200
-    accounts.reject_pat('delegate@example.com', 'delegate-pat')
-    assert delegate.get('/admin/check').status_code == 401
-    assert delegate.get('/admin/v1/ado').status_code == 401
+    for path, content in (
+        ('/admin/v1/ado', LIVE_ADO),
+        ('/admin/v1/system', {'feature_flags': {}, 'task_backend_id': 'ado', 'cache': {'ttls': {}}}),
+    ):
+        rejected = client.post(path, json={'content': content})
+        assert rejected.status_code == 400
+        assert rejected.json()['error'] == 'invalid_config'
 
     assert client.get('/api/auth/me').status_code == 200
     assert client.post('/api/session').status_code == 200
-    response = client.post('/api/config', json={'email': 'admin@example.com', 'pat': 'fixture-pat'})
-    assert response.status_code == 200
-    assert response.json()['ok'] is True
-    assert client.get('/admin/check').status_code == 200
-    rejected = client.post('/admin/v1/users', json={'email': 'new@example.com', 'permissions': []})
-    assert rejected.status_code == 400
-    assert rejected.json()['error'] == 'pat_required'
-    created = client.post('/admin/v1/users', json={
-        'email': 'new@example.com', 'permissions': [], 'pat': 'new-user-fixture-pat',
-    })
+    created = client.post('/admin/v1/users', json={'email': 'new@example.com', 'permissions': []})
     assert created.status_code == 200
     assert storage.exists('accounts', 'new@example.com')
 
 
-@pytest.mark.parametrize('pat_state', ['missing', 'invalid'])
-def test_local_permission_update_does_not_request_ado_credentials(client, app, monkeypatch, pat_state):
+def test_local_permission_update_does_not_request_ado_credentials(client, app, monkeypatch):
     from unittest.mock import Mock
-    from planner_lib.azure.AzureClient import AzureClient
 
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     client.post('/api/auth/enroll', json={'email': 'admin@example.com', 'name': 'Admin'})
     container = app.state.container
     accounts = container.get('account_manager')
     account_id = accounts.get_account_id('admin@example.com')
     container.get('storage').save('config', 'ado_config', LIVE_ADO)
-    if pat_state == 'invalid':
-        assert client.post('/api/config', json={
-            'email': 'admin@example.com', 'pat': 'revoked-pat',
-        }).status_code == 200
-        accounts.reject_pat('admin@example.com', 'revoked-pat')
     acquire = Mock(side_effect=AssertionError('Local permissions must not acquire credentials'))
     monkeypatch.setattr(container.get('credential_provider'), 'get_credential', acquire)
 
@@ -121,14 +71,11 @@ def test_local_permission_update_does_not_request_ado_credentials(client, app, m
     }).status_code == 401
 
 
-@pytest.mark.parametrize('pat_state', ['missing', 'invalid'])
-def test_admin_reset_without_valid_pat_rotates_key_and_revokes_devices(
-    client, app, monkeypatch, pat_state,
+def test_admin_reset_rotates_key_and_revokes_devices_without_ado_credentials(
+    client, app, monkeypatch,
 ):
     from unittest.mock import Mock
-    from planner_lib.azure.AzureClient import AzureClient
 
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     enrollment = client.post('/api/auth/enroll', json={
         'email': 'admin@example.com', 'name': 'Administrator',
     }).json()
@@ -136,11 +83,6 @@ def test_admin_reset_without_valid_pat_rotates_key_and_revokes_devices(
     accounts = container.get('account_manager')
     account_id = accounts.get_account_id('admin@example.com')
     container.get('storage').save('config', 'ado_config', LIVE_ADO)
-    if pat_state == 'invalid':
-        assert client.post('/api/config', json={
-            'email': 'admin@example.com', 'pat': 'rejected-pat',
-        }).status_code == 200
-        accounts.reject_pat('admin@example.com', 'rejected-pat')
     acquire = Mock(side_effect=AssertionError('Reset must not acquire an ADO credential'))
     monkeypatch.setattr(container.get('credential_provider'), 'get_credential', acquire)
 
@@ -160,74 +102,12 @@ def test_admin_reset_without_valid_pat_rotates_key_and_revokes_devices(
     acquire.assert_not_called()
 
 
-def test_existing_account_enrollment_does_not_revalidate_or_replace_pat(client, app, monkeypatch):
-    from planner_lib.azure.AzureClient import AzureClient
-    first = client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'}).json()
-    storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', LIVE_ADO)
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
-    configured = client.post('/api/config', json={
-        'email': 'owner@example.com', 'pat': 'active-pat',
-    })
-    assert configured.status_code == 200
-
-    def reject(client):
-        raise RuntimeError('401 Unauthorized')
-
-    monkeypatch.setattr(AzureClient, 'get_projects', reject)
-    response = client.post('/api/auth/enroll', json={
-        'email': 'owner@example.com', 'accountKey': first['accountKey'],
-    })
-    assert response.status_code == 200
-    assert app.state.container.get('account_manager').load('owner@example.com')['pat'] == 'active-pat'
-    assert response.json()['accountKey'] != first['accountKey']
-
-
-@pytest.mark.parametrize('operation', ['tasks', 'azure_browse', 'admin_iterations'])
-def test_ado_auth_failure_routes_to_pat_repair_not_enrollment(client, app, monkeypatch, operation):
-    from contextlib import nullcontext
-    from types import SimpleNamespace
-    from planner_lib.azure.AzureClient import AzureClient
-    from planner_lib.backend.errors import BackendAuthError
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
-    client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
-    storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', LIVE_ADO)
-    client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'valid-pat'})
-    repository = app.state.container.get('task_repository')
-
-    def reject(*args, **kwargs):
-        raise BackendAuthError('401 Unauthorized')
-
-    monkeypatch.setattr(repository, 'read', reject)
-    azure = app.state.container.get('azure_client')
-    monkeypatch.setattr(azure, 'connect', lambda credential: nullcontext(SimpleNamespace(
-        get_area_paths=reject, get_iterations=reject,
-    )))
-    if operation == 'tasks':
-        response = client.get('/api/tasks', headers={'Accept': 'application/json'})
-    elif operation == 'azure_browse':
-        response = client.get('/api/azure/area-paths?project=Example')
-    else:
-        response = client.post('/admin/v1/iterations/browse', json={'project': 'Example'})
-    assert response.status_code == 403
-    assert response.json()['error'] == 'pat_invalid'
-    assert client.get('/admin/check').status_code == 200
-    assert client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'new-pat'}).status_code == 200
-    assert client.get('/admin/check').status_code == 200
-
-
-def test_invalid_pat_keeps_local_admin_and_cached_task_reads_available(
+def test_missing_ado_credential_keeps_local_admin_and_cached_task_reads_available(
     client, app, monkeypatch,
 ):
-    from planner_lib.azure.AzureClient import AzureClient
-
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     client.post('/api/auth/enroll', json={'email': 'reader@example.com', 'name': 'Reader'})
     storage = app.state.container.get('storage')
     storage.save('config', 'ado_config', LIVE_ADO)
-    client.post('/api/config', json={'email': 'reader@example.com', 'pat': 'valid-pat'})
-    app.state.container.get('account_manager').reject_pat('reader@example.com', 'valid-pat')
 
     task_repository = app.state.container.get('task_repository')
     monkeypatch.setattr(task_repository, 'read', lambda **kwargs: [{'id': 'cached-task'}])
@@ -240,19 +120,17 @@ def test_invalid_pat_keeps_local_admin_and_cached_task_reads_available(
 
     rejected_refresh = client.post('/api/tasks/refresh')
     assert rejected_refresh.status_code == 403
-    assert rejected_refresh.json()['error'] == 'pat_invalid'
+    assert rejected_refresh.json()['error'] == 'ado_credential_required'
     rejected_browse = client.get('/api/azure/area-paths?project=Example')
     assert rejected_browse.status_code == 403
-    assert rejected_browse.json()['error'] == 'pat_invalid'
+    assert rejected_browse.json()['error'] == 'ado_credential_required'
+    assert client.get('/admin/check').status_code == 200
 
 
-@pytest.mark.parametrize('pat_state', ['missing', 'invalid'])
 @pytest.mark.parametrize('endpoint', ['view', 'scenario', 'groups', 'events', 'event-categories'])
-def test_local_record_mutations_do_not_require_pat(client, app, monkeypatch, endpoint, pat_state):
+def test_local_record_mutations_do_not_require_ado_credentials(client, app, monkeypatch, endpoint):
     from unittest.mock import Mock
-    from planner_lib.azure.AzureClient import AzureClient
 
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
     assert client.post('/api/auth/enroll', json={
         'email': 'local-writer@example.com', 'name': 'Local Writer',
     }).status_code == 200
@@ -260,15 +138,8 @@ def test_local_record_mutations_do_not_require_pat(client, app, monkeypatch, end
     accounts = container.get('account_manager')
     accounts.set_permissions(accounts.get_account_id('local-writer@example.com'), [])
     container.get('storage').save('config', 'ado_config', LIVE_ADO)
-    if pat_state == 'invalid':
-        assert client.post('/api/config', json={
-            'email': 'local-writer@example.com', 'pat': 'rejected-pat',
-        }).status_code == 200
-        accounts.reject_pat('local-writer@example.com', 'rejected-pat')
-    load = Mock(side_effect=AssertionError('Local records must not load a PAT'))
     acquire = Mock(side_effect=AssertionError('Local records must not acquire credentials'))
     with monkeypatch.context() as local:
-        local.setattr(accounts, 'load', load)
         local.setattr(container.get('credential_provider'), 'get_credential', acquire)
         path = '/api/' + endpoint
         resource_route = endpoint not in {'view', 'scenario'}
@@ -303,18 +174,17 @@ def test_local_record_mutations_do_not_require_pat(client, app, monkeypatch, end
             deleted = client.post(path, json={'op': 'delete', 'data': {'id': item_id}})
             assert deleted.status_code == 200, deleted.text
             assert client.get(path, params={'id': item_id}).status_code == 404
-        load.assert_not_called()
         acquire.assert_not_called()
 
     remote = client.post('/api/tasks/refresh')
     assert remote.status_code == 403
-    assert remote.json()['error'] == ('pat_invalid' if pat_state == 'invalid' else 'pat_required')
+    assert remote.json()['error'] == 'ado_credential_required'
     client.cookies.clear()
     assert client.post(path, json=payload).status_code == 401
 
 
 @pytest.mark.parametrize('endpoint', ['events', 'event-categories'])
-def test_wiki_event_mutations_still_require_pat(client, app, endpoint):
+def test_wiki_event_mutations_still_require_ado_credentials(client, app, endpoint):
     from unittest.mock import Mock
     from planner_lib.backend.errors import BackendAuthError
     from planner_lib.repository.event_repository import EventRepository
@@ -337,82 +207,10 @@ def test_wiki_event_mutations_still_require_pat(client, app, endpoint):
     response = client.post('/api/' + endpoint, json=payload)
 
     assert response.status_code == 403
-    assert response.json()['error'] == 'pat_required'
+    assert response.json()['error'] == 'ado_credential_required'
     operation = backend.create_category if endpoint == 'event-categories' else backend.create_event
     operation.assert_called_once()
     assert operation.call_args.kwargs['credential'] is None
-
-
-@pytest.mark.parametrize('status_code', [401, 403])
-@pytest.mark.parametrize('acquisition', ['request', 'operation'])
-def test_auth_rejection_preserves_replacement_pat(
-    client, app, monkeypatch, status_code, acquisition,
-):
-    from fastapi import Request
-    from unittest.mock import Mock
-    from planner_lib.accounts.config import AccountCredentialsPayload
-    from planner_lib.azure.AzureClient import AzureClient
-    from planner_lib.backend.errors import BackendAuthError
-    from planner_lib.middleware.session import get_session_credential_from_request
-
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
-    client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
-    storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', LIVE_ADO)
-    accounts = app.state.container.get('account_manager')
-    client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'original-pat'})
-    provider = app.state.container.get('credential_provider')
-    acquire = Mock(wraps=provider.get_credential)
-    monkeypatch.setattr(provider, 'get_credential', acquire)
-
-    @app.get('/api/test-auth-rejection')
-    async def reject_original(request: Request):
-        if acquisition == 'request':
-            credential = get_session_credential_from_request(request)
-        else:
-            credential = provider.get_credential(accounts.get_account_id('owner@example.com'))
-        assert credential['token'] == 'original-pat'
-        accounts.update_credentials(AccountCredentialsPayload(
-            email='owner@example.com', pat='replacement-pat',
-        ))
-        raise BackendAuthError(
-            'ADO rejected the operation', status_code=status_code,
-            credential=credential if acquisition == 'operation' else None,
-        )
-
-    response = client.get('/api/test-auth-rejection')
-
-    assert response.status_code == 403
-    assert response.json() == {'error': 'pat_invalid'}
-    acquire.assert_called_once_with(accounts.get_account_id('owner@example.com'))
-    assert accounts.load('owner@example.com')['pat'] == 'replacement-pat'
-    assert accounts.pat_error('owner@example.com') is None
-
-
-@pytest.mark.parametrize('operation', ['repair', 'create'])
-def test_pat_validation_outage_preserves_credentials_and_returns_503(client, app, monkeypatch, operation):
-    from planner_lib.azure.AzureClient import AzureClient
-    from planner_lib.backend.errors import BackendUnavailableError
-    monkeypatch.setattr(AzureClient, 'get_projects', lambda client: [])
-    client.post('/api/auth/enroll', json={'email': 'owner@example.com', 'name': 'Owner'})
-    storage = app.state.container.get('storage')
-    storage.save('config', 'ado_config', LIVE_ADO)
-    client.post('/api/config', json={'email': 'owner@example.com', 'pat': 'valid-pat'})
-
-    def unavailable(client):
-        raise BackendUnavailableError('Fixture outage')
-
-    monkeypatch.setattr(AzureClient, 'get_projects', unavailable)
-    path, payload = ('/api/config', {'email': 'owner@example.com', 'pat': 'replacement-pat'})
-    if operation == 'create':
-        path, payload = ('/admin/v1/users', {'email': 'new@example.com', 'pat': 'new-user-pat'})
-    response = client.post(path, json=payload)
-
-    assert response.status_code == 503
-    assert response.json() == {'error': 'backend_unavailable'}
-    assert app.state.container.get('account_manager').load('owner@example.com')['pat'] == 'valid-pat'
-    assert client.get('/admin/check').status_code == 200
-    assert not storage.exists('accounts', 'new@example.com')
 
 
 def test_account_key_enrollment_rotates_and_preserves_other_browsers(tmp_path, monkeypatch):
@@ -445,7 +243,6 @@ def test_key_authorized_deletion_removes_owned_data_and_preserves_other_accounts
         device, key, session = auth.enroll('owner@example.com', 'Owner')
         owner_id = accounts.get_account_id('owner@example.com')
         admin_id = accounts.get_account_id('admin@example.com')
-        accounts.update_credentials(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
         for namespace, register in [('views', 'view_register'), ('scenarios', 'scenario_register')]:
             storage.save(namespace, owner_id + '_saved', {'private': True})
             storage.save(namespace, owner_id + '_orphan', {'private': True})
@@ -596,22 +393,6 @@ def test_sessions_are_bound_to_account_id_not_reused_email(tmp_path, monkeypatch
         storage.close()
 
 
-def test_credential_provider_resolves_account_id(tmp_path):
-    from planner_lib.accounts.config import AccountCredentialsPayload
-    from planner_lib.backend.credential import PatCredentialPolicy
-
-    storage = DiskCacheStorage(tmp_path)
-    try:
-        accounts = AccountManager(storage)
-        accounts.create_account(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
-        account_id = accounts.get_account_id('owner@example.com')
-        provider = PatCredentialPolicy(accounts)
-        assert provider.get_credential(account_id) == {'kind': 'pat', 'token': 'azure-pat', 'user_id': account_id}
-        assert provider.get_credential('owner@example.com') is None
-    finally:
-        storage.close()
-
-
 def test_attempt_throttle(tmp_path):
     storage = DiskCacheStorage(tmp_path)
     accounts = AccountManager(storage)
@@ -713,7 +494,6 @@ def test_failed_deletion_rolls_back_credentials_and_owned_data(tmp_path, monkeyp
         auth = AuthManager(storage, accounts, SessionManager(accounts, storage))
         auth.enroll('admin@example.com', 'Admin')
         _, key, _ = auth.enroll('owner@example.com', 'Owner')
-        accounts.update_credentials(AccountCredentialsPayload(email='owner@example.com', pat='azure-pat'))
         owner_id = accounts.get_account_id('owner@example.com')
         storage.save('views', owner_id + '_saved', {'private': True})
         storage.save('views', 'view_register', {

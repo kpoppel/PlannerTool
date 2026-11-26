@@ -29,10 +29,10 @@ class EnrollmentLoginAdapter:
     def requires_account_key(self, email):
         return self._auth.requires_account_key(email)
 
-    def enroll(self, email, name='', account_key='', pat=None):
+    def enroll(self, email, name='', account_key=''):
         initial_setup = not self._storage.exists('auth_control', 'bootstrap_claimed')
         initial_setup = initial_setup and self._accounts.count_all_with_permission('admin') == 0
-        device, next_key, session = self._auth.enroll(email, name, account_key, pat)
+        device, next_key, session = self._auth.enroll(email, name, account_key)
         profile = self.profile(self._accounts.get_account_id(email))
         return device, session, {
             'email': email, 'name': profile['name'], 'accountKey': next_key,
