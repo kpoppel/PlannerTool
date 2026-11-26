@@ -539,8 +539,8 @@ class CachingBackend:
         self._inner.delete_task(task_id, revision, actor_id, credential)
         self.invalidate_cache()
 
-    def task_editor_metadata(self):
-        return self._inner.task_editor_metadata()
+    def task_editor_metadata(self, credential):
+        return self._inner.task_editor_metadata(credential)
 
     def _patch_task_in_cache(self, task_id: int | str, updates: Dict[str, Any]) -> None:
         """Update every cached fetch_tasks list that contains *task_id* in-place.

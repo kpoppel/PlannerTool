@@ -265,10 +265,10 @@ class TaskRepository:
         credential = self._authoring_credential('task_delete', user_id)
         self._backend.delete_task(task_id, revision, user_id, credential)
 
-    def editor_metadata(self) -> dict:
-        if 'task_edit' not in self._backend.CAPABILITIES and 'task_create' not in self._backend.CAPABILITIES:
-            raise TaskOperationNotSupported('task_edit')
-        return self._backend.task_editor_metadata()
+    def editor_metadata(self, user_id: str) -> dict:
+        capability = 'task_edit' if 'task_edit' in self._backend.CAPABILITIES else 'task_create'
+        credential = self._authoring_credential(capability, user_id)
+        return self._backend.task_editor_metadata(credential)
 
     def _require_publication(self):
         if 'task_publish' not in self._backend.CAPABILITIES:

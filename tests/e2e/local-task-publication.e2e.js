@@ -62,7 +62,7 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   expect(afterConflict.find((task) => task.id === parent.id)).toMatchObject({ revision: 1, relations: [] });
   await publication.getByRole('checkbox').check();
   const [write] = await submit();
-  expect(write.ok()).toBe(true);
+  expect(write.ok(), `${await write.text()}\n${write.request().postData()}`).toBe(true);
   expect(write.request().postDataJSON()).toEqual([{
     id: child.id, relations: [{ type: 'Parent', id: parent.id }], tags: 'Proposed',
     base: { revision: 2, fields: { relations: [], tags: 'Concurrent' } },
@@ -74,7 +74,10 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   ]));
 
   await page.getByRole('navigation', { name: 'Top menu' }).getByRole('button', { name: /^Plan(?:\s|$)/ }).click();
-  await page.locator('plan-menu').getByRole('button', { name: 'Create task' }).click();
+  const createButton = page.locator('plan-menu').getByRole('button', { name: 'Create task' });
+  await expect(createButton).toBeVisible();
+  expect((await createButton.boundingBox()).width).toBeGreaterThan(60);
+  await createButton.click();
   const createDialog = page.getByRole('dialog', { name: 'Create Task' });
   await createDialog.getByLabel('Task type').selectOption(types[1].id);
   await createDialog.getByLabel('Title').fill('Browser task');
@@ -82,6 +85,15 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   await createDialog.getByRole('button', { name: 'Create task' }).click();
   const createdTask = await (await createdResponse).json();
   await expect(createDialog).not.toBeVisible();
+  await expect(page.getByRole('list', { name: 'Tasks', exact: true })
+    .getByRole('button', { name: 'Browser task' })).toBeVisible();
+  expect(createdTask.number).toBe(3);
+  await expect(page.getByRole('list', { name: 'Tasks', exact: true }).getByRole('listitem')
+    .filter({ has: page.getByRole('button', { name: 'Browser task' }) }).getByText(/^#3\b/)).toBeVisible();
+  await page.locator('body').evaluate(() => document.activeElement.blur());
+  await page.keyboard.press('n');
+  await expect(createDialog).toBeVisible();
+  await createDialog.getByRole('button', { name: 'Close', exact: true }).click();
 
   await page.goto(`/${createdTask.url}`);
   const panel = page.locator('details-panel');
@@ -89,10 +101,21 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   const editDialog = page.getByRole('dialog', { name: 'Edit Task' });
   await editDialog.getByLabel('State').selectOption('Refine');
   await editDialog.getByLabel('Description').fill('Edited in Chromium');
+  await editDialog.getByRole('spinbutton', { name: 'Rank' }).fill('512');
   await editDialog.getByRole('button', { name: 'Save task' }).click();
   await expect(editDialog).not.toBeVisible();
   await expect.poll(async () => (await (await page.request.get('/api/tasks')).json())
-    .find((task) => task.id === createdTask.id)).toMatchObject({ state: 'Refine', description: 'Edited in Chromium' });
+    .find((task) => task.id === createdTask.id)).toMatchObject({ state: 'Refine', description: 'Edited in Chromium',
+      number: 3, rank: 512 });
+
+  await panel.getByRole('button', { name: 'Edit source task' }).click();
+  await editDialog.getByLabel('Move before').selectOption(child.id);
+  await editDialog.getByRole('button', { name: 'Save task' }).click();
+  await expect(editDialog).not.toBeVisible();
+  const rankedTasks = await (await page.request.get('/api/tasks')).json();
+  expect(rankedTasks.map(({ number, rank }) => [number, rank])).toEqual([
+    [1, parent.rank], [3, (parent.rank + child.rank) / 2], [2, child.rank],
+  ]);
 
   await panel.getByRole('button', { name: 'Edit source task' }).click();
   page.once('dialog', (dialog) => dialog.accept());
@@ -100,6 +123,19 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   await expect(editDialog).not.toBeVisible();
   await expect.poll(async () => (await (await page.request.get('/api/tasks')).json())
     .some((task) => task.id === createdTask.id)).toBe(false);
+
+  await page.locator('body').evaluate(() => document.activeElement.blur());
+  await page.keyboard.press('n');
+  await createDialog.getByLabel('Task type').selectOption(types[1].id);
+  await createDialog.getByLabel('Title').fill('Saved before refresh failed');
+  await page.route('**/api/projects', (route) => route.fulfill({ status: 503, json: {
+    error: 'backend_unavailable', message: 'Projects could not be refreshed',
+  } }));
+  await createDialog.getByRole('button', { name: 'Create task' }).click();
+  await expect(createDialog.getByRole('status')).toContainText('Task saved, but refreshing failed');
+  await expect(createDialog.locator('task-editor')).toHaveAttribute('inert', '');
+  await createDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.unroute('**/api/projects');
 
   const adoRequests = [];
   page.on('request', (request) => {
@@ -114,6 +150,9 @@ test('resolves a Local field conflict and publishes the reviewed relation to bot
   await expect(page.getByRole('heading', { name: 'Plans', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Local plan' })).toBeVisible();
   await page.getByRole('button', { name: 'Catalogue', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Local Catalogue' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Catalogue', exact: true })).toBeVisible();
+  await sidebar.getByRole('button', { name: 'Utilities', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Utilities', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Invalidate All Caches' })).toHaveCount(0);
   expect(adoRequests).toEqual([]);
 });

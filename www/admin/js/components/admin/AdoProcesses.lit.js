@@ -163,7 +163,7 @@ export class AdoProcesses extends BaseConfigComponent {
 
   render() {
     return html`<section class="panel" aria-label="Azure DevOps Processes">
-      <div class="heading"><h2>Azure DevOps Processes</h2>
+      <div class="heading"><h2>Catalogue</h2>
         <button data-action="reload"
           ?disabled=${this.busy || this.loading || (this._ready && this.content.processes.length === 0)}
           @click=${this._onReload}>Reload from Azure DevOps</button></div>

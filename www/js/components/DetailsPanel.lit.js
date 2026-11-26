@@ -511,9 +511,11 @@ export class DetailsPanelLit extends LitElement {
             const { openTaskEditor } = await import('./modalHelpers.js');
             await openTaskEditor({ task, canDelete: this.taskCapabilities.includes('task_delete'),
               refresh: async () => {
-              await cmd.scenario.refreshBaseline();
+              const result = await cmd.scenario.refreshBaseline();
+              if (!result.ok) return result;
               if (!sel.feature.getBaselineFeatureById(task.id)) this.hide();
               else this._controller.refresh();
+              return result;
             }, readTask: (id) => sel.feature.getBaselineFeatureById(id) });
           }}>Edit source task</button>` : ''}
           ${this._renderField('Assignee', 'assignee', feature.assignee)}

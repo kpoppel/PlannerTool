@@ -14,6 +14,6 @@ The list shows "No date presets available" when no iteration set is configured f
 
 - Administrators create iteration sets using Azure DevOps, a date generator, or manual dates in [Admin - Iterations](admin_iterations.md), then assign a set to each plan in [Admin - Plans](admin_plans.md) (the plan's **Iteration set** field).
 - Only iterations with complete start and end dates are offered.
-- Only reading the Azure DevOps source requires a valid Personal Access Token; see [Getting Started](getting_started.md). Saved sets are fixed snapshots until an administrator reviews and saves changes.
+- Only reading the Azure DevOps source requires Entra sign-in with project access; see [Getting Started](getting_started.md). Saved sets are fixed snapshots until an administrator reviews and saves changes.
 
 Choosing a preset is an explicit action. PlannerTool never infers task dates from the iteration path recorded on a work item.

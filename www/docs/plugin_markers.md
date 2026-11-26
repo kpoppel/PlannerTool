@@ -8,7 +8,7 @@ Plan Markers shows milestone markers from Azure DevOps Delivery Plans on the tim
 
 - Your Azure DevOps organisation has Delivery Plans with markers.
 - Your administrator has mapped and enabled those delivery plans for your plans' area paths in [Admin - Area Mappings](admin_area_mappings.md).
-- Your Personal Access Token can read the delivery plans (see [Getting Started](getting_started.md)).
+- Your Entra account can read the Azure DevOps delivery plans (see [Getting Started](getting_started.md)).
 
 ## Using the panel
 
@@ -24,4 +24,4 @@ The demo data in these screenshots has no delivery plan markers, so only the emp
 
 - Plan Markers is read-only; PlannerTool does not write marker changes back to Azure DevOps.
 - For your own milestones, use [Plan Events](plugin_events.md).
-- If markers do not refresh, check that your Personal Access Token is valid and allowed to read delivery plans.
+- If markers do not refresh, check that you are signed in with Entra and your account can read the delivery plans.

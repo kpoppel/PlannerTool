@@ -12,6 +12,7 @@ const SHORTCUT_OWNING_CONTROLS = [
   '[role="textbox"]', '[role="searchbox"]', '[role="combobox"]',
   '[role="spinbutton"]', '[role="slider"]', '[role="menu"]',
   '[role="menubar"]', '[role="listbox"]', '[role="dialog"]', '[role="alertdialog"]',
+  'dialog',
 ].join(', ');
 
 export class KeyboardShortcutManager {
@@ -78,6 +79,10 @@ export function createApplicationShortcutDefinitions(dependencies) {
 
   return [
     shortcut('search', 'f', () => openSearch()),
+    shortcut('create-task', 'n', async () => {
+      const { openCreateTask } = await import('../components/modalHelpers.js');
+      await openCreateTask();
+    }),
     shortcut('timeline-scale', 't', () => {
       commands.setTimelineScale(nextOption(TIMELINE_SCALES, selectors.getTimelineScale()));
     }),

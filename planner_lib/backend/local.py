@@ -27,7 +27,7 @@ class LocalTaskBackend:
     def create_task(self, payload, actor_id, credential):
         return self._tasks.create(payload, actor_id)
 
-    def task_editor_metadata(self):
+    def task_editor_metadata(self, credential):
         catalogue = self._catalogue.read()
         task_level = [entry['id'] for process in catalogue['processes']
                       for entry in process['types'] if entry['backlog_level'] == 'task']

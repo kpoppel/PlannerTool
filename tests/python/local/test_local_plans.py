@@ -214,11 +214,12 @@ def test_local_workload_query_and_time_budgets(tmp_path, monkeypatch, record_pro
                  15 + 5 * len(edits))
         assert result == {'ok': True, 'updated': 60, 'errors': [], 'conflicts': []}
 
-        history = measure('task_history', lambda: backend.fetch_history(edits[0]['id']), 1)
+        history = measure('task_history', lambda: backend.fetch_history(edits[0]['id']), 3)
+        assert [statements[0], statements[-1]] == ['BEGIN', 'ROLLBACK']
         assert [(entry['field'], entry['value'], entry['changed_by']) for entry in history] == [
             ('start', '2026-12-01', 'publisher')]
         with closing(open_connection()) as connection:
-            query_plan = [row['detail'] for row in connection.execute('EXPLAIN QUERY PLAN ' + statements[0])]
+            query_plan = [row['detail'] for row in connection.execute('EXPLAIN QUERY PLAN ' + statements[1])]
         assert any('SEARCH task_history USING INDEX task_history_task (task_id=?)' in step for step in query_plan)
 
 

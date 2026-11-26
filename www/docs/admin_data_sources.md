@@ -34,4 +34,4 @@ Plan events are stored in PlannerTool by default. Alternatively they can be kept
 
 ## Saving
 
-Click **Save** to store all changes. When a backend changes, a banner explains that a server restart is required, because backend selections are read at startup. After switching backends, consider **Invalidate All Caches** in [Admin - Utilities](admin_utilities.md).
+Click **Save** to store all changes. When a backend changes, a banner explains that a server restart is required, because backend selections are read at startup. After switching to Azure DevOps, consider **Invalidate All Caches** in [Admin - Utilities](admin_utilities.md).

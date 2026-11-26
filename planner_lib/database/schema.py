@@ -135,5 +135,6 @@ MIGRATIONS = (
      _SERVER_CONFIGURATION + ado.TRANSPORTS + local.TASK_ITERATION_REFS + _ITERATION_SETS_AND_PLAN_LEVELS
      + ado.PLANS_AND_PROCESSES + _ITERATIONS),
     (4, '0004.local-document-order', local.DOCUMENT_ORDER),
+    (5, '0005.local-task-number-and-rank', local.TASK_NUMBER_AND_RANK),
 )
 SCHEMA_TARGET = MIGRATIONS[-1][0]

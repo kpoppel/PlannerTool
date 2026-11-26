@@ -42,6 +42,8 @@ class DomainTask(TypedDict):
     """
     id: str
     title: str
+    number: NotRequired[int]
+    rank: NotRequired[float]
     type: str                       # canonical casing from the process catalogue
     process_id: str
     state: str

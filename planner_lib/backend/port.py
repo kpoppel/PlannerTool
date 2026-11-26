@@ -224,9 +224,11 @@ class TaskCreationBackend(Protocol):
 @runtime_checkable
 class TaskEditorBackend(Protocol):
     """Editor metadata: ``{catalogue: {processes, states, fields, field_schemas,
-    workflows}, plans: [{id, name, typeIds}]}`` in the Local catalogue shape."""
+    workflows}, plans: [{id, name, typeIds}]}``. A workflow whose source alone
+    validates transitions reports ``initial``, ``transitions`` and ``from_any`` as null.
+    """
 
-    def task_editor_metadata(self) -> dict: ...
+    def task_editor_metadata(self, credential: Optional[BackendCredential]) -> dict: ...
 
 
 @runtime_checkable

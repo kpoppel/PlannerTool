@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 from uuid import uuid4
 
 from planner_lib.backend.selection import LOCAL_BACKEND_ID
+from planner_lib.local.sql_port import LocalSqlStore
 
 CATEGORIES = ('Proposed', 'InProgress', 'Resolved', 'Completed', 'Removed')
 VALUE_TYPES = ('string', 'text', 'integer', 'number', 'boolean', 'date', 'enum')
@@ -235,7 +236,7 @@ class LocalCatalogue:
 
     backend_id = LOCAL_BACKEND_ID
 
-    def __init__(self, database) -> None:
+    def __init__(self, database: LocalSqlStore) -> None:
         self._database = database
 
     @staticmethod

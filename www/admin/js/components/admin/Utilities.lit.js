@@ -169,6 +169,7 @@ export class AdminUtilities extends LitElement {
   `;
 
   static properties = {
+    taskBackendId: { type: String },
     cleanupStatus: { type: String },
     cleanupType: { type: String },
     cleanupLoading: { type: Boolean },
@@ -205,6 +206,7 @@ export class AdminUtilities extends LitElement {
 
   constructor() {
     super();
+    this.taskBackendId = '';
     this.cleanupStatus = '';
     this.cleanupType = '';
     this.cleanupLoading = false;
@@ -817,8 +819,8 @@ export class AdminUtilities extends LitElement {
         : ''}
       </div>
 
-      <div class="panel">
-        <h3>Cache Invalidation</h3>
+        ${this.taskBackendId === 'ado' ? html`<div class="panel">
+          <h3>Cache Invalidation</h3>
         <p>
           Clear all Azure cache data (work items, teams, plans, markers, iterations). The
           next data fetch will retrieve fresh data from Azure DevOps.
@@ -839,8 +841,8 @@ export class AdminUtilities extends LitElement {
             <div class="status ${this.invalidateType}">${this.invalidateStatus}</div>
           `
         : ''}
-      </div>
-    `;
+        </div>` : ''}
+      `;
   }
 }
 

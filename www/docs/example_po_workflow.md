@@ -4,7 +4,7 @@ This walkthrough follows Priya, a Product Owner for a single product, as she use
 
 ## 1. Set up and load data
 
-Priya has already configured her email and Personal Access Token (see [Getting Started](getting_started.md)), so the board loads projects and teams automatically.
+Priya has already signed in (see [Getting Started](getting_started.md)), so the board loads projects and teams automatically.
 
 - In the Plan menu she selects her one product's plan, and in the Sidebar's Team Drill-down her team, so the board stays focused (see [Top Menu & View Options](topmenu.md) and [Sidebar (Filters & Options)](sidebar.md)).
 - She sets the Timeline scale to weeks, since she is planning at sprint-level detail (see [Timeline & Board](timeline.md)).

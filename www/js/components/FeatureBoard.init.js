@@ -24,6 +24,7 @@ import {
   UIEvents,
   GroupEvents,
   BoardEvents,
+  DataEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { cmd, sel } from '../application/imports.js';
@@ -74,6 +75,7 @@ export async function initBoard() {
   bus.on(TeamEvents.CHANGED, renderFeatures);
   bus.on(TimelineEvents.MONTHS, renderFeatures);
   bus.on(TimelineEvents.SCALE_CHANGED, renderFeatures);
+  bus.on(DataEvents.LOADED, renderFeatures);
   bus.on(FeatureEvents.UPDATED, updateFeatures);
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);

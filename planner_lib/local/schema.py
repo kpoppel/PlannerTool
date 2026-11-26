@@ -302,6 +302,19 @@ ALTER TABLE iterations RENAME TO task_iteration_refs;
 # previously observed order of existing definitions.
 _ORDERED_TABLES = ('field_definitions', 'field_schemas', 'workflows', 'workflow_transitions',
                    'workflow_any_transitions', 'task_type_parent_rules', 'plan_task_types', 'plan_markers')
+TASK_NUMBER_AND_RANK = """
+ALTER TABLE tasks ADD COLUMN task_number INTEGER CHECK (task_number > 0);
+ALTER TABLE tasks ADD COLUMN task_rank REAL CHECK (task_rank BETWEEN -1e15 AND 1e15);
+WITH numbered AS (
+    SELECT task_id, ROW_NUMBER() OVER (ORDER BY created_at, task_id) AS number FROM tasks
+)
+UPDATE tasks SET (task_number, task_rank) = (
+    SELECT number, number * 1024.0 FROM numbered WHERE numbered.task_id = tasks.task_id
+);
+CREATE UNIQUE INDEX tasks_number ON tasks(task_number);
+CREATE INDEX tasks_rank ON tasks(task_rank, task_number);
+"""
+
 DOCUMENT_ORDER = ''.join(f"""
 ALTER TABLE {table} ADD COLUMN position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0);
 UPDATE {table} SET position = (SELECT COUNT(*) FROM {table} AS earlier WHERE earlier.rowid < {table}.rowid);

@@ -16,6 +16,8 @@ Template - do not change :
 ## [v5.2.0] - unreleased
 ### Added
 - Read and create local tasks from configured projects, workflows and field schemas, including scheduling presets, plan markers and task history.
+- Give Local tasks short sequential reference numbers while preserving existing task links, and let users edit the persisted board rank independently.
+- Move Local tasks before another task or to the end of the global order. Redistribute ranks automatically when no rank fits between adjacent tasks.
 - Edit and soft-delete local tasks, and publish scenario changes and relationships atomically. Independent edits merge; overlapping changes are shown for review before retrying.
 - Restart the managed server from Data Sources after saving a switch between Azure DevOps and local tasks; with other launchers (such as the development server) the switch is saved and takes effect after a manual restart.
 - Configure Local projects, task types, field schemas, workflows, iterations, and plan markers in the Local admin hub. Create tasks from the Plan menu and edit or delete source tasks from Details.
@@ -58,6 +60,9 @@ Template - do not change :
 - Servers whose saved live Azure DevOps selection needs Entra sign-in they do not use still start: Data Sources shows that transport as unavailable so an administrator can switch it, and Azure DevOps requests report that Entra sign-in is required instead of prompting for a new session.
 
 ### Fixed
+- Publish valid Local parent/child links after conflict review and refresh the board without reloading after task creation. The Create task button is usable and supports the N shortcut.
+- Preserve JSON error responses and HTTP status codes for REST requests, even without an Accept header.
+- Show Azure DevOps cache invalidation only when Azure DevOps is the active task backend, and label both task configuration views Catalogue.
 - Return a retryable error instead of a server error when concurrent Local writes exceed the database lock timeout.
 - Reject malformed Local catalogue references as validation errors, and save names that previously collided with temporary rename values.
 - Return JSON when deleting a task.

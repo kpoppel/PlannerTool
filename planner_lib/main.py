@@ -17,7 +17,7 @@ import os
 from typing import Any, Dict, Tuple, cast
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
@@ -543,21 +543,17 @@ def _build_app(
         return JSONResponse(status_code=503, headers={'Retry-After': '1'},
                             content={'error': 'planner_database_busy', 'message': str(exc)})
 
-    @app.exception_handler(HTTPException)
-    async def http_exception_handler(request, exc):
-        if exc.status_code == 401:
-            return access_denied_response(request, exc.detail)
-        # For non-401 HTTP exceptions, return the error detail as JSON
-        # so clients receive the intended status code and payload
-        detail = exc.detail if hasattr(exc, 'detail') else {'error': 'http_error'}
-        return JSONResponse(status_code=exc.status_code, content=detail)
-
     @app.exception_handler(StarletteHTTPException)
-    async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
-        if exc.status_code == 404:
-            error_code = {'error': 'not_found', 'message': 'The requested resource was not found.'}
-            return access_denied_response(request, error_code)
-        raise exc
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        path = request.scope['path'].removeprefix(request.scope.get('root_path', ''))
+        rest_route = path in ('/api', '/admin/v1', '/admin/check') or path.startswith(('/api/', '/admin/v1/'))
+        if exc.status_code == 401 and not rest_route:
+            return access_denied_response(request, exc.detail)
+        detail = exc.detail if isinstance(exc.detail, dict) else {
+            'error': {404: 'not_found', 405: 'method_not_allowed'}.get(exc.status_code, 'http_error'),
+            'message': exc.detail,
+        }
+        return JSONResponse(status_code=exc.status_code, content=detail, headers=exc.headers)
 
     from planner_lib.session.api import router as session_router
     from planner_lib.projects.api import router as projects_router

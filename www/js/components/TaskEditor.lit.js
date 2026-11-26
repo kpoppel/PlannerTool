@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing } from '/static/js/vendor/lit.js';
 import { dataService } from '../services/dataService.js';
 
 const BASE_FIELDS = ['title', 'description', 'state'];
+const END_OF_RANK = '__end__';
 const numberTypes = ['integer', 'number'];
 const sameValue = (left, right) => left === right;
 const displayValue = (value) => value === null ? '(empty)' : JSON.stringify(value);
@@ -16,6 +17,7 @@ function choice(name, entries, value, set, placeholder = 'Select') {
 
 export class TaskEditor extends LitElement {
   static properties = { task: { attribute: false }, planId: { type: String }, canDelete: { type: Boolean },
+    rankTargets: { attribute: false },
     metadata: { state: true }, draft: { state: true }, busy: { state: true },
     error: { state: true }, conflicts: { state: true } };
 
@@ -34,6 +36,7 @@ export class TaskEditor extends LitElement {
     this.task = null;
     this.planId = '';
     this.canDelete = false;
+    this.rankTargets = [];
     this.metadata = null;
     this.draft = null;
     this.busy = false;
@@ -79,7 +82,10 @@ export class TaskEditor extends LitElement {
 
   /** Custom fields exist only for types whose field schema defines any. */
   _editFields(type) {
-    return this._schema(type).fields.length > 0 ? [...BASE_FIELDS, 'customFields'] : BASE_FIELDS;
+    const fields = [...BASE_FIELDS];
+    if (this._schema(type).fields.length > 0) fields.push('customFields');
+    if (Number.isFinite(this.task.rank)) fields.push('rank');
+    return fields;
   }
 
   _choosePlan(project) {
@@ -94,6 +100,18 @@ export class TaskEditor extends LitElement {
   }
 
   _patch(patch) { this.draft = { ...this.draft, ...patch }; }
+
+  _rankFields(rank) {
+    const relative = typeof rank === 'object';
+    const target = relative ? (rank.beforeTaskId === null ? END_OF_RANK : rank.beforeTaskId) : '';
+    const options = [...this.rankTargets, { id: END_OF_RANK, name: 'End of global order' }];
+    return html`<label>Rank <input name="rank" type="number" required step="any"
+        min="-1000000000000" max="1000000000000" .value=${String(relative ? this.task.rank : rank)}
+        ?disabled=${relative} @change=${(event) => this._patch({ rank: event.target.valueAsNumber })}></label>
+      <label>Move before ${choice('rank-position', options, target, (id) => this._patch({
+        rank: id === '' ? this.task.rank : { beforeTaskId: id === END_OF_RANK ? null : id },
+      }), 'Use numeric rank')}</label>`;
+  }
 
   _customField(field, entry) {
     const values = this.draft.customFields;
@@ -135,14 +153,19 @@ export class TaskEditor extends LitElement {
     const schema = this._schema(type);
     const current = this.task === null ? workflow.initial
       : workflow.states.find((id) => states.find((entry) => entry.id === id).name === this.task.state);
-    const allowed = new Set([current, ...workflow.from_any,
+    const sourceValidated = workflow.transitions === null;
+    const allowed = sourceValidated ? new Set(workflow.states) : new Set([current, ...workflow.from_any,
       ...workflow.transitions.filter((edge) => edge.from === current).map((edge) => edge.to)]);
     const stateOptions = workflow.states.filter((id) => allowed.has(id))
       .map((id) => states.find((entry) => entry.id === id).name);
-    return html`${this.task === null ? html`<span>Initial state: ${states.find((state) => state.id === current).name}</span>`
+    if (this.task !== null && sourceValidated && !stateOptions.includes(this.task.state)) {
+      stateOptions.unshift(this.task.state);
+    }
+    return html`${this.task === null ? (current === null ? html`<span>The task source sets the initial state.</span>`
+      : html`<span>Initial state: ${states.find((state) => state.id === current).name}</span>`)
       : html`<label>State <select name="state" @change=${(event) => this._patch({ state: event.target.value })}>
         ${stateOptions.map((name) => html`<option .selected=${name === this.draft.state} value=${name}>${name}</option>`)}
-      </select></label>`}
+      </select>${sourceValidated ? html`<span>The task source validates state changes.</span>` : nothing}</label>`}
       ${schema.fields.map((entry) => this._customField(fields.find((field) => field.id === entry.field_id), entry))}`;
   }
 
@@ -208,6 +231,7 @@ export class TaskEditor extends LitElement {
           @input=${(event) => this._patch({ title: event.target.value })}></label>
         <label>Description <textarea name="description" .value=${description === null ? '' : description}
           @input=${(event) => this._patch({ description: event.target.value === '' ? null : event.target.value })}></textarea></label>
+        ${Object.hasOwn(this.draft, 'rank') ? this._rankFields(this.draft.rank) : nothing}
         ${type === undefined ? nothing : this._typeFields(type)}
       </div>
       ${this.error ? html`<div role="alert">${this.error}</div>` : nothing}

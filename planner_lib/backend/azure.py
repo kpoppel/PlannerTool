@@ -668,9 +668,23 @@ class AzureDevOpsBackend(BackendPort):
     # Task authoring
     # ------------------------------------------------------------------
 
-    def task_editor_metadata(self) -> dict:
-        """Imported ADO types as a catalogue; ADO enforces its own workflow rules."""
+    def task_editor_metadata(self, credential: Optional[BackendCredential]) -> dict:
         catalogue = self._storage.load('config', 'ado_processes')
+        plan_map = [(plan, resolve_plan_process(plan, catalogue)) for plan in self.fetch_project_map()]
+        projects = {}
+        for plan, process in plan_map:
+            projects.setdefault(process['id'], plan['area_path'].replace('/', '\\').lstrip('\\').split('\\')[0])
+        definitions = {}
+        if projects:
+            credential = self._require_credential(credential, 'task_editor_metadata')
+            with self._conn.connect(credential) as client:
+                for process in catalogue['processes']:
+                    if process['id'] not in projects:
+                        continue
+                    for item in process['types']:
+                        if item['imported'] and not item['missing']:
+                            definitions[_editor_type_id(process, item)] = client.wit_client.get_work_item_type(
+                                projects[process['id']], item['name'])
         processes, states, workflows = [], [], []
         for process in catalogue['processes']:
             types = []
@@ -678,19 +692,32 @@ class AzureDevOpsBackend(BackendPort):
                 if not item['imported'] or item['missing']:
                     continue
                 identity = _editor_type_id(process, item)
+                if identity not in definitions:
+                    continue
                 ordered = [f"{identity}#{state['name']}" for state in
                            sorted(item['states'], key=lambda state: state['order'])]
                 states.extend({'id': f"{identity}#{state['name']}", 'name': state['name'],
                                'category': state['category']} for state in item['states'])
+                remote = definitions[identity].transitions
+                state_ids = {state['name']: f"{identity}#{state['name']}" for state in item['states']}
+                initial = None
+                transitions, from_any = None, None
+                if remote is not None:
+                    transitions, from_any = [], []
+                    initial_states = [state_ids[edge.to] for edge in remote.get('', []) if edge.to in state_ids]
+                    if len(initial_states) == 1:
+                        initial = initial_states[0]
+                    transitions = [{'from': state_ids[source], 'to': state_ids[edge.to]}
+                                   for source, edges in remote.items() if source in state_ids
+                                   for edge in edges if edge.to in state_ids]
                 workflows.append({'id': identity, 'name': item['name'], 'states': ordered,
-                                  'initial': ordered[0], 'transitions': [], 'from_any': ordered})
+                                  'initial': initial, 'transitions': transitions, 'from_any': from_any})
                 types.append({'id': identity, 'name': item['name'], 'backlog_level': item['backlog_level'],
                               'workflow_id': identity, 'field_schema_id': 'ado'})
             if types:
                 processes.append({'id': process['id'], 'name': process['name'], 'types': types})
         plans = []
-        for plan in self.fetch_project_map():
-            process = resolve_plan_process(plan, catalogue)
+        for plan, process in plan_map:
             selected = {name.casefold() for name in plan['task_types']}
             plans.append({'id': plan['id'], 'name': plan['name'], 'typeIds': [
                 _editor_type_id(process, item) for item in process['types']
@@ -710,7 +737,7 @@ class AzureDevOpsBackend(BackendPort):
         process = resolve_plan_process(plan, catalogue)
         selected = {name.casefold() for name in plan['task_types']}
         item = next((entry for entry in process['types'] if _editor_type_id(process, entry) == payload.get('typeId')
-                     and entry['imported'] and entry['name'].casefold() in selected), None)
+                     and entry['imported'] and not entry['missing'] and entry['name'].casefold() in selected), None)
         if item is None:
             raise ValueError('Task type is not available in the plan')
         title = payload.get('title')

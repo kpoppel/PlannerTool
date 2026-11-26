@@ -73,7 +73,9 @@ export class TaskList extends LitElement {
     const ids = [];
     const titles = [];
     for (const feature of this.layout.searchFeatures) {
-      if (String(feature.id).toLowerCase().includes(query)) ids.push(feature);
+      const number = Number.isInteger(feature.number) ? String(feature.number) : String(feature.id);
+      if ((query.startsWith('#') ? number.toLowerCase() === query.slice(1) : number.toLowerCase().includes(query))
+        || String(feature.id).toLowerCase().includes(query)) ids.push(feature);
       else if (feature.title.toLowerCase().includes(query)) titles.push(feature);
     }
     return [...ids, ...titles];
@@ -136,9 +138,12 @@ export class TaskList extends LitElement {
         const metadata = [];
         if (virtual) metadata.push('Virtual');
         if (!group) {
-          metadata.push(`#${row.feature.id}`);
+          metadata.push(`#${Number.isInteger(row.feature.number) ? row.feature.number : row.feature.id}`);
           if (row.feature.parentId !== null && row.feature.parentId !== undefined) {
-            metadata.push(`Parent #${row.feature.parentId}`);
+            const parent = byId.get(String(row.feature.parentId));
+            const reference = parent !== undefined && Number.isInteger(parent.number)
+              ? parent.number : row.feature.parentId;
+            metadata.push(`Parent #${reference}`);
           }
           const owningPlan = this._projects.value.find((project) =>
             String(project.id) === String(row.feature.project));

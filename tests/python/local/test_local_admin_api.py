@@ -137,14 +137,19 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
         })
         assert other_response.status_code == 201
         other = other_response.json()
+        assert (task['number'], other['number']) == (1, 2)
+        assert task['rank'] < other['rank']
 
         def publish(source, **fields):
             return client.post('/api/tasks', json=[{'id': source['id'], **fields, 'base': {
                 'revision': source['revision'], 'fields': {field: source[field] for field in fields},
             }}])
 
-        updated = publish(task, start='2026-12-02', end='2026-12-06', tags='test; urgent')
+        updated = publish(task, start='2026-12-02', end='2026-12-06', tags='test; urgent', rank=other['rank'] + 1)
         assert updated.status_code == 200 and updated.json()['updated'] == 1, updated.text
+        assert [(entry['id'], entry['number']) for entry in client.get('/api/tasks').json()] == [
+            (other['id'], 2), (task['id'], 1),
+        ]
         linked = publish(task, relations=[{'type': 'Related', 'id': other['id']}])
         assert linked.status_code == 200 and linked.json()['updated'] == 1, linked.text
         conflict = publish(task, start='2026-12-03')
@@ -178,3 +183,30 @@ def test_local_task_api_read_after_create_with_cache_enabled(tmp_path, monkeypat
         assert cleared.status_code == 200, cleared.text
         current, = client.get('/api/tasks').json()
         assert current['iterationPath'] is None and current['start'] == '2026-12-07'
+        backup = database.export_rows()
+        backup['schema_version'] = 4
+        for row in backup['tables']['tasks']:
+            del row['task_number'], row['task_rank']
+        database.validate_backup(backup)
+        database.replace_rows(backup)
+        current, = client.get('/api/tasks').json()
+        assert (current['id'], current['number'], current['rank']) == (task['id'], 1, 1024)
+        next_task = client.post('/api/tasks/create', json=payload)
+        assert next_task.status_code == 201, next_task.text
+        assert next_task.json()['number'] == 3
+        right = client.post('/api/tasks/create', json=payload).json()
+        moving = client.post('/api/tasks/create', json=payload).json()
+        assert publish(next_task.json(), rank=1).status_code == 200
+        assert publish(right, rank=1.0000000000000002).status_code == 200
+        destination = {'beforeTaskId': right['id']}
+        original_order = client.get('/api/tasks').json()
+        rejected = publish(moving, rank=destination, state='not a workflow state')
+        assert rejected.status_code == 422, rejected.text
+        assert client.get('/api/tasks').json() == original_order
+        reordered = publish(moving, rank=destination)
+        assert reordered.status_code == 200, reordered.text
+        ranks = [(entry['number'], entry['rank']) for entry in client.get('/api/tasks').json()]
+        assert [number for number, _ in ranks] == [3, 5, 4, 1]
+        assert ranks[0][1] < ranks[1][1] < ranks[2][1]
+        assert ranks[0][1] != 1
+        assert publish(moving, rank=destination).status_code == 409

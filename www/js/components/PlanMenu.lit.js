@@ -34,6 +34,12 @@ export class PlanMenuLit extends LitElement {
       gap: 8px 4px;
     }
 
+    .create-task {
+      grid-column: 1 / -1;
+      justify-self: start;
+      padding: 4px 10px;
+    }
+
     .counts-header {
       display: grid;
       grid-column: 1 / -1;
@@ -476,12 +482,11 @@ export class PlanMenuLit extends LitElement {
 
     return html`
       <div class="menu-popover" style="--plan-columns: ${columns}">
-        ${this.taskCapabilities.includes('task_create') ? html`<button type="button" @click=${async () => {
-          const project = this.projects.find((entry) => entry.selected);
-          const { openTaskEditor } = await import('./modalHelpers.js');
-          await openTaskEditor({ planId: project === undefined ? '' : String(project.id),
-            refresh: () => cmd.scenario.refreshBaseline() });
-        }}>Create task</button>` : ''}
+        ${this.taskCapabilities.includes('task_create') ? html`<button class="create-task"
+          type="button" aria-keyshortcuts="N" @click=${async () => {
+            const { openCreateTask } = await import('./modalHelpers.js');
+            await openCreateTask();
+          }}>Create task</button>` : ''}
         <div class="focus-controls" @focusout=${(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) {
             this.focusOptionsOpen = false;

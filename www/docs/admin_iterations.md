@@ -22,4 +22,4 @@ Assign a set to a plan with the **Iteration set** field when creating or editing
 
 ## Notes
 
-Only ADO browsing requires a valid Personal Access Token with project access. Generated and manual sets do not require ADO credentials. All sets are saved snapshots, not live subscriptions. Existing ADO sets and their plan associations are preserved by the server-owned schema upgrade.
+Only ADO browsing requires Entra sign-in with access to the Azure DevOps project. Generated and manual sets do not require ADO credentials. All sets are saved snapshots, not live subscriptions. Existing ADO sets and their plan associations are preserved by the server-owned schema upgrade.

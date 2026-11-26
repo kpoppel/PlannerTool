@@ -1,6 +1,6 @@
-# Admin - Azure DevOps Processes
+# Admin - Azure DevOps Catalogue
 
-The **Azure DevOps Processes** section (`#ado-processes`) controls which work item types PlannerTool imports from each Azure DevOps process. It requires the `manage_projects` permission.
+The **Catalogue** section in the Azure DevOps hub (`#ado-processes`) controls which work item types PlannerTool imports from each Azure DevOps process. It requires the `manage_projects` permission.
 
 ![Azure DevOps processes](img/admin_ado_processes.png)
 

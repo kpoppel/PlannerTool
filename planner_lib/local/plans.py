@@ -14,6 +14,7 @@ from planner_lib.domain.allocation_availability import validate_available_ids
 from planner_lib.domain.plans import validate_plan_common
 from planner_lib.domain.teams import TeamCatalogue
 from planner_lib.local.catalogue import StaleRevisionError
+from planner_lib.local.sql_port import LocalSqlStore
 
 PLAN_KEYS = {'id', 'name', 'type', 'archived', 'task_types', 'closed_history_days',
              'iteration_uuid', 'markers'}
@@ -30,7 +31,7 @@ def _require(condition, message):
 
 
 class LocalPlans:
-    def __init__(self, database, storage) -> None:
+    def __init__(self, database: LocalSqlStore, storage) -> None:
         self._database = database
         self._storage = storage
 
@@ -66,7 +67,7 @@ class LocalPlans:
 
     def validate_configuration(self):
         document = self.read()
-        with self._database.connect() as connection:
+        with self._database.read() as connection:
             self._validate(document, connection)
 
     def _validate(self, document, connection):

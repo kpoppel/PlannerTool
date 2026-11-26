@@ -271,12 +271,29 @@ class PlannerDatabase:
                 raise ValueError(f'Planner database backup rows do not match table {table}')
         return tables
 
+    @staticmethod
+    def _upgrade_backup(payload):
+        if not isinstance(payload, dict) or payload.get('schema_version') != 4:
+            return payload
+        tables = payload.get('tables')
+        tasks = tables.get('tasks') if isinstance(tables, dict) else None
+        if not isinstance(tasks, list) or any(
+                not isinstance(row, dict) or not isinstance(row.get('created_at'), str)
+                or not isinstance(row.get('task_id'), str) or 'task_number' in row or 'task_rank' in row
+                for row in tasks):
+            raise ValueError('Invalid version 4 task rows')
+        ordered = sorted(tasks, key=lambda row: (row['created_at'], row['task_id']))
+        numbered = [dict(row, task_number=number, task_rank=number * 1024.0)
+                    for number, row in enumerate(ordered, 1)]
+        return {**payload, 'schema_version': 5, 'tables': {**tables, 'tasks': numbered}}
+
     def validate_backup(self, payload):
         with self.connect() as connection:
-            self._check_payload(connection, payload)
+            self._check_payload(connection, self._upgrade_backup(payload))
 
     def replace_rows(self, payload):
         """Replace every data row in one validated transaction; failures write nothing."""
+        payload = self._upgrade_backup(payload)
         with self.write() as connection:
             tables = self._check_payload(connection, payload)
             connection.execute('PRAGMA defer_foreign_keys=ON')

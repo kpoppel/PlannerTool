@@ -147,7 +147,8 @@ async def api_markers(request: Request):
 async def api_task_editor(request: Request):
     task_repo = resolve_service(request, 'task_repository')
     try:
-        return await asyncio.to_thread(task_repo.editor_metadata)
+        account_id = get_session_context_from_request(request)['account_id']
+        return await asyncio.to_thread(task_repo.editor_metadata, account_id)
     except TaskOperationNotSupported as exc:
         raise HTTPException(405, detail={'error': 'task_editor_not_supported'}) from exc
 

@@ -10,7 +10,7 @@ const ADMIN_SECTIONS = [
 
 const ADO_VIEWS = [
   { id: 'projects', label: 'Plans', permissions: ['manage_projects'] },
-  { id: 'ado-processes', label: 'Azure DevOps Processes', permissions: ['manage_projects'] },
+  { id: 'ado-processes', label: 'Catalogue', permissions: ['manage_projects'] },
   { id: 'global-project-settings', label: 'Global Project Settings', permissions: ['manage_projects'] },
   { id: 'iterations', label: 'Iterations', permissions: ['manage_iterations'] },
   { id: 'area-mappings', label: 'Area Mappings', permissions: [] },

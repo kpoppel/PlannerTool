@@ -312,7 +312,7 @@ export function createDataCommands(store, bus, dataService) {
 
       const featuresWithRank = features.map((feature, index) => ({
         ...feature,
-        originalRank: index,
+        originalRank: Number.isFinite(feature.rank) ? feature.rank : index,
       }));
 
       const revision = Date.now();

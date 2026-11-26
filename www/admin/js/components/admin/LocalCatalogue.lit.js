@@ -208,7 +208,7 @@ export class LocalCatalogue extends LitElement {
   }
 
   render() {
-    return html`<h2>Local Catalogue</h2><p role="status">${this.busy ? 'Working...' : this.message}</p>
+    return html`<h2>Catalogue</h2><p role="status">${this.busy ? 'Working...' : this.message}</p>
       ${this.model === null ? nothing : html`<div ?inert=${this.busy}>
         <nav aria-label="Catalogue views">${Object.entries(TABS).map(([id, label]) => html`<button
           data-tab=${id} aria-current=${id === this.tab ? 'page' : 'false'}

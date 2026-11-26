@@ -7,6 +7,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it('does not claim an initial state when the source owns workflow validation', async () => {
+  vi.spyOn(dataService, 'getTaskEditor').mockResolvedValue({ ok: true, data: {
+    plans: [{ id: 'plan', name: 'Plan', typeIds: ['feature'] }],
+    catalogue: {
+      processes: [{ id: 'process', types: [{ id: 'feature', name: 'Feature',
+        workflow_id: 'flow', field_schema_id: 'schema' }] }],
+      fields: [], field_schemas: [{ id: 'schema', fields: [] }],
+      states: [{ id: 'open', name: 'Open' }],
+      workflows: [{ id: 'flow', states: ['open'], initial: null, transitions: null, from_any: null }],
+    },
+  } });
+  const editor = document.createElement('task-editor');
+  document.body.append(editor);
+  await vi.waitFor(() => expect(editor.shadowRoot.textContent).toContain('The task source sets the initial state.'));
+  expect(editor.shadowRoot.textContent).not.toContain('Initial state: Open');
+});
+
 it('offers only allowed states and publishes typed changes with the reviewed baseline', async () => {
   const task = { id: 'one', project: 'plan', process_id: 'process', type: 'Feature', revision: 5,
     title: 'Original', description: null, state: 'Open', customFields: { score: 2 } };

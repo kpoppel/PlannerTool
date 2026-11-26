@@ -2,6 +2,9 @@
 // Helpers lazy-load the module via static imports, create or reuse an element,
 // wait for user action events, then cleanup and resolve with a value.
 
+import { cmd, sel } from '../application/imports.js';
+import { dataService } from '../services/dataService.js';
+
 // Static import map for all modal modules (bundler includes them and emits hashed filenames)
 const _modalImports = {
   './ConfigModal.lit.js': () => import('./ConfigModal.lit.js'),
@@ -17,8 +20,22 @@ const _modalImports = {
   './ViewDeleteModal.lit.js': () => import('./ViewDeleteModal.lit.js'),
 };
 
+export async function openCreateTask() {
+  if (document.getElementById('task-dialog-heading')) return;
+  const result = await dataService.getTaskBackend();
+  if (!result.ok || !result.data.capabilities.includes('task_create')) return;
+  const [project] = sel.selection.getSelectedProjects();
+  return openTaskEditor({ planId: project === undefined ? '' : String(project.id),
+    refresh: () => cmd.scenario.refreshBaseline() });
+}
+
 export async function openTaskEditor({ task = null, planId = '', canDelete = false, refresh, readTask }) {
   await import('./TaskEditor.lit.js');
+  if (document.getElementById('task-dialog-heading')) return;
+  const refreshTasks = async () => {
+    const result = await refresh();
+    if (!result.ok) throw new Error(result.error.message);
+  };
   const dialog = document.createElement('dialog');
   dialog.style.cssText = 'width:min(520px, 85vw);max-height:85vh;padding:20px;border:1px solid #cbd5e1;border-radius:8px';
   const heading = document.createElement('h2');
@@ -32,12 +49,15 @@ export async function openTaskEditor({ task = null, planId = '', canDelete = fal
   close.addEventListener('click', () => dialog.close());
   const createEditor = (current) => {
     const editor = document.createElement('task-editor');
-    Object.assign(editor, { task: current, planId, canDelete });
+    const rankTargets = current === null || !Number.isFinite(current.rank) ? []
+      : sel.feature.getBaselineFeatures().filter((entry) => entry.id !== current.id && Number.isFinite(entry.rank))
+        .map((entry) => ({ id: entry.id, name: `#${entry.number} ${entry.title}` }));
+    Object.assign(editor, { task: current, planId, canDelete, rankTargets });
     editor.addEventListener('task-committed', async () => {
       editor.inert = true;
       notice.textContent = 'Refreshing tasks...';
       try {
-        await refresh();
+        await refreshTasks();
         dialog.close();
       } catch (error) {
         notice.textContent = `Task saved, but refreshing failed: ${error.message}`;
@@ -47,7 +67,7 @@ export async function openTaskEditor({ task = null, planId = '', canDelete = fal
       if (!window.confirm('Discard this draft and reload the current task?')) return;
       notice.textContent = 'Refreshing task...';
       try {
-        await refresh();
+        await refreshTasks();
         const latest = readTask(current.id);
         notice.textContent = latest ? '' : 'This task is no longer available.';
         if (latest) editor.replaceWith(createEditor(latest));

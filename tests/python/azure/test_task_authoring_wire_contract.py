@@ -49,6 +49,11 @@ def authoring(monkeypatch):
         response.request = request
         response.headers['Content-Type'] = 'application/json'
         response.status_code = 200
+        if '/workItemTypes/' in request.url:
+            response._content = json.dumps({'transitions': {
+                '': [{'to': 'New'}], 'New': [{'to': 'Active'}], 'Active': [],
+            }}).encode()
+            return response
         fields = dict(item['fields'])
         if request.method == 'POST':
             fields.update({operation['path'].removeprefix('/fields/'): operation['value'] for operation in body})
@@ -63,6 +68,10 @@ def authoring(monkeypatch):
 
     def location(*args):
         location_id = args[-1]
+        if location_id == '7c8d7a76-4a09-43e8-b5df-bd792f4ac6aa':
+            return SimpleNamespace(area='wit', resource_name='workItemTypes',
+                                   route_template='{project}/_apis/{area}/{resource}/{type}',
+                                   min_version=1.0, max_version=7.1, released_version=7.0, resource_version=3)
         return SimpleNamespace(area='wit', resource_name='workItems',
                                route_template=templates.get(location_id, '{project}/_apis/{area}/{resource}/{id}'),
                                min_version=1.0, max_version=7.1, released_version=7.0, resource_version=3)
@@ -100,7 +109,7 @@ def test_mock_transports_do_not_advertise_authoring(cls):
 
 
 def test_editor_metadata_offers_plan_types_and_their_ordered_states(authoring):
-    metadata = authoring.backend.task_editor_metadata()
+    metadata = authoring.backend.task_editor_metadata(CREDENTIAL)
     assert metadata['plans'] == [{'id': 'plan', 'name': 'Platform plan', 'typeIds': [ENTRY]}]
     [process] = metadata['catalogue']['processes']
     assert [entry['name'] for entry in process['types']] == ['Epic', 'Feature']
@@ -109,7 +118,8 @@ def test_editor_metadata_offers_plan_types_and_their_ordered_states(authoring):
     workflow = next(entry for entry in metadata['catalogue']['workflows'] if entry['id'] == feature['workflow_id'])
     assert [states[state] for state in workflow['states']] == ['New', 'Active']
     assert states[workflow['initial']] == 'New'
-    assert set(workflow['from_any']) == set(workflow['states'])
+    assert workflow['from_any'] == []
+    assert [(states[edge['from']], states[edge['to']]) for edge in workflow['transitions']] == [('New', 'Active')]
     assert metadata['catalogue']['fields'] == []
 
 

@@ -5,6 +5,21 @@ from planner_lib.middleware.session import get_session_context_from_request
 pytestmark = pytest.mark.real_auth
 
 
+@pytest.mark.parametrize('method,path,status', [
+    ('GET', '/api/tasks', 401),
+    ('GET', '/api/no-such-endpoint', 404),
+    ('GET', '/admin/v1/no-such-endpoint', 404),
+    ('POST', '/api/task-backend', 405),
+])
+def test_rest_errors_are_json_without_accept_header(client, method, path, status):
+    response = client.request(method, path)
+    assert response.status_code == status
+    assert response.headers['content-type'] == 'application/json'
+    assert isinstance(response.json(), dict)
+    if status == 405:
+        assert 'GET' in response.headers['allow']
+
+
 @pytest.mark.parametrize('permission,allowed', [
     ('manage_projects', '/admin/v1/projects'),
     ('manage_workforce_teams', '/admin/v1/workforce'),

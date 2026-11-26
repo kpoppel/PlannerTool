@@ -7,6 +7,7 @@ from uuid import uuid4
 from planner_lib.domain.iteration_sets import iteration_preset_id
 from planner_lib.domain.tasks import TaskConflictError
 from planner_lib.local.catalogue import _default_columns, _default_value, _is_date, _typed_default
+from planner_lib.local.sql_port import LocalSqlStore
 
 
 CREATE_FIELDS = {'project', 'typeId', 'title', 'description', 'assignee', 'start', 'end',
@@ -15,11 +16,13 @@ RELATION_TYPES = {'parent': ('Child', 'Parent'), 'dependency': ('Successor', 'Pr
                   'related': ('Related', 'Related')}
 EDIT_COLUMNS = {'title': 'title', 'description': 'description', 'assignee': 'assignee',
                 'start': 'start_date', 'end': 'end_date'}
-EDIT_FIELDS = set(EDIT_COLUMNS) | {'state', 'tags', 'customFields', 'iterationPath', 'capacity', 'relations'}
+EDIT_FIELDS = set(EDIT_COLUMNS) | {'state', 'tags', 'customFields', 'iterationPath', 'capacity', 'relations', 'rank'}
+RANK_GAP = 1024.0
+RANK_LIMIT = 1e12
 
 
 class LocalTasks:
-    def __init__(self, database, storage):
+    def __init__(self, database: LocalSqlStore, storage):
         self._database = database
         self._storage = storage
 
@@ -68,19 +71,23 @@ class LocalTasks:
             custom_values = self._custom_values(connection, assignment['schema_id'], custom)
             if preset is not None:
                 start, end = self._assign_preset(connection, assignment['iteration_set_id'], iteration_sets, preset)
+            number, rank = connection.execute('''
+                SELECT COALESCE(MAX(task_number), 0) + 1, COALESCE(MAX(task_rank), 0) + ? FROM tasks
+            ''', (RANK_GAP,)).fetchone()
             connection.execute('''
                 INSERT INTO tasks (task_id, plan_id, type_id, state_id, title, description, assignee,
-                    start_date, end_date, iteration_id, revision, created_at, created_by, updated_at, updated_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                    start_date, end_date, iteration_id, revision, created_at, created_by, updated_at, updated_by,
+                    task_number, task_rank)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
             ''', (task_id, payload['project'], payload['typeId'], assignment['state_id'],
                   payload['title'].strip(), payload.get('description'), payload.get('assignee'),
-                  start, end, preset, timestamp, actor, timestamp, actor))
+                  start, end, preset, timestamp, actor, timestamp, actor, number, rank))
             connection.executemany('INSERT INTO task_custom_values VALUES (?, ?, ?, ?, ?)',
                                    [(task_id, *value) for value in custom_values])
             connection.executemany('INSERT INTO task_tags VALUES (?, ?)', [(task_id, tag) for tag in tags])
             task = self._read(connection, task_id)[0]
             fields = ('title', 'type', 'state', 'project', 'description', 'assignee', 'start', 'end',
-                      'tags', 'iterationPath')
+                      'tags', 'iterationPath', 'rank')
             changes = {field: task[field] for field in fields if task[field] is not None}
             changes.update({f'customFields.{key}': value for key, value in task['customFields'].items()})
             self._record_history(connection, task_id, 1, actor, timestamp, str(uuid4()), {}, changes)
@@ -240,6 +247,47 @@ class LocalTasks:
                            (revision, timestamp, actor, current['id']))
         LocalTasks._record_history(connection, current['id'], revision, actor, timestamp, batch_id, current, changes)
 
+    @staticmethod
+    def _rank_before(connection, identity, destination):
+        if set(destination) != {'beforeTaskId'}:
+            raise ValueError('A rank move requires beforeTaskId')
+        before = destination['beforeTaskId']
+        rows = list(connection.execute('''
+            SELECT task_id, task_rank FROM tasks
+            WHERE deleted_at IS NULL AND task_id <> ?
+            ORDER BY task_rank, task_number, task_id
+        ''', (identity,)))
+        if before is None:
+            index = len(rows)
+        elif isinstance(before, str):
+            index = next((index for index, row in enumerate(rows) if row['task_id'] == before), None)
+            if index is None:
+                raise ValueError('A rank move must target another active task')
+        else:
+            raise ValueError('beforeTaskId must be a task ID or null')
+
+        left = rows[index - 1]['task_rank'] if index else None
+        right = rows[index]['task_rank'] if index < len(rows) else None
+        if left is None:
+            rank = RANK_GAP if right is None else max(-RANK_LIMIT, right - RANK_GAP)
+        elif right is None:
+            rank = min(RANK_LIMIT, left + RANK_GAP)
+        else:
+            rank = left + (right - left) / 2
+            if not left < rank < right:
+                rank = math.nextafter(left, right)
+        if (-RANK_LIMIT <= rank <= RANK_LIMIT and (left is None or left < rank)
+                and (right is None or rank < right)):
+            return rank
+
+        task_ids = [row['task_id'] for row in rows]
+        task_ids.insert(index, identity)
+        connection.executemany('UPDATE tasks SET task_rank = ? WHERE task_id = ?', [
+            ((position + 1) * RANK_GAP, task_id)
+            for position, task_id in enumerate(task_ids) if task_id != identity
+        ])
+        return (index + 1) * RANK_GAP
+
     def _apply_fields(self, connection, current, fields):
         identity = current['id']
         row = connection.execute('''
@@ -262,6 +310,13 @@ class LocalTasks:
             if field in ('start', 'end') and value is not None and not _is_date(value):
                 raise ValueError(f'{field} must be YYYY-MM-DD')
             columns[EDIT_COLUMNS[field]] = value.strip() if field == 'title' else value
+        if 'rank' in fields:
+            rank = fields['rank']
+            if isinstance(rank, dict):
+                rank = self._rank_before(connection, identity, rank)
+            if type(rank) not in (int, float) or not -RANK_LIMIT <= rank <= RANK_LIMIT:
+                raise ValueError('rank must be a finite number between -1e12 and 1e12')
+            columns['task_rank'] = rank
         if 'iterationPath' in fields and fields['iterationPath'] != current['iterationPath']:
             path = fields['iterationPath']
             columns['iteration_id'] = None
@@ -350,7 +405,8 @@ class LocalTasks:
                 raise ValueError('Conflicting reciprocal relation selections')
         removed = {edge for edge in existing if (edge[0] in edges or edge[1] in edges) and edge not in desired}
         parents = {}
-        rules = {tuple(row) for row in connection.execute('SELECT * FROM task_type_parent_rules')}
+        rules = {tuple(row) for row in connection.execute(
+            'SELECT parent_type_id, child_type_id FROM task_type_parent_rules')}
         for source, target, kind in (existing - removed) | desired:
             if kind != 'parent' or source not in active or target not in active:
                 continue
@@ -462,7 +518,7 @@ class LocalTasks:
             JOIN task_types AS types USING (type_id) JOIN states USING (state_id)
             LEFT JOIN task_iteration_refs AS iterations USING (iteration_id)
             WHERE tasks.deleted_at IS NULL AND plans.backend_id = 'local'
-        ''' + filter_sql + ' ORDER BY tasks.created_at, tasks.task_id', params)
+        ''' + filter_sql + ' ORDER BY tasks.task_rank, tasks.task_number, tasks.task_id', params)
         tasks = {}
         for row in rows:
             identity, owner = row['task_id'], row['plan_id']
@@ -470,6 +526,7 @@ class LocalTasks:
                 'id': identity, 'project': owner, 'title': row['title'], 'type': row['type_name'],
                 'process_id': row['process_id'], 'state': row['state_name'], 'stateCategory': row['category'],
                 'revision': row['revision'], 'description': row['description'], 'assignee': row['assignee'],
+                'number': row['task_number'], 'rank': row['task_rank'],
                 'start': row['start_date'], 'end': row['end_date'],
                 'iterationPath': row['iteration_name'], 'parentId': None, 'relations': [], 'childrenComplete': True,
                 'customFields': {}, 'capacity': [], 'tags': None, 'url': f'#task={identity}',
@@ -513,7 +570,7 @@ class LocalTasks:
         return list(tasks.values())
 
     def fetch_history(self, work_item_id, credential=None):
-        with self._database.connect() as connection:
+        with self._database.read() as connection:
             return [
                 {'field': 'iteration' if row['field_key'] == 'iterationPath' else row['field_key'],
                  'value': json.loads(row['new_value']) if row['new_value'] is not None else None,
