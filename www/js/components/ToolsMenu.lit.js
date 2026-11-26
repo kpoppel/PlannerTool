@@ -203,13 +203,18 @@ export class ToolsMenuLit extends LitElement {
                   : ''}"
                   role="button"
                   tabindex="0"
+                  aria-pressed=${isActive ? 'true' : 'false'}
                   @click=${(e) => {
                     if (!p.disabled) this._onPluginClick(e, p);
                   }}
                   title=${p.description || ''}
                 >
                   <span style="display:inline-flex;width:22px;justify-content:center"
-                    >${isActive ? '🟢' : '⚪'}</span
+                    >${p.icon === 'link' ? html`<svg width="15" height="15" viewBox="0 0 24 24"
+                      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2"/>
+                      <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/></svg>`
+                      : isActive ? '🟢' : '⚪'}</span
                   >
                   <div class="project-name-col">${p.name || p.id}</div>
                   ${p.version ?

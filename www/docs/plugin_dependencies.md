@@ -5,7 +5,7 @@ This tool draws dependency arrows between feature cards on the timeline so you c
 ## How it works
 
 Unlike most tools, Dependencies has no button in the Tools menu — it runs automatically in the background whenever dependency display is turned on.
-Turn it on and off using the "Dependencies" option in the Top Menu → Scope menu (see [Top Menu & View Options](topmenu.md)); this also pulls dependency-linked tasks into scope.
+Choose **Tools > Dependencies** to show or hide dependency lines between tasks already on the board. The tool does not add tasks or change workload totals.
 
 ## Reading the arrows
 

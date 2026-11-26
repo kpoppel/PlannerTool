@@ -33,6 +33,7 @@ export class FeatureCardLit extends LitElement {
     hideTitle: { type: Boolean },
     foldCount: { type: Number },
     folded: { type: Boolean },
+    taskContext: { type: Array },
     _resizePolicy: { state: true },
     _resizeTooltip: { state: true },
   };
@@ -438,6 +439,7 @@ export class FeatureCardLit extends LitElement {
     this.hideTitle = false;
     this.foldCount = 0;
     this.folded = false;
+    this.taskContext = [];
     this._suppressClickUntil = 0;
     this._rootCard = null;
     this._width = 0; // cached width used for overflow decisions
@@ -971,6 +973,15 @@ export class FeatureCardLit extends LitElement {
           @click=${this._toggleFold}
         ><span class="fold-chevron">${this.folded ? '▸' : '▾'}</span>${this.folded ? html`<span class="fold-count" title=${`${this.foldCount} ${this.foldCount === 1 ? 'task' : 'tasks'} hidden`}>${this.foldCount}</span>` : ''}</button>` : ''}
         <div class="card-content">
+            ${this.taskContext.map(({ relation, label, icon, open }) => html`<button
+              type="button" title=${label} aria-label=${label} aria-expanded=${String(open)}
+              @mousedown=${(event) => event.stopPropagation()}
+              @click=${(event) => {
+                event.stopPropagation();
+                this.dispatchEvent(new CustomEvent('task-context-toggle', {
+                  detail: { featureId: this.feature.id, relation }, bubbles: true, composed: true,
+                }));
+              }}>${icon}</button>`)}
           ${this._renderTypeIcon()}
           <span class="feature-id">${this.feature.id}</span>
           ${this._isVirtual ? html`<span class="virtual-label">Other plan</span>` : ''}

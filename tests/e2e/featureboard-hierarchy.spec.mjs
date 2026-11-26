@@ -504,15 +504,14 @@ test('descendant scope includes linked context without leaking owners or context
   await page.goto('/');
   await clearOverlays(page);
   await selectAllPlans(page);
-  await page.locator('top-menu-bar #scopeMenuBtn').click();
-  const descendants = page.locator('scope-menu .scope-option').filter({ hasText: 'Descendant work' });
-  if (await descendants.getAttribute('aria-pressed') !== 'true') await descendants.click();
-  await page.locator('top-menu-bar #scopeMenuBtn').click();
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.locator('board-controls-menu').getByRole('button', { name: 'Plan overview', exact: true }).click();
+  await page.locator('top-menu-bar #teamsMenuBtn').click();
+  await page.locator('board-controls-menu').getByRole('button', { name: 'Plan', exact: true }).click();
+  await page.keyboard.press('Escape');
   const cards = page.locator('feature-card-lit');
   const cardIds = () => cards.evaluateAll((elements) => elements
     .map((element) => String(element.feature.id)).sort());
+  await expect.poll(cardIds).toEqual(['seed']);
+  await page.locator('feature-card-lit[data-feature-id="seed"] .fold-toggle').click();
   await expect.poll(cardIds).toEqual(['seed', 'shared']);
 
   const planButton = page.getByRole('navigation', { name: 'Top menu' })
@@ -573,27 +572,23 @@ test('team focus keeps allocated work, its ancestors and unallocated descendants
   await page.goto('/');
   await clearOverlays(page);
   await selectAllPlans(page);
-  await page.locator('top-menu-bar #scopeMenuBtn').click();
-  for (const label of ['Ancestors', 'Descendant work']) {
-    const option = page.locator('scope-menu .scope-option').filter({ hasText: label });
-    if (await option.getAttribute('aria-pressed') !== 'true') await option.click();
-  }
-  await page.locator('top-menu-bar #scopeMenuBtn').click();
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.locator('top-menu-bar #teamsMenuBtn').click();
   const sidebar = page.locator('board-controls-menu');
-  await sidebar.getByRole('button', { name: 'Plan overview', exact: true }).click();
+  const planContext = sidebar.getByRole('button', { name: 'Plan', exact: true });
+  await planContext.click();
   const selectedRow = sidebar.locator('.team-drilldown-row[title="Selected Team"]');
   const otherRow = sidebar.locator('.team-drilldown-row[title="Other Team"]');
   if (await selectedRow.getAttribute('aria-pressed') !== 'true') await selectedRow.click();
   if (await otherRow.getAttribute('aria-pressed') === 'true') await otherRow.click();
+  await planContext.click();
   const cards = page.locator('feature-card-lit');
   const cardIds = () => cards.evaluateAll((elements) => elements
     .map((element) => String(element.feature.id)).sort());
-  await expect.poll(cardIds).toEqual(imported.map((task) => task.id).sort());
-  await sidebar.getByRole('button', { name: 'Team focus', exact: true }).click();
+  await expect.poll(cardIds).toEqual(['feature', 'unrelated']);
+  await sidebar.getByRole('button', { name: 'Team', exact: true }).click();
   await expect.poll(cardIds).toEqual(['detail', 'feature', 'purpose', 'story']);
   await expect(selectedRow.locator('.chip-badge[title="Feature: 1"]')).toHaveText('1');
   await expect(selectedRow.locator('.chip-badge[title^="User Story:"]')).toHaveCount(0);
-  await sidebar.getByRole('button', { name: 'Plan overview', exact: true }).click();
-  await expect.poll(cardIds).toEqual(imported.map((task) => task.id).sort());
+  await planContext.click();
+  await expect.poll(cardIds).toEqual(['feature', 'unrelated']);
 });

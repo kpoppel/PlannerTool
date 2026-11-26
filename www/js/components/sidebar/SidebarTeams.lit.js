@@ -1,27 +1,24 @@
 import { html } from '../../vendor/lit.js';
 import { getIconTemplate } from '../../services/IconService.js';
 
-export function renderSidebarTeams({ model, actions }) {
-  if (model.teams.length === 0) {
-    return html`<div class="section-description">This plan has no teams assigned.</div>`;
-  }
+export function renderSidebarTeams({ model, actions, showWorkMode }) {
+  const teamContext = model.taskViewMode === 'team-all-plans';
   return html`
-    <div class="team-view-mode-group">
+    ${showWorkMode ? html`<div class="team-view-mode-group">
       <div class="group-label shortcut-heading" id="task-view-label">Work shown
         <kbd class="shortcut-pill" title="Switch task view (V)">V</kbd>
       </div>
       <div class="segmented-group context-group team-view-mode" role="group" aria-labelledby="task-view-label">
-        <button type="button" class="segment-btn ${model.taskViewMode === 'plan' ? 'active' : ''}"
-          aria-pressed=${model.taskViewMode === 'plan'}
-          title="Show all scoped work independently of team selection"
-          @click=${() => actions.setTaskViewMode('plan')}>All plan work</button>
-        <button type="button" class="segment-btn ${model.taskViewMode === 'team' ? 'active' : ''}"
-          aria-pressed=${model.taskViewMode === 'team'}
-          title="Show selected teams' allocated work, ancestors and unallocated descendants"
-          @click=${() => actions.setTaskViewMode('team')}>Selected teams</button>
+        <button type="button" class="segment-btn ${teamContext ? '' : 'active'}"
+          aria-pressed=${!teamContext} title="Show all tasks in the selected plans"
+          @click=${() => actions.setTaskViewMode('plan')}>Plan</button>
+        <button type="button" class="segment-btn ${teamContext ? 'active' : ''}"
+          aria-pressed=${teamContext} title="Show selected teams' tasks across all plans"
+          @click=${() => actions.setTaskViewMode('team-all-plans')}>Team</button>
       </div>
-    </div>
-    <div class="team-selection-status">${model.teams.filter((team) => team.selected).length} of ${model.teams.length} teams selected</div>
+    </div>` : ''}
+      <div class="team-selection-status">${model.teams.length === 0 ? 'No teams available'
+        : `${model.teams.filter((team) => team.selected).length} of ${model.teams.length} teams selected`}</div>
     <div id="team-drilldown-list" class="team-drilldown-grid"
       style="--team-columns:14px minmax(128px, 1fr)${model.taskTypes.length ? ` repeat(${model.taskTypes.length}, 32px)` : ''}">
       <div class="team-drilldown-header">

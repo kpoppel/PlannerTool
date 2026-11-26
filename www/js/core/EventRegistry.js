@@ -153,6 +153,7 @@ export const BoardEvents = {
   ZOOM_CHANGED: Symbol('board:zoom-changed'),
   FOLD_ACTION: Symbol('board:fold-action'),
   FOLD_STATE: Symbol('board:fold-state'),
+  TASK_LAYOUT_CHANGED: Symbol('board:task-layout-changed'),
 };
 
 // Group events — fired by GroupService

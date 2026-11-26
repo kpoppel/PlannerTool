@@ -94,7 +94,7 @@ export function createApplicationShortcutDefinitions(dependencies) {
       commands.setCapacityViewMode(nextOption(types, selectors.getEffectiveCapacityViewMode()));
     }),
     shortcut('task-view', 'v', () => {
-      commands.setTaskViewMode(nextOption(['plan', 'team'], selectors.getTaskViewMode()));
+      commands.setTaskViewMode(nextOption(['plan', 'team', 'team-all-plans'], selectors.getTaskViewMode()));
     }),
     shortcut('highlight-relations', 'h', () => {
       commands.setHighlightFeatureRelationMode(!selectors.getHighlightFeatureRelationMode());

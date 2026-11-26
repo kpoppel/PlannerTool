@@ -159,6 +159,7 @@ test.describe('Board letter shortcuts', () => {
       sel.feature.getTypeDisplayName = (key) => taskTypes[keys.indexOf(key)];
       sel.feature.getCountsForTeam = () => new Map(keys.map((key) => [key, 1]));
       const sidebar = document.createElement('board-controls-menu');
+      sidebar.section = 'team-filter';
       sidebar._getTeamDrilldownTeams = () => [{ id: 'team-a', name: 'Team A', selected: true }];
       document.body.appendChild(sidebar);
       bus.emit(BoardEvents.FOLD_STATE, {
@@ -168,7 +169,7 @@ test.describe('Board letter shortcuts', () => {
       menu.style.cssText = 'position:absolute;left:360px;top:24px;';
       document.body.appendChild(menu);
     });
-    const hints = page.locator('board-controls-menu .shortcut-pill');
+    const hints = page.locator('board-controls-menu [data-filter-section="teams"] .shortcut-pill');
     await expect(hints).toHaveText(['V']);
     const toggleAlignment = await page.locator('board-controls-menu .list-toggle-btn').evaluate((button) => {
       const root = button.getRootNode();

@@ -16,7 +16,7 @@ async function openMenu(page, trigger, element) {
 
 const MENU_TRIGGERS = {
   'view-menu': '#viewMenuBtn', 'scenario-menu': '#scenarioMenuBtn', 'plan-menu': '#planMenuBtn',
-  'scope-menu': '#scopeMenuBtn', 'tools-menu': '#toolsMenuBtn',
+  'tools-menu': '#toolsMenuBtn',
 };
 
 async function closeMenus(page) {
@@ -75,7 +75,6 @@ test('overview, top menu and popovers', async ({ page }) => {
     ['#viewMenuBtn', 'view-menu', 'menu_view'],
     ['#scenarioMenuBtn', 'scenario-menu', 'menu_scenario'],
     ['#planMenuBtn', 'plan-menu', 'menu_plan'],
-    ['#scopeMenuBtn', 'scope-menu', 'menu_scope'],
     ['#toolsMenuBtn', 'tools-menu', 'menu_tools'],
   ]) {
     const popover = await openMenu(page, trigger, element);

@@ -15,7 +15,7 @@ describe('Task list presentation', () => {
       { id: 'group', isGroup: true, top: 0, height: 28, groupObj: { name: 'Release' }, collapsed: false },
       { id: '42', top: 28, height: 60, feature: { id: '42', title: 'Ship release', parentId: null,
         project: 'release-plan', type: 'Feature' }, groupColor: '#347ab3',
-        foldCount: 2, folded: false },
+        foldCount: 2, folded: false, taskContext: [] },
     ], searchFeatures: [{ id: '42', title: 'Ship release' }] };
     document.body.append(list);
     await list.updateComplete;
@@ -111,7 +111,7 @@ describe('Task list presentation', () => {
     list.layout = { ...list.layout, rows: [...list.layout.rows, {
       id: '99', top: 88, height: 60, feature: { id: '99', title: 'Context descendant',
         parentId: '42', project: 'context-external', type: 'Feature' },
-      groupColor: null, foldCount: 0, folded: false,
+      groupColor: null, foldCount: 0, folded: false, taskContext: [],
     }] };
 
     await expect(list.updateComplete).resolves.toBe(true);

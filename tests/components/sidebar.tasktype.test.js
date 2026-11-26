@@ -253,8 +253,8 @@ describe('Sidebar task-type filter', () => {
     expect(store.getState().selection.sidebarDisabled).to.equal(restrictions);
   });
 
-  it('switches the team drill-down task view from Plan overview to Team focus', async () => {
-    sidebar.section = 'teams';
+  it('switches the task view from Plan overview to Team focus in Team filter', async () => {
+    sidebar.section = 'team-filter';
     cmd.view.setTaskViewMode('plan');
     sidebar._getTeamDrilldownTeams = () => [{ id: 'team-a', name: 'Team A', selected: true }];
     sidebar.requestUpdate();
@@ -262,14 +262,19 @@ describe('Sidebar task-type filter', () => {
 
     const buttons = sidebar.shadowRoot.querySelectorAll('.team-view-mode button');
     expect(Array.from(buttons, (button) => button.textContent.trim())).to.deep.equal([
-      'All plan work', 'Selected teams',
+      'Plan', 'Team',
     ]);
     expect(buttons[0].getAttribute('aria-pressed')).to.equal('true');
 
     buttons[1].click();
     await sidebar.updateComplete;
-    expect(sel.view.getTaskViewMode()).to.equal('team');
+    expect(sel.view.getTaskViewMode()).to.equal('team-all-plans');
     expect(buttons[1].getAttribute('aria-pressed')).to.equal('true');
+
+    buttons[0].click();
+    await sidebar.updateComplete;
+    expect(sel.view.getTaskViewMode()).to.equal('plan');
+    expect(buttons[0].getAttribute('aria-pressed')).to.equal('true');
   });
 
   it('shows four task hierarchy commands in its own menu and tracks board state', async () => {
@@ -543,7 +548,7 @@ describe('Sidebar task-type filter', () => {
     sidebar.requestUpdate();
     await sidebar.updateComplete;
     expect((sidebar.shadowRoot || sidebar).textContent)
-      .to.include('This plan has no teams assigned.');
+      .to.include('No teams available');
     sel.scope.getContextTeams = originalGetContextTeams;
   });
 

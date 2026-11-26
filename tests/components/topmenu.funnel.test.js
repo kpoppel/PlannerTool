@@ -41,7 +41,7 @@ describe('TopMenu Data Funnel', () => {
   }
 
   it('opens board controls without mounting a sidebar and restores focus on Escape', async () => {
-    expect(menu.shadowRoot.querySelector('#teamsMenuBtn')).to.equal(null);
+    expect(menu.shadowRoot.querySelector('#teamsMenuBtn')).to.exist;
     expect(menu.shadowRoot.querySelector('#hierarchyMenuBtn')).to.equal(null);
     for (const [name, label] of [['filters', 'Filters']]) {
       const trigger = menu.shadowRoot.querySelector(`#${name}MenuBtn`);
@@ -52,7 +52,7 @@ describe('TopMenu Data Funnel', () => {
       await controls.updateComplete;
       expect(controls.section).to.equal('all');
       expect(controls.getAttribute('aria-label')).to.equal(label);
-      expect(controls.shadowRoot.querySelector('[aria-label="Teams"]')).to.exist;
+      expect(controls.shadowRoot.querySelector('[aria-label="Teams"]')).to.equal(null);
       expect(controls.shadowRoot.querySelector('[aria-label="Hierarchy"]')).to.exist;
       expect(controls.shadowRoot.querySelector('[aria-label="Task filters"]')).to.exist;
       expect(document.querySelector('app-sidebar')).to.equal(null);
@@ -60,6 +60,48 @@ describe('TopMenu Data Funnel', () => {
       await menu.updateComplete;
       expect(menu.openMenu).to.equal(null);
       expect(menu.shadowRoot.activeElement).to.equal(trigger);
+    }
+  });
+
+  it('scopes board controls to the toolbox trigger without limiting the main Filters menu', async () => {
+    const toolbox = document.createElement('div');
+    const filters = menu.shadowRoot.querySelector('#filtersMenuBtn');
+    document.body.append(toolbox);
+    try {
+      for (const [group, label, sections] of [
+        ['teams', 'Teams', ['teams']],
+        ['types', 'Task types', []],
+        ['states', 'States', []],
+        ['advanced', 'Advanced filters', ['schedule', 'allocation', 'hierarchy', 'relations']],
+      ]) {
+        const trigger = document.createElement('button');
+        toolbox.append(trigger);
+        trigger.dispatchEvent(new CustomEvent('task-filter-menu-open', {
+          bubbles: true, composed: true, detail: { group, trigger },
+        }));
+        await menu.updateComplete;
+        const controls = menu.shadowRoot.querySelector('board-controls-menu');
+        await controls.updateComplete;
+        expect(controls.getAttribute('aria-label')).to.equal(label);
+        expect(controls.shadowRoot.querySelector('[aria-label="Hierarchy"]')).to.equal(null);
+        expect([...controls.shadowRoot.querySelectorAll('[data-filter-section]')]
+          .map((section) => section.dataset.filterSection)).to.deep.equal(sections);
+        expect(filters.getAttribute('aria-expanded')).to.equal('false');
+        if (group === 'types' || group === 'states') {
+          expect(controls.shadowRoot.textContent).to.include('No filters available');
+          expect(menu.shadowRoot.activeElement).to.equal(controls);
+        }
+      }
+
+      filters.click();
+      await menu.updateComplete;
+      const controls = menu.shadowRoot.querySelector('board-controls-menu');
+      await controls.updateComplete;
+      expect(controls.section).to.equal('all');
+      expect(controls.shadowRoot.querySelector('[aria-label="Hierarchy"]')).to.exist;
+      expect(filters.getAttribute('aria-expanded')).to.equal('true');
+    } finally {
+      toolbox.remove();
     }
   });
 
@@ -275,13 +317,13 @@ describe('TopMenu Data Funnel', () => {
       .to.equal('Existing tool');
   });
 
-  it('places Scope before Filters and plugin menus on both sides of Tools', async () => {
+  it('places Filters and plugin menus before and after Tools', async () => {
     await registerMenu('test-before-menu', 'before-tools');
     await registerMenu('test-after-menu', 'after-tools');
     const labels = [...menu.shadowRoot.querySelectorAll('.menu-item')].map((element) =>
       element.dataset.pluginId === undefined ? element.id : element.dataset.pluginId);
-    expect(labels.slice(-5)).to.deep.equal([
-      'scopeMenuBtn', 'filtersMenuBtn', 'test-before-menu', 'toolsMenuBtn', 'test-after-menu',
+    expect(labels.slice(-6)).to.deep.equal([
+      'planMenuBtn', 'teamsMenuBtn', 'filtersMenuBtn', 'test-before-menu', 'toolsMenuBtn', 'test-after-menu',
     ]);
   });
 
@@ -398,7 +440,7 @@ describe('TopMenu Data Funnel', () => {
     expect([...information.querySelectorAll('.count-value')].map((value) => value.textContent.trim()))
       .to.deep.equal(['10', '-2', '+4', '-3', '=9', '-1', '-0', '-0', '-0', '-0', '-1', '-2', '=5']);
     expect(information.textContent).to.include('Selected plans (Plan menu total)');
-    expect(information.textContent).to.include('Added by Scope');
+    expect(information.textContent).to.include('Context tasks');
     expect(information.textContent).to.include('Excluded from current scope');
     for (const label of ['Schedule', 'Allocation', 'Hierarchy', 'Relations', 'State', 'Task Types']) {
       expect(information.textContent).to.include(label);
@@ -411,21 +453,19 @@ describe('TopMenu Data Funnel', () => {
     expect(root.activeElement).to.equal(trigger);
   });
 
-  it('keeps Scope separate from the board information menu', async () => {
+  it('keeps board information available without a Scope menu', async () => {
     await menu.updateComplete;
 
     const root = menu.shadowRoot || menu;
-    expect(root.querySelector('#scopeMenuBtn')).to.exist;
+    expect(root.querySelector('#scopeMenuBtn')).to.equal(null);
     expect(root.querySelector('#boardInfoBtn')).to.exist;
   });
 
-  it('shows active Scope relationship icons in the top menu', async () => {
-    menu.scopeContext = { parent: true, child: false, dependency: true, otherAllocations: false };
-    menu.requestUpdate();
+  it('keeps Plan separate from the cross-plan Teams shortcut in the top menu', async () => {
     await menu.updateComplete;
 
     const root = menu.shadowRoot || menu;
-    expect(root.querySelector('#scopeMenuBtn').textContent).to.include('↑');
-    expect(root.querySelector('#scopeMenuBtn').textContent).to.include('↔');
+    expect(root.querySelector('#planMenuBtn').textContent.trim()).to.equal('Plan');
+    expect(root.querySelector('#teamsMenuBtn').textContent.trim()).to.include('Team filter');
   });
 });

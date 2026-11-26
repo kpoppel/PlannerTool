@@ -47,24 +47,15 @@ Menus close with Escape or by clicking outside them. Left and right arrow keys m
 
 Which teams appear in the Teams menu depends on the plans selected here (see [Teams](sidebar.md#team-drill-down)).
 
-## Scope menu
+## Related work
 
-![Scope menu](img/menu_scope.png)
-
-Scope adds related work to the board around the selected (base) plans:
-
-- **Ancestors** (↑): parents and further ancestors of base tasks, even if they belong to plans that are not selected.
-- **Descendant work** (↓): children and further descendants.
-- **Dependencies** (↔): tasks linked by dependency relations.
-- **Other work by participating teams** (●): other tasks allocated to the teams that work on the selected plans.
-
-The number next to each option shows how many displayable tasks enabling it would add (or disabling it would remove). Tasks shared by several options are counted once.
+Use the parent arrow when a task's parent is missing from the board, and its chevron to expand a level down. These reveals leave the selected plans and workload calculations unchanged. Use **Tools > Dependencies** to draw links between tasks already shown, or [Team Drill-down](sidebar.md#team-drill-down) to see a team's work across plans.
 
 ## Board information
 
 ![Board information](img/board_information.png)
 
-Click **N on board** to see how the number of cards is reached: tasks counted in the selected plans, shared tasks counted once, tasks added by Scope, tasks excluded from the current scope, then the tasks removed by each task filter and by team focus. The last line is the number of cards on the board. Hover a row for an explanation. The footer shows how many teams are in scope.
+Click **N on board** to see how the base task count is reached: tasks counted in the selected plans, shared tasks counted once, and tasks added or excluded by the current mode, filters and team focus. Hover a row for an explanation. The footer shows how many teams are in scope.
 
 ## Tools menu
 

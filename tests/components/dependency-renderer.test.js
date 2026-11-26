@@ -154,12 +154,11 @@ describe('PluginDependenciesComponent', () => {
     expect(dashed).to.be.greaterThan(0);
   });
 
-  it('clears the SVG when showDependencies is toggled off', async () => {
+  it('clears the SVG when the dependency tool is closed', async () => {
     mockFeatures.list = [
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];
-    mockView.dependencyContext = true;
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -168,8 +167,7 @@ describe('PluginDependenciesComponent', () => {
     component.open();
     await new Promise((r) => setTimeout(r, 50));
 
-    mockView.dependencyContext = false;
-    component._handleDepsToggle();
+    component.close();
     await new Promise((r) => setTimeout(r, 50));
 
     const svg = boardArea?.querySelector('.dependencies-overlay__svg');

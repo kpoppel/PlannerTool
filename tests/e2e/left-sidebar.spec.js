@@ -22,18 +22,14 @@ test.describe('Task list and board menus', () => {
     await expect(page.locator('help-modal app-footer .footer-line.status')).not.toBeEmpty();
   });
 
-  test('Scope menu toggles canonical Context', async ({ page }) => {
-    await page.getByRole('button', { name: 'Scope' }).click();
-    const ancestors = page.locator('scope-menu').getByRole('button', { name: /Ancestors/ });
-    await expect(ancestors).toBeVisible();
-    const before = await ancestors.getAttribute('aria-pressed');
-
-    await ancestors.click();
-
-    await expect(ancestors).toHaveAttribute(
-      'aria-pressed',
-      before === 'true' ? 'false' : 'true'
-    );
+  test('offers cross-plan team focus through Work shown instead of Scope', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'Scope', exact: true })).toHaveCount(0);
+    await page.locator('top-menu-bar #teamsMenuBtn').click();
+    const acrossPlans = page.locator('board-controls-menu').getByRole('button', { name: 'Team', exact: true });
+    await acrossPlans.click();
+    await expect(acrossPlans).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('top-menu-bar #teamsMenuBtn')).toBeVisible();
+    await expect(page.locator('top-menu-bar #planMenuBtn')).toBeVisible();
   });
 
   test('task filters section renders options', async ({ page }) => {

@@ -1,6 +1,7 @@
 import {
   FeatureEvents,
   FilterEvents,
+  TeamEvents,
   TimelineEvents,
   ViewEvents,
 } from '../../core/EventRegistry.js';
@@ -171,13 +172,20 @@ export function createViewCommands(store, bus) {
     },
 
     setTaskViewMode(mode, runtimeOptions = {}) {
-      if (mode !== 'plan' && mode !== 'team') throw new Error(`Unknown task view mode: ${mode}`);
+      if (!['plan', 'team', 'team-all-plans'].includes(mode)) {
+        throw new Error(`Unknown task view mode: ${mode}`);
+      }
       if (store.getState().view.options.taskViewMode === mode) return;
-      setViewOptions(
-        (options) => ({ ...options, taskViewMode: mode }),
-        'view.setTaskViewMode'
-      );
+      const { baseline, selection } = store.getState();
+      const selected = new Set(selection.teamIds);
+      const clearTeams = mode === 'team-all-plans' && baseline.teams.length > 1
+        && baseline.teams.every((team) => selected.has(String(team.id)));
+      store.setState((state) => ({ ...state,
+        selection: clearTeams ? { ...state.selection, teamIds: [] } : state.selection,
+        view: { ...state.view, options: { ...state.view.options, taskViewMode: mode } },
+      }), false, 'view.setTaskViewMode');
       if (!runtimeOptions.suppressEvents) {
+        if (clearTeams) bus.emit(TeamEvents.CHANGED);
         bus.emit(FilterEvents.CHANGED);
         bus.emit(FeatureEvents.UPDATED);
       }

@@ -39,7 +39,7 @@ Changes go into the active scenario. See [Scenarios & Saving](scenarios.md).
 
 ## Dependencies and highlighting
 
-Enable **Dependencies** in the Scope menu to bring linked work onto the board. Dependency links between cards are drawn as lines. Press `h` to toggle relationship highlighting.
+Use **Tools > Dependencies** to draw links between tasks already on the board. Press `h` to toggle relationship highlighting.
 
 ## Timeline scale
 

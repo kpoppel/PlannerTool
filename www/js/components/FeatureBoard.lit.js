@@ -7,6 +7,7 @@ import {
   FilterEvents,
   ScenarioEvents,
   ViewEvents,
+  ViewManagementEvents,
   GroupEvents,
   AppEvents,
   UIEvents,
@@ -72,6 +73,8 @@ class FeatureBoard extends LitElement {
     this._collapsedGroups = new Set();
     this._revealedGroups = new Set();
     this._foldedFeatures = new Set();
+    this._taskReveals = new Map();
+    this._revealableChildren = new Set();
     this._foldModel = null;
     this._reconciliationContext = null;
     this._navigationFeatureId = null;
@@ -113,6 +116,7 @@ class FeatureBoard extends LitElement {
     this.dispatchEvent(new CustomEvent('task-layout-changed', {
       detail: this.getTaskLayout(), bubbles: true, composed: true,
     }));
+    bus.emit(BoardEvents.TASK_LAYOUT_CHANGED);
   }
 
   connectedCallback() {
@@ -138,6 +142,13 @@ class FeatureBoard extends LitElement {
     };
     this._boundHandlers.set(FilterEvents.CHANGED, this._onPresentationScopeChanged);
     bus.on(FilterEvents.CHANGED, this._onPresentationScopeChanged);
+    const resetTaskReveals = () => {
+      if (this._taskReveals.size === 0) return;
+      this._taskReveals.clear();
+      this.renderFeatures();
+    };
+    this._boundHandlers.set(ViewManagementEvents.ACTIVATED, resetTaskReveals);
+    bus.on(ViewManagementEvents.ACTIVATED, resetTaskReveals);
     this._viewportUnsubscribe = boardCoords.subscribe(() => {
       this._scheduleViewportRender();
     });
@@ -317,8 +328,10 @@ class FeatureBoard extends LitElement {
             .hideTitle=${this.taskListVisible && !item.condensed}
             .foldCount=${item.foldCount}
             .folded=${item.folded}
+              .taskContext=${item.taskContext}
             .selected=${sel.feature.getSelectedFeatureId() === String(item.feature.id)}
             @feature-fold-toggle=${this._onFeatureFoldToggle}
+              @task-context-toggle=${this._onTaskContextToggle}
             @mouseenter=${() => this.dispatchEvent(new CustomEvent('task-highlight', {
               detail: { id: String(item.feature.id) }, bubbles: true, composed: true,
             }))}
@@ -393,8 +406,30 @@ class FeatureBoard extends LitElement {
 
   _onFeatureFoldToggle(event) {
     const id = String(event.detail.featureId);
+    if (this._revealableChildren.has(id)) {
+      const open = this._toggleTaskReveal(id, 'children');
+      if (open) this._foldedFeatures.delete(id);
+      else this._foldedFeatures.add(id);
+      this.renderFeatures();
+      return;
+    }
     if (this._foldedFeatures.has(id)) this._foldedFeatures.delete(id);
     else this._foldedFeatures.add(id);
+    this.renderFeatures();
+  }
+
+  _toggleTaskReveal(id, relation) {
+    const active = this._taskReveals.has(id) ? this._taskReveals.get(id) : new Set();
+    if (active.has(relation)) active.delete(relation);
+    else active.add(relation);
+    if (active.size === 0) this._taskReveals.delete(id);
+    else this._taskReveals.set(id, active);
+    return active.has(relation);
+  }
+
+  _onTaskContextToggle(event) {
+    const { featureId, relation } = event.detail;
+    this._toggleTaskReveal(String(featureId), relation);
     this.renderFeatures();
   }
 
@@ -721,8 +756,31 @@ class FeatureBoard extends LitElement {
     const presentationById = new Map(presentations.map((entry) => [entry.sourceId, entry]));
     const virtualIds = new Set(presentationById.keys());
     const ordinaryIds = new Set(ordinaryFeatures.map((feature) => String(feature.id)));
+    const taskContext = new Map();
+    const contextFor = (id) => {
+      if (!taskContext.has(id)) taskContext.set(id, sel.scope.getTaskContext(id));
+      return taskContext.get(id);
+    };
+    const revealed = new Map();
+    if (reviewContext === null) {
+      const seen = new Set(ordinaryIds);
+      const pending = [...ordinaryIds];
+      for (const id of pending) {
+        if (!this._taskReveals.has(id)) continue;
+        for (const relation of this._taskReveals.get(id)) {
+          for (const feature of contextFor(id)[relation]) {
+            const target = String(feature.id);
+            if (seen.has(target)) continue;
+            seen.add(target);
+            revealed.set(target, feature);
+            pending.push(target);
+          }
+        }
+      }
+    }
     let visibleFeatures = reviewContext === null
-      ? [...ordinaryFeatures, ...presentations.map((entry) => entry.feature)]
+      ? [...ordinaryFeatures, ...revealed.values(), ...presentations.filter((entry) =>
+        !revealed.has(entry.sourceId)).map((entry) => entry.feature)]
       : sourceFeatures.filter((feature) => reviewContext.featureIds.has(String(feature.id))
         || (!reviewContext.filter && ordinaryIds.has(String(feature.id))));
     const months = getTimelineMonths();
@@ -739,7 +797,8 @@ class FeatureBoard extends LitElement {
     const candidateSwimlanes = buildSwimlaneList(
       selectedProjects,
       visibleFeatures,
-      context,
+      revealed.size > 0 || sel.view.getTaskViewMode() === 'team-all-plans'
+        ? { ...context, dependency: true } : context,
       virtualIds
     );
     const swimlaneActive = isSwimlaneMode(
@@ -853,11 +912,27 @@ class FeatureBoard extends LitElement {
     };
     bus.emit(BoardEvents.FOLD_STATE, this._foldState);
     const displayedFeatures = this._foldModel === null ? visibleFeatures : this._foldModel.visible;
-    const foldProps = (feature) => ({
-      foldCount: this._foldModel === null || !this._foldModel.counts.has(String(feature.id))
-        ? 0 : this._foldModel.counts.get(String(feature.id)),
-      folded: foldedFeatures.has(String(feature.id)),
-    });
+    const displayedIds = new Set(displayedFeatures.map((feature) => String(feature.id)));
+    this._revealableChildren = new Set();
+    const foldProps = (feature) => {
+      const id = String(feature.id);
+      const count = this._foldModel !== null && this._foldModel.counts.has(id)
+        ? this._foldModel.counts.get(id) : 0;
+      if (reviewContext !== null || virtualIds.has(id)) {
+        return { foldCount: count, folded: foldedFeatures.has(id), taskContext: [] };
+      }
+      const relations = contextFor(id);
+      const active = this._taskReveals.has(id) ? this._taskReveals.get(id) : new Set();
+      const children = relations.children.filter((child) => !ordinaryIds.has(String(child.id)));
+      if (children.length > 0) this._revealableChildren.add(id);
+      return {
+        foldCount: active.has('children') ? Math.max(count, children.length) : count + children.length,
+        folded: foldedFeatures.has(id) || (children.length > 0 && !active.has('children')),
+        taskContext: !active.has('parents')
+          && relations.parents.some((parent) => !displayedIds.has(String(parent.id)))
+          ? [{ relation: 'parents', label: 'Parent', icon: '↑', open: false }] : [],
+      };
+    };
 
     let renderList;
     let totalHeight;
@@ -894,7 +969,7 @@ class FeatureBoard extends LitElement {
 
       // Hide empty expansion lanes; selected plan lanes stay visible when empty
       // except in Team focus, where only lanes holding the team's work matter.
-      const hideEmptyPlanLanes = sel.view.getTaskViewMode() === 'team';
+      const hideEmptyPlanLanes = sel.view.getTaskViewMode() !== 'plan';
       const hiddenLaneIds = new Set(
         swimlanes
           .filter((s) => {
@@ -1152,7 +1227,9 @@ class FeatureBoard extends LitElement {
     // and only TIMELINE_CONFIG.monthWidth tracks that, for every scale.
     this.style.width = months.length * TIMELINE_CONFIG.monthWidth + 'px';
     this.requestUpdate();
-    if (renderList.length === 0) {
+    const waitingForTeams = sel.view.getTaskViewMode() === 'team-all-plans'
+      && sel.selection.getSelectedTeamIds().length === 0;
+    if (renderList.length === 0 && !waitingForTeams) {
       const mh = await import('./modalHelpers.js');
       if (typeof mh?.openEmptyBoardModal === 'function') {
         mh.openEmptyBoardModal({ parent: document.body }).catch(() => {});

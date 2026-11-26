@@ -64,11 +64,11 @@ export function getTaskFilterPresentation() {
 }
 
 /** Render only projected values and dispatch named, value-based actions. */
-export function renderSidebarTaskFilters({ model, actions }) {
+export function renderSidebarTaskFilters({ model, actions, section = 'all' }) {
   return html`
-    ${model.types.length > 0 ? html`
+    ${(section === 'all' || section === 'types') && model.types.length > 0 ? html`
       <div class="filter-dimension" data-filter-section="types">
-        <div class="filter-dimension-title">Task Types</div>
+        ${section === 'all' ? html`<div class="filter-dimension-title">Task Types</div>` : ''}
         <div class="filter-options">
           ${model.types.map((type) => html`
             <div class="filter-option ${type.active ? 'active' : ''} ${type.disabled ? 'disabled' : ''}"
@@ -88,9 +88,9 @@ export function renderSidebarTaskFilters({ model, actions }) {
         </div>
       </div>
     ` : ''}
-    ${model.states.length > 0 ? html`
+    ${(section === 'all' || section === 'states') && model.states.length > 0 ? html`
       <div class="filter-dimension" data-filter-section="states">
-        <div class="filter-dimension-title">State</div>
+        ${section === 'all' ? html`<div class="filter-dimension-title">State</div>` : ''}
         <div class="filter-options">
           ${model.states.map((state) => html`
             <div class="filter-option ${state.active ? 'active' : ''} ${state.disabled ? 'disabled' : ''}"
@@ -111,9 +111,12 @@ export function renderSidebarTaskFilters({ model, actions }) {
         </div>
       </div>
     ` : ''}
-    ${model.states.length === 0 && model.types.length === 0 ? html`
+    ${((section === 'all' && model.states.length === 0 && model.types.length === 0) ||
+      (section === 'types' && model.types.length === 0) ||
+      (section === 'states' && model.states.length === 0)) ? html`
       <div class="section-description"><span class="small">No filters available</span></div>
     ` : ''}
+    ${section === 'all' || section === 'advanced' ? html`
     <div class="filter-dimensions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       ${model.dimensions.map((dimension) => html`
         <div class="filter-dimension" data-filter-section=${dimension.key}>
@@ -139,5 +142,6 @@ export function renderSidebarTaskFilters({ model, actions }) {
         </div>
       `)}
     </div>
+    ` : ''}
   `;
 }

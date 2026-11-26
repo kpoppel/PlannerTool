@@ -490,7 +490,7 @@ export class TimelineBoard extends LitElement {
 
       .task-toolbar { grid-column: 1; grid-row: 1;
         background: var(--color-bg, #f7f7f7); display: grid;
-        grid-template-rows: repeat(5, 20px); gap: 3px; padding: 4px 6px; min-width: 0;
+        grid-template-rows: 18px 48px 20px 20px; gap: 2px; padding: 3px 6px; min-width: 0;
         height: 120px; min-height: 0; overflow: hidden;
         container-type: inline-size;
         box-sizing: border-box; border-right: 1px solid #bec8d2;
@@ -520,21 +520,21 @@ export class TimelineBoard extends LitElement {
         color: #096b65; border-color: #75b8ad; }
       .task-toolbar .advanced-filter[data-selection="none"] { background: #fbe9e9;
         color: #aa3434; border-color: #dba3a3; }
-      .focus-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
-        background: #e5e9ec; border-radius: 3px; padding: 1px; min-width: 0; }
-      .task-toolbar .focus-mode button { width: auto; height: 18px; font-size: 11px;
-        border-radius: 2px; }
+      .focus-mode { display: grid; grid-template-rows: 22px 22px; gap: 4px; min-width: 0; }
+      .context-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 2px; padding: 1px; background: #e5e9ec; border-radius: 3px; }
+      .context-filter { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px; }
+      .task-toolbar .focus-mode button { width: auto; height: 20px; font-size: 11px;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 4px; padding: 0 5px; min-width: 0; text-align: left; border-radius: 2px; }
+      .task-toolbar .context-switch button { justify-content: center; }
+      .task-toolbar .context-filter button { background: #edf0f2; border: 1px solid #bec8d2; }
+      .task-toolbar .context-filter[data-filtered="true"] button:first-child {
+        color: #096b65; background: #e0f1ee; border-color: #75b8ad; }
+      .focus-mode .scope-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .task-toolbar .focus-mode button[aria-pressed="true"] { background: #fff;
         box-shadow: 0 0 0 1px #b6c3cd; font-weight: 600; }
-      .task-toolbar .focus-mode button[data-team-focus="true"][aria-pressed="true"] {
-        color: #096b65; box-shadow: 0 0 0 1px #75b8ad; }
-      .task-toolbar .team-choice { flex: 0 0 auto; width: auto; max-width: 84px; height: 18px;
-        display: inline-flex; align-items: center; gap: 4px; padding: 0 4px;
-        border: 1px dashed #98a4af; border-radius: 3px; font-size: 10px; opacity: .6; }
-      .task-toolbar .team-choice[aria-pressed="true"] { opacity: 1;
-        border: 1px solid #197c76; background: #e0f1ee; }
-      .team-choice .team-color { width: 6px; height: 10px; flex: 0 0 6px; border-radius: 1px; }
-      .team-choice .team-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .focus-mode .picker-chevron { flex: 0 0 auto; font-size: 9px; }
       .task-toolbar .filter-summary { width: 100%; height: 20px;
         display: flex; align-items: center; gap: 4px; padding: 0; border-radius: 3px;
         text-align: left; min-width: 0; }
@@ -550,7 +550,6 @@ export class TimelineBoard extends LitElement {
         border: 1px dashed #98a4af; border-radius: 3px; box-sizing: border-box; opacity: .55; }
       .task-toolbar .filter-choice[aria-pressed="true"] { opacity: 1; border: 1px solid #197c76;
         box-shadow: inset 0 -2px #197c76; background: #e0f1ee; }
-      .filter-empty { font-size: 10px; color: #aa3434; }
       .task-column-heading { grid-column: 1; grid-row: 1; position: sticky; top: 0; left: 0;
         z-index: 150; padding: 2px 8px; font-size: 11px; line-height: 16px;
         display: flex; align-items: center; gap: 6px; min-width: 0;
@@ -726,9 +725,12 @@ export class TimelineBoard extends LitElement {
     }));
   }
 
-  _toggleTeamFocus(team) {
-    cmd.selection.setTeamSelected(team.id, !team.selected, { displayOnly: true });
-    cmd.view.setTaskViewMode('team');
+  _teamSelectionLabel(teams) {
+    const selected = teams.filter((team) => team.selected);
+    if (selected.length === 0) return 'no teams selected';
+    if (selected.length === 1) return selected[0].name;
+    if (selected.length === teams.length) return 'all teams';
+    return `${selected.length} teams`;
   }
 
   render() {
@@ -739,10 +741,13 @@ export class TimelineBoard extends LitElement {
     const filters = getTaskFilterPresentation();
     const selectedTypes = filters.types.filter((type) => type.active);
     const selectedStates = filters.states.filter((state) => state.active);
-    const contextTeamIds = new Set(sel.scope.getContextTeams().map((id) => String(id)));
-    const teams = sel.selection.getTeams().filter((team) => contextTeamIds.has(String(team.id)));
-    const selectedTeams = teams.filter((team) => team.selected);
-    const teamFocus = sel.view.getTaskViewMode() === 'team';
+    const taskViewMode = sel.view.getTaskViewMode();
+    const teamContext = taskViewMode === 'team-all-plans';
+    const hasPlanTeamFilter = taskViewMode === 'team';
+    const contextTeamIds = new Set(sel.scope.getContextTeams());
+    const contextTeams = sel.selection.getTeams().filter((team) => contextTeamIds.has(String(team.id)));
+    const teamLabel = teamContext ? `Teams across all plans: ${this._teamSelectionLabel(contextTeams)}`
+      : `Team filter: ${hasPlanTeamFilter ? this._teamSelectionLabel(contextTeams) : 'off'}`;
     const restrictedFilters = filters.dimensions.filter((dimension) =>
       dimension.options.some((option) => !option.active)).length;
     return html`
@@ -757,7 +762,7 @@ export class TimelineBoard extends LitElement {
               <div class="advanced-controls" role="group" aria-label="Advanced filters">
                 <button class="advanced-open" aria-label="Advanced filters" aria-haspopup="dialog"
                   title=${`${restrictedFilters} restricted advanced filters`}
-                  @click=${(event) => this._openFilterMenu(event, 'schedule')}>
+                  @click=${(event) => this._openFilterMenu(event, 'advanced')}>
                   <span class="wide-label">Advanced</span><span class="compact-label" aria-hidden="true">&#8230;</span>${restrictedFilters > 0 ? ` (${restrictedFilters})` : ''}</button>
                 ${filters.dimensions.map((dimension) => {
                   const active = dimension.options.filter((option) => option.active);
@@ -771,24 +776,20 @@ export class TimelineBoard extends LitElement {
               </div>
             </div>
             <div class="focus-mode" role="group" aria-label="Work shown">
-              <button aria-pressed=${!teamFocus} title="Show all scoped plan work"
-                @click=${() => cmd.view.setTaskViewMode('plan')}>Plan</button>
-              <button aria-pressed=${teamFocus} data-team-focus="true" ?disabled=${teams.length === 0}
-                title="Show selected teams in their full work context"
-                @click=${() => cmd.view.setTaskViewMode('team')}>Team focus</button>
-            </div>
-            <div class="filter-summary">
-              <button class="filter-summary-label" aria-label="Team drill-down" title="Open team drill-down"
-                aria-haspopup="dialog" @click=${(event) => this._openFilterMenu(event, 'teams')}>Teams</button>
-              <span class="filter-markers" role="group" aria-label="Team choices">
-                ${teams.map((team) => html`<button class="team-choice" aria-label=${team.name}
-                  title=${`${team.name}: ${team.selected ? 'selected' : 'not selected'}`}
-                  aria-pressed=${team.selected} @click=${() => this._toggleTeamFocus(team)}>
-                  <span class="team-color" style="background:${team.color}"></span>
-                  <span class="team-name">${team.short ? team.short : team.name}</span></button>`)}
-                ${teams.length === 0 ? html`<span class="filter-empty">No teams</span>` : ''}
-              </span>
-              <span class="filter-summary-count">${selectedTeams.length}/${teams.length}</span>
+              <div class="context-switch" role="group" aria-label="Context">
+                <button aria-pressed=${!teamContext} title="Show tasks in the selected plans"
+                  @click=${() => cmd.view.setTaskViewMode('plan')}>Plan</button>
+                <button aria-pressed=${teamContext} title="Show selected teams' tasks across all plans"
+                  @click=${() => cmd.view.setTaskViewMode('team-all-plans')}>Team</button>
+              </div>
+              <div class="context-filter" data-filtered=${hasPlanTeamFilter}>
+                <button aria-haspopup="dialog"
+                  title=${`${teamLabel}. ${teamContext ? 'Choose from all teams.' : 'Choose teams participating in the selected plans.'}`}
+                  @click=${(event) => this._openFilterMenu(event, 'teams')}>
+                  <span class="scope-label">${teamLabel}</span><span class="picker-chevron" aria-hidden="true">&#9662;</span></button>
+                ${hasPlanTeamFilter ? html`<button aria-label="Clear team filter" title="Clear team filter"
+                  @click=${() => cmd.view.setTaskViewMode('plan')}>Clear</button>` : ''}
+              </div>
             </div>
             <div class="filter-summary">
               <button class="filter-summary-label" aria-label="Task types" title="Open task type filters"
@@ -846,6 +847,7 @@ export class TimelineBoard extends LitElement {
           @search-status-changed=${(event) => { this._searchStatus = event.detail; }}
           @task-navigate=${this._navigateTask} @task-highlight=${this._highlightTask}
           @feature-fold-toggle=${(event) => this.shadowRoot.querySelector('feature-board')._onFeatureFoldToggle(event)}
+          @task-context-toggle=${(event) => this.shadowRoot.querySelector('feature-board')._onTaskContextToggle(event)}
           @group-toggle=${(event) => this.shadowRoot.querySelector('feature-board')._onGroupToggle(event)}
           @feature-context-menu=${(event) => this._onFeatureContextMenu(event)}
           @group-context-menu=${(event) => this._onGroupContextMenu(event)}></task-list>

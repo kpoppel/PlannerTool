@@ -6,7 +6,7 @@
  * into a proper plugin component that extends OverlaySvgPlugin.
  *
  * The overlay is always active once the plugin is registered (auto-activate).
- * Visibility is controlled by the canonical view Context dependency flag.
+ * Draws links between the cards currently displayed on the board.
  */
 
 import { html } from '../vendor/lit.js';
@@ -21,6 +21,7 @@ import {
   ViewEvents,
   FilterEvents,
   AppEvents,
+  BoardEvents,
 } from '../core/EventRegistry.js';
 import { findInBoard } from '../components/board-utils.js';
 
@@ -38,8 +39,6 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
     super();
     // Bound event handler references for reliable bus.off()
     this._onUpdate = this._scheduleRender.bind(this);
-    this._onDepsToggle = this._handleDepsToggle.bind(this);
-    this._onContextChanged = this._handleDepsToggle.bind(this);
   }
 
   // No floating toolbar — dependencies are a passive overlay
@@ -53,8 +52,8 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
 
   _subscribeBusEvents() {
     bus.on(FeatureEvents.UPDATED, this._onUpdate);
-    bus.on(ViewEvents.DEPENDENCIES, this._onDepsToggle);
-    bus.on(FilterEvents.CHANGED, this._onContextChanged);
+    bus.on(ViewEvents.DEPENDENCIES, this._onUpdate);
+    bus.on(BoardEvents.TASK_LAYOUT_CHANGED, this._onUpdate);
     bus.on(ProjectEvents.CHANGED, this._onUpdate);
     bus.on(TeamEvents.CHANGED, this._onUpdate);
     bus.on(FilterEvents.CHANGED, this._onUpdate);
@@ -66,30 +65,14 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
 
   _unsubscribeBusEvents() {
     bus.off(FeatureEvents.UPDATED, this._onUpdate);
-    bus.off(ViewEvents.DEPENDENCIES, this._onDepsToggle);
-    bus.off(FilterEvents.CHANGED, this._onContextChanged);
+    bus.off(ViewEvents.DEPENDENCIES, this._onUpdate);
+    bus.off(BoardEvents.TASK_LAYOUT_CHANGED, this._onUpdate);
     bus.off(ProjectEvents.CHANGED, this._onUpdate);
     bus.off(TeamEvents.CHANGED, this._onUpdate);
     bus.off(FilterEvents.CHANGED, this._onUpdate);
     bus.off(DragEvents.MOVE, this._onUpdate);
     bus.off(DragEvents.END, this._onUpdate);
     bus.off(AppEvents.READY, this._onUpdate);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Dependencies toggle
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Called when the view Context changes or a legacy dependency signal fires.
-   * Controls overlay visibility from the canonical Context state.
-   */
-  _handleDepsToggle() {
-    if (sel.view.getContext().dependency) {
-      this.open();
-    } else {
-      this.close();
-    }
   }
 
   // ---------------------------------------------------------------------------

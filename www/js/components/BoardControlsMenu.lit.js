@@ -49,13 +49,22 @@ export class BoardControlsMenu extends LitElement {
   _toggleTeamDrilldown(teamId) {
     const team = this.teams.find((item) => String(item.id) === String(teamId));
     cmd.selection.setTeamSelected(teamId, !(team !== undefined && team.selected), { displayOnly: true });
+    this._applyTeamDrilldown();
   }
 
   _toggleAllTeamDrilldown() {
     const teams = this._getTeamDrilldownTeams();
+    if (teams.length === 0) return;
     const allSelected = teams.every((team) => team.selected);
     cmd.selection.setTeamsSelectedBulk(Object.fromEntries(teams.map((team) => [team.id, !allSelected])),
       { displayOnly: true });
+    this._applyTeamDrilldown();
+  }
+
+  _applyTeamDrilldown() {
+    if (sel.view.getTaskViewMode() === 'plan') {
+      cmd.view.setTaskViewMode('team');
+    }
   }
 
   async _openTeamColorPopover(event, teamId) {
@@ -81,11 +90,14 @@ export class BoardControlsMenu extends LitElement {
   clearSidebarDisabledElements() { cmd.filter.clearSidebarDisabledElements(); }
 
   render() {
-    const model = this._controller.getPresentationModel(this._getTeamDrilldownTeams());
+    const showTeams = this.section === 'team-filter' || this.section === 'teams';
+    const model = this._controller.getPresentationModel(showTeams ? this._getTeamDrilldownTeams() : []);
+    const filterTitle = { all: 'Task filters', filters: 'Task filters', types: 'Task types',
+      states: 'States', advanced: 'Advanced filters' }[this.section];
     return html`<section class="controls" aria-label=${this.section}>
-      ${this.section === 'all' || this.section === 'teams' ? html`
+      ${showTeams ? html`
         <section class="controls-section" data-filter-section="teams" aria-label="Teams">
-        <h2>Teams</h2>${renderSidebarTeams({ model: model.teams, actions: {
+        <h2>Teams</h2>${renderSidebarTeams({ model: model.teams, showWorkMode: this.section === 'team-filter', actions: {
         toggleAll: () => this._toggleAllTeamDrilldown(),
         toggleCounts: () => { this.teamCountsOpen = !this.teamCountsOpen; },
         toggleTeam: (id) => this._toggleTeamDrilldown(id),
@@ -97,9 +109,10 @@ export class BoardControlsMenu extends LitElement {
         <h2>Hierarchy</h2>${renderSidebarHierarchy({ model: model.hierarchy, actions: {
         fold: (action) => bus.emit(BoardEvents.FOLD_ACTION, { action }),
       } })}</section>` : ''}
-      ${this.section === 'all' || this.section === 'filters' ? html`
+      ${['all', 'filters', 'types', 'states', 'advanced'].includes(this.section) ? html`
         <section class="controls-section" aria-label="Task filters">
-        <h2>Task filters</h2>${renderSidebarTaskFilters({ model: model.filters, actions: {
+        <h2>${filterTitle}</h2>
+        ${renderSidebarTaskFilters({ model: model.filters, section: this.section === 'filters' ? 'all' : this.section, actions: {
         toggleFilter: (dimension, option) => this._toggleTaskFilter(dimension, option),
         toggleState: (name) => this._toggleState(name),
         toggleType: (name) => this._toggleTaskType(name),

@@ -9,8 +9,9 @@ test.beforeEach(async ({ page }) => {
   await page.setContent('<style>html,body{height:100%;margin:0}timeline-board{height:calc(100vh - 40px);margin-top:40px}body{font-family:"Segoe UI",sans-serif;--color-sidebar-bg:#23344d;--color-sidebar-text:white;--details-width:340px;--z-details:200}</style>');
   await page.evaluate(async () => {
     const { bus } = await import('/js/core/EventBus.js');
-    const { AppEvents, GroupEvents } = await import('/js/core/EventRegistry.js');
+    const { AppEvents, FeatureEvents, GroupEvents } = await import('/js/core/EventRegistry.js');
     window.startTaskBoard = () => bus.emit(AppEvents.READY);
+    window.refreshTaskBoard = () => bus.emit(FeatureEvents.UPDATED);
     window.reloadTaskGroups = () => bus.emit(GroupEvents.LOADED);
     const { store } = await import('/js/application/store.js');
     window.taskBoardStore = store;
@@ -46,6 +47,119 @@ test.beforeEach(async ({ page }) => {
     document.querySelector('timeline-board')._onFeatureContextMenu !== undefined)).toBe(true);
   await page.evaluate(() => window.startTaskBoard());
   await expect(page.locator('task-list [data-task-id="task-0"]')).toBeVisible();
+});
+
+test('reveals cross-plan task context and switches to cross-plan team work', async ({ page }) => {
+  await page.evaluate(() => {
+    const store = window.taskBoardStore;
+    store.setState((state) => {
+      const [base] = state.baseline.features;
+      const features = [
+        { id: 'focus', project: 'plan', parentId: 'parent', relations: [{ type: 'Related', id: 'linked' }] },
+        { id: 'parent', project: 'peer', type: 'Epic' },
+        { id: 'child', project: 'peer', parentId: 'focus', type: 'User Story' },
+        { id: 'linked', project: 'peer' },
+        { id: 'team-peer', project: 'peer', capacity: [{ team: 'b', capacity: 30 }] },
+      ].map((feature) => ({ ...base, title: feature.id, type: 'Feature', ...feature }));
+      const projects = [...state.baseline.projects,
+        { ...state.baseline.projects[0], id: 'peer', name: 'Peer plan' }];
+      const teams = ['Beta', 'Hardware', 'Integration', 'Platform', 'Release'].map((name) => ({
+        id: name === 'Beta' ? 'b' : name, name, color: '#298864', kind: 'team',
+      }));
+      return { ...state, baseline: { ...state.baseline, features, projects, teams },
+        selection: { ...state.selection, teamIds: ['b'] } };
+    });
+    window.taskBoardCommands.selection.setTeamsSelectedBulk({ b: true });
+  });
+
+  const row = (id) => page.locator(`task-list [data-task-id="${id}"]`);
+  await expect(row('parent')).toHaveCount(0);
+  await row('focus').getByRole('button', { name: 'Parent', exact: true }).click();
+  await expect(row('parent')).toBeVisible();
+  await expect(row('focus').getByRole('button', { name: 'Parent', exact: true })).toHaveCount(0);
+  await expect(row('child')).toHaveCount(0);
+  await row('focus').getByRole('button', { name: 'Expand focus' }).click();
+  await expect(row('child')).toBeVisible();
+  await expect(row('focus').getByRole('button', { name: 'Linked tasks' })).toHaveCount(0);
+  await expect(row('linked')).toHaveCount(0);
+
+  const workShown = page.locator('timeline-board').getByRole('group', { name: 'Work shown' });
+  const planContext = workShown.getByRole('button', { name: 'Plan', exact: true });
+  const teamContext = workShown.getByRole('button', { name: 'Team', exact: true });
+  const teamsTrigger = page.getByRole('button', { name: /^Team filter(?:$| )/ });
+  const teamsBadge = teamsTrigger.locator('.menu-count-badge');
+  const pickerButton = workShown.getByRole('button', { name: /^(Team filter|Teams across all plans):/ });
+  await expect(planContext).toHaveAttribute('aria-pressed', 'true');
+  await expect(teamsTrigger).toBeVisible();
+  await expect(teamsBadge).toHaveText('None');
+  await expect(pickerButton).toHaveAccessibleName('Team filter: off');
+  await pickerButton.click();
+  const teamPicker = page.getByRole('dialog', { name: 'Teams', exact: true });
+  await expect(teamPicker).toBeVisible();
+  await expect(teamPicker.locator('.team-drilldown-row[title="Beta"]')).toHaveCount(0);
+  await expect(row('focus')).toBeVisible();
+  await teamContext.click();
+  await expect(teamPicker).toHaveCount(0);
+  await expect(pickerButton).toHaveAccessibleName('Teams across all plans: Beta');
+  await pickerButton.click();
+  await expect(teamPicker.locator('.team-drilldown-row[title="Beta"]')).toBeVisible();
+  await pickerButton.click();
+  await expect(teamPicker).toHaveCount(0);
+  await expect(teamContext).toHaveAttribute('aria-pressed', 'true');
+  await expect(planContext).toHaveAttribute('aria-pressed', 'false');
+  await expect(row('team-peer')).toBeVisible();
+  const planTrigger = page.locator('top-menu-bar #planMenuBtn');
+  await expect(planTrigger).toContainText('Release plan');
+  await expect(planTrigger).toBeDisabled();
+  await planTrigger.evaluate((button) => button.click());
+  const planMenu = page.locator('plan-menu');
+  await expect(planMenu).toHaveCount(0);
+  await expect(teamsBadge).toHaveText('Beta');
+  await expect(teamsTrigger).not.toContainText('All plans');
+  await expect(teamContext).toHaveAttribute('aria-pressed', 'true');
+  await teamsTrigger.click();
+  await expect(planMenu).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Team filter', exact: true })).toBeVisible();
+  await teamsTrigger.click();
+  await pickerButton.click();
+  const beta = teamPicker.locator('.team-drilldown-row[title="Beta"]');
+  await beta.click();
+  await expect(beta).toHaveAttribute('aria-pressed', 'false');
+  await expect(teamPicker.getByText('0 of 5 teams selected')).toBeVisible();
+  await expect(teamsBadge).toHaveText('None');
+  await expect(pickerButton).toHaveAccessibleName('Teams across all plans: no teams selected');
+  await teamPicker.locator('.team-drilldown-row[title="Hardware"]').click();
+  await beta.click();
+  await expect(pickerButton).toHaveAccessibleName('Teams across all plans: 2 teams');
+  await expect(teamsBadge).toHaveText('2 teams');
+  await planContext.click();
+  await expect(row('focus')).toBeVisible();
+  await expect(row('team-peer')).toHaveCount(0);
+  await expect(planTrigger).toBeEnabled();
+  await expect(planTrigger).toContainText('Release plan');
+  await planTrigger.click();
+  await expect(planMenu.getByText('Peer plan', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+  await expect(filters.getByRole('group', { name: 'Work shown' })).toHaveCount(0);
+  await expect(filters.locator('[data-filter-section="teams"]')).toHaveCount(0);
+  await teamsTrigger.click();
+  const teamFilter = page.getByRole('dialog', { name: 'Team filter', exact: true });
+  await expect(filters).toHaveCount(0);
+  const filterMode = teamFilter.getByRole('group', { name: 'Work shown' });
+  await expect(filterMode.getByRole('button')).toHaveText(['Plan', 'Team']);
+  const columns = await filterMode.evaluate((group) => getComputedStyle(group).gridTemplateColumns.split(' '));
+  expect(columns).toHaveLength(2);
+  expect(Math.abs(parseFloat(columns[0]) - parseFloat(columns[1]))).toBeLessThan(1);
+  await expect(teamFilter.locator('.team-drilldown-row')).toHaveCount(0);
+  await filterMode.getByRole('button', { name: 'Team', exact: true }).click();
+  await expect(teamFilter.locator('.team-drilldown-row')).toHaveCount(5);
+  await expect(teamContext).toHaveAttribute('aria-pressed', 'true');
+  await expect(planTrigger).toBeDisabled();
+  await filterMode.getByRole('button', { name: 'Plan', exact: true }).click();
+  await expect(teamFilter.locator('.team-drilldown-row')).toHaveCount(0);
+  await expect(planContext).toHaveAttribute('aria-pressed', 'true');
+  await expect(planTrigger).toBeEnabled();
 });
 
 test('closing a fullscreen plugin restores the virtualized viewport without scrolling', async ({ page }) => {
@@ -141,13 +255,14 @@ async function mountVirtualDemand(page, reservationTeam = 'A') {
         capacity: [{ team: reservationTeam, capacity: 40 }] },
     ].map((feature, index) => ({ process_id: 'process', state: 'Active', stateCategory: 'InProgress',
       parentId: null, start: `2026-10-${String([1, 4, 2, 3][index]).padStart(2, '0')}`,
+      presentationPlanIds: feature.id === 'own' ? ['plan'] : [],
       end: '2026-11-20', relations: [], tags: '', description: '', ...feature }));
     store.setState((state) => ({ ...state,
       baseline: { ...state.baseline, projects, teams, features },
       selection: { ...state.selection, projectIds: ['plan'], teamIds: ['A'],
         taskTypeNames: ['["process","feature"]'] },
       view: { ...state.view, context: { parent: false, child: false, dependency: false, otherAllocations: false },
-        options: { ...state.view.options, taskViewMode: 'team', highlightFeatureRelationMode: false } },
+        options: { ...state.view.options, taskViewMode: 'team-all-plans', highlightFeatureRelationMode: false } },
       scenarios: { ...state.scenarios, activeId: 'virtual-draft', items: [...state.scenarios.items,
         { id: 'virtual-draft', name: 'Virtual draft', readonly: false, overrides: {},
           groupOverrides: {}, scenarioGroups: [], pluginData: {} }] },
@@ -168,10 +283,10 @@ for (const reservationTeam of ['A', 'G']) {
         .filter((entry) => entry.name === 'Alpha').map((entry) => entry.value))))).toBe(100);
     const row = page.locator('task-list [data-task-id="hidden"]');
     const card = page.locator('feature-card-lit[data-feature-id="hidden"]');
-    for (const mode of ['plan', 'team']) {
+    for (const mode of ['plan', 'team', 'team-all-plans']) {
       await page.evaluate((mode) => window.taskBoardCommands.view.setTaskViewMode(mode), mode);
-      await expect(page.locator('task-list .row.virtual')).toHaveCount(mode === 'team' ? 3 : 0);
-      await expect(card).toHaveCount(mode === 'team' ? 1 : 0);
+      await expect(page.locator('task-list .row.virtual')).toHaveCount(mode === 'team-all-plans' ? 3 : 0);
+      await expect(card).toHaveCount(mode === 'team-all-plans' ? 1 : 0);
       const demand = await page.evaluate(async () => {
         const { sel } = await import('/js/application/imports.js');
         const index = sel.capacity.getCapacityDates().indexOf('2026-10-05');
@@ -219,7 +334,13 @@ for (const reservationTeam of ['A', 'G']) {
     await expect(page.locator('details-panel .panel')).toBeVisible();
     await expect(row).toHaveClass(/selected/);
     await expect(page.locator('details-panel')).toContainText('External reservation');
-    await page.evaluate(() => window.taskBoardCommands.selection.setProjectSelected('program-plan', true));
+    await page.evaluate(() => {
+      window.taskBoardStore.setState((state) => ({ ...state, baseline: { ...state.baseline,
+        features: state.baseline.features.map((feature) => feature.id === 'hidden'
+          ? { ...feature, presentationPlanIds: ['program-plan'] } : feature),
+      } }));
+      window.taskBoardCommands.selection.setProjectSelected('program-plan', true);
+    });
     await expect(row).not.toHaveClass(/virtual/);
     await expect(card.locator('.virtual-label')).toHaveCount(0);
     await expect(page.locator('task-list [data-task-id="hidden"]')).toHaveCount(1);
@@ -238,11 +359,11 @@ test('task-type filters hide own-plan and external cards without changing team d
   });
   const ownRow = page.locator('task-list [data-task-id="own"]');
   const ownCard = page.locator('feature-card-lit[data-feature-id="own"]');
-  for (const mode of ['plan', 'team']) {
+  for (const mode of ['plan', 'team', 'team-all-plans']) {
     await page.evaluate((mode) => window.taskBoardCommands.view.setTaskViewMode(mode), mode);
     await expect(ownRow).toHaveCount(0);
     await expect(ownCard).toHaveCount(0);
-    await expect(page.locator('task-list .row.virtual')).toHaveCount(mode === 'team' ? 3 : 0);
+    await expect(page.locator('task-list .row.virtual')).toHaveCount(mode === 'team-all-plans' ? 3 : 0);
     await page.evaluate(() => window.taskBoardCommands.filter.setSelectedTaskTypes([]));
     await expect(page.locator('task-list [data-task-id]')).toHaveCount(0);
     await expect(page.locator('feature-card-lit')).toHaveCount(0);
@@ -298,7 +419,8 @@ test('virtual sources respect retained branch and group folds and reproject cano
   await page.evaluate(async () => {
     window.taskBoardStore.setState((state) => ({ ...state, baseline: { ...state.baseline,
       features: state.baseline.features.map((feature) => feature.id === 'hidden' || feature.id === 'own'
-        ? { ...feature, parentId: 'reservation' } : feature),
+        ? { ...feature, parentId: 'reservation' }
+        : feature.id === 'reservation' ? { ...feature, presentationPlanIds: ['program-plan'] } : feature),
     }, view: { ...state.view, context: { ...state.view.context, parent: true } } }));
     window.taskBoardCommands.data.recomputeCapacity();
     await document.querySelector('timeline-board').shadowRoot.querySelector('feature-board').renderFeatures();
@@ -760,24 +882,38 @@ test('team focus stays visible and the overview fits the graph height', async ({
             : index >= 7 ? [{ team: 'b', capacity: 50 }] : [] })),
       }, selection: { ...state.selection, teamIds: ['a'] },
     }));
+    window.refreshTaskBoard();
   });
   const overview = page.locator('timeline-board .board-overview');
-  await expect(overview.getByRole('button', { name: 'Team focus', exact: true })).toBeVisible();
-  const platform = overview.getByRole('button', { name: 'Platform', exact: true });
-  const experience = overview.getByRole('button', { name: 'Experience', exact: true });
+  const teamMenu = overview.getByRole('button', { name: /^Team filter:/ });
+  const teamFilterTrigger = page.getByRole('navigation', { name: 'Top menu' })
+    .getByRole('button', { name: /^Team filter(?:$| )/ });
+  const teamsBadge = teamFilterTrigger.locator('.menu-count-badge');
+  await expect(teamMenu).toHaveAccessibleName('Team filter: off');
+  await expect(teamsBadge).toHaveText('All');
+  const filters = page.locator('board-controls-menu');
+  await teamMenu.click();
+  const platform = filters.locator('.team-drilldown-row[title="Platform"]');
+  const experience = filters.locator('.team-drilldown-row[title="Experience"]');
   await expect(platform).toHaveAttribute('aria-pressed', 'true');
   await expect(experience).toHaveAttribute('aria-pressed', 'false');
-  await overview.getByRole('button', { name: 'Team focus', exact: true }).click();
+  await platform.click();
+  await platform.click();
+  await expect(teamsBadge).toHaveText('Platform');
   await expect(page.locator('task-list [data-task-id="task-0"]')).toBeVisible();
   await expect(page.locator('task-list [data-task-id="task-1"]')).toBeVisible();
   await expect(page.locator('task-list [data-task-id="task-6"]')).toBeVisible();
   await expect(page.locator('task-list [data-task-id="task-8"]')).toHaveCount(0);
   await experience.click();
   await expect(experience).toHaveAttribute('aria-pressed', 'true');
+  await expect(teamMenu).toHaveAccessibleName('Team filter: all teams');
+  await expect(teamsBadge).toHaveText('All');
   await expect(page.locator('task-list [data-task-id="task-8"]')).toHaveCount(1);
   await overview.getByRole('button', { name: 'Plan', exact: true }).click();
+  await teamMenu.click();
   await platform.click();
-  await expect(overview.getByRole('button', { name: 'Team focus', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(teamMenu).toHaveAccessibleName('Team filter: Experience');
+  await page.keyboard.press('Escape');
   const dimensions = await page.locator('timeline-board').evaluate((board) => {
     const root = board.shadowRoot;
     return { overview: root.querySelector('.board-overview').getBoundingClientRect().height,
@@ -787,22 +923,22 @@ test('team focus stays visible and the overview fits the graph height', async ({
   expect(dimensions.overview).toBe(120);
   expect(Math.abs(dimensions.graphBottom - dimensions.timelineTop)).toBeLessThan(1);
   await page.setViewportSize({ width: 1366, height: 580 });
-  const teamMenu = overview.getByRole('button', { name: 'Team drill-down', exact: true });
   await teamMenu.click();
-  await expect(page.getByRole('dialog', { name: 'Filters', exact: true })).toBeVisible();
-  const filters = page.locator('board-controls-menu');
-  const allPlanWork = filters.getByRole('button', { name: 'All plan work', exact: true });
-  const selectedTeams = filters.getByRole('button', { name: 'Selected teams', exact: true });
+  await expect(page.getByRole('dialog', { name: 'Teams', exact: true })).toBeVisible();
+  await expect(filters.locator('[data-filter-section]')).toHaveCount(1);
+  await expect(filters.getByRole('group', { name: 'Work shown' })).toHaveCount(0);
+  const allPlanWork = overview.getByRole('button', { name: 'Clear team filter', exact: true });
   const platformTask = page.locator('task-list [data-task-id="task-2"]');
   const experienceTask = page.locator('task-list [data-task-id="task-8"]');
-  await expect(selectedTeams).toHaveAttribute('aria-pressed', 'true');
+  await expect(teamMenu).toHaveAccessibleName('Team filter: Experience');
   await expect(platformTask).toHaveCount(0);
   await expect(experienceTask).toHaveCount(1);
+  await page.keyboard.press('Escape');
   await allPlanWork.click();
   await expect(platformTask).toHaveCount(1);
   await expect(experienceTask).toHaveCount(1);
-  await selectedTeams.click();
-  await expect(platformTask).toHaveCount(0);
+  await teamMenu.click();
+  await expect(platformTask).toHaveCount(1);
   await expect(experienceTask).toHaveCount(1);
   const platformFilter = filters.locator('.team-drilldown-row[title="Platform"]');
   await expect(platformFilter).toHaveAttribute('aria-pressed', 'false');
@@ -832,6 +968,14 @@ test('team focus stays visible and the overview fits the graph height', async ({
   }));
   expect(narrow.height).toBe(120);
   expect(narrow.overflowing).toBe(false);
+  await teamFilterTrigger.click();
+  const planContext = filters.getByRole('button', { name: 'Plan', exact: true });
+  await planContext.click();
+  await expect(platformTask).toHaveCount(1);
+  await platformFilter.click();
+  await experience.click();
+  await expect(experienceTask).toHaveCount(0);
+  await expect(planContext).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('filter overview keeps toggle choices visible and search shares the Tasks header', async ({ page }, testInfo) => {
@@ -841,13 +985,45 @@ test('filter overview keeps toggle choices visible and search shares the Tasks h
   await expect(overview.getByRole('heading', { name: 'View context', exact: true })).toBeVisible();
   await expect(overview.locator('.task-summary')).toHaveCount(0);
   const typeSummary = overview.getByRole('button', { name: 'Task types', exact: true });
+  const filters = page.locator('board-controls-menu');
+  const sections = filters.locator('[data-filter-section]');
+  const headingStyle = (name) => filters.getByRole('heading', { name, exact: true }).evaluate((heading) => {
+    const { fontSize, fontWeight, marginBottom, textTransform } = getComputedStyle(heading);
+    return { fontSize, fontWeight, marginBottom, textTransform };
+  });
+  await overview.getByRole('button', { name: /^Team filter:/ }).click();
+  const teamsHeading = await headingStyle('Teams');
+  await overview.getByRole('button', { name: 'Plan', exact: true }).click();
   await typeSummary.click();
-  await expect(page.getByRole('dialog', { name: 'Filters', exact: true })).toBeVisible();
-  await expect(page.locator('board-controls-menu [data-type-key]').first()).toBeFocused();
+  await expect(page.getByRole('dialog', { name: 'Task types', exact: true })).toBeVisible();
+  expect(await headingStyle('Task types')).toEqual(teamsHeading);
+  await expect(sections).toHaveCount(1);
+  await expect(filters.locator('[data-type-key]').first()).toBeFocused();
+  await typeSummary.click();
+  await expect(filters).toHaveCount(0);
+  await expect(typeSummary).toBeFocused();
+  await typeSummary.click();
+  await expect(filters.locator('[data-type-key]').first()).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(typeSummary).toBeFocused();
   await overview.getByRole('button', { name: 'States', exact: true }).click();
-  await expect(page.locator('board-controls-menu').getByRole('checkbox', { name: 'Active', exact: true })).toBeFocused();
+  await expect(page.getByRole('dialog', { name: 'States', exact: true })).toBeVisible();
+  expect(await headingStyle('States')).toEqual(teamsHeading);
+  await expect(sections).toHaveCount(1);
+  await expect(filters.getByRole('checkbox', { name: 'Active', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await overview.getByRole('button', { name: 'Advanced filters', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Advanced filters', exact: true })).toBeVisible();
+  expect(await headingStyle('Advanced filters')).toEqual(teamsHeading);
+  await expect(filters.locator('[data-filter-section="schedule"]')).toBeVisible();
+  await expect(filters.locator('[data-filter-section]:is([data-filter-section="teams"], [data-filter-section="types"], [data-filter-section="states"])')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.locator('#filtersMenuBtn').click();
+  await expect(page.getByRole('dialog', { name: 'Filters', exact: true })).toBeVisible();
+  await expect(filters.getByRole('group', { name: 'Work shown' })).toHaveCount(0);
+  for (const section of ['types', 'states', 'schedule']) {
+    await expect(filters.locator(`[data-filter-section="${section}"]`)).toBeVisible();
+  }
   await page.keyboard.press('Escape');
   const geometry = await page.locator('timeline-board').evaluate((board) => {
     const root = board.shadowRoot;
@@ -1013,11 +1189,11 @@ test('folding is shared by rows, cards and the combined Filters menu', async ({ 
   await row.locator('.fold').click();
   await expect(page.locator('task-list [data-task-id="task-6"]')).toHaveCount(0);
   await expect(page.locator('feature-card-lit[data-feature-id="task-6"]')).toHaveCount(0);
-  await expect(page.locator('top-menu-bar #teamsMenuBtn')).toHaveCount(0);
+  await expect(page.locator('top-menu-bar #teamsMenuBtn')).toBeVisible();
   await expect(page.locator('top-menu-bar #hierarchyMenuBtn')).toHaveCount(0);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
-  for (const section of ['Teams', 'Hierarchy', 'Task filters']) {
+  for (const section of ['Hierarchy', 'Task filters']) {
     await expect(filters.getByRole('heading', { name: section, exact: true })).toBeVisible();
   }
   await expect(page.locator('board-controls-menu .hierarchy-fold-status')).toContainText('1 of');
@@ -1170,6 +1346,9 @@ test('existing card move and resize gestures retain scenario-only edits beside t
 });
 
 test('dependency overlays retain board coordinates and fullscreen tools restore the task column', async ({ page }) => {
+  await page.addStyleTag({ url: '/css/main.css' });
+  const pageHeight = () => page.evaluate(() => document.documentElement.scrollHeight);
+  const heightBefore = await pageHeight();
   await page.evaluate(async () => {
     const { store } = await import('/js/application/store.js');
     const { PluginDependencies } = await import('/js/plugins/PluginDependencies.js');
@@ -1186,6 +1365,8 @@ test('dependency overlays retain board coordinates and fullscreen tools restore 
   });
   const path = page.locator('timeline-board #board-area .dependencies-overlay svg path');
   await expect(path).toHaveCount(1);
+  await expect(page.locator('plugin-dependencies')).toBeHidden();
+  expect(await pageHeight()).toBe(heightBefore);
   const curve = await path.getAttribute('d');
   await page.getByRole('separator', { name: 'Task column width' }).press('ArrowRight');
   await expect.poll(async () => (await alignment(page)).width).toBe(320);

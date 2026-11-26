@@ -26,5 +26,5 @@ These replace the board area with another view of the same tasks (the top menu a
 
 ## Always-on and menu plugins
 
-- [Dependencies](plugin_dependencies.md) draws dependency lines between cards. It has no Tools entry; dependency context is controlled in the Scope menu.
+- [Dependencies](plugin_dependencies.md) toggles lines between linked tasks already on the board.
 - Menu plugins appear directly in the top bar, before or after Tools. [Reconciliation](plugin_reconciliation.md) is the standard one. Their position is configured in [Admin - Plugins](admin_plugins.md). Opening a plugin menu does not replace the board or deactivate a tool.

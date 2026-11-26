@@ -72,7 +72,7 @@ describe('FeatureBoard navigation, insertion and viewport behavior', () => {
       project: 'project', state: 'Active', start: '2026-10-01', end: '2026-10-10',
       parentId: null, capacity: [], relations: [] }, teams: [], condensed: false,
       project: { id: 'project', name: 'Plan', color: '#23344d', work_item_display: displayFixture(undefined, { Active: 'InProgress' }) },
-      left: 1800, width: 40, top: 4000 };
+      left: 1800, width: 40, top: 4000, taskContext: [] };
     el._fullRenderList = [target];
     const scrollContainer = wrapper.querySelector('#scroll-container');
     scrollContainer.scrollTo = sinon.stub();

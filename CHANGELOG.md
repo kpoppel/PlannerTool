@@ -15,9 +15,10 @@ Template - do not change :
 ---
 ## [v5.2.0] - unreleased
 ### Added
+- Add **Teams across plans** to Team Drill-down to inspect selected teams' work across programs and projects without changing the plan selection.
 - Add whole-hour allocation entry alongside Percent and Man-days, using each team or group's workforce project-hour budget in task details and the portfolio table, with effort preserved when scheduling changes.
 - Add a read-only Cone of Uncertainty tool with three configurable forecast scopes, browser-saved duration uncertainty preferences, and shaded task finish ranges for communicating long-range planning assumptions. Compact rows use task-board type icons and follow the task sort setting, ordering by rank or latest forecast finish. Show global and selected-plan events from the configured local or ADO/wiki source as labeled date lines and range bands.
-- Show effective commitments from other loaded plans as read-only **Other plan** rows and timeline cards in single-team Team focus, with source-plan attribution and access to the original task details. Team allocation graphs still account for those commitments in every board mode.
+- Show effective commitments that are not ordinary task cards as read-only **Other plan** rows in single-team cross-plan focus, with source-plan attribution and access to the original task details. Team allocation graphs still account for those commitments in every board mode.
 - Support external Entra broker login with encrypted persistent MSAL caches, browser-bound PKCE handoffs, on-demand delegated ADO credentials and instance-scoped logout. Real-tenant acceptance remains required.
 - Bootstrap the first administrator on empty live installations and offer one-time claims for existing accounts. Manual claims accept email entry alone, including administrators, and require a restricted migration audience.
 - Support mock broker sign-in that can reuse existing account permissions. Fake credentials are rejected before ADO/wiki calls without ending local sessions or cached access.
@@ -28,14 +29,17 @@ Template - do not change :
 - Add offline credential preflight and actionable setup guidance to the development launcher and broker container, rejecting invalid, expired or mismatched application certificates before startup.
 
 ### Changed
+- Replace the board's Scope menu with hierarchy reveals and a Dependencies tool that draws links without adding tasks. Saved views keep their selections and filters and no longer apply broad Scope switches.
 - Show Task Types first and State second in Task Filters, followed by the remaining selectors.
+- Open focused Teams, Task Types, States, and Advanced filter popups from the View context toolbox. The permanent Team filter menu contains Work shown and team selection; Filters contains only hierarchy and task filters.
+- Switch explicitly between Plan and Team context. The shared team picker offers an optional filter for teams in the selected plans, or lists all teams when viewing their work across plans.
 - Show the active tool's name in the Tools menu button, or the number of active tools when several are selected.
 - Fit a persistent View context overview to the load graph's height, with Plan/Team focus controls, team drill-down, and type/state choices that stay visible when off. Keep advanced-filter indicators and quick cycling visible with detailed choices in the menu. Place task search beside the Tasks heading without an empty strip below the graph or timeline header.
 - Make team selection explicit, separate color editing from selection, and clarify All plan work versus Selected teams. Distinguish Expand/Collapse actions from Parent links filters, align filter checkboxes, and expose navigation for overflowing top menus.
 - Align Plan, Scenario, Teams and Saved Views menus with compact rows and inline team abbreviations.
 - Place Cards and Task Sort side by side in the View menu to reduce its height.
 - Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
-- Replace the sidebar with a resizable, collapsible task column aligned to board rows, with ID/title search and saved column preferences. Consolidate Teams, Hierarchy and Task filters in one Filters menu, retaining direct section access from the overview; card titles live in the task column and tooltips, and ghost titles are removed.
+- Replace the sidebar with a resizable, collapsible task column aligned to board rows, with ID/title search and saved column preferences. Card titles live in the task column and tooltips, and ghost titles are removed.
 - Show task-column rows with a single-line title, type icon, task/parent IDs and owning plan, using board group colors. Keep consistent breathing room around rows and cards without extra gaps at swimlane transitions. Drag the full-height edge to resize, collapse or restore the column; click a selected row again to align its card's start beside the list.
 - Move server status, uptime, loaded-task totals and attribution into a persistent, single-line footer along the bottom of Help instead of overlaying the task list.
 - Use compact-height cards in Normal and Packed layouts, showing type icon, ID, allocation bars and right-aligned closed/total descendant counts. Fill each card with a pastel project color in proportion to completed descendants, keep swimlane tints faint to distinguish that progress, and hide whole fields from right to left when space runs out. Migrate saved Compact views to Normal in revision 45.
@@ -47,6 +51,7 @@ Template - do not change :
 - Exclude credentials and broker authority from logical backups. Enrollment account restore needs fresh operator-reset keys; Entra accounts cannot be replaced.
 
 ### Fixed
+- Disable the Plan menu in cross-plan Team mode without changing the saved plan selection.
 - Keep off-scope team selections from appearing in the load graph or bringing deselected teams' task branches back into Team focus.
 - Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
 - Keep type-filtered tasks hidden instead of turning selected-plan work into other-plan context; deselecting all task types clears task rows and cards without changing calculated team demand.

@@ -20,24 +20,22 @@ import { getAuthentication } from '../services/authStartup.js';
 import './PlanMenu.lit.js';
 import './ScenarioMenu.lit.js';
 import './ViewMenu.lit.js';
-import './ScopeMenu.lit.js';
 import './ToolsMenu.lit.js';
 import './BoardControlsMenu.lit.js';
 
 export class TopMenuBarLit extends LitElement {
   static properties = {
-    openMenu: { type: String }, // 'view', 'scenario', 'plan', 'scope', 'tools', or null
+    openMenu: { type: String }, // 'view', 'scenario', 'plan', 'filters', 'tools', or null
     projects: { type: Array },
-    teams: { type: Array },
     scenarios: { type: Array },
     activeScenarioId: { type: String },
     views: { type: Array },
     activeViewId: { type: String },
     activeViewData: { type: Object },
     selectedProjectsCount: { type: Number },
-    selectedTeamsCount: { type: Number },
+    _teamScopeLabel: { state: true },
+    _teamContext: { state: true },
     boardBreakdown: { type: Object },
-    scopeContext: { type: Object },
     menuPlugins: { type: Array },
     activeTools: { state: true },
     application: { type: String },
@@ -199,9 +197,11 @@ export class TopMenuBarLit extends LitElement {
       flex-shrink: 0;
     }
 
-    .menu-item:hover {
+    .menu-item:hover:not(:disabled) {
       background: rgba(255, 255, 255, 0.12);
     }
+    .menu-item:disabled { opacity: 0.5; cursor: default; }
+    #planMenuBtn { font: inherit; }
     .menu-item.active {
       background: rgba(255, 255, 255, 0.18);
       border-color: rgba(255, 255, 255, 0.22);
@@ -321,7 +321,6 @@ export class TopMenuBarLit extends LitElement {
     .count-result { color: #8ec8ff; }
     .information-teams { margin-top: 10px; color: rgba(255, 255, 255, 0.72); font-size: 12px; }
     .status-icon { color: #8ec8ff; font-size: 14px; line-height: 1; }
-    .scope-icons { color: #8ec8ff; font-size: 14px; letter-spacing: 2px; }
   `;
 
   constructor() {
@@ -332,14 +331,14 @@ export class TopMenuBarLit extends LitElement {
     this.manageBackupSnapshots = false;
     this.openMenu = null;
     this.projects = [];
-    this.teams = [];
     this.scenarios = [];
     this.activeScenarioId = null;
     this.views = [];
     this.activeViewId = null;
     this.activeViewData = null;
     this.selectedProjectsCount = 0;
-    this.selectedTeamsCount = 0;
+    this._teamScopeLabel = 'None';
+    this._teamContext = false;
     this.boardBreakdown = {
       selectedPlanTasks: 0,
       sharedPlanTasks: 0,
@@ -352,7 +351,6 @@ export class TopMenuBarLit extends LitElement {
       tasksVisible: 0,
       teamsInScope: 0,
     };
-    this.scopeContext = { parent: false, child: false, dependency: false, otherAllocations: false };
     this.menuPlugins = [];
     this.activeTools = [];
     this._menusOverflow = false;
@@ -453,6 +451,10 @@ export class TopMenuBarLit extends LitElement {
     window.addEventListener('resize', this._onMenuResize);
     this._menuResizeObserver.observe(this);
     this._onFilterOverviewOpen = (event) => {
+      if (this.openMenu === 'filters' && this._menuButton === event.detail.trigger) {
+        this._closeMenu();
+        return;
+      }
       this._menuButton = event.detail.trigger;
       this._menuButtonRect = this._menuButton.getBoundingClientRect();
       this.openMenu = 'filters';
@@ -470,12 +472,6 @@ export class TopMenuBarLit extends LitElement {
       const arr = sel.selection.getProjects();
       this.projects = arr;
       this.selectedProjectsCount = arr.filter((p) => p && p.selected).length;
-    };
-    this._onTeamsChanged = () => {
-      const arr = sel.selection.getTeams();
-      this.teams = arr;
-      this.selectedTeamsCount = arr.filter((t) => t && t.selected).length;
-      this.boardBreakdown = sel.scope.getBoardBreakdown();
     };
     this._onScenariosList = () => {
       const scenarios = sel.scenario.getScenarios();
@@ -497,17 +493,25 @@ export class TopMenuBarLit extends LitElement {
     this._onViewActivated = (payload) => {
       this.activeViewId = payload?.id || null;
       this.activeViewData = payload?.data || null;
-      this.boardBreakdown = sel.scope.getBoardBreakdown();
+      this._onScopeChanged();
     };
 
     this._onScopeChanged = () => {
+      const taskViewMode = sel.view.getTaskViewMode();
+      this._teamContext = taskViewMode === 'team-all-plans';
+      if (this._teamContext && this.openMenu === 'plan') this._closeMenu(false);
+      const contextIds = new Set(sel.scope.getContextTeams());
+      const teams = sel.selection.getTeams().filter((team) => contextIds.has(String(team.id)));
+      const inScope = taskViewMode === 'plan' ? teams : teams.filter((team) => team.selected);
+      if (inScope.length === 0) this._teamScopeLabel = 'None';
+      else if (inScope.length === 1) this._teamScopeLabel = inScope[0].name;
+      else if (inScope.length === teams.length) this._teamScopeLabel = 'All';
+      else this._teamScopeLabel = `${inScope.length} teams`;
       this.boardBreakdown = sel.scope.getBoardBreakdown();
-      this.scopeContext = sel.view.getContext();
       this.requestUpdate();
     };
 
     bus.on(ProjectEvents.CHANGED, this._onProjectsChanged);
-    bus.on(TeamEvents.CHANGED, this._onTeamsChanged);
     bus.on(ScenarioEvents.LIST, this._onScenariosList);
     bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     bus.on(ScenarioEvents.UPDATED, this._onScenariosUpdated);
@@ -525,7 +529,6 @@ export class TopMenuBarLit extends LitElement {
     // has current data immediately instead of waiting for subsequent events.
     try {
       this._onProjectsChanged();
-      this._onTeamsChanged();
       this._onScopeChanged();
       this._onScenariosList();
       const savedViews = sel.view.getSavedViews();
@@ -562,7 +565,6 @@ export class TopMenuBarLit extends LitElement {
 
     // Clean up event listeners
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
-    if (this._onTeamsChanged) bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
     if (this._onScenariosList) bus.off(ScenarioEvents.LIST, this._onScenariosList);
     if (this._onScenarioActivated)
       bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
@@ -599,9 +601,10 @@ export class TopMenuBarLit extends LitElement {
     this.permissions = account.permissions;
   }
 
-  _toggleMenu(menuName, e) {
+  _toggleMenu(menuName, e, filterGroup = null) {
     e.stopPropagation();
-    this._filterGroup = null;
+    const sameMenu = this.openMenu === menuName && this._menuButton === e.currentTarget;
+    this._filterGroup = filterGroup;
     if (menuName.startsWith('plugin:')) {
       const metadata = this.menuPlugins.find((plugin) => `plugin:${plugin.id}` === menuName);
       if (!metadata) throw new Error(`Plugin menu ${menuName} is not registered`);
@@ -613,7 +616,7 @@ export class TopMenuBarLit extends LitElement {
       }
     }
     this._menuButton = e.currentTarget;
-    this.openMenu = this.openMenu === menuName ? null : menuName;
+    this.openMenu = sameMenu ? null : menuName;
     this._menuElement = null;
 
     if (this.openMenu) {
@@ -636,6 +639,7 @@ export class TopMenuBarLit extends LitElement {
   _closeMenu(returnFocus = true) {
     this.openMenu = null;
     this._menuElement = null;
+    this._focusBoardControls = false;
     if (returnFocus && this._menuButton && this._menuButton.isConnected) this._menuButton.focus();
   }
 
@@ -679,11 +683,8 @@ export class TopMenuBarLit extends LitElement {
       const controls = this.shadowRoot.querySelector('board-controls-menu');
       await controls.updateComplete;
       if (controls.isConnected) {
-        const first = controls.shadowRoot.querySelector(this._filterGroup === null
-          ? 'button:not([disabled]), [tabindex="0"]'
-          : `[data-filter-section="${this._filterGroup}"] button:not([disabled]), [data-filter-section="${this._filterGroup}"] [tabindex="0"]`);
-        // Lifecycle guard: element may be absent or not upgraded yet at this phase of render/interaction.
-        if (first) first.focus();
+        const first = controls.shadowRoot.querySelector('button:not([disabled]), [tabindex="0"]');
+        (first === null ? controls : first).focus();
       }
     }
     if (this._focusSettingsMenu) {
@@ -748,7 +749,7 @@ export class TopMenuBarLit extends LitElement {
       event.preventDefault();
       const root = this.shadowRoot;
       if (!root) return;
-      const triggers = [...root.querySelectorAll('.menu-item')]
+      const triggers = [...root.querySelectorAll('.menu-item:not(:disabled)')]
         .filter((element) => element instanceof HTMLElement);
       const step = event.key === 'ArrowRight' ? 1 : -1;
       triggers[(triggers.indexOf(trigger) + step + triggers.length) % triggers.length].focus();
@@ -841,12 +842,11 @@ export class TopMenuBarLit extends LitElement {
               html`<span class="menu-count-badge">${this._getScenarioName()}</span>`
             : ''}
           </div>
-          <div
+          <button type="button"
             class="menu-item ${this.openMenu === 'plan' ? 'active' : ''}"
             id="planMenuBtn"
-            role="button"
-            tabindex="0"
-            @click=${(e) => this._toggleMenu('plan', e)}
+            ?disabled=${this._teamContext}
+            @click=${(event) => this._toggleMenu('plan', event)}
           >
             Plan
             ${this.selectedProjectsCount ?
@@ -854,22 +854,16 @@ export class TopMenuBarLit extends LitElement {
                 ? this.projects.find((project) => project.selected).name
                 : this.selectedProjectsCount}</span>`
             : ''}
-          </div>
-          <div
-            class="menu-item ${this.openMenu === 'scope' ? 'active' : ''}"
-            id="scopeMenuBtn"
-            role="button"
-            tabindex="0"
-            @click=${(e) => this._toggleMenu('scope', e)}
-          >
-            Scope
-            ${this.scopeContext.parent ? html`<span class="scope-icons" title="Ancestors">↑</span>` : ''}
-            ${this.scopeContext.child ? html`<span class="scope-icons" title="Descendant work">↓</span>` : ''}
-            ${this.scopeContext.dependency ? html`<span class="scope-icons" title="Dependencies">↔</span>` : ''}
-            ${this.scopeContext.otherAllocations ? html`<span class="scope-icons" title="Other work by participating teams">●</span>` : ''}
-          </div>
-          <button class="menu-item ${this.openMenu === 'filters' ? 'active' : ''}" id="filtersMenuBtn"
-            aria-haspopup="dialog" aria-expanded=${this.openMenu === 'filters' ? 'true' : 'false'}
+          </button>
+          <button class="menu-item ${this.openMenu === 'filters' && this._filterGroup === 'team-filter' ? 'active' : ''}"
+            id="teamsMenuBtn" aria-haspopup="dialog"
+            aria-expanded=${this.openMenu === 'filters' && this._filterGroup === 'team-filter'}
+            @click=${(event) => this._toggleMenu('filters', event, 'team-filter')}>
+            Team filter
+            <span class="menu-count-badge">${this._teamScopeLabel}</span>
+          </button>
+          <button class="menu-item ${this.openMenu === 'filters' && this._filterGroup === null ? 'active' : ''}" id="filtersMenuBtn"
+            aria-haspopup="dialog" aria-expanded=${this.openMenu === 'filters' && this._filterGroup === null}
             @click=${(event) => this._toggleMenu('filters', event)}>Filters</button>
           ${this._renderPluginTriggers('before-tools')}
           <div
@@ -966,12 +960,17 @@ export class TopMenuBarLit extends LitElement {
     `;
 
     switch (this.openMenu) {
-      case 'filters':
-        return html`<board-controls-menu section="all"
-          style="--board-controls-max-height:calc(100vh - ${this._menuButtonRect.bottom + 12}px);position:fixed;top:${this._menuButtonRect.bottom + 4}px;left:${Math.max(8,
-            Math.min(this._menuButtonRect.left, window.innerWidth - 376))}px;z-index:2000"
-          role="dialog" aria-label="Filters"
+      case 'filters': {
+        const section = this._filterGroup === null ? 'all' : this._filterGroup;
+        const label = { all: 'Filters', 'team-filter': 'Team filter', teams: 'Teams',
+          types: 'Task types', states: 'States', advanced: 'Advanced filters' }[section];
+        const width = Math.min(section === 'types' || section === 'states' ? 280 : 360, window.innerWidth - 16);
+        const left = Math.max(8, Math.min(this._menuButtonRect.left, window.innerWidth - width - 8));
+        return html`<board-controls-menu .section=${section}
+          style="${style}left:${left}px;width:${width}px;--board-controls-max-height:calc(100vh - ${this._menuButtonRect.bottom + 12}px)"
+          role="dialog" aria-label=${label} tabindex="-1"
           @keydown=${this._onMenuKeyDown}></board-controls-menu>`;
+      }
       case 'settings':
         return html`<div class="plugin-menu-popover settings-menu" id="settingsMenu" role="menu" aria-label="Settings"
           style="position:fixed;top:${this._menuButtonRect.bottom + 4}px;right:8px;z-index:2000"
@@ -1031,10 +1030,10 @@ export class TopMenuBarLit extends LitElement {
             'Sum of the task counts displayed for the selected plans in the Plan menu'],
           ...counts.sharedPlanTasks > 0 ? [['Shared tasks counted once', '-', counts.sharedPlanTasks, false,
             'Tasks listed under more than one selected plan count only once on the board']] : [],
-          ['Added by Scope', '+', counts.scopeAddedTasks, false,
+          ['Context tasks', '+', counts.scopeAddedTasks, false,
             'Displayable tasks not in the selected Plan menu totals; scope overlaps count once'],
           ['Excluded from current scope', '-', counts.scopeExcludedTasks, false,
-            'Tasks counted by the Plan menu but outside current board ownership or enabled Scope, or excluded by plan presentation rules'],
+            'Tasks counted by the Plan menu but outside current board ownership or excluded by presentation rules'],
           ['Displayable task pool', '=', counts.displayableTasks, true,
             'Tasks eligible for presentation before your task filters and team selection'],
           ['Schedule', '-', counts.filterExclusions.schedule, false,
@@ -1087,8 +1086,6 @@ export class TopMenuBarLit extends LitElement {
           .activeViewId=${this.activeViewId}
           .activeViewData=${this.activeViewData}
         ></plan-menu>`;
-      case 'scope':
-        return html`<scope-menu style="${style}"></scope-menu>`;
       case 'tools':
         return html`<tools-menu style="${style}"></tools-menu>`;
       default:

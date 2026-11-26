@@ -65,12 +65,13 @@ function baseState(overrides = {}) {
 describe('application/selectors/scopeSelectors', () => {
   function virtualState() {
     const state = baseState({
-      selection: { teamIds: ['team-a'] }, view: { options: { taskViewMode: 'team' } },
+      selection: { teamIds: ['team-a'] }, view: { options: { taskViewMode: 'team-all-plans' } },
     });
     state.baseline.features = [
       { id: 'real', project: 'selected', type: 'Feature', capacity: [{ team: 'team-a', capacity: 20 }] },
       { id: 'hidden', project: 'selected', type: 'Epic', capacity: [{ team: 'team-a', capacity: 50 }, { team: 'team-b', capacity: 60 }] },
-      { id: 'peer', project: 'other', type: 'Feature', capacity: [{ team: 'team-a', capacity: 30 }] },
+      { id: 'peer', project: 'other', type: 'Feature', presentationPlanIds: [],
+        capacity: [{ team: 'team-a', capacity: 30 }] },
     ].map((feature) => ({ process_id: 'process', parentId: null, state: 'Active',
       start: '2026-10-01', end: '2026-10-31', relations: [], ...feature }));
     return state;
@@ -96,16 +97,63 @@ describe('application/selectors/scopeSelectors', () => {
       .toEqual([{ team: 'team-a', capacity: 45 }]);
   });
 
+  it('shows selected teams across plans without a plan selection', () => {
+    const state = baseState({
+      selection: { projectIds: [] },
+      view: { options: { taskViewMode: 'team-all-plans' } },
+    });
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id))
+      .toEqual(['own', 'parent-task', 'child-task', 'dependency-task']);
+    expect(selectors.getBoardPresentation().map((entry) => [entry.kind, entry.sourceId]))
+      .toEqual(['own', 'parent-task', 'child-task', 'dependency-task'].map((id) => ['task', id]));
+  });
+
+  it('keeps a plan Epic when its cross-owner descendant carries the team allocation', () => {
+    const state = baseState({ selection: { teamIds: ['team-b'] },
+      view: { options: { taskViewMode: 'team' } } });
+    state.baseline.features[0].capacity = [];
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getContextTeams()).toContain('team-b');
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own']);
+  });
+
+  it('keeps other-plan commitments out of Teams in plans', () => {
+    const state = virtualState();
+    state.view.options.taskViewMode = 'team';
+    const selectors = createScopeSelectors(createStore(state));
+
+    expect(selectors.getBoardPresentation().map((entry) => entry.sourceId)).toEqual(['real']);
+    state.view.options.taskViewMode = 'team-all-plans';
+    expect(selectors.getBoardPresentation().map((entry) => entry.sourceId)).toEqual(['real', 'peer']);
+  });
+
+  it('offers immediate task context without adding it to the base view', () => {
+    const state = baseState();
+    state.baseline.features[0].relations = [{ id: 'dependency-task', type: 'Related' }];
+    const selectors = createScopeSelectors(createStore(state));
+    const context = selectors.getTaskContext('own');
+
+    expect(context.parents.map((feature) => feature.id)).toEqual(['parent-task']);
+    expect(context.children.map((feature) => feature.id)).toEqual(['child-task']);
+    expect(context.links.map((feature) => feature.id)).toEqual(['dependency-task']);
+    expect(selectors.getTaskContext('parent-task').children.map((feature) => feature.id))
+      .toEqual(['own']);
+    expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['own']);
+  });
+
   it('hides deselected types and only projects eligible other-plan demand', () => {
     const state = virtualState();
     const selectors = createScopeSelectors(createStore(state));
     const resolved = selectors.getResolvedFeatures();
-    for (const taskViewMode of ['plan', 'team', 'plan', 'team']) {
+    for (const taskViewMode of ['plan', 'team', 'team-all-plans', 'plan', 'team-all-plans']) {
       state.view.options = { ...state.view.options, taskViewMode };
       const entries = selectors.getBoardPresentation();
-      expect(entries.map((entry) => [entry.kind, entry.sourceId])).toEqual(taskViewMode === 'team'
+      expect(entries.map((entry) => [entry.kind, entry.sourceId])).toEqual(taskViewMode === 'team-all-plans'
         ? [['task', 'real'], ['virtual', 'peer']] : [['task', 'real']]);
-      if (taskViewMode === 'team') {
+      if (taskViewMode === 'team-all-plans') {
         expect(entries[1].allocations).toEqual([{ team: 'team-a', capacity: 30 }]);
       }
       expect(selectors.getVisibleFeatures().map((feature) => feature.id)).toEqual(['real']);
@@ -135,7 +183,7 @@ describe('application/selectors/scopeSelectors', () => {
     const commands = createFilterCommands(store, { emit() {} });
     const resolved = selectors.getResolvedFeatures();
     commands.setSelectedTaskTypes([]);
-    for (const taskViewMode of ['plan', 'team']) {
+    for (const taskViewMode of ['plan', 'team', 'team-all-plans']) {
       state.view.options = { ...state.view.options, taskViewMode };
       expect(selectors.getVisibleFeatures()).toEqual([]);
       expect(selectors.getBoardPresentation()).toEqual([]);
@@ -164,7 +212,7 @@ describe('application/selectors/scopeSelectors', () => {
         const source = state.baseline.features[0];
         state.baseline.features = [
           source, state.baseline.features[2],
-          { ...source, id: 'reservation', project: 'program',
+          { ...source, id: 'reservation', project: 'program', presentationPlanIds: [],
             capacity: [{ team: reservationTeam, capacity: 40 }] },
           { ...source, id: 'other-team', project: 'other',
             capacity: [{ team: 'team-b', capacity: 60 }] },
@@ -176,10 +224,10 @@ describe('application/selectors/scopeSelectors', () => {
           .allocations).toEqual([{ team: 'team-a', capacity: 40 }]);
         state.selection.teamIds = ['team-a', 'team-b'];
         expect(selectors.getBoardPresentation().map((entry) => entry.sourceId))
-          .toEqual(['real']);
+          .toEqual(['real', 'other-team']);
         state.selection.projectIds = ['selected', 'other'];
         expect(selectors.getBoardPresentation().map((entry) => [entry.kind, entry.sourceId]))
-          .toEqual([['task', 'real'], ['task', 'peer'], ['task', 'other-team']]);
+          .toEqual([['task', 'real'], ['task', 'other-team']]);
         state.selection.taskTypeNames = [taskTypeKey('process', 'Epic')];
         expect(selectors.getBoardPresentation()).toEqual([]);
       });
@@ -190,6 +238,7 @@ describe('application/selectors/scopeSelectors', () => {
     const state = virtualState();
     const selectors = createScopeSelectors(createStore(state));
     state.baseline.features[1].capacity = [{ team: 'team-a', capacity: 50 }];
+    state.baseline.features[2].presentationPlanIds = ['other'];
     state.selection.taskTypeNames = [];
     state.selection.projectIds = ['selected', 'other'];
     expect(selectors.getBoardPresentation().map((entry) => entry.kind)).toEqual(['task', 'task', 'task']);
@@ -211,6 +260,7 @@ describe('application/selectors/scopeSelectors', () => {
     const state = virtualState();
     state.baseline.features[1].project = 'other';
     state.baseline.features[1].type = 'Feature';
+    state.baseline.features[1].presentationPlanIds = [];
     state.baseline.teams = [{ id: 'team-a', kind: 'team', group_id: 'group' },
       { id: 'team-b', kind: 'team', group_id: 'group' }, { id: 'group', kind: 'group' }];
     state.baseline.features[1].capacity = [{ team: 'group', capacity: 50 }];

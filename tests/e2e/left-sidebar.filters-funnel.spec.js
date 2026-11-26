@@ -44,9 +44,9 @@ test.describe('Left Sidebar - filters and data funnel', () => {
   });
 
   test('Team Drill-down explains when the selected plan has no assigned teams', async ({ page }) => {
-    await page.getByRole('button', { name: 'Filters', exact: true }).click();
+    await page.locator('top-menu-bar #teamsMenuBtn').click();
     await expect(
-      page.locator('board-controls-menu').getByText('This plan has no teams assigned.')
+      page.locator('board-controls-menu').getByText('No teams available', { exact: true })
     ).toBeVisible();
   });
 

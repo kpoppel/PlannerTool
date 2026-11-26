@@ -28,7 +28,7 @@ export function createFilterCommands(store, bus) {
             ...state.view,
             options: {
               ...state.view.options,
-              hiddenTypes: deriveAvailableTaskTypes(state.baseline.features)
+              hiddenTypes: deriveAvailableTaskTypes(state.baseline.features, { includeUnpresentable: true })
                 .filter((type) => !taskTypeNames.includes(type)),
             },
           },

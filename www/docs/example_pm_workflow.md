@@ -11,7 +11,7 @@ This walkthrough follows Marcus, a Project Manager responsible for a portfolio o
 ## 2. Check overall plan health
 
 - Marcus opens [Reconciliation](plugin_reconciliation.md) across the full portfolio to catch schedule conflicts across plans and dependencies, and plan quality issues, before he reports status upward.
-- He opens [Tool - Dependencies](plugin_dependencies.md) (via the Scope menu) to see cross-team dependency arrows and identify any project that is blocked waiting on another team's delivery.
+- He enables [Tools > Dependencies](plugin_dependencies.md) to see arrows between linked tasks on the board and identify work that is blocked waiting on another team's delivery.
 
 ## 3. Look for capacity conflicts
 

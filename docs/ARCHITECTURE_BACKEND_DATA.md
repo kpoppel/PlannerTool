@@ -210,32 +210,28 @@ opaque and never derives context ownership or labels from ADO project/area field
 or private `backendData`. Alternative providers can supply the same domain contract.
 
 Import membership and calculation rollups follow importing-plan provenance.
-Board scope starts with tasks owned by the selected PlannerTool plans; explicit
-context options add eligible ancestors, descendants, dependencies and other work
-by participating teams from the resolved graph. Scope menu counts are eligible-card
-additions from enabling each option, or removals from disabling it. They apply
-configured presentation, type, state and task filters, plus the board's allocation
-and ancestor eligibility using the organization team roster in plan mode, before
-sidebar Team Drill-down. Hidden context-only records are not counted as cards.
-Participating teams are derived from base-plan allocations, not sidebar selection.
+Plan work starts with tasks owned by the selected PlannerTool plans. Task-level
+navigation reveals eligible parents, children and links from the resolved graph
+without changing membership or rollups. Team Drill-down can start from the resolved
+graph across all plans instead of the selected plans. Both modes apply presentation,
+type, state and task filters; hidden context-only records are not counted as cards.
 Ordinary presentation is restricted to tasks with configured presentation plans;
 internal source owners do not become selectable plans. Loaded descendants receive
 `presentationPlanIds` for their source plans and configured owner regardless of type.
 Plan task types select loader seeds, not which loaded descendant types can be shown.
-Descendant types are available through the ordinary sidebar filters; board context
-options still determine whether cross-owner descendants are in scope. Existing cached
+Descendant types are available through the ordinary sidebar filters; hierarchy
+navigation can reveal eligible cross-owner descendants. Existing cached
 snapshots receive this presentation metadata on task refresh.
 Category-excluded references
 remain inspectable but are not calculation edges, including unimported type
 endpoints. Shared tasks contribute once to organization totals and
 once to each associated plan rollup. Cost reports retain all context types and
 apply the same team-aware child precedence, without inventing source-owner plans.
-Ancestor-only records are an explicit presentation exception: Parent Context can
+Ancestor-only records are an explicit presentation exception: hierarchy navigation can
 show them subject to the ordinary type/state/task filters. Their card has an
 Ancestor label identifying partial child coverage; unconfigured owners receive an
-owner-label context swimlane, not a selectable plan. Parent Context places tasks
-with their ancestors even across unseeded owners; an ancestor-only chain shares
-its highest available ancestor lane without altering ownership or import provenance.
+owner-label context swimlane, not a selectable plan. Revealing an ancestor does not
+alter ownership or import provenance.
 Ancestor types are available in
 the task-type menu. Ancestor-only allocations and owners do not create cost rollups,
 and their empty import provenance keeps them out of plan capacity totals.

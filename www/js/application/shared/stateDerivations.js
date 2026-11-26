@@ -21,12 +21,12 @@ export function deriveAvailableFeatureStates(features) {
   return states;
 }
 
-export function deriveAvailableTaskTypes(features) {
+export function deriveAvailableTaskTypes(features, { includeUnpresentable = false } = {}) {
   const types = [];
   const seen = new Set();
 
   for (const feature of features) {
-    if (!featureCanPresent(feature) && feature.ancestorOnly !== true) continue;
+    if (!includeUnpresentable && !featureCanPresent(feature) && feature.ancestorOnly !== true) continue;
     const typeName = toTypeName(feature);
     if (!typeName) continue;
     const key = featureTypeKey(feature);

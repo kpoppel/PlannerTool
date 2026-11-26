@@ -51,7 +51,7 @@ The handle changes the end date, not the start date. To shift the task without d
 ## Recommended workflows
 
 1. Baseline review and dataset preparation
-  - Select plans in the Plan menu, use the Scope menu to include the related work you need for context, and narrow the board with the Sidebar's Task Filters.
+  - Select plans in the Plan menu, reveal related work from individual tasks, and narrow the board with Task Filters.
   - Check **N on board** (Board information) to understand how the displayed set was reached.
 
 2. Load balancing across teams
@@ -75,4 +75,4 @@ The handle changes the end date, not the start date. To shift the task without d
 
 - Card cannot be moved: Baseline is read-only. Copy it into a scenario first.
 - Allocations not visible: switch to Normal card mode and check that the task has team allocations in the Details panel.
-- Dependency lines missing: enable **Dependencies** in the Scope menu.
+- Dependency lines missing: enable **Tools > Dependencies** and make sure both tasks are on the board.

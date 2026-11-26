@@ -1,7 +1,7 @@
 /**
  * PluginDependencies - Lifecycle wrapper for the Dependencies SVG overlay plugin.
  * Migrated to MountedPlugin pattern — replaces manual element creation/mounting.
- * This plugin is activated only by the Context dependency control.
+ * Draws links between board cards when enabled in Tools.
  */
 import { MountedPlugin } from './MountedPlugin.js';
 
@@ -15,6 +15,10 @@ export class PluginDependencies extends MountedPlugin {
   get componentTag() { return 'plugin-dependencies'; }
   get componentPath() { return './PluginDependenciesComponent.js'; }
   get mountSelector() { return '_body'; }
+
+  _showPlugin() {
+    this._el.style.display = 'none';
+  }
 
   async activate() {
     await super.activate();

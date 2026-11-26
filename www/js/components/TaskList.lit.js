@@ -144,7 +144,7 @@ export class TaskList extends LitElement {
             String(project.id) === String(row.feature.project));
           // Context-only tasks have no configured owning plan.
           if (owningPlan !== undefined) metadata.push(owningPlan.name);
-          else if (virtual) metadata.push(row.feature.sourcePlanName);
+          else if (row.feature.sourcePlanName) metadata.push(row.feature.sourcePlanName);
         }
         return html`<div class="row ${group ? 'group' : ''} ${virtual ? 'virtual' : ''} ${this._selection.value === row.id ? 'selected' : ''}
           ${this.highlightedId === row.id ? 'highlighted' : ''}" data-task-id=${row.id}
@@ -178,7 +178,11 @@ export class TaskList extends LitElement {
             ${group ? '' : html`<span class="task-meta" title=${metadata.join(' - ')}>${metadata.join(' \u00b7 ')}</span>`}
           </div>
           ${folded && !group ? html`<span class="count">${row.foldCount}</span>` : ''}
-          ${virtual ? '' : html`<span class="actions" @click=${(event) => event.stopPropagation()}><slot name=${`actions-${row.id}`}></slot></span>`}
+          ${virtual ? '' : html`<span class="actions" @click=${(event) => event.stopPropagation()}>
+            ${group ? '' : row.taskContext.map(({ relation, label, icon, open }) => html`
+              <button type="button" title=${label} aria-label=${label} aria-expanded=${String(open)}
+                @click=${() => this._emit('task-context-toggle', { featureId: row.id, relation })}>${icon}</button>`)}
+            <slot name=${`actions-${row.id}`}></slot></span>`}
         </div>`;
       })}
     </div>`;

@@ -1,6 +1,6 @@
 # Advanced Filters — Practical Examples
 
-These examples show how to combine the Sidebar's Team Drill-down and Task Filters with the Top Menu's Plan and Scope menus to answer common questions.
+These examples show how to combine Team Drill-down and Task Filters with the Plan menu and task relationship controls.
 
 Example 1 — Show only unplanned and unallocated Features
 1. Under Schedule, enable `Unplanned` and disable `Planned`.
@@ -8,7 +8,7 @@ Example 1 — Show only unplanned and unallocated Features
 3. Optionally restrict Task Types to `Feature`.
 
 Example 2 — Inspect a single team's active Features
-1. In the Sidebar's Team Drill-down, select only the team you want to inspect.
+1. In Team Drill-down, choose **Teams in plans** or **Teams across plans**, then select the team you want to inspect.
 2. Under State, pick `Active` (or the relevant state).
 3. Use Timeline Scale (Top Menu → View menu) to focus on the delivery window.
 
@@ -18,8 +18,8 @@ Example 3 — Find items with missing parents
 
 Example 4 — Find all items hierarchically linked for a project
 1. Select the plan for the project in the Top Menu → Plan menu.
-2. In the Top Menu → Scope menu, enable `Ancestors` and/or `Descendant work`.
+2. Use a task's parent arrow or expand its chevron to follow the hierarchy.
 3. Under Hierarchy, select `Has Parent` to focus on linked items.
 4. Use Timeline Scale to focus on the delivery window.
 
-Tip: use the Selected → Related → Shown summary in the Scope menu to confirm the dataset size before performing bulk edits.
+Tip: use **Board information** to confirm the base task count before performing bulk edits.

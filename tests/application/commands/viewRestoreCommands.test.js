@@ -165,7 +165,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(store.getState().view.saved).toEqual([]);
   });
 
-  it('saveCurrentView captures full state from store including Context', async () => {
+  it('saveCurrentView captures selections and filters without legacy Scope flags', async () => {
     store.setState(
       (state) => ({
         ...state,
@@ -210,12 +210,7 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(captured.viewOptions.selectedFeatureStates).toEqual(['Doing', 'Done']);
     expect(captured.viewOptions.selectedTaskTypes).toEqual(["[\"process\",\"feature\"]", "[\"process\",\"epic\"]"]);
     expect(captured.viewOptions.taskFilters).toMatchObject({ schedule: { planned: true, unplanned: false } });
-    expect(captured.viewOptions.context).toEqual({
-      parent: true,
-      child: false,
-      dependency: false,
-      otherAllocations: true,
-    });
+    expect(captured.viewOptions).not.toHaveProperty('context');
   });
 
   it('round-trips the connected-plan focus and clears it for older views', async () => {
@@ -295,10 +290,10 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(snapshot.view.options.capacityViewMode).toBe('project');
     expect(snapshot.view.options.focusedPlanId).toBe('p3');
     expect(snapshot.view.context).toEqual({
-      parent: true,
-      child: true,
+      parent: false,
+      child: false,
       dependency: false,
-      otherAllocations: true,
+      otherAllocations: false,
     });
     expect(pluginStateCommands.restoreFromView).toHaveBeenCalledWith({
       'plugin-cost': { mode: 'team' },
@@ -631,9 +626,9 @@ describe('application/commands/viewRestoreCommands', () => {
     await cmd.loadAndApplyView('v1');
 
     expect(store.getState().view.context).toEqual({
-      parent: true,
+      parent: false,
       child: false,
-      dependency: true,
+      dependency: false,
       otherAllocations: false,
     });
     expect(pluginStateCommands.restoreFromView).toHaveBeenCalledWith({});

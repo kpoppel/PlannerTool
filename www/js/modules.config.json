@@ -69,8 +69,8 @@
     },
     {
       "id": "plugin-dependencies",
-      "type": "hidden",
-      "icon": "account_tree",
+      "type": "tool",
+      "icon": "link",
       "name": "Dependencies",
       "version": "1.0.1",
       "description": "Render dependency arrows between feature cards",

@@ -63,27 +63,13 @@ function deriveDefaultFeatureStates(snapshot) {
 }
 
 function deriveDefaultTaskTypes(snapshot) {
-  return deriveAvailableTaskTypes(snapshot.baseline.features);
+  return deriveAvailableTaskTypes(snapshot.baseline.features, { includeUnpresentable: true });
 }
 
 function toSelectedIds(selectionMap) {
   return Object.entries(selectionMap)
     .filter(([, selected]) => selected === true)
     .map(([id]) => String(id));
-}
-
-function toViewContext(existingContext, options) {
-  const current = existingContext;
-  // Boundary guard: payload comes from external persistence/API and may be missing fields; normalize here, not downstream.
-  const incoming = options.context === undefined ? {} : options.context;
-  return {
-    parent: incoming.parent !== undefined ? Boolean(incoming.parent) : Boolean(current.parent),
-    child: incoming.child !== undefined ? Boolean(incoming.child) : Boolean(current.child),
-    dependency: incoming.dependency !== undefined ? Boolean(incoming.dependency) : Boolean(current.dependency),
-    otherAllocations: incoming.otherAllocations !== undefined
-      ? Boolean(incoming.otherAllocations)
-      : Boolean(current.otherAllocations),
-  };
 }
 
 function toSelectedMap(ids) {
@@ -97,7 +83,6 @@ function buildViewSnapshotOptions(snapshot, pluginState = {}) {
     selectedFeatureStates: Array.from(snapshot.selection.featureStateNames),
     selectedTaskTypes: deriveDefaultTaskTypes(snapshot).filter((type) => !hidden.has(type)),
     taskFilters: cloneValue(snapshot.selection.taskFilters),
-    context: cloneValue(snapshot.view.context),
     ...pluginState,
   };
 }
@@ -186,6 +171,7 @@ export function createViewRestoreCommands(
     const isDefault = String(viewId) === 'default';
 
     const viewOptions = cloneValue(viewData.viewOptions);
+    delete viewOptions.context;
     if (!isDefault && viewOptions.displayMode === 'packed' &&
       typeof viewOptions.packedModeUnplannedPreference !== 'boolean') {
       throw new Error('Saved packed view requires packedModeUnplannedPreference');
@@ -271,7 +257,7 @@ export function createViewRestoreCommands(
           ...state.view,
           activeId: viewId,
           options: nextViewOptions,
-          context: toViewContext(state.view.context, nextViewOptions),
+          context: { parent: false, child: false, dependency: false, otherAllocations: false },
         },
       }),
       false,

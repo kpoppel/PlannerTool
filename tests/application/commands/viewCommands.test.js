@@ -19,6 +19,22 @@ describe('application/commands/viewCommands', () => {
     expect(mod.createLegacyViewCommands).toBeUndefined();
   });
 
+  it('starts cross-plan focus without teams when the entire roster was selected', () => {
+    store.setState((state) => ({ ...state,
+      baseline: { ...state.baseline, teams: [{ id: 'a' }, { id: 'b' }] },
+      selection: { ...state.selection, teamIds: ['a', 'b'], projectIds: ['plan'] },
+    }));
+    const commands = createViewCommands(store, { emit: vi.fn() });
+
+    commands.setTaskViewMode('team-all-plans');
+    expect(store.getState().selection.teamIds).toEqual([]);
+    expect(store.getState().selection.projectIds).toEqual(['plan']);
+    commands.setTaskViewMode('plan');
+    store.setState((state) => ({ ...state, selection: { ...state.selection, teamIds: ['b'] } }));
+    commands.setTaskViewMode('team-all-plans');
+    expect(store.getState().selection.teamIds).toEqual(['b']);
+  });
+
   it('store branch updates view options and hidden types', () => {
     const bus = { emit: vi.fn() };
     const commands = createViewCommands(store, bus);
