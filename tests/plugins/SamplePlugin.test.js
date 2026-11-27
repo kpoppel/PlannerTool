@@ -102,7 +102,7 @@ describe('SamplePlugin', () => {
       expect(meta.id).to.equal(testId);
       expect(meta.name).to.equal('Sample Plugin');
       expect(meta.type).to.equal('tool');
-      expect(meta.version).to.equal('1.0.0');
+      expect(meta.version).to.equal('1.0.1');
       expect(meta).not.to.have.property('autoActivate');
     });
 

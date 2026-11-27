@@ -10,9 +10,10 @@ test.describe('DragManager resize (e2e)', () => {
       const box = await card.locator(`[data-resize-policy="${policy}"]`).boundingBox();
       expect(box).not.toBeNull();
       const startX = box.x + box.width / 2;
-      const startY = box.y + box.height / 2;
+      const startY = policy === 'keep-allocation' ? box.y + box.height - 1 : box.y + box.height / 2;
       await page.mouse.move(startX, startY);
       await page.mouse.down();
+      await expect(card.locator('.drag-handle')).toHaveAttribute('data-active-policy', policy);
       await page.mouse.move(startX + 80, startY, { steps: 12 });
       await page.mouse.up();
       await expect.poll(() => card.evaluate((element) => parseFloat(element.style.width)))

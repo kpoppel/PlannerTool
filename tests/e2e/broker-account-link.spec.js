@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
 
 async function mountAccount(page) {
-  await page.goto('/js/modules.config.json');
+  await page.goto('/static/js/modules.config.json');
   await page.setContent('<main></main>');
   await page.evaluate(async () => {
-    const { store } = await import('/js/application/store.js');
-    const { createInitialAppState } = await import('/js/application/createInitialAppState.js');
-    const { createAuthClient, createBrokerHttpAdapter } = await import('/js/services/authClient.js');
-    await import('/js/components/ConfigModal.lit.js');
+    const { store } = await import('/static/js/application/store.js');
+    const { createInitialAppState } = await import('/static/js/application/createInitialAppState.js');
+    const { createAuthClient, createBrokerHttpAdapter } = await import('/static/js/services/authClient.js');
+    await import('/static/js/components/ConfigModal.lit.js');
     store.setState(createInitialAppState(), true);
     const state = { mode: 'broker', status: 'signed_in',
       account: { uuid: 'fresh-identity', name: 'New Entra User', email: '' },

@@ -1,39 +1,107 @@
-import { test, expect } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+
+const test = base.extend({
+  workforceFixture: async ({ page }, use) => {
+    const response = await page.request.get('/admin/v1/workforce');
+    expect(response.ok()).toBe(true);
+    const original = (await response.json()).content;
+    const createdTeams = [];
+    try {
+      await use({ original, createdTeams });
+    } finally {
+      for (const id of createdTeams.reverse()) {
+        const path = `/admin/v1/workforce/teams/${encodeURIComponent(id)}/deletion`;
+        const reviewResponse = await page.request.get(path);
+        expect(reviewResponse.ok(), await reviewResponse.text()).toBe(true);
+        const review = (await reviewResponse.json()).content;
+        const deletion = await page.request.post(path, { data: {
+          revision: review.revision,
+          confirmation: { acknowledged: true, review_revision: review.review_revision },
+        } });
+        expect(deletion.ok(), await deletion.text()).toBe(true);
+      }
+      const currentResponse = await page.request.get('/admin/v1/workforce');
+      expect(currentResponse.ok()).toBe(true);
+      const current = (await currentResponse.json()).content;
+      const originalTeam = original.teams.teams[0];
+      const team = current.teams.teams.find((entry) => entry.id === originalTeam.id);
+      team.name = originalTeam.name;
+      team.short_name = originalTeam.short_name;
+      for (const staffing of current.workforce.staffing) {
+        const previous = original.workforce.staffing.find((entry) => entry.id === staffing.id);
+        staffing.fte = previous.fte;
+      }
+      const restore = await page.request.post('/admin/v1/workforce', { data: {
+        revision: current.revision, teams: current.teams, workforce: current.workforce,
+      } });
+      expect(restore.ok(), await restore.text()).toBe(true);
+      const reload = await page.request.post('/admin/v1/reload-config', { data: {} });
+      expect(reload.ok()).toBe(true);
+    }
+  },
+});
 
 const cases = JSON.parse(readFileSync(
   new URL('../fixtures/allocation_rule/cases.json', import.meta.url), 'utf8',
 ));
 
-test('desktop capacity graph and real cost response share monthly allocation winners', async ({ page }, testInfo) => {
+test('desktop capacity graph and real cost response share monthly allocation winners', async ({ page, workforceFixture }, testInfo) => {
   const fixture = cases.find((entry) => entry.monthlyLoad !== undefined);
-  const save = async (path, content) => {
-    const response = await page.request.post(`/admin/v1/${path}`, { data: { content } });
+  let workforce = structuredClone(workforceFixture.original);
+  const saveWorkforce = async () => {
+    const response = await page.request.post('/admin/v1/workforce', { data: {
+      revision: workforce.revision, teams: workforce.teams, workforce: workforce.workforce,
+    } });
     expect(response.ok(), await response.text()).toBe(true);
+    workforce = (await response.json()).content;
+  };
+  const createDefinition = async (kind, fields) => {
+    const response = await page.request.post(`/admin/v1/workforce/definitions/${kind}`, { data: {
+      revision: workforce.revision, fields,
+    } });
+    expect(response.ok(), await response.text()).toBe(true);
+    workforce = (await response.json()).content;
   };
   const names = ['Alpha', 'Beta', 'Gamma'];
-  await save('teams', { schema_version: 2, teams: names.map((name) => ({ name, short_name: name })) });
-  await save('people', { schema_version: 1, database_file: '', database: {
-    people: names.map((name) => ({ name, team: name, site: 'HQ', external: false })),
-  } });
-  await save('cost', {
-    working_hours: { HQ: { internal: 160, external: 0 } },
-    internal_cost: { default_hourly_rate: 50 },
-    external_cost: { default_hourly_rate: 0, external: {} },
-  });
+  workforce.teams.teams[0].name = names[0];
+  workforce.teams.teams[0].short_name = names[0].slice(0, 2).toUpperCase();
+  workforce.workforce.staffing.forEach((staffing) => { staffing.fte = 1; });
+  await saveWorkforce();
+  const supplier = workforce.workforce.suppliers.find((entry) => !entry.external);
+  const profile = supplier.profiles.find((entry) => entry.name === 'Standard');
+  for (const name of names.slice(1)) {
+    await createDefinition('team', { name, short_name: name.slice(0, 2).toUpperCase(), group_id: null });
+    const team = workforce.teams.teams.find((entry) => entry.name === name);
+    workforceFixture.createdTeams.push(team.id);
+    await createDefinition('staffing', {
+      team_id: team.id, supplier_id: supplier.id, profile_id: profile.id, fte: 1,
+    });
+  }
   const reload = await page.request.post('/admin/v1/reload-config', { data: {} });
   expect(reload.ok()).toBe(true);
   const projectsResponse = await page.request.get('/api/projects');
-  const teamsResponse = await page.request.get('/api/teams');
   expect(projectsResponse.ok()).toBe(true);
-  expect(teamsResponse.ok()).toBe(true);
   const projects = await projectsResponse.json();
-  const teams = await teamsResponse.json();
+  const teams = names.map((name) => {
+    const team = workforce.teams.teams.find((entry) => entry.name === name);
+    return { ...team, selected: true };
+  });
+  expect(teams.map((team) => team.name)).toEqual(names);
+  const fixtureTeamIds = ['team-alpha', 'team-beta', 'team-gamma'];
+  const teamIdByFixtureId = new Map(fixtureTeamIds.map((id, index) => [id, teams[index].id]));
+  const mapCapacity = (capacity) => capacity.map((allocation) => {
+    const team = teamIdByFixtureId.get(allocation.team);
+    expect(team).toBeDefined();
+    return { ...allocation, team };
+  });
   const features = fixture.features.map((feature) => ({
     ...feature, project: projects[0].id, sourcePlanIds: [projects[0].id],
+    process_id: projects[0].work_item_display[0].process_id,
     title: feature.id, type: feature.id === 'epic' ? 'Epic' : 'Feature',
     state: 'Active', stateCategory: 'InProgress', tags: '', relations: [],
     presentationPlanIds: feature.id === 'jan' ? [] : [projects[0].id],
+    capacity: mapCapacity(feature.capacity),
   }));
   features.push({ ...features[1], id: 'selected-empty', title: 'Selected empty Feature',
     capacity: [], presentationPlanIds: [projects[0].id] });
@@ -56,6 +124,7 @@ test('desktop capacity graph and real cost response share monthly allocation win
     const { createInitialAppState } = await import('/static/js/application/createInitialAppState.js');
     const { cmd, sel } = await import('/static/js/application/imports.js');
     const { dataService } = await import('/static/js/services/dataService.js');
+    const { taskTypeKey } = await import('/static/js/application/shared/workItemDisplay.js');
     await import('/static/js/components/MainGraph.lit.js');
     await import('/static/js/plugins/PluginCostComponent.js');
     await dataService.init();
@@ -65,7 +134,8 @@ test('desktop capacity graph and real cost response share monthly allocation win
     state.selection.projectIds = projects.map((project) => project.id);
     state.selection.teamIds = teams.map((team) => team.id);
     state.selection.featureStateNames = ['Active'];
-    state.selection.taskTypeNames = ['Epic', 'Feature'];
+    state.selection.taskTypeNames = ['Epic', 'Feature']
+      .map((type) => taskTypeKey(projects[0].work_item_display[0].process_id, type));
     store.setState(state, true);
     cmd.data.recomputeCapacity();
 
@@ -136,7 +206,13 @@ test('desktop capacity graph and real cost response share monthly allocation win
   await expect(page.locator('plugin-cost')).not.toContainText('Hidden empty task');
   await expect(page.locator('plugin-cost')).not.toContainText('BT for F1R1');
   await expect(page.locator('plugin-cost')).not.toContainText('Legacy closed parent');
-  for (const [team, expected] of Object.entries(fixture.monthlyLoad)) {
+  const expectedMonthlyLoad = new Map();
+  for (const [fixtureTeam, expected] of Object.entries(fixture.monthlyLoad)) {
+    const team = teamIdByFixtureId.get(fixtureTeam);
+    expect(team).toBeDefined();
+    expectedMonthlyLoad.set(team, expected);
+  }
+  for (const [team, expected] of expectedMonthlyLoad) {
     const monthlyLoad = {};
     result.dates.forEach((date, index) => {
       const weekday = new Date(date).getUTCDay();
@@ -167,8 +243,9 @@ test('desktop capacity graph and real cost response share monthly allocation win
     contentType: 'image/png',
   });
   await page.evaluate(async () => {
-    const { cmd } = await import('/static/js/application/imports.js');
-    cmd.filter.setSelectedTaskTypes(['Epic']);
+    const { cmd, sel } = await import('/static/js/application/imports.js');
+    const { taskTypeKey } = await import('/static/js/application/shared/workItemDisplay.js');
+    cmd.filter.setSelectedTaskTypes([taskTypeKey(sel.feature.getWorkItemDisplay()[0].process_id, 'Epic')]);
     const cost = document.querySelector('plugin-cost');
     await cost.loadData();
     await cost.updateComplete;
@@ -177,10 +254,12 @@ test('desktop capacity graph and real cost response share monthly allocation win
   await expect(page.getByRole('row').filter({ hasText: 'feb' })).toContainText('Context');
   await expect(parentRow.getByRole('cell').nth(5)).toHaveText('923');
   const expectedTotals = result.cost.projects[projects[0].id].totals;
-  expect(Object.keys(expectedTotals.sites)).toContain('HQ');
+  expect(Object.keys(expectedTotals.internal.cost)).toEqual(['2025-01', '2025-02']);
   const reloadWithFilters = async (changes) => page.evaluate(async (changes) => {
-    const { cmd } = await import('/static/js/application/imports.js');
-    cmd.filter.setSelectedTaskTypes(['Epic', 'Feature']);
+    const { cmd, sel } = await import('/static/js/application/imports.js');
+    const { taskTypeKey } = await import('/static/js/application/shared/workItemDisplay.js');
+    const processId = sel.feature.getWorkItemDisplay()[0].process_id;
+    cmd.filter.setSelectedTaskTypes(['Epic', 'Feature'].map((type) => taskTypeKey(processId, type)));
     cmd.filter.setSelectedStates(changes.states);
     cmd.filter.setTaskFilter('schedule', 'unplanned', changes.unplanned);
     cmd.filter.setTaskFilter('allocation', 'allocated', changes.allocated);

@@ -25,7 +25,9 @@ async function setup(page) {
       const project = url.searchParams.get('project');
       return route.fulfill({ json: { area_paths: [project, `${project}\\Alpha`, `${project}\\Beta`, `${project}\\Cancel`] } });
     }
-    return route.fulfill({ json: { email: 'delegate@example.test', permissions: ['manage_projects'] } });
+    return fulfillAccountApi(route, {
+      email: 'delegate@example.test', permissions: ['manage_projects'],
+    });
   });
   await page.route('**/admin/check', (route) => route.fulfill({ json: {
     ok: true, permissions: ['manage_projects'],
@@ -37,9 +39,9 @@ async function setup(page) {
       if (request.method() === 'POST') {
         const command = request.postDataJSON();
         state.saves.push(command);
-        if (state.rejectSave) return route.fulfill({ status: 400, json: { detail: {
+        if (state.rejectSave) return route.fulfill({ status: 400, json: {
           error: 'invalid_plan', message: 'Plan save denied',
-        } } });
+        } });
         state.config = command.content;
         for (const entry of state.catalogue.processes) {
           const refs = Object.hasOwn(command.process_imports, entry.id) ? command.process_imports[entry.id] : [];

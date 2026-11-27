@@ -85,6 +85,9 @@ class AzureService:
 
         Callers should use ``with service.connect(credential) as client:``.
         """
+        if credential is not None:
+            from planner_lib.azure.authentication import token_from_credential
+            token_from_credential(credential)
         if not self.requires_pat and (credential is None or credential['kind'] == 'pat'):
             from planner_lib.azure.AzureMockClient import _MOCK_CREDENTIAL
             credential = _MOCK_CREDENTIAL

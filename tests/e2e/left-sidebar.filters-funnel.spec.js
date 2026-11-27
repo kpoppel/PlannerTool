@@ -29,7 +29,7 @@ test.describe('Left Sidebar - filters and data funnel', () => {
     const counts = new Map(entries);
     const sharedTasks = counts.has('Shared tasks counted once') ? counts.get('Shared tasks counted once') : 0;
     expect(counts.get('Selected plans (Plan menu total)')).toBe(planTotal);
-    expect(planTotal + sharedTasks + counts.get('Added by Scope')
+    expect(planTotal + sharedTasks + counts.get('Context tasks')
       + counts.get('Excluded from current scope')).toBe(counts.get('Displayable task pool'));
     let remainingTasks = counts.get('Displayable task pool');
     for (const label of ['Schedule', 'Allocation', 'Hierarchy', 'Relations', 'State', 'Task Types', 'Team selection / focus']) {

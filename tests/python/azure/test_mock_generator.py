@@ -1069,4 +1069,4 @@ class TestGeneratorPersistEnabled:
             {"generator_persist_enabled": True, "generator_persist_dir": str(tmp_path / "p")},
         )
         with pytest.raises(ValueError, match='Backend credential'):
-            svc.connect("")
+            svc.connect('')

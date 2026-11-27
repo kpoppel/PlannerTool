@@ -24,7 +24,7 @@ test.describe('In-app SearchTool', () => {
     });
 
     // Press f to open search from the board.
-    await page.locator('body').click({ position: { x: 20, y: 20 } });
+    await page.locator('timeline-board').click({ position: { x: 200, y: 200 } });
     await page.keyboard.press('f');
 
     const searchHosts = page.locator('search-tool');

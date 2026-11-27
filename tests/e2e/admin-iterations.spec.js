@@ -8,7 +8,9 @@ async function setup(page, initialSets = [], usage = {}) {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/auth/release-notes')) return fulfillAccountApi(route, {});
     if (path.endsWith('/azure/projects')) return route.fulfill({ json: { projects: ['ADO'] } });
-    return route.fulfill({ json: { email: 'iterations@example.test', permissions: ['manage_iterations', 'manage_projects'] } });
+    return fulfillAccountApi(route, {
+      email: 'iterations@example.test', permissions: ['manage_iterations', 'manage_projects'],
+    });
   });
   await page.route('**/admin/check', (route) => route.fulfill({ json: { ok: true, permissions: ['manage_iterations', 'manage_projects'] } }));
   await page.route('**/admin/v1/**', (route) => {

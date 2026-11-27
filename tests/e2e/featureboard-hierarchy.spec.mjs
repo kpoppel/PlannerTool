@@ -476,10 +476,18 @@ test('descendant scope includes linked context without leaking owners or context
   const configuredProjects = await projectsResponse.json();
   const configuredTeams = await teamsResponse.json();
   const origin = { ...configuredProjects[0], name: 'Origin Plan' };
+  const processDisplay = origin.work_item_display[0];
+  const featureType = processDisplay.tiers.flat().find((type) => type.name === 'Feature');
+  expect(featureType).toBeDefined();
+  origin.work_item_display = [
+    { ...processDisplay,
+      tiers: [...processDisplay.tiers, [{ ...featureType, name: 'Requirement' }]] },
+    ...origin.work_item_display.slice(1),
+  ];
   const other = { ...origin, id: 'linked-importer', name: 'Other Plan' };
   const common = {
     ...tasksPayload[1], state: 'Active', start: '2026-10-01', end: '2026-10-15',
-    relations: [], parentId: null, capacity: [],
+    process_id: processDisplay.process_id, relations: [], parentId: null, capacity: [],
   };
   const imported = [
     { ...common, id: 'seed', title: 'Imported Seed', type: 'Epic', project: origin.id,
@@ -511,7 +519,7 @@ test('descendant scope includes linked context without leaking owners or context
   const cardIds = () => cards.evaluateAll((elements) => elements
     .map((element) => String(element.feature.id)).sort());
   await expect.poll(cardIds).toEqual(['seed']);
-  await page.locator('feature-card-lit[data-feature-id="seed"] .fold-toggle').click();
+  await page.locator('task-list').getByRole('button', { name: 'Expand Imported Seed' }).click();
   await expect.poll(cardIds).toEqual(['seed', 'shared']);
 
   const planButton = page.getByRole('navigation', { name: 'Top menu' })
@@ -541,6 +549,7 @@ test('team focus keeps allocated work, its ancestors and unallocated descendants
   const common = {
     ...tasksPayload[1], state: 'Active', start: '2026-10-01', end: '2026-10-15',
     relations: [], parentId: null, capacity: [],
+    process_id: origin.work_item_display[0].process_id,
     project: 'hierarchy-context', sourcePlanIds: [origin.id], presentationPlanIds: [origin.id],
   };
   const imported = [

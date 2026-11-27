@@ -349,7 +349,11 @@ def test_iteration_browse_connects_fetches_and_closes_on_same_worker(azure_fails
     services = {
         'session_manager': Session(), 'azure_client': AzureService(),
         'account_manager': SimpleNamespace(load=lambda email: {'pat': 'test-pat'}),
+        'credential_provider': SimpleNamespace(get_credential=lambda user_id: {
+            'kind': 'pat', 'token': 'test-pat', 'user_id': user_id,
+        }),
     }
+    services['azure_client'].is_remote = True
     request = make_request(SimpleNamespace(get=lambda name: services[name]),
                            cookies={'sessionId': 'iteration-session'})
 

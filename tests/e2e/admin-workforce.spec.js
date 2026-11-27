@@ -2,6 +2,13 @@ import { test, expect } from '@playwright/test';
 import { fulfillAccountApi } from './helpers.js';
 import { createMockAuth, OTHER_MOCK_ACCOUNT } from '../helpers/mockAuth.js';
 
+async function routeWorkspaceStaticAssets(page) {
+  await page.route('**/static/**', async route => {
+    const pathname = new URL(route.request().url()).pathname;
+    await route.fulfill({ path: `www${pathname.slice('/static'.length)}` });
+  });
+}
+
 test('HTTP authentication clients preserve same-account drafts and fence changed accounts on desktop', async ({ page }, testInfo) => {
   const connected = createMockAuth('entra_signed_in').state;
   let account = connected.account;
@@ -9,13 +16,15 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
   const requests = [];
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  await routeWorkspaceStaticAssets(page);
+  await page.route('**/phase-c-test', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><html><body><div id="auth-mount"></div></body></html>',
+  }));
   await page.route('**/api/**', route => fulfillAccountApi(route, {
     email: 'administrator@example.test', permissions: ['admin'],
   }));
-  await page.route('**/admin/check', route => route.fulfill({ json: { ok: true, permissions: ['admin'] } }));
-  await page.route('**/admin/v1/**', route => route.fulfill({ json: { content: {} } }));
-  await page.goto('/admin/#data-sources');
-  await expect(page.locator('admin-data-sources')).toBeVisible();
+  await page.goto('/phase-c-test');
   await page.route('**/api/auth/**', route => {
     const path = new URL(route.request().url()).pathname;
     requests.push(path);
@@ -36,23 +45,26 @@ test('HTTP authentication clients preserve same-account drafts and fence changed
     }
     return route.fulfill({ json: { value: 'synthetic-result' } });
   });
-  await page.locator('admin-data-sources').evaluate(async (editor, initialState) => {
+  await page.locator('#auth-mount').evaluate(async (mount, initialState) => {
     const { createAuthClient, createBrokerHttpAdapter } = await import('/static/js/services/authClient.js');
-    const { ProviderREST } = await import('/static/js/services/providerREST.js');
-    const { AdminProviderREST } = await import('/static/admin/js/services/providerREST.js');
+    const { dataService } = await import('/static/js/services/dataService.js');
+    const { adminProvider } = await import('/static/admin/js/services/providerREST.js');
     const { ProviderLocalStorage } = await import('/static/js/services/providerLocalStorage.js');
+    await import('/static/js/components/AuthStatus.lit.js');
     window.phaseCCancel = false;
     const adapter = createBrokerHttpAdapter({ apiUrl: '/api', fetchImpl: fetch,
       presentLogin: async () => window.phaseCCancel ? false : { completed: true } });
     const authentication = createAuthClient({ adapter, initialState, instance: '/',
       onAccountChanged: async () => { await new ProviderLocalStorage().clearBrowserData(); } });
     window.phaseCAuth = authentication;
-    window.phaseCApp = new ProviderREST({ authentication });
-    window.phaseCAdmin = new AdminProviderREST({ authentication });
+    dataService.providers.rest.setAuthentication(authentication);
+    adminProvider.setAuthentication(authentication);
+    window.phaseCApp = dataService.providers.rest;
+    window.phaseCAdmin = adminProvider;
     const status = document.createElement('auth-status');
     status.id = 'phaseCStatus';
     status.authentication = authentication;
-    editor.shadowRoot.prepend(status);
+    mount.append(status);
     localStorage.setItem('az_planner:phase-c-draft', 'Unsubmitted work');
     await authentication.status();
   }, connected);
@@ -134,32 +146,33 @@ test('ADO authentication policy is read-only and excluded from data source saves
   });
   await page.goto('/admin/#data-sources');
   const editor = page.locator('admin-data-sources');
-  const mode = editor.getByLabel('ADO authentication');
+  const policy = editor.locator('[data-authentication-settings]');
   const status = editor.locator('#ado-authentication-status');
   const backend = editor.locator('select.backend-select').first();
-  await expect(mode).toHaveValue('pat');
-  await expect(mode).toBeDisabled();
-  await expect(status).toContainText('Active: PAT');
+  await expect(policy).toContainText('ADO authentication method');
+  await expect(status).toHaveText('Personal Access Token');
+  await expect(policy.locator('select, input')).toHaveCount(0);
   const initialAuthRequests = [...authRequests];
   for (const value of ['ado_mock_fixture', 'ado_mock_generator', 'ado_static']) {
     await backend.selectOption(value);
-    await expect(mode).toHaveCount(0);
+    await expect(policy).toHaveCount(0);
   }
   await backend.selectOption('ado_live');
-  await expect(mode).toBeDisabled();
-  await expect(status).toContainText('Deployment controlled');
+  await expect(policy).toContainText('ADO authentication method');
+  await expect(status).toHaveText('Personal Access Token');
+  await expect(policy.locator('select, input')).toHaveCount(0);
   expect(saves).toEqual([]);
   expect(authRequests).toEqual(initialAuthRequests);
   await page.screenshot({ path: testInfo.outputPath('ado-authentication-policy-desktop.png'), fullPage: true });
   await page.reload();
-  await expect(mode).toHaveValue('pat');
+  await expect(status).toHaveText('Personal Access Token');
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(editor.locator('.status')).toHaveText('Saved.');
   const patPayloads = [...saves];
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(editor.locator('.status')).toHaveText('Saved.');
   expect(saves.slice(4)).toEqual(patPayloads);
-  await expect(status).toContainText('Active: PAT');
+  await expect(status).toHaveText('Personal Access Token');
   expect(errors).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
@@ -243,7 +256,7 @@ test('Empty process catalogue points to plan setup without a bulk refresh', asyn
   await page.goto('/admin/#ado-processes');
   await expect(page.getByRole('link', { name: 'Add a plan', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Add a plan', exact: true }))
-    .toHaveAttribute('href', 'http://127.0.0.1:5175/admin/#projects');
+    .toHaveAttribute('href', new URL('/admin/#projects', page.url()).href);
   await expect(page.getByRole('button', { name: 'Reload from Azure DevOps' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Save import selections' })).toBeDisabled();
   expect(refreshes).toEqual([]);
@@ -292,9 +305,9 @@ test('Delegated process catalogue imports types and keeps validation errors visi
         const payload = request.postDataJSON();
         saves.push(payload);
         if (rejectSave) {
-          return route.fulfill({ status: 400, json: { detail: {
+          return route.fulfill({ status: 400, json: {
             error: 'type_in_use', message: 'Import selection is required by plans: Platform roadmap',
-          } } });
+          } });
         }
         catalogue = payload.content;
         return route.fulfill({ json: { ok: true, content: catalogue } });
@@ -345,13 +358,23 @@ test('Utilities transfers workforce through a fresh explicit import review', asy
   const previews = [];
   const commits = [];
   const pageErrors = [];
+  const moduleResponses = [];
+  await routeWorkspaceStaticAssets(page);
   page.on('pageerror', error => pageErrors.push(error.message));
+  page.on('response', response => {
+    if (response.url().includes('/static/admin/js/components/admin/Utilities.lit.js')) {
+      moduleResponses.push(`${response.status()} ${response.url()}`);
+    }
+  });
   await page.route('**/admin/', route => route.fulfill({
     contentType: 'text/html', body: `<!doctype html><html><head><title>Utilities fixture</title>
       <style>body { margin: 32px; font: 14px 'Segoe UI', sans-serif; background: #fff; }
       main { max-width: 1160px; margin: 0 auto; }</style></head><body>
-      <main><admin-utilities></admin-utilities></main>
-      <script type="module" src="/admin/js/components/admin/Utilities.lit.js"></script>
+      <main id="utilities-root"></main>
+      <script type="module">
+        import '/static/admin/js/components/admin/Utilities.lit.js';
+        document.querySelector('#utilities-root').append(document.createElement('admin-utilities'));
+      </script>
       </body></html>`,
   }));
   await page.route('**/admin/v1/workforce/**', async route => {
@@ -393,6 +416,8 @@ test('Utilities transfers workforce through a fresh explicit import review', asy
     }
   });
   await page.goto('/admin/');
+  const utilitiesDefined = await page.evaluate(() => customElements.get('admin-utilities') !== undefined);
+  expect(utilitiesDefined, JSON.stringify({ moduleResponses, pageErrors })).toBe(true);
   const system = page.getByRole('region', { name: 'System', exact: true });
   const workforce = page.getByRole('region', { name: 'Workforce', exact: true });
   await expect(system.getByRole('button', { name: 'Backup', exact: true })).toBeVisible();
@@ -581,9 +606,10 @@ test('Shared header switches applications and opens Configuration under a proxy 
   let permissions = ['admin'];
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.route('**/tenant/api/**', route => route.fulfill({ json: {
+  await routeWorkspaceStaticAssets(page);
+  await page.route('**/tenant/api/**', route => fulfillAccountApi(route, {
     email: 'header@example.test', permissions,
-  } }));
+  }));
   await page.route('**/tenant/admin/check', route => route.fulfill({ json: { ok: true, permissions } }));
   await page.route('**/tenant/admin/v1/**', route => {
     const path = new URL(route.request().url()).pathname;
@@ -608,7 +634,7 @@ test('Shared header switches applications and opens Configuration under a proxy 
       body { margin: 0; font: 14px 'Segoe UI', sans-serif; --color-sidebar-bg: #23344d; }
     </style></head><body><top-menu-bar></top-menu-bar>
       <script>window.APP_BASE_URL = '/tenant';</script><script type="module">
-        import '/js/components/TopMenu.lit.js';
+        import '/static/js/components/TopMenu.lit.js';
         const menu = document.querySelector('top-menu-bar');
         menu.baseUrl = '/tenant';
         await menu.loadPermissions();
@@ -617,13 +643,16 @@ test('Shared header switches applications and opens Configuration under a proxy 
   await page.route('**/tenant/admin/', route => route.fulfill({ contentType: 'text/html', body: `
     <!doctype html><html><head><style>body { margin: 0; }</style></head><body>
       <div id="admin-root"></div><script>window.APP_BASE_URL = '/tenant';</script>
-      <script type="module" src="/admin/js/admin.js"></script></body></html>`,
+      <script type="module" src="/static/admin/js/admin.js"></script></body></html>`,
   }));
   await page.goto('/tenant/');
   await expect(page.getByRole('link', { name: 'Open administration', exact: true })).toHaveCount(0);
-  await expect(page.locator('top-menu-bar .settings-chevron')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Configuration', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: 'Set or update Azure DevOps PAT', exact: true }))
+    .toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Server', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -637,6 +666,7 @@ test('Shared header switches applications and opens Configuration under a proxy 
   await page.screenshot({ path: testInfo.outputPath('gear-administration-menu-desktop.png') });
   await page.getByRole('menuitem', { name: 'Plans', exact: true }).click();
   await expect(page).toHaveURL(/\/tenant\/admin\/#projects$/);
+  expect(pageErrors).toEqual([]);
   await expect(page.getByRole('navigation', { name: 'Top menu' })).toBeVisible();
   await expect(page.locator('admin-app .admin-content')).toHaveJSProperty('offsetTop', 40);
   await expect(page.locator('admin-app .chip.active')).toHaveText('Plans');
@@ -658,34 +688,62 @@ test('Shared header switches applications and opens Configuration under a proxy 
 });
 
 test('Administrator grants independent permissions from User Management', async ({ page }, testInfo) => {
-  const accounts = [{ id: 'admin-id', email: 'admin@example.com', permissions: ['admin'] },
-    { id: 'delegate-id', email: 'delegate@example.com', permissions: ['manage_projects'] }];
+  const accounts = [
+    { id: 'admin-id', email: 'admin@example.com', permissions: ['admin'], lastActive: null },
+    { id: 'delegate-id', email: 'delegate@example.com', permissions: ['manage_projects'], lastActive: null },
+  ];
   const writes = [];
+  let usersRoutePath = null;
+  let usersRouteCompleted = false;
+  let usersRouteCalls = 0;
   await page.route('**/api/**', route => fulfillAccountApi(route, { email: 'admin@example.com' }));
   await page.route('**/admin/check', route => route.fulfill({ json: {
     ok: true, permissions: ['admin'],
   } }));
-  await page.route('**/admin/v1/**', route => {
+  await page.route('**/admin/v1/**', async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path.endsWith('/users')) {
+      usersRoutePath = path;
+      usersRouteCalls += 1;
+    }
     if (path.endsWith('/users/delegate-id/permissions')) {
       const payload = request.postDataJSON();
       writes.push(payload);
       accounts[1].permissions = payload.permissions;
-      return route.fulfill({ json: { ok: true } });
+      await route.fulfill({ json: { ok: true } });
+      return;
     }
     if (path.endsWith('/users')) {
-      return route.fulfill({ json: { accounts, currentId: 'admin-id' } });
+      await route.fulfill({ json: { accounts, currentId: 'admin-id' } });
+      usersRouteCompleted = true;
+      return;
     }
-    return route.fulfill({ json: { content: { feature_flags: {} } } });
+    await route.fulfill({ json: { content: { feature_flags: {} } } });
   });
   await page.goto('/admin/');
   await page.getByRole('button', { name: 'Users', exact: true }).click();
-  const delegate = page.locator('.user-item').filter({ hasText: 'delegate@example.com' });
-  await expect(delegate.getByRole('checkbox', { name: 'Projects', exact: true })).toBeChecked();
-  await delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true }).check();
-  await expect(delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true })).toBeEnabled();
-  await expect(delegate.getByRole('checkbox', { name: 'Iteration mappings', exact: true })).toBeChecked();
+  await expect.poll(() => usersRoutePath).not.toBeNull();
+  await expect.poll(() => usersRouteCalls).toBeGreaterThan(0);
+  await expect.poll(() => usersRouteCompleted).toBe(true);
+  const usersPanel = page.locator('admin-users:visible');
+  await expect(usersPanel).toHaveCount(1);
+  await expect.poll(() => usersPanel.evaluate(component => component.loading))
+    .toBe(false);
+  await expect.poll(() => usersPanel.evaluate(component => component.users.length))
+    .toBe(2);
+  await usersPanel.evaluate(component => component.updateComplete);
+  await expect(usersPanel.getByRole('button', { name: 'delegate@example.com', exact: true }))
+    .toBeVisible();
+  await usersPanel.getByRole('button', { name: 'delegate@example.com', exact: true }).click();
+  const permissionsDialog = page.getByRole('dialog', { name: 'Edit user permissions', exact: true });
+  await expect(permissionsDialog.getByRole('checkbox', { name: 'Projects', exact: true }))
+    .toBeChecked();
+  await permissionsDialog.getByRole('checkbox', { name: 'Iteration mappings', exact: true }).check();
+  await permissionsDialog.getByRole('button', { name: 'Review changes', exact: true }).click();
+  const reviewDialog = page.getByRole('dialog', { name: 'Review permission changes', exact: true });
+  await expect(reviewDialog).toContainText('Iteration mappings: grant');
+  await reviewDialog.getByRole('button', { name: 'Apply changes', exact: true }).click();
   expect(writes).toEqual([{ permissions: ['manage_projects', 'manage_iterations'] }]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('user-delegation-desktop.png') });
@@ -711,15 +769,18 @@ test('Canonical Workforce edits grouped composition using committed server revis
   const writes = [];
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
+  await routeWorkspaceStaticAssets(page);
   await page.route('**/admin/', (route) => route.fulfill({
     contentType: 'text/html',
     body: `<!doctype html><html><head><title>Workforce fixture</title>
       <style>body { margin: 36px; font: 14px 'Segoe UI', sans-serif; background: #fff; }
       main { max-width: 1160px; margin: 0 auto; }</style></head><body>
-      <main><admin-workforce></admin-workforce></main>
+      <main id="workforce-root"></main>
       <script type="module">
-        import '/admin/js/components/admin/Workforce.lit.js';
-        document.querySelector('admin-workforce').permissions = ['admin'];
+        import '/static/admin/js/components/admin/Workforce.lit.js';
+        const workforce = document.createElement('admin-workforce');
+        workforce.permissions = ['admin'];
+        document.querySelector('#workforce-root').append(workforce);
       </script>
       </body></html>`,
   }));
@@ -773,6 +834,7 @@ test('Canonical Workforce edits grouped composition using committed server revis
     }] } });
   });
   await page.goto('/admin/');
+  expect(pageErrors).toEqual([]);
   await expect(page.locator('[data-group="group-one"]')).toContainText('Engineering');
   await expect(page.locator('[data-team="team-one"] time')).toHaveAttribute('datetime', lastUpdated);
   await expect(page.locator('[data-group="group-one"] .group-row time')).toContainText('UTC');

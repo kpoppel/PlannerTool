@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -724,7 +724,7 @@ def test_context_prunes_only_wholly_expired_trees():
          'stateChangeDate': '2020-01-01'},
         {**_context_seed(4, 'plan-a'), 'state': 'Active'},
         {**_context_seed(6, 'plan-a'), 'state': 'Closed',
-         'stateChangeDate': '2026-08-01'},
+         'stateChangeDate': (datetime.now(timezone.utc).date() - timedelta(days=30)).isoformat()},
         {**_context_seed(7, 'plan-a'), 'state': 'Closed',
          'stateChangeDate': '2020-01-01'},
         {**_context_seed(8, 'plan-a', (3,)), 'state': 'Closed',

@@ -59,7 +59,7 @@ describe('Vite cookie-auth proxy', () => {
         const html = await response.text();
         process.stdout.write(JSON.stringify({ admin: html.includes('js/login.js'), status: response.status }));
       } finally { await server.close(); }
-    `], { encoding: 'utf8', env: { ...process.env,
+    `], { encoding: 'utf8', timeout: 15000, env: { PATH: process.env.PATH,
       PLANNER_AUTH_INSTANCE: 'dev', PLANNER_AUTH_PUBLIC_URL: 'http://localhost:5174/auth/',
       PLANNER_AUTH_URL: 'http://localhost:8765/auth/', PLANNER_AUTH_UPSTREAM_MODE: 'mock',
     } });
@@ -75,6 +75,7 @@ describe('Development launcher', () => {
       mkdirSync(join(root, 'scripts'));
       mkdirSync(join(root, 'bin'));
       mkdirSync(join(root, 'node_modules', '.bin'), { recursive: true });
+      mkdirSync(join(root, '.venv', 'bin'), { recursive: true });
       copyFileSync('scripts/run_dev.sh', join(root, 'scripts/run_dev.sh'));
       writeFileSync(join(root, '.encryption_key'), 'fixture-key');
       writeFileSync(join(root, 'auth.env'), [
@@ -91,16 +92,32 @@ describe('Development launcher', () => {
       chmodSync(join(root, 'auth.env'), 0o600);
       for (const command of ['uvicorn', 'npx', 'python', 'vite']) {
         const lifetime = command === 'npx' ? 'process.exit(99);' : command === 'vite'
-          ? 'const fs = require("node:fs"); const check = () => fs.existsSync(process.env.CAPTURE_DIR + "/uvicorn") && fs.existsSync(process.env.CAPTURE_DIR + "/python") ? process.exit(0) : setImmediate(check); check();'
+          ? 'const fs = require("node:fs"); const started = Date.now(); const check = () => { const uvicorn = fs.existsSync(process.env.CAPTURE_DIR + "/uvicorn"); const python = fs.existsSync(process.env.CAPTURE_DIR + "/python"); if (uvicorn && python) process.exit(0); if (Date.now() - started > 5000) { console.error(JSON.stringify({ uvicorn, python })); process.exit(98); } setTimeout(check, 25); }; check();'
           : 'setInterval(() => {}, 1000);';
         const executable = command === 'vite'
           ? join(root, 'node_modules', '.bin', command) : join(root, 'bin', command);
-        writeFileSync(executable, '#!/bin/sh\nprintf "%s %s\\n" "$PLANNER_AUTH_PROVIDER" "$*" > "$CAPTURE_DIR/' + command + '"\nexec "$NODE_BINARY" -e \'' + lifetime + '\'\n', { mode: 0o700 });
+        const capture = command === 'python'
+          ? 'if [ "$1" = "-m" ] && [ "$2" = "uvicorn" ]; then printf "%s %s\\n" "$PLANNER_AUTH_PROVIDER" "$*" > "$CAPTURE_DIR/uvicorn"; else printf "%s %s\\n" "$PLANNER_AUTH_PROVIDER" "$*" > "$CAPTURE_DIR/python"; fi'
+          : 'printf "%s %s\\n" "$PLANNER_AUTH_PROVIDER" "$*" > "$CAPTURE_DIR/' + command + '"';
+        const checkOnly = command === 'python'
+          ? 'if [ "$2" = "--check" ]; then exit 0; fi'
+          : '';
+        writeFileSync(executable, '#!/bin/sh\n' + capture + '\n' + checkOnly
+          + '\nexec "$NODE_BINARY" -e \'' + lifetime + '\'\n', { mode: 0o700 });
       }
-      execFileSync('bash', ['scripts/run_dev.sh', '--auth-env', 'auth.env'], {
-        cwd: root, env: { ...process.env, PATH: join(root, 'bin') + ':' + process.env.PATH,
-          CAPTURE_DIR: root, NODE_BINARY: process.execPath }, encoding: 'utf8',
-      });
+      writeFileSync(join(root, '.venv', 'bin', 'python'),
+        '#!/bin/sh\nif [ "$1" = "-c" ]; then exit 0; fi\nexec "$CAPTURE_DIR/bin/python" "$@"\n',
+        { mode: 0o700 });
+      try {
+        execFileSync('bash', ['scripts/run_dev.sh', '--auth-env', 'auth.env'], {
+          cwd: root, env: { ...process.env, PATH: join(root, 'bin') + ':' + process.env.PATH,
+            CAPTURE_DIR: root, NODE_BINARY: process.execPath }, encoding: 'utf8', timeout: 15000,
+        });
+      } catch (error) {
+        const stdout = Buffer.isBuffer(error.stdout) ? error.stdout.toString() : String(error.stdout);
+        const stderr = Buffer.isBuffer(error.stderr) ? error.stderr.toString() : String(error.stderr);
+        throw new Error(`Development launcher failed: ${error.message}\n${stdout}\n${stderr}`);
+      }
       expect(readFileSync(join(root, 'uvicorn'), 'utf8')).toContain('--root-path /dev');
       expect(readFileSync(join(root, 'uvicorn'), 'utf8')).toContain('--no-access-log');
       expect(readFileSync(join(root, 'python'), 'utf8')).toContain('entra-id/app.py');

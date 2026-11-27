@@ -106,7 +106,7 @@ test.describe('Details Panel editing and scheduling', () => {
     expect(saved.overrides[editingScenario.parent.id].capacity).toEqual([]);
   });
 
-  test('adding a team does not mutate readonly Baseline', async ({ page }) => {
+  test('readonly Baseline does not expose team allocation editing controls', async ({ page }) => {
     await page.goto('/');
     await clearOverlays(page);
     await waitForFeatureCards(page);
@@ -116,14 +116,9 @@ test.describe('Details Panel editing and scheduling', () => {
     await card.click();
     const rows = page.locator('details-panel .capacity-bar-row');
     const before = await rows.allTextContents();
-    await page.locator('details-panel .add-team-btn').click();
-    const form = page.locator('details-panel .add-team-form');
-    await expect(form).toBeVisible();
-    const select = form.locator('select');
-    expect(await select.locator('option').count()).toBeGreaterThan(1);
-    await select.selectOption({ index: 1 });
-    await form.locator('input').fill('10');
-    await form.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.locator('details-panel .add-team-btn')).toHaveCount(0);
+    await expect(page.locator('details-panel .capacity-bar-input')).toHaveCount(0);
+    await expect(page.locator('details-panel .capacity-bar-delete')).toHaveCount(0);
     await page.locator('details-panel .details-close').click();
     await card.click();
     await expect(rows).toHaveCount(before.length);

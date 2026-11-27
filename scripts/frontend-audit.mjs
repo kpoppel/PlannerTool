@@ -2,11 +2,11 @@
 /**
  * frontend-audit.mjs — LOC / file-count inventory for www/js and www/admin/js.
  *
- * Outputs a Markdown table to backup/architecture_v5/plan/baseline-audit.md
+ * Prints a Markdown report to stdout without changing the worktree.
  * Run via: npm run audit:frontend
  */
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
+import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
@@ -151,8 +151,6 @@ const wwwTotal = total([...wwwRows, ...wwwLooseRows]);
 const adminTotal = total([...adminRows, ...adminLooseRows]);
 
 // ── render ────────────────────────────────────────────────────────────────────
-const now = new Date().toISOString().slice(0, 10);
-
 function tableRow(r) {
   return `| \`${r.name}\` | ${r.files} | ${r.loc.toLocaleString()} | ${r.privateAccessFiles} | ${r.viMockFiles} |`;
 }
@@ -164,9 +162,8 @@ const subDirTable = Object.entries(testsSummary.subDirCounts)
 
 const md = `# Frontend Baseline Audit
 
-Generated: ${now}  
 Script: \`scripts/frontend-audit.mjs\`  
-**Re-run \`npm run audit:frontend\` after any phase to keep this current.**
+Run \`npm run audit:frontend\` to print the current report.
 
 ---
 
@@ -222,11 +219,4 @@ ${subDirTable}
 _See \`guard-warnings-baseline.md\` in this directory for the initial count._
 `;
 
-const outPath = join(ROOT, 'backup/architecture_v5/plan/baseline-audit.md');
-writeFileSync(outPath, md, 'utf8');
-console.log(`✓ Written: ${outPath}`);
-
-// Also print a compact summary to stdout
-console.log(`\nwww/js     : ${wwwTotal.files} files, ${wwwTotal.loc.toLocaleString()} LOC`);
-console.log(`www/admin/js: ${adminTotal.files} files, ${adminTotal.loc.toLocaleString()} LOC`);
-console.log(`tests/     : ${testsSummary.totalFiles} files, ${testsSummary.totalLoc.toLocaleString()} LOC`);
+process.stdout.write(md);

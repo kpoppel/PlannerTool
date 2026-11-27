@@ -4,8 +4,16 @@ import { randomUUID } from 'node:crypto';
 export function fulfillAccountApi(route, body) {
   const path = new URL(route.request().url()).pathname;
   if (path.endsWith('/auth/config')) return route.fulfill({ json: { mode: 'local' } });
+  if (path.endsWith('/auth/me')) return route.fulfill({ json: {
+    name: 'Test User',
+    patRequired: true,
+    patError: null,
+    currentDeviceId: null,
+    devices: [],
+    ...body,
+  } });
   return route.fulfill({ json: path.endsWith('/auth/release-notes')
-    ? { releaseId: 'v5.0.0', acknowledged: true } : body });
+    ? { releaseId: 'v6.0.0', acknowledged: true } : body });
 }
 
 export const test = base.extend({
@@ -104,10 +112,7 @@ export async function selectAllPlans(page) {
     .getByRole('button', { name: /^Plan(?:\s|$)/ });
   await expect(planButton).toBeVisible();
   await planButton.click();
-
-  const toggle = page.locator('plan-menu').getByTitle('Select or clear all plans', {
-    exact: true,
-  });
+  const toggle = page.locator('plan-menu').getByRole('button', { name: /^(All|None)$/ });
   await expect(toggle).toBeVisible();
   if ((await toggle.textContent()).trim() === 'All') {
     await toggle.click();

@@ -31,6 +31,7 @@ def setup(monkeypatch):
     connected.get_process_types.return_value = catalogue()['processes'][0]['types']
     services = {'admin_service': service, 'account_manager': accounts,
                 'backend': SimpleNamespace(is_remote=True),
+                'authentication_provider': 'pat',
                 'azure_client': azure, 'storage': store, 'task_repository': MagicMock(),
                 'session_manager': SimpleNamespace(get=lambda sid: {
                     'email': 'acting@example.test', 'account_id': 'acting-account'}),

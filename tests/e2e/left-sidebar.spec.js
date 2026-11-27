@@ -63,10 +63,18 @@ test.describe('Task list and board menus', () => {
     expect(after.left).toBe(before.left);
     expect(Math.abs(after.top - after.cardTop)).toBeLessThan(1);
     expect(after.top).toBeLessThan(before.top);
-    await page.getByRole('button', { name: 'Collapse task list', exact: true }).click();
+    const resizer = page.getByRole('separator', { name: 'Task column width', exact: true });
+    const columnWidth = () => page.locator('timeline-board').evaluate((board) =>
+      board.shadowRoot.querySelector('task-list').getBoundingClientRect().width);
+    await resizer.focus();
+    await resizer.press('Home');
     await expect(page.locator('task-list')).toBeHidden();
-    await expect(page.locator('feature-card-lit .feature-title').first()).toBeAttached();
-    await page.getByRole('button', { name: 'Restore task list', exact: true }).click();
+    await expect.poll(() => page.locator('timeline-board').evaluate((board) => {
+      const featureBoard = board.shadowRoot.querySelector('feature-board');
+      return featureBoard.shadowRoot.querySelector('feature-card-lit') !== null;
+    })).toBe(true);
+    await resizer.press('End');
+    await expect.poll(columnWidth).toBe(600);
     await expect(page.locator('task-list')).toBeVisible();
     await page.screenshot({ path: 'test-results/task-list-desktop.png' });
   });

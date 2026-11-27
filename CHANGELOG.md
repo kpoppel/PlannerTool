@@ -30,6 +30,7 @@ Template - do not change :
 - Preserve accounts, permissions and credentials during upgrade, but expire sessions created before the new authentication policy. Logical backups no longer include credentials or broker authority; restored enrollment accounts require fresh access keys.
 
 ### Fixed
+- Reject malformed Azure credentials with a clear validation error.
 - Keep hierarchy branches ordered and nested by their actual parent links, including same-type parents.
 - Keep team focus and workload graphs consistent with selected teams, including commitments across loaded plans and higher-level reservations.
 - Keep filtered task types hidden and restore cards immediately after closing a full-screen tool.

@@ -8,6 +8,8 @@ import copy
 import pytest
 from unittest.mock import MagicMock, call, patch
 
+TEST_CREDENTIAL = {'kind': 'pat', 'token': 'test-pat', 'user_id': 'test-account-id'}
+
 
 # ===========================================================================
 # schema
@@ -120,7 +122,7 @@ class TestRefreshSingle:
         admin_svc = self._make_admin_svc('Proj\\Team')
 
         result = area_mapping_service.refresh_single(
-            'Proj\\Team', 'my-pat', azure_svc, admin_svc
+            'Proj\\Team', TEST_CREDENTIAL, azure_svc, admin_svc
         )
 
         assert result['ok'] is True
@@ -138,7 +140,7 @@ class TestRefreshSingle:
         azure_svc = self._make_azure_mock()
         admin_svc = self._make_admin_svc('Proj\\Team')
 
-        area_mapping_service.refresh_single('Proj\\Team', 'pat', azure_svc, admin_svc)
+        area_mapping_service.refresh_single('Proj\\Team', TEST_CREDENTIAL, azure_svc, admin_svc)
 
         admin_svc.save_config_raw.assert_called_once()
         key = admin_svc.save_config_raw.call_args[0][0]
@@ -149,7 +151,7 @@ class TestRefreshSingle:
         azure_svc = self._make_azure_mock()
         admin_svc = self._make_admin_svc('Proj\\Team')
 
-        area_mapping_service.refresh_single('Proj\\Team', 'pat', azure_svc, admin_svc)
+        area_mapping_service.refresh_single('Proj\\Team', TEST_CREDENTIAL, azure_svc, admin_svc)
 
         client = azure_svc.connect.return_value.__enter__.return_value
         client.invalidate_plans.assert_called_once_with('Proj')
@@ -176,7 +178,7 @@ class TestRefreshSingle:
         )
 
         area_mapping_service.refresh_single(
-            'Proj\\Team', 'pat', self._make_azure_mock(), admin_svc
+            'Proj\\Team', TEST_CREDENTIAL, self._make_azure_mock(), admin_svc
         )
 
         stored = ConfigBackend(storage=storage).fetch_area_plan_map()
@@ -192,7 +194,7 @@ class TestRefreshAll:
         admin_svc.get_project_map.return_value = []
         admin_svc.get_config.return_value = {}
         with pytest.raises(ValueError, match='PAT'):
-            area_mapping_service.refresh_all('', MagicMock(), admin_svc)
+            area_mapping_service.refresh_all(None, MagicMock(), admin_svc)
 
     def test_refresh_all_returns_ok(self):
         from planner_lib.admin import area_mapping_service
@@ -214,7 +216,7 @@ class TestRefreshAll:
         ]
         admin_svc.get_config.return_value = {}
 
-        result = area_mapping_service.refresh_all('pat', azure_svc, admin_svc)
+        result = area_mapping_service.refresh_all(TEST_CREDENTIAL, azure_svc, admin_svc)
 
         assert result['ok'] is True
         assert 'Proj\\Team' in result['results']
@@ -238,7 +240,7 @@ class TestRefreshAll:
         ]
         admin_svc.get_config.return_value = {}
 
-        area_mapping_service.refresh_all('pat', azure_svc, admin_svc)
+        area_mapping_service.refresh_all(TEST_CREDENTIAL, azure_svc, admin_svc)
 
         admin_svc.save_config_raw.assert_called_once()
         assert admin_svc.save_config_raw.call_args[0][0] == 'area_plan_map'

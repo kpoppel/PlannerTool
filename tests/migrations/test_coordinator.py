@@ -121,7 +121,12 @@ def test_previous_target_journal_allows_status_and_next_upgrade(tmp_path, phase)
         assert handle.storage.data_dir.parent.name != previous_generation
         assert handle.storage.load('system', 'schema_state')['schema_revision'] == TARGET_REVISION
         assert handle.storage.load('views', view_key) == {
-            'name': 'Preserved', 'viewOptions': {'packedModeUnplannedPreference': True},
+            'name': 'Preserved', 'viewOptions': {
+                'packedModeUnplannedPreference': True,
+                'displayMode': 'normal',
+                'condensedCards': True,
+                'packedMode': False,
+            },
         }
     finally:
         handle.close()

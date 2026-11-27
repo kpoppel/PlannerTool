@@ -63,6 +63,10 @@ class MemoryStorage(StorageBackend):
         with self._lock:
             return namespace in self._store and key in self._store[namespace]
 
+    def expire(self) -> int:
+        """Return zero because this backend does not track TTLs."""
+        return 0
+
     def configure(self, **options) -> None:
         # Configuration is intentionally a no-op for the in-memory
         # backend; accept options for backward-compatible callers.

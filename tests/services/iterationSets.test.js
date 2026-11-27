@@ -28,6 +28,8 @@ describe('iteration date generation', () => {
   });
   it.each([{ length: 0 }, { count: 0 }, { count: 521 }, { length: 1.5 },
     { start: '2026-02-30' }, { mode: 'until', end: '2026-10-18' },
-    { mode: 'until', end: '2029-01-01', length: 1, unit: 'days' }])
-  ('rejects invalid settings: %j', (change) => expect(() => generateIterations({ ...settings, ...change })).toThrow());
+    { mode: 'until', end: '2029-01-01', length: 1, unit: 'days' }])(
+    'rejects invalid settings: %j',
+    (change) => expect(() => generateIterations({ ...settings, ...change })).toThrow()
+  );
 });
