@@ -7,11 +7,12 @@ This page gives a short tour of the screen and the most common tasks.
 ## Screen layout
 
 - **Top menu** (top): the View, Scenario, Plan and Filters menus, the Reconciliation menu, Tools, the board information counter, Settings (gear) and Help (?). See [Top Menu & View Options](topmenu.md).
-- **Sidebar** (left): Team Drill-down, Task view, Task hierarchy and Task Filters. See [Sidebar](sidebar.md).
+- **View context** (above the task list): Plan/Team focus, team selection and task filters. See [Task List & View Context](sidebar.md).
+- **Task list** (left): task names, search and hierarchy controls aligned with the timeline.
 - **Graph area** (below the top menu): allocated capacity over time for the selected plans. See [Graph Area](graph.md).
 - **Board** (centre): one band per selected plan with task cards on a timeline. The red line marks today. See [Timeline & Board](timeline.md).
 - **Details panel** (right, when a card is selected): all fields of the selected task, editable in a scenario. See [Details Panel](details.md).
-- **Footer** (bottom of the sidebar): application version, server status, uptime and the number of loaded tasks.
+- **Help footer**: application version, server status, uptime and the number of loaded tasks.
 
 ![Top menu](img/topmenu.png)
 
@@ -30,7 +31,7 @@ The ? button opens this Help. Use the search box to filter pages by title or tag
 - Find a task: press `f` on the board and type part of the title or ID.
 - Choose which plans to show: open the **Plan** menu.
 - Reveal a missing parent or expand children using the controls on a task row or card. Use **Tools > Dependencies** to draw lines between visible linked tasks.
-- Focus on teams: select teams in the Sidebar's Team Drill-down and switch Task view to **Team focus** (`v`).
+- Focus on teams: select teams in View context and choose **Team** (`v`) to explore their work across plans.
 - Change dates or allocations: create a scenario with **Scenario → Copy Scenario**, then drag cards or edit them in the Details panel.
 - Save a favourite setup: **View → Save Settings as View**.
 - See [Keyboard Shortcuts](keyboard_shortcuts.md) for display keys, zoom and typing behaviour.

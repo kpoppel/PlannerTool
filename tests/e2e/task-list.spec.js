@@ -746,7 +746,7 @@ test('help keeps application status visible while documents scroll without a boa
   await expect(status).toContainText('Help fixture');
   await expect(status).toContainText('test-version | Server: ok - Uptime: 1h 1m');
   await expect(status).toContainText('Loaded dataset: 70 tasks');
-  await expect(status).toContainText('PlannerTool (C) 2025-2026 Kim Poulsen');
+  await expect(status).toContainText('PlannerTool (C) 2025-2027 Kim Poulsen');
   for (const height of [900, 620]) {
     await page.setViewportSize({ width: 1366, height });
     await expect(status).toBeInViewport({ ratio: 1 });

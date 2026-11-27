@@ -37,7 +37,8 @@ The provider resolves only the current request's session-owned grant. SDK/wiki
 construction selects Basic/Bearer explicitly; fixture credentials cannot enter
 live transport. Background task snapshots renew through that provider and hold
 an authoritative grant/account/epoch validation guard through cache publication.
-Mock and live service paths have offline tests; real-tenant acceptance remains required.
+Mock and live service paths have offline tests. Entra sign-in has also been verified
+in a live test instance; operators should validate their own tenant configuration.
 
 Deployment policy owns ADO PAT versus delegated Entra composition; instance
 settings cannot override it. Local-only deployments retain enrollment without a

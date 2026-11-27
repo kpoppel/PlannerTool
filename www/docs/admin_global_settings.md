@@ -10,7 +10,7 @@ Each process with imported types has its own section. Use ↑ / ↓ to change th
 
 ## Type tiers
 
-Within a process, imported work item types are arranged in tiers: Tier 1 is the highest level (for example Epic), followed by lower tiers (for example Feature, then User Story). The tiers define the type order used in the planner, for example in the Plan menu counts, the Sidebar's Task Types and team counts.
+Within a process, imported work item types are arranged in tiers: Tier 1 is the highest level (for example Epic), followed by lower tiers (for example Feature, then User Story). The tiers define the type order used in the planner, for example in the Plan menu counts, Task Types and team counts.
 
 Use the ↑ / ↓ buttons on a type ("Move X up a tier" / "down a tier") to move it. Moving past the first or last tier creates a new tier; empty tiers are removed. Several types can share a tier.
 

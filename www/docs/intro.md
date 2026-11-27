@@ -9,12 +9,12 @@ The screenshots in this manual use a synthetic demo organisation ("Contoso") wit
 # Features
 
 - Plans selected from Azure DevOps area paths, organised in configurable plan levels (for example project and team).
-- A timeline board with Normal, Compact and Packed card modes, hierarchy folding and virtual groups.
+- A timeline board with Normal and Packed card modes, hierarchy folding and virtual groups.
 - Team allocations on tasks, with a capacity graph showing team load and organisational allocation over time.
 - Scenarios for safe experimentation, with a review step before selected changes are published to Azure DevOps.
-- Saved views for your favourite combination of plans, scope, filters and display options.
+- Saved views for your favourite combination of plans, filters and display options.
 - Reconciliation review of schedule conflicts and plan quality issues.
-- Tools such as Portfolio Board, XY Board, Cost Analysis, Task History, Plan Events, Annotations and Export.
+- Tools such as Cone of Uncertainty, Portfolio Board, XY Board, Cost Analysis, Task History, Plan Events, Annotations and Export.
 - A server-side administration area for plans, workforce (teams, suppliers, staffing and cost) and data sources.
 
 The tool is opinionated in how it works and may not fit every organisation. See [Best Practices](best_practices.md) for guidance on states, hierarchy, area paths and capacity.
@@ -24,7 +24,7 @@ The tool is opinionated in how it works and may not fit every organisation. See 
 - First visit and account access: [Getting Started](getting_started.md) and [Account Access](account_access.md)
 - A tour of the screen: [Quick Usage](usage.md)
 - Menus: [Top Menu & View Options](topmenu.md)
-- Sidebar: [Sidebar (Filters & Options)](sidebar.md)
+- Task list and filters: [Task List & View Context](sidebar.md)
 - The board: [Timeline & Board](timeline.md), [Card Anatomy & Workflows](card_workflows.md), [Groups](groups.md)
 - Editing: [Details Panel](details.md), [Scenarios & Saving](scenarios.md), [Review Modal](review_modal.md)
 - Capacity: [Graph Area](graph.md)

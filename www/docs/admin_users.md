@@ -1,26 +1,27 @@
 # Admin - Users
 
-The **Users** section (`#users`, heading "User Management", full administrators only) manages every account that can sign in, who is an administrator, and which administration tasks are delegated to other users.
+The **Users** section (`#users`, full administrators only) manages accounts, administrators and delegated administration permissions.
 
 ![User management](img/admin_users.png)
 
 ## Layout
 
-Two lists side by side, each with a count badge:
-
-- **Regular Users**: all accounts (the heading is historical). Administrators carry an "Admin" badge and your own account a "You" badge.
-- **Administrators**: accounts with the `admin` permission, which can use every administration section.
+The searchable, paginated table shows account access, effective permissions and last activity.
+Use the view buttons to show all users, administrators, delegated access or standard access.
+Filter by email or permission; sort by email or last activity. A missing activity date means
+history is unavailable, not necessarily that the account was never used.
 
 ## Managing accounts
 
-- Add an account by entering an email address and clicking **Add User** or **Add Admin** (Enter also works). If the server requires it, a PAT field for the new account appears.
-- Promote a user with **Make Admin**; demote an administrator with **Demote**.
-- **Remove** deletes an account immediately, without a confirmation step. You cannot remove or demote your own account.
-- **Reload** re-reads the account lists.
+- Use **Add user** to create an account, and the account actions menu to manage or remove it.
+- Click an email to review and edit permissions, including administrator access.
+- Select multiple users and choose **Edit permissions** to review a bulk change.
+- **Mailing list** or **Copy emails** copies or exports addresses for selected, filtered or all users.
+- **Reload users** re-reads the table.
 
 ## Delegated administration
 
-Each user row has a **Delegated Administration** group with checkboxes. Each change is saved immediately. For administrators the boxes are checked and disabled.
+The permission editor lets you review changes before saving. Administrators have all delegated permissions.
 
 | Checkbox | Permission | Sections |
 | --- | --- | --- |
@@ -31,7 +32,7 @@ Each user row has a **Delegated Administration** group with checkboxes. Each cha
 
 A delegated user sees only the matching sections in the gear menu and the administration area.
 
-Creating an account assigns its account ID and permissions immediately. The
+On enrollment-based installations, creating an account assigns its account ID and permissions immediately. The
 user then enrolls their browser with that email and their real name in the
 planner and saves the generated account key. Assigned admin permission is
 preserved; the user does not need to enroll before you create the admin account.
@@ -39,7 +40,7 @@ Creating an account does not issue its browser credentials to the administrator.
 
 ## Reset account access
 
-Use **Reset access** for an enrolled account whose browsers or account key are
+On enrollment-based installations, use **Reset access** for an enrolled account whose browsers or account key are
 lost. Confirm the reset, then save the replacement key displayed in the shared
 account-key modal before checking the save confirmation and continuing. Give
 the key to the account owner through a trusted channel.

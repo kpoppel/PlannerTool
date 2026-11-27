@@ -4,7 +4,7 @@ This walkthrough follows Marcus, a Project Manager responsible for a portfolio o
 
 ## 1. Get an organisation-wide view
 
-- In the Plan menu, Marcus selects every plan in his portfolio, and in the Sidebar's Team Drill-down every team that contributes to them, rather than a single product (see [Top Menu & View Options](topmenu.md) and [Sidebar (Filters & Options)](sidebar.md)).
+- In the Plan menu, Marcus selects every plan in his portfolio, and in Team Drill-down every team that contributes to them, rather than a single product (see [Top Menu & View Options](topmenu.md) and [Task List & View Context](sidebar.md)).
 - He sets the Timeline scale to months, since he is looking at a multi-quarter horizon rather than individual sprints.
 - He sets **View → Graph Type** to the project level to see organisational capacity across all his projects. Team selection only changes which lines are visible; it does not change the organisational weighting (see [Graph Area](graph.md)).
 
@@ -34,5 +34,5 @@ This walkthrough follows Marcus, a Project Manager responsible for a portfolio o
 ## 6. Report and hand off
 
 - Marcus uses [Tool - Export Timeline](plugin_export.md) to produce a PNG of the current portfolio timeline for his status deck.
-- Once a direction is agreed, he either pushes the confirmed scenario back to Azure DevOps via the [Review Modal](review_modal.md), or hands the scenario back to the relevant Product Owner to refine at the sprint level themselves.
+- Once a direction is agreed, he publishes confirmed changes to Azure DevOps via the [Review Modal](review_modal.md).
 - He saves his portfolio-wide selection as a View called "Portfolio Status Review" so he can reproduce this exact reporting view every reporting cycle (see [Top Menu & View Options](topmenu.md)).

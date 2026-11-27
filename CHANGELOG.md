@@ -13,67 +13,31 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
-## [v5.2.0] - unreleased
+## [v6.0.0] - unreleased
 ### Added
-- Add **Teams across plans** to Team Drill-down to inspect selected teams' work across programs and projects without changing the plan selection.
-- Add whole-hour allocation entry alongside Percent and Man-days, using each team or group's workforce project-hour budget in task details and the portfolio table, with effort preserved when scheduling changes.
-- Add a read-only Cone of Uncertainty tool with three configurable forecast scopes, browser-saved duration uncertainty preferences, and shaded task finish ranges for communicating long-range planning assumptions. Compact rows use task-board type icons and follow the task sort setting, ordering by rank or latest forecast finish. Show global and selected-plan events from the configured local or ADO/wiki source as labeled date lines and range bands.
-- Show effective commitments that are not ordinary task cards as read-only **Other plan** rows in single-team cross-plan focus, with source-plan attribution and access to the original task details. Team allocation graphs still account for those commitments in every board mode.
-- Support external Entra broker login with encrypted persistent MSAL caches, browser-bound PKCE handoffs, on-demand delegated ADO credentials and instance-scoped logout. Real-tenant acceptance remains required.
-- Bootstrap the first administrator on empty live installations and offer one-time claims for existing accounts. Manual claims accept email entry alone, including administrators, and require a restricted migration audience.
-- Support mock broker sign-in that can reuse existing account permissions. Fake credentials are rejected before ADO/wiki calls without ending local sessions or cached access.
-- Add manifest-managed auth registration and per-instance secrets in the existing Compose deployment workflow.
-- Support public ACME, company-supplied TLS or Caddy's internal CA, with public root export, trusted hostname verification and actionable startup diagnostics.
-- Support broker-connected local development with localhost HTTPS, instance-prefixed callbacks and a protected authentication env file.
-- Support Entra application certificates with protected PEM certificate/key files and SHA-256 client assertions in broker and Compose configuration; recommend certificates over application secrets and PATs while retaining both alternatives.
-- Add offline credential preflight and actionable setup guidance to the development launcher and broker container, rejecting invalid, expired or mismatched application certificates before startup.
+- Explore a team's work across plans without changing the selected plans. In single-team focus, read-only **Other plan** rows identify additional commitments and link to their source tasks.
+- Enter allocations in whole hours as well as percent or man-days, using each team's workforce project-hour budget.
+- Explore task finish ranges with the read-only **Cone of Uncertainty** tool. Configure three time horizons and duration assumptions, filter and sort tasks, and see global and selected-plan events alongside the forecast.
+- Support Microsoft Entra sign-in and delegated Azure DevOps access through an external authentication broker, as an alternative to enrollment and personal access tokens.
+- Support public ACME certificates, company-supplied TLS certificates, or Caddy's internal CA in Compose deployments. Entra applications can use certificates or client secrets.
 
 ### Changed
-- Replace the board's Scope menu with hierarchy reveals and a Dependencies tool that draws links without adding tasks. Saved views keep their selections and filters and no longer apply broad Scope switches.
-- Show Task Types first and State second in Task Filters, followed by the remaining selectors.
-- Open focused Teams, Task Types, States, and Advanced filter popups from the View context toolbox. The permanent Team filter menu contains Work shown and team selection; Filters contains only hierarchy and task filters.
-- Switch explicitly between Plan and Team context. The shared team picker offers an optional filter for teams in the selected plans, or lists all teams when viewing their work across plans.
-- Show the active tool's name in the Tools menu button, or the number of active tools when several are selected.
-- Fit a persistent View context overview to the load graph's height, with Plan/Team focus controls, team drill-down, and type/state choices that stay visible when off. Keep advanced-filter indicators and quick cycling visible with detailed choices in the menu. Place task search beside the Tasks heading without an empty strip below the graph or timeline header.
-- Make team selection explicit, separate color editing from selection, and clarify All plan work versus Selected teams. Distinguish Expand/Collapse actions from Parent links filters, align filter checkboxes, and expose navigation for overflowing top menus.
-- Align Plan, Scenario, Teams and Saved Views menus with compact rows and inline team abbreviations.
-- Place Cards and Task Sort side by side in the View menu to reduce its height.
-- Separate login/session identity from remote credential policy. Deployment selects authentication; instance administrators retain backend selection. Unconnected instances remain independent of the broker.
-- Replace the sidebar with a resizable, collapsible task column aligned to board rows, with ID/title search and saved column preferences. Card titles live in the task column and tooltips, and ghost titles are removed.
-- Show task-column rows with a single-line title, type icon, task/parent IDs and owning plan, using board group colors. Keep consistent breathing room around rows and cards without extra gaps at swimlane transitions. Drag the full-height edge to resize, collapse or restore the column; click a selected row again to align its card's start beside the list.
-- Put parent and child reveal chevrons in one compact task-column gutter. Replace hierarchy level numbers with indentation and branch lines only where the parent-child relationship is shown.
-- Move server status, uptime, loaded-task totals and attribution into a persistent, single-line footer along the bottom of Help instead of overlaying the task list.
-- Use compact-height cards in Normal and Packed layouts, showing type icon, ID, allocation bars and right-aligned closed/total descendant counts. Fill each card with a pastel project color in proportion to completed descendants, keep swimlane tints faint to distinguish that progress, and hide whole fields from right to left when space runs out. Migrate saved Compact views to Normal in revision 45.
-- Keep swimlane tags on the timeline rather than over the task column, at each lane's top or pinned below the timeline header while that lane scrolls off-screen.
-- Display ADO authentication as read-only deployment information instead of a disabled dropdown in Data Sources.
-- Share authentication discovery, status and typed recovery across planner and administration; broker mode hides PAT, enrollment and device/key controls.
-- Build/start source-declared app and broker services together, honoring pinned images, protected environment files and project names. Both images receive version and latest tags from the build script.
-- Upgrade from dev in revision 44, preserving accounts, permissions and credentials while expiring pre-policy sessions.
-- Exclude credentials and broker authority from logical backups. Enrollment account restore needs fresh operator-reset keys; Entra accounts cannot be replaced.
+- Replace the sidebar with a resizable task list aligned to the timeline, a persistent view-context overview, and focused team and filter menus. Search, hierarchy controls and parent/child reveals keep related work close to the board.
+- Simplify the board to Normal and Packed card layouts. Cards show allocation bars and descendant completion; saved Compact views migrate to Normal.
+- Replace broad Scope switches with individual hierarchy reveals and a Dependencies tool for links between visible tasks. Saved views retain their plan and filter selections.
+- Show server status and loaded-task information in the Help footer; show active tools in the Tools button.
+- Separate deployment-managed authentication from the selected data backend. Broker installations use Entra sign-in instead of PAT, account-key and remembered-browser controls.
+- Preserve accounts, permissions and credentials during upgrade, but expire sessions created before the new authentication policy. Logical backups no longer include credentials or broker authority; restored enrollment accounts require fresh access keys.
 
 ### Fixed
-- Reveal a task's parent or children inline without opening a source-plan swimlane or losing sight of the clicked task.
-- Keep hierarchy branches in the same date or rank order when folded, using descendant dates or ranks for parents without their own.
-- Disable the Plan menu in cross-plan Team mode without changing the saved plan selection.
-- Keep off-scope team selections from appearing in the load graph or bringing deselected teams' task branches back into Team focus.
-- Let project and program views switch to participating teams' reservations without revealing lower-level tasks.
-- Include peer-plan requests and higher-level direct or group reservations in team allocation graphs across loaded plans, without changing project or organization reporting scope.
-- Keep type-filtered tasks hidden instead of turning selected-plan work into other-plan context; deselecting all task types clears task rows and cards without changing calculated team demand.
-- Render the task list when restored views include context-only tasks without a configured owning plan.
-- Nest and fold tasks by their actual parent links, including same-type parents, while retaining hierarchy-type warnings in health reports.
-- Keep task grouping responsive by applying subtree assignments together and reusing allocation calculations when only membership changes.
-- Restore visible task cards immediately after closing a fullscreen plugin.
-- Show team names in Cost estimate warnings and speed up Cost loading for plans with many tasks.
-- Keep local administration, local/mock work and cached reads independent of PAT validity or delegated ADO availability. Credential failures remain actionable without forcing login; missing snapshots preserve the original error.
-- Load Help documents and images correctly when the development server runs under an instance sub-path.
-- Clear old sessions atomically when authentication policy changes so later restarts do not reject stale source-bound sessions.
-- Stop Vite itself during development-launcher cleanup so failed starts do not leave the browser port occupied.
-- Return JSON for signed-out administration checks and distinguish missing sessions from denied permissions on the admin login page.
-- Preserve the last complete task snapshot across remote failures and configuration changes, with explicit warnings; recheck delegated authority before publishing refreshed data.
-- Prevent automatic write replay, preserve partial results and reject stale responses/drafts after account changes.
-- Report expired/replayed handoffs as invalid sessions and preserve local logout when remote cleanup fails.
-- Read PAT status without acquiring/decrypting credentials; live operations use only the acting account's credential.
-- Reload changed Caddy configuration before TLS checks and fail clearly on nontransient CA export errors.
+- Keep hierarchy branches ordered and nested by their actual parent links, including same-type parents.
+- Keep team focus and workload graphs consistent with selected teams, including commitments across loaded plans and higher-level reservations.
+- Keep filtered task types hidden and restore cards immediately after closing a full-screen tool.
+- Improve responsiveness when grouping tasks or loading Cost Analysis, and show team names in cost warnings.
+- Restore task hierarchy loading for synthetic and fixture data sources.
+- Retain the last complete task snapshot with a warning when remote access fails. Local work and administration remain available without a valid Azure credential; remote writes still require the acting user's credential.
+- Preserve partial write results and prevent stale responses or drafts from crossing account changes.
+- Load Help correctly under an instance sub-path.
 
 ## [v5.1.0] - 2026-10-26
 ### Added

@@ -1,10 +1,10 @@
 # Reconciliation
 
-Reconciliation continuously reviews the tasks in scope for schedule conflicts and plan quality issues. It is a menu in the top bar, next to Scope. The badges on the menu count affected tasks per category, so you can see at a glance whether anything needs attention.
+Reconciliation continuously reviews the tasks in scope for schedule conflicts and plan quality issues. When enabled by an administrator, it appears as a menu in the top bar. The badges count affected tasks per category, so you can see at a glance whether anything needs attention.
 
 ![Reconciliation menu](img/reconciliation_trigger.png)
 
-Click **Reconciliation** to open the review. It replaces the Sidebar while open; click the menu again (or press Escape inside the panel) to close it. The ‹ button on the panel edge hides the toolbox to give the board more room.
+Click **Reconciliation** to open the review; click the menu again (or press Escape inside the panel) to close it. The ‹ button on the panel edge hides the toolbox to give the board more room.
 
 ![Reconciliation review](img/reconciliation_overview.png)
 

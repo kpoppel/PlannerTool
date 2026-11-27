@@ -49,7 +49,7 @@ class _MockBackendBase(AzureDevOpsBackend):
         return self._client
 
     def _require_credential(self, credential, op):
-        return 'mock-pat'
+        return _MOCK_CREDENTIAL
 
     def fetch_plan_tasks(
         self,

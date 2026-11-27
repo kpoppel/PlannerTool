@@ -14,7 +14,7 @@ test('unread release is first, stays open on Escape and is acknowledged across b
   await page.keyboard.press('Escape');
   await expect(reader.getByRole('dialog')).toBeVisible();
   await expect(reader.frameLocator('iframe').getByRole('heading', {
-    name: 'PlannerTool v5.0.0', exact: true,
+    name: 'PlannerTool v6.0.0', exact: true,
   })).toBeVisible();
   await reader.getByRole('button', { name: 'Continue to Planner' }).click();
   await expect(reader).toHaveCount(0);
@@ -92,14 +92,9 @@ test('capture release illustrations from isolated application components', async
   await expect(page.locator('plan-area-path-picker').getByRole('button', { name: 'Platform', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('plans-setup.png') });
 
-  await page.goto('/static/docs/account-access/index.html');
-  await page.evaluate(async () => {
-    const { showAuthDialog } = await import('/static/js/components/AuthDialog.lit.js');
-    showAuthDialog('/api');
-    const dialog = document.querySelector('auth-dialog');
-    dialog.requiresPat = true;
-    await dialog.updateComplete;
-  });
+  await page.context().clearCookies();
+  await page.goto('/');
+  await expect(page.locator('auth-dialog section')).toBeVisible();
   await page.locator('auth-dialog section').screenshot({ path: testInfo.outputPath('enrollment.png') });
 });
 
@@ -109,7 +104,7 @@ test('release and enrollment guides are public and all illustrations load', asyn
     const page = await anonymous.newPage();
     for (const width of [1366, 1024]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const path of ['/static/docs/releases/v5.0.0/index.html',
+      for (const path of ['/static/docs/releases/v6.0.0/index.html',
         '/static/docs/account-access/index.html', '/static/docs/onboarding/index.html']) {
         const response = await page.goto(`${baseURL}${path}`);
         expect(response.status()).toBe(200);

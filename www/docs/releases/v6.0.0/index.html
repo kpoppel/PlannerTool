@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlannerTool v6.0.0 - Release Notes</title>
+  <link rel="stylesheet" href="../release.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="#overview">PlannerTool / Release Notes</a>
+    <nav aria-label="Release sections"><a href="#board">Planning board</a>
+      <a href="#forecast">Forecasting</a><a href="#access">Access and upgrade</a></nav>
+  </header>
+  <main>
+    <div class="intro" id="overview">
+      <p class="eyebrow">A clearer view of work and uncertainty</p>
+      <h1>PlannerTool v6.0.0</h1>
+      <p class="lead">Follow a task's hierarchy on the timeline, explore a team's work across
+        plans, and talk about delivery ranges without presenting them as promises.</p>
+      <p>This release reshapes the planning board and adds a new forecast view. Administrators
+        can also choose Microsoft Entra sign-in and delegated Azure DevOps access for connected
+        installations.</p>
+    </div>
+    <section id="board">
+      <p class="eyebrow">For planners</p>
+      <h2>More context, less navigation</h2>
+      <p>A resizable task list now stays aligned with the timeline. Search by title or ID,
+        follow indentation and branch lines, and reveal a parent or children directly beside
+        the task. The new View context overview keeps team, type and state choices visible
+        alongside the capacity graph.</p>
+      <figure><img src="../../img/app_overview.png"
+        alt="Planning board with view context, aligned task list, timeline cards and capacity graph">
+        <figcaption>The redesigned board keeps task names, hierarchy and planning context together.
+          Screenshots use synthetic demonstration data.</figcaption></figure>
+      <div class="columns">
+        <div><h3>Follow a team across plans</h3>
+          <p>Choose Team context to see selected teams' work across plans without losing your
+            plan selection. In single-team focus, read-only <strong>Other plan</strong> rows
+            identify additional commitments and let you inspect their source tasks.</p></div>
+        <div><h3>See progress at a glance</h3>
+          <p>Normal and Packed cards use compact rows, allocation bars and descendant completion
+            indicators. Saved Compact views are migrated to Normal. The Dependencies tool
+            draws links between tasks already shown, replacing the former broad Scope switches.</p></div>
+      </div>
+      <h3>Enter effort in hours</h3>
+      <p>Choose Percent, Man-days or Hours in Configuration. Hour entries use each team or
+        group's workforce project-hour budget, rather than a fixed eight-hour day. When dates
+        change in Hours or Man-days mode, PlannerTool preserves effort subject to capacity
+        constraints. The choice is local to your browser.</p>
+    </section>
+    <section id="forecast">
+      <p class="eyebrow">For planning conversations</p>
+      <h2>Communicate the range, not a promise</h2>
+      <p>The new <strong>Cone of Uncertainty</strong> shows illustrative finish ranges for
+        tasks in selected plans. Set three horizons and duration assumptions, search and sort
+        tasks, and compare the result with global and selected-plan events. Your uncertainty
+        preferences are saved in this browser; task dates are never changed.</p>
+      <figure><img src="../../img/tool_cone.png"
+        alt="Cone of Uncertainty forecast with task finish ranges on a timeline">
+        <figcaption>Shading shows a modeled range; the dark marker shows the planned finish.</figcaption></figure>
+      <div class="notice"><strong>Forecast, not a commitment.</strong> Ranges are planning
+        assumptions, not statistical confidence intervals. The model holds starts fixed and
+        does not model dependencies, capacity changes or correlated delays.</div>
+    </section>
+    <section id="access">
+      <p class="eyebrow">For users and administrators</p>
+      <h2>Access and upgrade</h2>
+      <p>Your installation chooses its sign-in method. Enrollment-based installations continue
+        to use account keys and, where required, personal access tokens. Entra-connected
+        installations use organizational sign-in and delegated Azure DevOps access instead.
+        Ask your administrator if you need help signing in or linking an existing account.</p>
+      <p>When Azure credentials or the remote service are unavailable, local work and the last
+        complete task snapshot can remain available with a warning. Remote refreshes and
+        publishing still require the acting user's valid access.</p>
+      <div class="notice warning"><strong>Before upgrading:</strong> stop older writers and retain
+        an independent full filesystem backup with its matching encryption key. Existing accounts,
+        permissions and credentials are preserved, but pre-policy sessions expire. Logical backups
+        exclude credentials and broker authority; restored enrollment accounts need fresh
+        operator-reset keys. Entra account replacement is not supported.</div>
+      <p>For Entra adoption, restrict the enterprise application audience during account migration:
+        eligible existing accounts can be claimed by email, including administrator accounts.
+        Entra sign-in has been verified in a live test instance. See the operator authentication
+        and deployment documentation before enabling the broker.</p>
+      <p>Deployments can use public ACME, company-supplied certificates or Caddy's internal CA.
+        Entra applications can use certificates or client secrets.</p>
+    </section>
+    <section>
+      <h2>Keep exploring</h2>
+      <p>Help contains the updated task-list, filtering, allocation and forecasting guides.
+        These release notes remain available there after you continue to PlannerTool.</p>
+    </section>
+  </main>
+  <footer>PlannerTool v6.0.0 release notes. Screenshots show demonstration data.</footer>
+</body>
+</html>

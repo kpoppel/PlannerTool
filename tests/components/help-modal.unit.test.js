@@ -28,7 +28,7 @@ describe('HelpModal unit tests', () => {
     expect(footer.shadowRoot.textContent).to.include('Test server');
     expect(footer.shadowRoot.textContent).to.include('1.2.3 | Server: ok - Uptime: 1h 1m');
     expect(footer.shadowRoot.textContent).to.include('Loaded dataset:');
-    expect(footer.shadowRoot.textContent).to.include('PlannerTool (C) 2025-2026 Kim Poulsen');
+    expect(footer.shadowRoot.textContent).to.include('PlannerTool (C) 2025-2027 Kim Poulsen');
     expect(help.renderRoot.querySelector('.help-panel app-footer')).to.equal(null);
     help.remove();
   });

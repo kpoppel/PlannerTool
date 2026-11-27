@@ -8,11 +8,8 @@ The board is the main workspace. Each selected plan gets a horizontal band, and 
 
 Choose the card mode in **View → Cards** or press `c`.
 
-- **Normal**: allocation badges and dates on each card, with titles in the task column. Collapsing the column restores card titles.
-- **Compact**: one line per card with icon and title only, so more tasks fit on screen.
-- **Packed**: cards retain titles and are packed tightly into as few rows as possible. The task column is hidden, task sort and hierarchy folding are unavailable, and unplanned tasks are hidden.
-
-![Compact mode](img/board_compact.png)
+- **Normal**: compact-height cards align with rows in the task column.
+- **Packed**: cards are packed into as few rows as possible; task sort and hierarchy folding are unavailable, and unplanned tasks are hidden.
 
 ![Packed mode](img/board_packed.png)
 
@@ -26,7 +23,7 @@ A task is planned when it has both a start and an end date; its card spans those
 - **Right-click** a card or the board background for the [group](groups.md) menu (editable scenarios only).
 - **Drag** the board background to pan; use the mouse wheel to scroll vertically.
 - **Ctrl + mouse wheel**, or `Ctrl` `+` / `Ctrl` `-` / `Ctrl` `0`, zooms the board — see [Keyboard Shortcuts](keyboard_shortcuts.md).
-- **Fold / expand**: cards and task rows with children show a chevron. Click it to hide or show the children; a folded row/card shows how many tasks are hidden. The **Hierarchy** menu folds or expands one level for the whole board.
+- **Fold / expand**: task rows show chevrons for related parents and children. Use **Filters** to collapse or expand hierarchy levels for the whole board.
 
 In an editable scenario (not Baseline) you can also change dates directly:
 
@@ -47,6 +44,6 @@ Use **View → Timeline Scale** (`t`) to switch between 3 months, weeks, months,
 
 ## Tips
 
-- Use Compact or Packed mode for overviews and Normal mode when you need allocations and dates.
+- Use Packed mode for a dense overview and Normal mode to follow task hierarchy.
 - Combine the timeline scale with the Task Filters menu to focus on a time window and team.
 - The [Reconciliation](plugin_reconciliation.md) warning markers (!) on cards point to schedule conflicts or plan quality findings.

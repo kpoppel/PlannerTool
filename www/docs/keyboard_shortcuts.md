@@ -10,7 +10,7 @@ Press these letters without Ctrl, Shift, Alt or Meta while working on the board:
 | --- | --- |
 | `f` | Find a task: open Search |
 | `t` | Cycle Timeline Scale (3 Months → Weeks → Months → Quarters → Years) |
-| `c` | Cycle Cards (Normal → Compact → Packed) |
+| `c` | Cycle Cards (Normal → Packed) |
 | `s` | Switch task Sort between Rank and Date; unavailable in Packed mode |
 | `g` | Cycle Graph Type through the currently available plan/container levels |
 | `v` | Switch task View between Plan overview and Team focus |
@@ -21,16 +21,16 @@ Press these letters without Ctrl, Shift, Alt or Meta while working on the board:
 | `r` | Cycle Relations: Has Links / No Links |
 
 The display shortcuts use the same controls as the [View menu](topmenu.md).
-Task view is also available in the [Sidebar](sidebar.md).
+Task view is also available in [View context](sidebar.md).
 The former Ctrl+Shift search and display bindings are no longer used.
 
 ### Filter cycles
 
 Each filter key cycles **both on → first option only → second option only → both on**.
-The first and second options follow the order shown in the table and Sidebar.
+The first and second options follow the order shown in the filters.
 The cycle never turns both options off and updates the pair in one operation.
 
-Shortcuts respect the same disabled state as the Sidebar buttons. A disabled option
+Shortcuts respect the same disabled state as the filter buttons. A disabled option
 keeps its current value; states requiring it to change are skipped. If no other
 state is reachable, the key does nothing. In Packed mode, `p` cannot enable
 Unplanned tasks or turn off the only enabled Planned option.
@@ -42,13 +42,12 @@ Unplanned tasks or turn off the only enabled Planned option.
 | `+` | Expand one hidden hierarchy level |
 | `-` | Fold one visible hierarchy level |
 
-These perform the same actions as the Sidebar's **Expand one level** and
-**Fold one level** buttons. Shift-generated `+` and numpad `+` both work.
+These perform the same actions as the **Expand one level** and
+**Collapse one level** controls. Shift-generated `+` and numpad `+` both work.
 At the fully expanded/folded limit, or when hierarchy folding is unavailable
 (including Packed mode), there is no change. Ctrl + plus/minus still zooms.
 
-Sidebar hints use the same shortcut-pill style as the View menu, including `V`
-for Task view and `-` / `+` for Task hierarchy. Letter hints are uppercase labels,
+View context hints include `V` for Task view and `-` / `+` for Task hierarchy. Letter hints are uppercase labels,
 not a requirement to hold Shift.
 
 ### Typing and focus

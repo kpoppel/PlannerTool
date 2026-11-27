@@ -1,5 +1,26 @@
 # Account Access
 
+Your installation uses either Microsoft Entra sign-in or browser enrollment. Ask
+your administrator which applies. Enrollment instructions below do not apply to
+Entra sign-in.
+
+## Entra sign-in
+
+Select **Sign in** and complete your organization's Microsoft sign-in flow. The
+installation requests delegated Azure DevOps access when it is needed. If prompted
+to reconnect or grant access, follow the sign-in prompt; contact your administrator
+if access remains unavailable. Local work and a previously loaded task snapshot can
+remain available during an Azure credential failure, but remote refresh and publishing
+require valid access.
+
+Existing accounts may be linked during migration. If automatic matching did not link
+your existing account, use **Configuration > Existing account email > Link account**
+when offered, then follow the prompts. Contact your administrator if you are unsure
+which account to link. Sign out from Configuration; Entra installations do not use
+PlannerTool account keys, remembered-browser controls or PAT entry.
+
+## Browser enrollment
+
 PlannerTool remembers each enrolled browser. You do not choose a password or
 receive an email verification link. Your account email identifies your account;
 it is not enough on its own to sign in after enrollment.
@@ -118,6 +139,6 @@ cannot be erased remotely. Signing out is not account deletion.
   replacement key issued by that reset.
 - **Azure data cannot be read or saved after sign-in:** check your Azure PAT and
    permissions. A PlannerTool account key is not an Azure PAT.
-- **Key stopped working after a backup restore:** the backup may contain an older
-   key. Ask an administrator to use Reset access if you cannot enroll, sign in again,
-   or delete your account, then save the replacement key after enrollment.
+- **Access after a logical backup restore:** restored enrollment accounts need fresh
+  operator-reset keys. Ask an administrator to reset access and securely hand over
+  the replacement key.

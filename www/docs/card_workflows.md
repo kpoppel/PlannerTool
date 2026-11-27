@@ -4,10 +4,9 @@
 
 ![A task card in Normal mode](img/card_anatomy.png)
 
-- **Left edge**: coloured in the plan's colour. Cards with children also show a fold chevron here.
-- **Allocation badges** (Normal mode only): the dark badge is the task's organisation load (its share of the whole organisation's capacity). The coloured badges show each allocated team's percentage, in the team's colour. Badges of teams not selected in the Sidebar are dimmed. An ℹ️ marker means the task has children, and the children's allocations are used in calculations.
-- **Type icon and title**: the work item type icon (for example 👑 Epic, a cup for Feature, a book for User Story) and the title.
-- **Dates**: start → end (Normal mode only).
+- **Type and ID** identify the task; its title appears in the task list and tooltip.
+- **Allocation bars** show team allocation in team colors. Fields are hidden when the card is too narrow.
+- **Progress**: the pastel fill and closed/total descendant count indicate completion of descendants.
 - **Ancestor** label: the task was pulled in only as context for a descendant; its other child branches are not loaded.
 - **Warning marker (!)**: a [Reconciliation](plugin_reconciliation.md) finding. Toggle the markers with **Show on task cards** in the Reconciliation panel.
 
@@ -36,7 +35,7 @@ In an editable scenario, hover over a task card to reveal the two-part handle on
 | Upper, teal: **Keep allocation** | Each team's allocation percentage | Shortening reduces effort; extending increases effort. |
 | Lower, ochre: **Keep effort** | Each team's precise estimated effort | Shortening increases allocation; extending reduces allocation. |
 
-Both choices work in **Percent** and **Man-days** mode. There is no need to change Configuration before choosing a resize behavior.
+Both choices work in **Percent**, **Man-days** and **Hours** mode. There is no need to change Configuration before choosing a resize behavior.
 
 Hover over a half to highlight its color. Pause briefly to see an explanation. When you begin dragging, the **whole handle turns the chosen color**, confirming the rule for that drag. Moving across the other half does not change the rule. Release to apply; press **Escape** to cancel. The split colors return when the drag ends.
 

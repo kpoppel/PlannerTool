@@ -14,7 +14,7 @@ The graph very quickly gives a complete overview over over and under-utilisation
 
 # How does it work? 
 
-The Graph Type control in the View menu offers the container types represented by tasks in Scope, in their configured order. Enabling Ancestors or Descendant work can add graph levels without checking their plans. The lowest configured container type always draws team allocation lines with raw percentages; every higher level stacks plans of that type with organisational weighting. Type names do not determine the visualisation. When a saved graph level is unavailable, the nearest available level is shown without changing the saved preference. Without a saved preference, the deepest available type is shown.
+The Graph Type control in the View menu offers the available container types in their configured order. The lowest configured container type draws team allocation lines with raw percentages; every higher level stacks plans of that type with organisational weighting. Type names do not determine the visualisation. When a saved graph level is unavailable, the nearest available level is shown without changing the saved preference. Without a saved preference, the deepest available type is shown.
 
 Plan records returned by the API carry `type`, `container_order`, and the full ordered `container_types` list. Unused configured levels remain in that list, so a higher level is not treated as the lowest merely because no lowest-level plans exist. Cost reports preserve `container_order` and use it to order plan rows.
 

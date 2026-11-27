@@ -115,7 +115,7 @@ test('overview, top menu and popovers', async ({ page }) => {
 
 test('task list, graph and card display modes', async ({ page }) => {
   await openPlanner(page);
-  await shot(page.locator('task-list .rows'), 'task_list');
+  await shotAround(page, [page.locator('task-list .rows')], 'task_list', 0);
   await shot(page.locator('maingraph-lit'), 'graph_team');
 
   const view = await openMenu(page, '#viewMenuBtn', 'view-menu');
@@ -222,8 +222,8 @@ test('scenario workflow, groups and publishing', async ({ page }) => {
   await groupMenu.getByRole('button', { name: 'Create', exact: true }).click();
   await page.waitForTimeout(500);
 
-  const datedCards = page.locator('feature-card-lit').filter({ hasText: /\d{4}-\d{2}-\d{2}/ });
-  const memberIds = [await datedCards.nth(0).locator('.feature-card').getAttribute('data-id')];
+  const memberIds = [await page.locator('feature-card-lit .feature-card:visible')
+    .first().getAttribute('data-id')];
   for (const [index, id] of memberIds.entries()) {
     await page.locator(`.feature-card[data-id="${id}"]`).click({ button: 'right' });
     const featureMenu = page.locator('group-context-menu .menu');

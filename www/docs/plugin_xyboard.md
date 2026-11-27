@@ -6,7 +6,7 @@ XY Board places tasks in a matrix built from any two fields, for example State a
 
 ## Opening the tool
 
-Open **Tools → XY Board**. The board area is replaced by the matrix; the top menu and Sidebar stay available. Select the tool again in the Tools menu to return to the timeline.
+Open **Tools → XY Board**. The board area is replaced by the matrix; the top menu stays available. Select the tool again in the Tools menu to return to the timeline.
 
 ## Controls
 

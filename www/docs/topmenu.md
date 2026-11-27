@@ -9,10 +9,8 @@ From left to right:
 - **View**: timeline scale, card mode, task sort, graph type and saved views. The badge shows the active view.
 - **Scenario**: switch, copy, save, publish, rename or delete scenarios. The badge shows the active scenario. See [Scenarios & Saving](scenarios.md).
 - **Plan**: choose which plans are on the board. The badge shows the plan name, or the number of selected plans.
-- **Teams**: team selection, allocation counts, colors and Plan overview/Team focus.
-- **Hierarchy**: fold or expand task branches one level or all at once.
-- **Task Filters**: schedule, allocation, hierarchy, relations, state and task-type filters. See [Task List and Filters](sidebar.md).
-- **Scope**: pull related work into the board around the selected plans. Arrows after the label show which scope options are on.
+- **Team filter**: choose Plan or Team work and select teams.
+- **Filters**: expand or collapse hierarchy and choose task types, states and advanced filters. See [Task List and View Context](sidebar.md).
 - **Reconciliation**: schedule conflicts and plan quality findings, with counts per category. See [Reconciliation](plugin_reconciliation.md).
 - **Tools**: optional tools such as Portfolio Board or Cost Analysis. See [Tools Overview](tools_overview.md).
 - **N on board**: board information, explaining how the number of cards on the board is reached.
@@ -27,11 +25,11 @@ Menus close with Escape or by clicking outside them. Left and right arrow keys m
 ![View menu](img/menu_view.png)
 
 - **Timeline Scale** (`t`): 3mo, Weeks, Months, Quarters or Years.
-- **Cards** (`c`): Normal, Compact or Packed. See [Timeline & Board](timeline.md) for examples.
+- **Cards** (`c`): Normal or Packed. See [Timeline & Board](timeline.md) for examples.
 - **Task Sort** (`s`): Rank (backlog order) or Date. Unavailable in Packed mode.
 - **Graph Type** (`g`): one button per plan level represented in the current scope (for example `project` and `team`). It controls which level the [Graph Area](graph.md) shows.
 - **Saved Views**: click a view to apply it. Your own views have buttons to update it with the current settings (💾), rename it (✏️) and delete it (🗑️).
-- **💾 Save Settings as View**: saves the current plans, scope, filters, team selection and display options under a new name.
+- **💾 Save Settings as View**: saves the current plans, filters, team selection and display options under a new name.
 
 ## Plan menu
 
@@ -65,6 +63,6 @@ Each entry shows a status dot and version. Click a tool to activate it, and agai
 
 ## Using views
 
-- A view captures the selected plans, Plan menu focus, scope, filters, team selection and View menu options.
+- A view captures the selected plans, Plan menu focus, filters, team selection and View menu options.
 - Loading a view applies its selections immediately.
 - Most View menu options, board zoom and search also have a [keyboard shortcut](keyboard_shortcuts.md). Plain letters work outside text fields, menus and dialogs. Disable them with **Configuration > Letter shortcuts**, then **Save**.

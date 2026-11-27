@@ -13,14 +13,13 @@ This user guide explains what each view displays and how to interpret the figure
 ### Controls
 
 - Plans: select projects from Top menu → Plan. Only selected projects are reported.
-- Context: the top-bar Scope controls which parent, child, dependency, and other-allocation work is included with the selected plans.
-- Teams: Team Drill-down in the Sidebar chooses which rows appear in Team view. It does not remove allocations from Project or Task report calculations.
+- Teams: Team Drill-down chooses which rows appear in Team view. It does not remove allocations from Project or Task report calculations.
 - Date range: choose From and To to set the displayed months (not shown on the Workforce tab).
 - View mode: the Cost/Hours toggle appears in Team View, and in Plan View once a plan's team or task breakdown is open.
-- Task types are selectable in the sidebar. The default task type selection is all types selected.
+- Task types are selectable in View context and Filters. The default task type selection is all types selected.
 - Unplanned tasks: hidden by default. Making them visible does not give them a dated allocation or create a cost estimate.
 
-The report payload contains the selected plans and their enabled Context from the canonical resolved dataset. Final board visibility and Team Drill-down do not filter financial inputs. Scenario changes, Context changes, task-type selection, and the Cost date range trigger recalculation.
+The report uses the canonical resolved dataset for selected plans. Final board visibility and Team Drill-down do not filter financial inputs. Scenario changes, task-type selection, and the Cost date range trigger recalculation.
 
 ### Input completeness
 
@@ -61,7 +60,7 @@ When to use
 ![Cost Analysis - Team View](img/tool_cost_team.png)
 
 What it shows
-- A list of tasks for each team selected in Sidebar Team Drill-down
+- A list of tasks for each team selected in Team Drill-down
 - Sums per month and per task is calculated to determine both tem burn, but also total cost for a single team on some task.
 
 When to use
@@ -83,6 +82,6 @@ When to use
 The tool will report reasons why no data is calculated.
 
 - No Projects Selected: select one or more plans from the top menu.
-- No Teams Selected: select Team Drill-down rows in the Sidebar to populate Team view; Project and Task calculations remain complete.
+- No Teams Selected: select Team Drill-down rows to populate Team view; Project and Task calculations remain complete.
 - No features available: there are no features with dates and allocations for the selected scope.
 - Failed to load cost data: a network or server error prevented data retrieval. If this persists, contact your administrator.

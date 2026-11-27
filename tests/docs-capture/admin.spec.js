@@ -6,7 +6,7 @@ test.describe.configure({ mode: 'serial' });
 const SECTIONS = [
   ['server', 'System Configuration', 'admin_server'],
   ['data-sources', 'Data Sources', 'admin_data_sources'],
-  ['users', 'User Management', 'admin_users'],
+  ['users', 'Users', 'admin_users'],
   ['plugins', 'Plugins', 'admin_plugins'],
   ['projects', 'Plans', 'admin_plans'],
   ['ado-processes', 'Azure DevOps Processes', 'admin_ado_processes'],
@@ -30,6 +30,18 @@ test.beforeEach(async ({ page }) => {
 test('admin sections', async ({ page }) => {
   for (const [hash, heading, name] of SECTIONS) {
     await openSection(page, hash, heading);
+    if (hash === 'iterations') {
+      await page.getByRole('button', { name: 'New set' }).click();
+      const dialog = page.getByRole('dialog', { name: 'New iteration set' });
+      await dialog.getByLabel('Set name').fill('Quarterly sprints');
+      await dialog.getByLabel('Source').selectOption('generated');
+      await dialog.getByRole('button', { name: 'Create draft' }).click();
+      await page.getByLabel('Start date', { exact: true }).fill('2026-07-06');
+      await page.getByRole('button', { name: 'Generate preview' }).click();
+      await expect(page.getByRole('button', { name: 'Save set' })).toBeEnabled();
+      await page.getByRole('button', { name: 'Save set' }).click();
+      await expect(page.getByText('Set saved. Available presets updated.')).toBeVisible();
+    }
     await shot(page, name);
   }
 });

@@ -8,7 +8,7 @@ Example 1 — Show only unplanned and unallocated Features
 3. Optionally restrict Task Types to `Feature`.
 
 Example 2 — Inspect a single team's active Features
-1. In Team Drill-down, choose **Teams in plans** or **Teams across plans**, then select the team you want to inspect.
+1. In View context, choose **Plan** to focus within selected plans or **Team** to see work across plans, then select the team you want to inspect.
 2. Under State, pick `Active` (or the relevant state).
 3. Use Timeline Scale (Top Menu → View menu) to focus on the delivery window.
 

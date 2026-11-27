@@ -530,8 +530,8 @@ Mock credentials cannot access live ADO/wiki. Restrict mock sign-in to your mach
 An empty live store bootstraps the first verified account as administrator. Empty
 mock stores do not bootstrap admins; use a deliberate private copy of existing dev
 data and its original encryption key when testing mock administrator access. Never
-run automated enrollment against the active `data/` directory. Real tenant consent,
-login and ADO renewal still require manual acceptance with your registration.
+run automated enrollment against the active `data/` directory. Verify tenant consent,
+login and ADO renewal with your own registration before deployment.
 
 The application has two deployment methods:
 

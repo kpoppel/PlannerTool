@@ -11,7 +11,7 @@ Columns: Name, Version, Type, Description, Menu Position, Enabled, At Startup an
 - Type: `tool` appears inside Tools, `hidden` has no menu entry, and `menu` contributes its own top-menu dropdown. Type is not editable here.
 - Enabled: a disabled plugin is not loaded and contributes no menu entry.
 - At Startup: selects the single plugin to activate when the application starts. Menu plugins have no startup-activation control; opening their dropdown does not activate a tool.
-- Menu Position: menu plugins can appear Before Tools or After Tools. All plugin menus remain to the right of Scope.
+- Menu Position: menu plugins can appear Before Tools or After Tools.
 - Order: the ▲ / ▼ actions set display sequence within Tools and within each top-menu position. Dependencies can change initialization order, but not display sequence.
 - Config: shown in Actions for plugins with configurable settings; opens an editor for the plugin's own `custom_config`, using a schema-driven form when the plugin declares one, or a raw JSON editor otherwise.
 

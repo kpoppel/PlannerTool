@@ -4,14 +4,14 @@ This walkthrough follows Priya, a Product Owner for a single product, as she use
 
 ## 1. Set up and load data
 
-Priya has already configured her email and Personal Access Token (see [Getting Started](getting_started.md)), so the board loads projects and teams automatically.
+Priya has signed in and configured Azure DevOps access as required by her installation (see [Getting Started](getting_started.md)), so the board loads projects and teams automatically.
 
-- In the Plan menu she selects her one product's plan, and in the Sidebar's Team Drill-down her team, so the board stays focused (see [Top Menu & View Options](topmenu.md) and [Sidebar (Filters & Options)](sidebar.md)).
+- In the Plan menu she selects her product's plan, then selects her team in View context to focus the board (see [Top Menu & View Options](topmenu.md) and [Task List & View Context](sidebar.md)).
 - She sets the Timeline scale to weeks, since she is planning at sprint-level detail (see [Timeline & Board](timeline.md)).
 
 ## 2. Review the current backlog on the board
 
-- With Features and Stories expanded under her Epics, Priya scans the board for anything unplanned (no dates) using the Sidebar's Schedule filter (Unplanned only).
+- With Features and Stories expanded under her Epics, Priya scans the board for anything unplanned (no dates) using the Schedule filter (Unplanned only).
 - She gives each item she intends to plan its own start and end dates using the [Details panel](details.md). This applies to every work item type: a planned parent, state or dependency does not implicitly date an item. Items without both dates remain unplanned.
 - She opens [Reconciliation](plugin_reconciliation.md) to check for parent/child date mismatches and work past its finish date before she starts moving things around.
 - She confirms with her administrator that team capacity represents available project hours, not total working hours, and includes maintenance and internal projects as explicitly dated, allocated work. There are no implicit buffers for these activities (see [Planning principles](best_practices.md#planning-principles)).

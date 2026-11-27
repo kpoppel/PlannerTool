@@ -17,7 +17,10 @@
       <a href="#another-browser">Another Browser</a><a href="#recovery">Recovery</a></nav></header>
   <main class="compact">
     <div class="intro"><p class="eyebrow">Permanent account guide</p><h1>Enrollment &amp; Account Access</h1>
-      <p class="lead">One account. Remembered browsers. A private key you control.</p>
+      <p class="lead">Your installation uses Microsoft Entra sign-in or browser enrollment.</p>
+      <p>With Entra, select <strong>Sign in</strong> and follow your organization's prompts.
+        Ask your administrator for help if sign-in or Azure DevOps access fails. Entra
+        installations do not use the account-key and PAT enrollment steps below.</p>
       <p>Your email identifies your account; it is not a password or an email verification flow.
         Enrollment authorizes a browser and gives you an account key for future enrollment.</p></div>
     <section id="first-enrollment"><h2>Your first enrollment</h2>
@@ -52,7 +55,7 @@
       <p>If a browser was lost or stolen, use <strong>Configuration &gt; Remembered browsers</strong> to
         refresh the list and revoke it. Revocation removes that browser's access, not your account.</p>
       <p>If no administrator can authenticate, contact the installation operator. Email alone cannot
-        unlock an enrolled account. A backup restore may revive an older key; request Reset access if needed.</p>
+        unlock an enrolled account. Logical backup restores require fresh operator-reset keys.</p>
     </section>
     <section><h2>Azure access and signing out</h2>
       <p>A PAT rejected by Azure must be repaired using a valid PAT for that account. Enrollment does
@@ -64,6 +67,6 @@
         the final administrator cannot delete their account.</p>
     </section>
   </main>
-  <footer><a href="../releases/v5.0.0/index.html">What's new in PlannerTool v5.0.0</a></footer>
+  <footer><a href="../releases/v6.0.0/index.html">What's new in PlannerTool v6.0.0</a></footer>
 </body>
 </html>

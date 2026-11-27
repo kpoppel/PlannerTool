@@ -19,6 +19,11 @@ test('full-screen tools', async ({ page }) => {
   await shot(page, 'tool_portfolio');
 
   await openPlanner(page);
+  await activateTool(page, 'Cone of Uncertainty');
+  await expect(page.locator('plugin-cone-of-uncertainty .task-row').first()).toBeVisible();
+  await shot(page, 'tool_cone');
+
+  await openPlanner(page);
   await activateTool(page, 'XY Board');
   await expect(page.locator('plugin-xy-board')).toBeVisible();
   await shot(page, 'tool_xyboard');

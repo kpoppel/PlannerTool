@@ -23,7 +23,7 @@ Cache lifetimes are whole minutes from 1 to 10080 (one week).
 
 ## Work item backends
 
-- **Live Azure DevOps REST API**: reads and writes your Azure DevOps organization. Field: **Organization Name** (for example `MyCompany`). Each user supplies their own Personal Access Token in Configuration.
+- **Live Azure DevOps REST API**: reads and writes your Azure DevOps organization. Field: **Organization Name** (for example `MyCompany`). Depending on deployment policy, each user supplies a Personal Access Token in Configuration or signs in with Entra for delegated access. Authentication policy is deployment-managed and shown read-only here.
 - **Fixture Mock (pre-recorded)**: serves recorded data from **Fixture Data Directory** (default `data/azure_mock`); **Persist Fixture Mutations** keeps published changes.
 - **Synthetic Generator Mock**: generates a consistent demo dataset for the configured plans, with iterations and revision history. No Azure connection or PAT is needed. Fields: **Random Seed**, **Number of Plans**, **Items per Area Path**, **Number of PIs**, **Sprints per PI**, **Revisions Min/Max**, and **Persist Generated Data** with a **Persist Directory**. New installations start with this backend; the screenshots in this manual use it.
 - **Static File (read-only)**: reads tasks from a YAML or JSON file mapping area paths to tasks (**Static Data File Path**).

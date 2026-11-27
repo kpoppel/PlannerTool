@@ -6,14 +6,14 @@ Portfolio Board is a Kanban-style view of the selected work: teams as rows, stat
 
 ## Opening the tool
 
-Open **Tools → Portfolio Board**. The board area is replaced by the "Portfolio Planning Board"; the top menu and Sidebar stay available. Close it with **Close** or by selecting it again in the Tools menu.
+Open **Tools → Portfolio Board**. The board area is replaced by the "Portfolio Planning Board"; the top menu stays available. Close it with **Close** or by selecting it again in the Tools menu.
 
 ## Layout
 
 - **Toolbar**: shows "No scenario selected" while Baseline is active (the board is then read-only) and the number of pending changes in a scenario.
 - **Timeline overview** (collapsible): bars for the same tasks on a compact timeline.
-- **Board** (collapsible): the header shows the number of teams and states, and each plan's number of contributing teams. Rows are the teams selected in the Sidebar's Team Drill-down; columns are the workflow states with task counts. Cards show ID, title, owning plan, the team's allocation, dates and tags. "Multi-team" marks tasks allocated to several teams.
-- **Tasks** (collapsible): a table of tasks matching the Sidebar filters, with ID, title, team allocations, plan, start, end, state and tags. Allocated and unallocated tasks are included according to the existing Sidebar toggles.
+- **Board** (collapsible): the header shows the number of teams and states, and each plan's number of contributing teams. Rows are the selected teams; columns are the workflow states with task counts. Cards show ID, title, owning plan, the team's allocation, dates and tags. "Multi-team" marks tasks allocated to several teams.
+- **Tasks** (collapsible): a table of tasks matching the task filters, with ID, title, team allocations, plan, start, end, state and tags. Allocated and unallocated tasks are included according to the existing filters.
 
 ## Working with cards
 
@@ -30,8 +30,8 @@ Cells are disabled in read-only scenarios and for teams unavailable to the task.
 
 ## Editing dates in the task table
 
-Edit Start or End directly in the row using the date fields. Date changes use the same scheduling rules as the Details Panel, including child-date constraints. Percent mode preserves allocation percentages; man-day mode preserves effort. If preserving effort would exceed capacity, the edit is rejected and the previous date remains. Date fields are disabled in read-only scenarios.
+Edit Start or End directly in the row using the date fields. Date changes use the same scheduling rules as the Details Panel, including child-date constraints. Percent mode preserves allocation percentages; man-day and hour modes preserve effort. If preserving effort would exceed capacity, the edit is rejected and the previous date remains. Date fields are disabled in read-only scenarios.
 
 ## Scope
 
-The board follows the selected plans, Scope, the Sidebar's task filters and team selection.
+The board follows the selected plans, task filters and team selection.

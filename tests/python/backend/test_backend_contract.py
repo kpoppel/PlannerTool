@@ -209,6 +209,22 @@ def test_catalogue_type_and_history_contract_across_local_backends(kind, days, e
     assert {task['id'] for task in tasks} == expected
     assert all(task['process_id'] == 'agile' for task in tasks)
 
+    if kind != 'static':
+        from contextlib import contextmanager
+        from planner_lib.azure.authentication import token_from_credential
+
+        local._config = SimpleNamespace(fetch_project_map=lambda: [plan])
+        client.get_linked_work_items = MagicMock(return_value=[])
+
+        @contextmanager
+        def connect(credential):
+            token_from_credential(credential)
+            yield client
+
+        local._client.connect.side_effect = connect
+        seeds = [{**task, 'sourcePlanIds': [plan['id']]} for task in tasks]
+        assert local.fetch_task_context(seeds) == []
+
 
 def test_mock_enrichment_failure_aborts_instead_of_returning_partial_results():
     from unittest.mock import MagicMock

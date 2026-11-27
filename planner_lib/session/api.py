@@ -12,7 +12,7 @@ from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.accounts.config import CredentialValidationError
 
 router = APIRouter()
-CURRENT_RELEASE = 'v5.0.0'
+CURRENT_RELEASE = 'v6.0.0'
 
 
 def _is_entra(request):

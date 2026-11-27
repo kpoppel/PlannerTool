@@ -1,6 +1,11 @@
 # Initial user setup
 
-On your first visit, enroll your account and save the account key before
+Your installation chooses how you sign in. If it uses Microsoft Entra, select
+**Sign in** and follow your organization's sign-in prompts. Azure DevOps access
+uses your delegated identity; contact your administrator if access or consent is
+required. See [Account Access](account_access.md#entra-sign-in).
+
+On an enrollment-based installation, enroll your account and save the account key before
 continuing. On another browser or after sign-out, use the same Enrollment form
 with your latest account key, then save its replacement. See
 [Account Access](account_access.md) for enrollment, deletion, and administrator
@@ -8,21 +13,21 @@ reset instructions.
 
 ## Configuration
 
-Open the gear (Settings) menu and choose **Configuration** to set your Azure access token and personal preferences. Server, plan and team settings are managed by your administrator.
+Open the gear (Settings) menu and choose **Configuration** to manage your account and personal preferences. Available authentication controls depend on the installation. Server, plan and team settings are managed by your administrator.
 
 ![Configuration dialog](img/config_modal.png)
 
 Fields
 - Account email: the signed-in account identity, displayed as non-editable text.
-- Personal Access Token (PAT): paste a PAT from Azure DevOps with Work Items (Read/Write/Manage) scope, and Wiki permission (read/write). Installations using a demo or static data source may not need one.
-- Remembered browsers: lists the browsers that remember your account; use **Refresh device list** to update it. See [Account Access](account_access.md) to revoke a browser.
+- Personal Access Token (PAT): in PAT-based installations, enter your Azure DevOps PAT. Demo or static sources may not need one. Entra installations do not use this field.
+- Remembered browsers: in enrollment-based installations, use **Refresh device list** to inspect or revoke browsers. See [Account Access](account_access.md).
 - Autosave interval (minutes, 0=off): saves changed editable scenarios to your account at this interval. This is a browser preference; it does not publish changes to Azure DevOps. See [Scenarios & Saving](scenarios.md).
 - Allocation unit: enter allocations in Percent (default), Man-days or Hours. Hours reflect each team's workforce project-hour budget. This is a browser-local preference.
 - Letter shortcuts: enables or disables the plain-letter board shortcuts in this browser.
 
 Buttons: **Sign out**, **Delete account** (see [Account Access](account_access.md)), **Save** and **Close**.
 
-If you don't know how to get a PAT, see below.
+The following steps apply only if your installation uses a PAT.
 
 1. Enter your Azure PAT if the installation requires it.
 2. Save the configuration.

@@ -17,5 +17,5 @@ Area Mappings (`#area-mappings`, full administrators only) shows which Azure Dev
 
 ## Notes
 
-- Refreshing reads Azure DevOps with your Personal Access Token, which needs access to the Delivery Plans of the relevant projects.
+- Refreshing reads Azure DevOps using your configured credentials; your account needs access to the Delivery Plans of the relevant projects.
 - Data sources without Delivery Plans (such as the synthetic demo source) show plans without markers.

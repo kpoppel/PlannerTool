@@ -120,6 +120,12 @@ async function seedDocsData(page, dataDir) {
         type_tiers: { [process.id]: imported.map((name) => [name]) },
       },
     });
+    await post('/admin/v1/plugins-config', {
+      content: { schema_version: 2, plugins: [
+        { id: 'plugin-reconciliation', enabled: true },
+        { id: 'plugin-xy-board', enabled: true },
+      ] },
+    });
     await post('/admin/v1/reload-config', {});
     await post('/api/session', {});
     const tasks = await get('/api/tasks');

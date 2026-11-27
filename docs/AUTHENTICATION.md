@@ -113,7 +113,7 @@ does not sign the administrator into it or issue another user's credentials.
 ## Release acknowledgement and public help
 
 The permanent illustrated release page is served at
-`/static/docs/releases/v5.0.0/index.html`; enrollment help remains at
+`/static/docs/releases/v6.0.0/index.html`; enrollment help remains at
 `/static/docs/account-access/index.html`, including before authentication.
 Neither page contains credentials or changes acknowledgement state.
 

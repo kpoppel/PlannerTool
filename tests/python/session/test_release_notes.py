@@ -12,12 +12,12 @@ def test_release_acknowledgement_is_shared_between_devices_and_account_isolated(
     })
     assert first.status_code == 200
     assert client.get('/api/auth/release-notes').json() == {
-        'releaseId': 'v5.0.0', 'acknowledged': False,
+        'releaseId': 'v6.0.0', 'acknowledged': False,
     }
-    response = client.post('/api/auth/release-notes', json={'releaseId': 'v5.0.0'})
+    response = client.post('/api/auth/release-notes', json={'releaseId': 'v6.0.0'})
     assert response.status_code == 200
-    assert response.json() == {'releaseId': 'v5.0.0', 'acknowledged': True}
-    assert client.post('/api/auth/release-notes', json={'releaseId': 'v5.0.0'}).status_code == 200
+    assert response.json() == {'releaseId': 'v6.0.0', 'acknowledged': True}
+    assert client.post('/api/auth/release-notes', json={'releaseId': 'v6.0.0'}).status_code == 200
 
     second = TestClient(app)
     assert second.post('/api/auth/enroll', json={
@@ -36,6 +36,17 @@ def test_release_acknowledgement_rejects_unknown_release(authenticated_client):
     assert authenticated_client.get('/api/auth/release-notes').json()['acknowledged'] is False
 
 
+def test_previous_release_acknowledgement_does_not_hide_new_release(client, app):
+    assert client.post('/api/auth/enroll', json={
+        'email': 'upgrader@example.test', 'name': 'Upgrade Reader',
+    }).status_code == 200
+    account_id = app.state.container.get('account_manager').get_account_id('upgrader@example.test')
+    app.state.container.get('storage').save('release_acknowledgements', account_id, 'v5.0.0')
+    assert client.get('/api/auth/release-notes').json() == {
+        'releaseId': 'v6.0.0', 'acknowledged': False,
+    }
+
+
 def test_release_acknowledgement_deleted_with_account(authenticated_client):
     client = authenticated_client
     enrollment = client.post('/api/auth/enroll', json={
@@ -43,7 +54,7 @@ def test_release_acknowledgement_deleted_with_account(authenticated_client):
     })
     assert enrollment.status_code == 200
     account_id = client.app.state.container.get('account_manager').get_account_id('departing@example.test')
-    assert client.post('/api/auth/release-notes', json={'releaseId': 'v5.0.0'}).status_code == 200
+    assert client.post('/api/auth/release-notes', json={'releaseId': 'v6.0.0'}).status_code == 200
     response = client.post('/api/auth/delete-account', json={
         'email': 'departing@example.test', 'accountKey': enrollment.json()['accountKey'], 'confirm': True,
     })

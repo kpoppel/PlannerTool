@@ -17,12 +17,13 @@ These add a floating panel or extra information on top of the board:
 
 ## Full views
 
-These replace the board area with another view of the same tasks (the top menu and Sidebar stay available):
+These replace the board area with another view of the same tasks (the top menu stays available):
 
 - [Portfolio Board](plugin_portfolio.md) — teams as rows and states as columns.
 - [XY Board](plugin_xyboard.md) — a matrix of any two fields.
 - [Graph Viewer](plugin_graph_viewer.md) — a large capacity graph with export.
 - [Cost Analysis](plugin_cost.md) — cost and hours per plan, task, team and workforce.
+- [Cone of Uncertainty](plugin_cone.md) — show illustrative task finish ranges and planning events.
 
 ## Always-on and menu plugins
 
