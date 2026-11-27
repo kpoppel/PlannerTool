@@ -13,7 +13,7 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
-## [v6.0.0] - unreleased
+## [v6.0.0] - 2026-11-27
 ### Added
 - Explore a team's work across plans without changing the selected plans. In single-team focus, read-only **Other plan** rows identify additional commitments and link to their source tasks.
 - Enter allocations in whole hours as well as percent or man-days, using each team's workforce project-hour budget.
